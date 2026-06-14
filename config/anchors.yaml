@@ -1,0 +1,315 @@
+# Semantic Anchor Registry
+# Single source of truth for all semantic anchors used by the Agent School prompt composer.
+# Anchors are organized by tier (methodology, principle, technique) and domain.
+# New anchors can be added here without code changes — prompt_composer.py loads from this file.
+#
+# Schema:
+#   name: str           # Anchor name used in bracket notation (e.g., "Fagan Inspection")
+#   tier: enum          # methodology | principle | technique
+#   domain: str         # Domain this anchor belongs to
+#   activation_pattern: str  # What the model should do when this anchor is activated
+#   expected_behaviors: list[str]  # Observable behaviors that confirm activation
+#   examples: list[str]  # Concrete examples of the anchor in action
+#   difficulty_gate: str  # minimum gate to use this anchor ("easy" | "medium" | "hard")
+
+anchor_registry:
+  version: "1.0.0"
+  updated: "2026-06-14"
+  anchors:
+
+  # ── Methodology Tier ───────────────────────────────────────────────────────
+
+  - name: "Fagan Inspection"
+    tier: methodology
+    domain: code-review
+    activation_pattern: "Conduct a structured, systematic code review with defined roles and checklists"
+    expected_behaviors:
+      - "Reviews code against a checklist, not just impressions"
+      - "Assigns specific roles (author, reviewer, moderator)"
+      - "Produces findings with severity levels and line references"
+      - "Distinguishes between defects and style issues"
+    examples:
+      - "Reviewer finds an off-by-one error in loop boundary (line 42, major)"
+      - "Moderator confirms all checklist items have been addressed"
+    difficulty_gate: hard
+
+  - name: "TDD Chicago School"
+    tier: methodology
+    domain: python-testing
+    activation_pattern: "State-based testing with minimal mocking, inside-out development"
+    expected_behaviors:
+      - "Tests verify behavior through public APIs, not internal state"
+      - "Mocks are used sparingly, only for external dependencies"
+      - "Development flows from simple cases outward"
+      - "Tests focus on what the code does, not how it does it"
+    examples:
+      - "Test creates a Room, calls createPlayer(), asserts player count increases"
+      - "Mock only the database layer, test business logic with real objects"
+    difficulty_gate: easy
+
+  - name: "TDD London School"
+    tier: methodology
+    domain: python-testing
+    activation_pattern: "Outside-in testing with mocking, top-down development"
+    expected_behaviors:
+      - "Tests written from the outside (API/UI layer) inward"
+      - "Heavy use of test doubles to isolate units"
+      - "Development flows from acceptance tests to unit tests"
+      - "Tests verify interactions, not just state"
+    examples:
+      - "Start with integration test that mocks the payment gateway"
+      - "Write unit tests with mocked dependencies for business logic"
+    difficulty_gate: medium
+
+  - name: "Five Whys"
+    tier: methodology
+    domain: debugging
+    activation_pattern: "Iteratively ask 'why' until reaching the root cause"
+    expected_behaviors:
+      - "Traces symptoms through causal chain to root cause"
+      - "Each 'why' has a concrete answer, not speculation"
+      - "Stops at a actionable cause, not a vague systemic issue"
+    examples:
+      - "Bug: room creation fails → Why? Null pointer → Why? Missing player → Why? Not validated → Why? No input check → Root cause: missing validation"
+    difficulty_gate: medium
+
+  - name: "Property-Based Testing"
+    tier: methodology
+    domain: python-testing
+    activation_pattern: "Test with generated inputs to discover edge cases automatically"
+    expected_behaviors:
+      - "Defines properties that must hold for all inputs"
+      - "Uses hypothesis or similar to generate test cases"
+      - "Shrinks failing cases to minimal reproduction"
+    examples:
+      - "For all lists l, len(sorted(l)) == len(l)"
+      - "For all strings s, decode(encode(s)) == s"
+    difficulty_gate: hard
+
+  - name: "Socratic Method"
+    tier: methodology
+    domain: general
+    activation_pattern: "Guide understanding through targeted questions rather than direct answers"
+    expected_behaviors:
+      - "Asks probing questions that reveal assumptions"
+      - "Leads the reasoning process rather than providing answers"
+      - "Identifies gaps in logic through inquiry"
+    examples:
+      - "You said the error is in the consumer — what evidence supports that?"
+      - "What would happen if the queue were empty at that point?"
+    difficulty_gate: hard
+
+  # ── Principle Tier ──────────────────────────────────────────────────────────
+
+  - name: "YAGNI"
+    tier: principle
+    domain: code-implementation
+    activation_pattern: "Only implement what the current test or requirement demands — nothing more"
+    expected_behaviors:
+      - "No speculative abstractions or future-proofing"
+      - "Classes and functions have a single reason to change"
+      - "Rejects 'you might need this later' arguments"
+    examples:
+      - "Don't add a caching layer until the test requires it"
+      - "Don't abstract a single implementation into an interface"
+    difficulty_gate: easy
+
+  - name: "SOLID Principles"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Apply all five SOLID principles: SRP, OCP, LSP, ISP, DIP"
+    expected_behaviors:
+      - "Single Responsibility: each class has one reason to change"
+      - "Open/Closed: open for extension, closed for modification"
+      - "Liskov Substitution: subtypes are substitutable for base types"
+      - "Interface Segregation: specific interfaces over general ones"
+      - "Dependency Inversion: depend on abstractions, not concretions"
+    examples:
+      - "Flag a class handling both persistence and business logic (SRP violation)"
+      - "Verify that mock implementations satisfy the interface contract (LSP)"
+    difficulty_gate: medium
+
+  - name: "SRP"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Single Responsibility Principle — each module has one reason to change"
+    expected_behaviors:
+      - "Classes and functions have a single, well-defined responsibility"
+      - "Changes to one requirement don't require modifying the module"
+      - "Module name describes its single purpose"
+    examples:
+      - "RoomManager should not also handle player authentication"
+      - "DataParser should not also handle database writes"
+    difficulty_gate: easy
+
+  - name: "DIP"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Dependency Inversion Principle — depend on abstractions, not concretions"
+    expected_behaviors:
+      - "High-level modules don't depend on low-level module details"
+      - "Abstractions don't depend on details; details depend on abstractions"
+      - "Uses interfaces or abstract base classes for dependencies"
+    examples:
+      - "Class depends on Database interface, not PostgresDatabase implementation"
+      - "Service depends on EmailSender protocol, not SmtpClient"
+    difficulty_gate: medium
+
+  - name: "Clean Architecture"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Separate domain logic from infrastructure with clear boundaries"
+    expected_behaviors:
+      - "Domain layer has no dependencies on frameworks or databases"
+      - "Business rules are independent of UI, DB, or external services"
+      - "Dependencies point inward — outer layers depend on inner layers"
+    examples:
+      - "Game rules logic should work without the web framework"
+      - "Player validation should not import Flask or Django"
+    difficulty_gate: medium
+
+  - name: "KISS"
+    tier: principle
+    domain: code-implementation
+    activation_pattern: "Keep It Simple, Stupid — favor simple, readable solutions"
+    expected_behaviors:
+      - "Solutions use the simplest approach that works"
+      - "Avoids unnecessary complexity or cleverness"
+      - "Code is straightforward and easy to understand"
+    examples:
+      - "Use a list comprehension instead of a complex functional pipeline"
+      - "Prefer a simple if/else over a design pattern for two cases"
+    difficulty_gate: easy
+
+  - name: "DRY"
+    tier: principle
+    domain: code-implementation
+    activation_pattern: "Don't Repeat Yourself — extract shared logic into reusable units"
+    expected_behaviors:
+      - "Common logic is extracted into functions or classes"
+      - "Changes to shared logic require editing in one place only"
+      - "But not at the cost of clarity — accidental duplication is acceptable"
+    examples:
+      - "Extract common validation logic into a shared function"
+      - "Move repeated setup code into a fixture"
+    difficulty_gate: easy
+
+  - name: "Cohesion Criteria"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Modules should have high cohesion — everything inside serves a single purpose"
+    expected_behaviors:
+      - "All methods in a class relate to the class's core responsibility"
+      - "Module can be described in one sentence"
+      - "No 'miscellaneous' or 'utils' dumping grounds"
+    examples:
+      - "RoomManager only manages room lifecycle, not player stats"
+      - "FileParser only parses, it doesn't also validate business rules"
+    difficulty_gate: medium
+
+  - name: "Code Smells"
+    tier: principle
+    domain: code-review
+    activation_pattern: "Identify common indicators of code quality issues"
+    expected_behaviors:
+      - "Detects long methods, large classes, feature envy, data clumps"
+      - "Flags primitive obsession and shotgun surgery"
+      - "Identifies inappropriate intimacy between classes"
+    examples:
+      - "Method with 50+ lines and 5 levels of nesting (Long Method)"
+      - "Class that knows too much about another class's internals (Feature Envy)"
+    difficulty_gate: medium
+
+  - name: "Conventional Commits"
+    tier: principle
+    domain: git-operations
+    activation_pattern: "Follow conventional commit format for all commit messages"
+    expected_behaviors:
+      - "Messages follow type(scope): description format"
+      - "Common types: feat, fix, chore, docs, refactor, test"
+      - "Body explains what and why, not just how"
+    examples:
+      - "feat(room): add player capacity validation"
+      - "fix(consumer): handle empty queue edge case"
+    difficulty_gate: easy
+
+  - name: "EFC"
+    tier: technique
+    domain: curriculum
+    activation_pattern: "Expected Fraction of Correct task completions — competency-gated routing"
+    expected_behaviors:
+      - "Tasks are routed based on measured historical accuracy"
+      - "Students only attempt tasks at or below their competency level"
+      - "Gate advancement requires consistent success, not one-off wins"
+    examples:
+      - "Student with EFC 0.8 on python-testing can attempt medium tasks"
+      - "Student needs 3 consecutive hard-task successes to advance to diploma"
+    difficulty_gate: hard
+
+  - name: "Distillation"
+    tier: technique
+    domain: curriculum
+    activation_pattern: "Output is captured for distillation into smaller models"
+    expected_behaviors:
+      - "Solutions are self-contained and well-documented"
+      - "Reasoning is explicit enough to be learned from"
+      - "Output quality is high enough to serve as training data"
+    examples:
+      - "Teacher's solution becomes the reference for student fine-tuning"
+      - "Faculty's resolution provides the canonical answer for the issue"
+    difficulty_gate: medium
+
+  # ── Technique Tier ──────────────────────────────────────────────────────────
+
+  - name: "Chain of Thought"
+    tier: technique
+    domain: general
+    activation_pattern: "Reason step by step before concluding"
+    expected_behaviors:
+      - "Breaks complex problems into intermediate reasoning steps"
+      - "Shows work, doesn't just give the answer"
+      - "Each step follows logically from the previous"
+    examples:
+      - "First, identify the error source. Then, trace the call stack. Finally, propose a fix."
+      - "Analyze each requirement in order, then synthesize into a plan"
+    difficulty_gate: medium
+
+  - name: "First Principles Thinking"
+    tier: technique
+    domain: debugging
+    activation_pattern: "Break down to fundamental truths and reason up from there"
+    expected_behaviors:
+      - "Identifies and questions all assumptions"
+      - "Reconstructs the problem from basic building blocks"
+      - "Considers multiple approaches, not just the obvious one"
+    examples:
+      - "What are the minimum requirements for this to work? Build from there."
+      - "Instead of 'we've always done it this way,' ask 'what problem are we actually solving?'"
+    difficulty_gate: hard
+
+  - name: "Classification Rubric"
+    tier: technique
+    domain: triage
+    activation_pattern: "Apply structured classification: explicit labels win, then body signals, then heuristics"
+    expected_behaviors:
+      - "Checks for explicit state labels first"
+      - "Falls back to body content analysis"
+      - "Uses length and label+length heuristics as last resort"
+      - "Output is only the classification, no explanation"
+    examples:
+      - "ready-for-agent label → state=ready-for-agent regardless of body"
+      - "'duplicate of' in body → state=ready-for-human"
+    difficulty_gate: easy
+
+  - name: "Use Case"
+    tier: technique
+    domain: python-testing
+    activation_pattern: "Structure tests around user-facing use cases"
+    expected_behaviors:
+      - "Tests describe what a user does, not what the code does"
+      - "Test names read like user stories"
+      - "Coverage maps to user workflows, not code paths"
+    examples:
+      - "test_player_joins_room_and_appears_in_player_list"
+      - "test_host_starts_game_with_insufficient_players_shows_error"
+    difficulty_gate: easy

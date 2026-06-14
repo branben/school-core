@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from scoring import GATES
 
+from anchor_loader import AnchorRegistry
+
+_registry: AnchorRegistry | None = None
+try:
+    _registry = AnchorRegistry()
+except Exception:
+    _registry = None
+
 ROLE_ANCHORS = {
     "student": {
         "prompt": (
@@ -160,6 +168,21 @@ def _classify_curriculum(agent: str, domain: str, store) -> str:
     return "post_diploma" if score >= GATES["diploma"] else "pre_diploma"
 
 
+def _enrich_with_registry(parts: list[str], all_anchors: list[str]) -> None:
+    """Enrich prompt parts with activation patterns from the anchor registry.
+
+    For each anchor in all_anchors, if the registry has a matching entry,
+    append its activation pattern to the prompt. This adds the 'what to do'
+    guidance from the registry without changing the existing bracket notation.
+    """
+    if not _registry:
+        return
+    for anchor_name in all_anchors:
+        anchor = _registry.get_anchor(anchor_name)
+        if anchor and anchor.activation_pattern:
+            parts.append(f"[{anchor_name}]: {anchor.activation_pattern}")
+
+
 def compose_prompt(
     domain: str,
     difficulty: str,
@@ -231,5 +254,7 @@ def compose_prompt(
                 deduped.append(a)
         anchor_list = ", ".join(f"[{a}]" for a in deduped)
         parts.append(f"\nAnchors: {anchor_list}")
+
+    _enrich_with_registry(parts, all_anchors)
 
     return "\n\n".join(parts)
