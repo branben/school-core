@@ -1718,7 +1718,235 @@
       "status": "completed",
       "id": 170,
       "timestamp": "2026-06-14T15:35:37.420486+00:00"
+    },
+    {
+      "type": "task_finish",
+      "agent": "foundry-coder-7b",
+      "domain": "debugging",
+      "score": 47.72939079999998,
+      "success": false,
+      "gate_crossed": null,
+      "description": "foundry-coder-7b struggled with debugging code (score 48)",
+      "status": "completed",
+      "id": 171,
+      "timestamp": "2026-06-14T17:05:14.541915+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_cmd_001)",
+      "status": "sleeping",
+      "id": 172,
+      "timestamp": "2026-06-14T17:05:27.521288+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_cmd_002)",
+      "status": "sleeping",
+      "id": 173,
+      "timestamp": "2026-06-14T17:05:27.560778+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_cmd_002)",
+      "status": "active",
+      "id": 174,
+      "timestamp": "2026-06-14T17:05:27.589832+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_life_001)",
+      "status": "sleeping",
+      "id": 175,
+      "timestamp": "2026-06-14T17:05:27.634420+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_life_001)",
+      "status": "active",
+      "id": 176,
+      "timestamp": "2026-06-14T17:05:27.655306+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_life_001)",
+      "status": "sleeping",
+      "id": 177,
+      "timestamp": "2026-06-14T17:05:27.660710+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_log_001)",
+      "status": "sleeping",
+      "id": 178,
+      "timestamp": "2026-06-14T17:05:27.685575+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_log_001)",
+      "status": "active",
+      "id": 179,
+      "timestamp": "2026-06-14T17:05:27.704253+00:00"
+    },
+    {
+      "type": "task_finish",
+      "agent": "foundry-coder-7b",
+      "domain": "debugging",
+      "score": 33.41057355999999,
+      "success": false,
+      "gate_crossed": null,
+      "description": "foundry-coder-7b struggled with debugging code (score 33)",
+      "status": "completed",
+      "id": 180,
+      "timestamp": "2026-06-14T17:05:43.562396+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_timeout_001)",
+      "status": "sleeping",
+      "id": 181,
+      "timestamp": "2026-06-14T17:05:46.784993+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_idem_001)",
+      "status": "sleeping",
+      "id": 182,
+      "timestamp": "2026-06-14T17:05:46.815633+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_old)",
+      "status": "sleeping",
+      "id": 183,
+      "timestamp": "2026-06-14T17:05:46.846893+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_custom_001)",
+      "status": "sleeping",
+      "id": 184,
+      "timestamp": "2026-06-14T17:05:46.872141+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_cmd_001)",
+      "status": "sleeping",
+      "id": 185,
+      "timestamp": "2026-06-14T17:34:12.033434+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_cmd_002)",
+      "status": "sleeping",
+      "id": 186,
+      "timestamp": "2026-06-14T17:34:12.040966+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_cmd_002)",
+      "status": "active",
+      "id": 187,
+      "timestamp": "2026-06-14T17:34:12.046129+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_life_001)",
+      "status": "sleeping",
+      "id": 188,
+      "timestamp": "2026-06-14T17:34:12.053461+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_life_001)",
+      "status": "active",
+      "id": 189,
+      "timestamp": "2026-06-14T17:34:12.058057+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_life_001)",
+      "status": "sleeping",
+      "id": 190,
+      "timestamp": "2026-06-14T17:34:12.060247+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_log_001)",
+      "status": "sleeping",
+      "id": 191,
+      "timestamp": "2026-06-14T17:34:12.067856+00:00"
+    },
+    {
+      "type": "agent_wake",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b woke up (session: ses_log_001)",
+      "status": "active",
+      "id": 192,
+      "timestamp": "2026-06-14T17:34:12.072346+00:00"
+    },
+    {
+      "type": "task_finish",
+      "agent": "foundry-coder-7b",
+      "domain": "debugging",
+      "score": 23.38740149199999,
+      "success": false,
+      "gate_crossed": null,
+      "description": "foundry-coder-7b struggled with debugging code (score 23)",
+      "status": "completed",
+      "id": 193,
+      "timestamp": "2026-06-14T17:34:16.784155+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_timeout_001)",
+      "status": "sleeping",
+      "id": 194,
+      "timestamp": "2026-06-14T17:34:17.855616+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_idem_001)",
+      "status": "sleeping",
+      "id": 195,
+      "timestamp": "2026-06-14T17:34:17.861251+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_old)",
+      "status": "sleeping",
+      "id": 196,
+      "timestamp": "2026-06-14T17:34:17.870384+00:00"
+    },
+    {
+      "type": "agent_sleep",
+      "agent": "foundry-coder-7b",
+      "description": "foundry-coder-7b went to sleep (session: ses_custom_001)",
+      "status": "sleeping",
+      "id": 197,
+      "timestamp": "2026-06-14T17:34:17.876229+00:00"
     }
   ],
-  "last_updated": "2026-06-14T15:35:37.420802+00:00"
+  "last_updated": "2026-06-14T17:34:17.876264+00:00"
 }

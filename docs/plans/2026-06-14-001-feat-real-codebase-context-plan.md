@@ -67,7 +67,7 @@ Remove the 140-line CURRICULUM dict and `_pick_task_for_agent()` from `autonomou
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Repo clone strategy | Clone to `tempfile.mkdtemp()` at start of `bridge_issues()`, reuse for all issues, cleanup after | Simple, no stale state, no concurrency issues |
+| Repo clone strategy | Cache clones in `~/.cache/school-core/repos/<repo_slug>/`; `git pull` on re-use, `git clone --depth 1` on first use; temp dirs cleaned up after each bridge run + stale dirs (>1h) purged on startup | Avoids re-cloning the same repo every 3 minutes; bounded disk usage |
 | File selection heuristic | Keyword matching: extract nouns from issue title/body, match against file names and `grep -l` for content matches | No LLM needed for file selection; fast and deterministic |
 | Context size limit | Max 5 source files, max 2000 chars each, max 10000 chars total context | Fits within model context windows without crowding the actual task |
 | Where to add enrichment | In `issue_bridge.py` before calling `run_task()` — build the enriched prompt, pass it through | Single point of enrichment; both agent and verifier get the same context |
