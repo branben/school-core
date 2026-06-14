@@ -1,0 +1,13 @@
+# Confidence thresholds per difficulty gate
+# If agent confidence < threshold, escalate to next candidate
+thresholds:
+  easy: 3
+  medium: 5
+  hard: 7
+  diploma: 8
+
+# Per-domain overrides (optional)
+domain_overrides:
+  code-review:
+    hard: 8
+    diploma: 9
