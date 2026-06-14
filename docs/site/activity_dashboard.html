@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="3">
+<title>Agent School — Live Activity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f; --surface: #111118; --surface-2: #1a1a24;
+  --border: #2a2a38; --text: #e8e6e3; --text-dim: #8a8694;
+  --accent: #c8ff00; --blue: #5b8def; --purple: #a855f7;
+  --orange: #f59e0b; --red: #ef4444; --green: #22c55e;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Geist Mono','SF Mono','Fira Code',monospace; background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; }
+.container { max-width:1400px; margin:0 auto; padding:0 32px; }
+nav { padding:14px 0; border-bottom:1px solid var(--border); background:rgba(10,10,15,0.92); backdrop-filter:blur(12px); }
+nav .container { display:flex; justify-content:space-between; align-items:center; }
+nav .logo { font-family:'Geist',sans-serif; font-size:18px; font-weight:700; color:var(--accent); letter-spacing:-0.5px; text-decoration:none; }
+nav .logo span { color:var(--text-dim); font-family:'Geist Mono',monospace; font-weight:400; font-size:9px; display:block; letter-spacing:2.5px; text-transform:uppercase; }
+nav .links a { margin-left:20px; font-size:11px; color:var(--text-dim); text-decoration:none; }
+nav .links a:hover { color:var(--accent); }
+nav .links a.active { color:var(--accent); }
+main { padding-top:24px; padding-bottom:60px; }
+.hero-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:10px; margin:16px 0 28px; }
+.hstat { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
+.hstat .n { font-family:'Geist',sans-serif; font-size:22px; font-weight:700; display:block; }
+.hstat .l { font-size:9px; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; }
+.hstat.green .n { color:var(--green); } .hstat.blue .n { color:var(--blue); }
+.hstat.purple .n { color:var(--purple); } .hstat.orange .n { color:var(--orange); }
+.schoolyard { display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; }
+@media(max-width:900px) { .schoolyard { grid-template-columns:1fr; } }
+.zones { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+.zone { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; transition:border-color 0.3s; }
+.zone:hover { border-color:#3a3a4e; }
+.zone-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.zone-title { font-family:'Geist',sans-serif; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; }
+.zone-icon { font-size:16px; }
+.zone-count { font-size:10px; color:var(--text-dim); background:var(--surface-2); padding:2px 7px; border-radius:10px; }
+.zone-agents { display:flex; flex-direction:column; gap:5px; }
+.agent-chip { display:flex; align-items:center; gap:8px; padding:7px 9px; background:var(--surface-2); border-radius:6px; border-left:3px solid transparent; }
+.agent-chip.role-faculty { border-left-color:var(--purple); }
+.agent-chip.role-teacher { border-left-color:var(--blue); }
+.agent-chip.role-senior-student { border-left-color:var(--orange); }
+.agent-chip.role-student { border-left-color:var(--green); }
+.agent-chip.role-unenrolled { border-left-color:var(--text-dim); opacity:0.6; }
+.agent-chip.status-working { background:rgba(91,141,239,0.08); }
+.agent-chip.status-error { background:rgba(239,68,68,0.08); }
+.chip-avatar { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Geist',sans-serif; font-weight:700; font-size:12px; flex-shrink:0; }
+.chip-info { flex:1; min-width:0; }
+.chip-name { font-weight:600; font-size:11px; }
+.chip-action { font-size:10px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px; }
+.chip-action.working { color:var(--blue); }
+.chip-action.error { color:var(--red); }
+.chip-action.success { color:var(--green); }
+.chip-action.milestone { color:var(--accent); font-weight:600; }
+.chip-meta { text-align:right; flex-shrink:0; }
+.chip-score { font-size:10px; font-weight:600; }
+.chip-time { font-size:9px; color:var(--text-dim); }
+.activity-feed { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; position:sticky; top:20px; max-height:calc(100vh - 40px); overflow-y:auto; }
+.feed-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.feed-title { font-family:'Geist',sans-serif; font-size:13px; font-weight:600; }
+.feed-count { font-size:10px; color:var(--text-dim); }
+.feed-entry { display:flex; gap:7px; padding:5px 0; border-bottom:1px solid rgba(42,42,56,0.3); font-size:10px; }
+.feed-entry:last-child { border-bottom:none; }
+.feed-icon { flex-shrink:0; font-size:12px; width:18px; text-align:center; }
+.feed-text { flex:1; color:var(--text-dim); line-height:1.5; }
+.feed-time { flex-shrink:0; font-size:9px; color:var(--text-dim); opacity:0.6; }
+.empty-state { text-align:center; padding:40px 20px; color:var(--text-dim); }
+.empty-state .icon { font-size:40px; margin-bottom:12px; }
+.empty-state h2 { font-family:'Geist',sans-serif; font-size:16px; color:var(--text); margin-bottom:6px; }
+.empty-state p { font-size:12px; }
+.refresh-note { font-size:10px; color:var(--text-dim); text-align:right; margin-bottom:12px; }
+::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="index.html" class="logo">School<span>Agent Framework</span></a>
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="leaderboard.html">Leaderboard</a>
+      <a href="activity_dashboard.html" class="active">Live Activity</a>
+    </div>
+  </div>
+</nav>
+<main><div class="container">
+  <div class="hero-stats">
+    <div class="hstat green"><span class="n">22</span><span class="l">Agents</span></div>
+    <div class="hstat blue"><span class="n">0</span><span class="l">Working</span></div>
+    <div class="hstat orange"><span class="n">0</span><span class="l">Errors</span></div>
+    <div class="hstat purple"><span class="n">0</span><span class="l">Crossings</span></div>
+  </div>
+  <div class="refresh-note">Auto-refreshes every 3s · Generated 2026-06-13 13:24:33</div>
+  <div class="schoolyard">
+    <div class="zones">
+      <div class="zone">
+        <div class="zone-header">
+          <span class="zone-title"><span class="zone-icon">🎓</span> Facultys</span>
+          <span class="zone-count">1</span>
+        </div>
+        <div class="zone-agents">
+        <div class="agent-chip role-faculty status-completed">
+          <div class="chip-avatar" style="background:#a855f722;color:#a855f7">G</div>
+          <div class="chip-info">
+            <div class="chip-name">Grace</div>
+            <div class="chip-action success">foundry-coder-7b finished implementing code (score 71)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#a855f7">59.2</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="zone">
+        <div class="zone-header">
+          <span class="zone-title"><span class="zone-icon">📚</span> Teachers</span>
+          <span class="zone-count">4</span>
+        </div>
+        <div class="zone-agents">
+        <div class="agent-chip role-teacher status-completed">
+          <div class="chip-avatar" style="background:#5b8def22;color:#5b8def">S</div>
+          <div class="chip-info">
+            <div class="chip-name">Smol</div>
+            <div class="chip-action success">smollm2:1.7b finished writing Python code (score 56)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#5b8def">22.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-teacher status-completed">
+          <div class="chip-avatar" style="background:#5b8def22;color:#5b8def">T</div>
+          <div class="chip-info">
+            <div class="chip-name">Turing</div>
+            <div class="chip-action success">foundry-coder-1.5b finished writing pytest tests (score 66)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#5b8def">20.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-teacher status-completed">
+          <div class="chip-avatar" style="background:#5b8def22;color:#5b8def">A</div>
+          <div class="chip-info">
+            <div class="chip-name">Ada</div>
+            <div class="chip-action success">foundry-coder-0.5b finished reviewing code (score 40)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#5b8def">15.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-teacher status-idle">
+          <div class="chip-avatar" style="background:#5b8def22;color:#5b8def">O</div>
+          <div class="chip-info">
+            <div class="chip-name">Open</div>
+            <div class="chip-action ">Idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#5b8def">0.0</div>
+            <div class="chip-time">—</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="zone">
+        <div class="zone-header">
+          <span class="zone-title"><span class="zone-icon">📖</span> Senior Students</span>
+          <span class="zone-count">7</span>
+        </div>
+        <div class="zone-agents">
+        <div class="agent-chip role-senior-student status-completed">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">M</div>
+          <div class="chip-info">
+            <div class="chip-name">Max</div>
+            <div class="chip-action success">always-on-max finished doing general coursework (score 35)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">35.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-completed">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">N</div>
+          <div class="chip-info">
+            <div class="chip-name">North</div>
+            <div class="chip-action success">north-coding finished writing Python code (score 35)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">30.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-completed">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">G</div>
+          <div class="chip-info">
+            <div class="chip-name">Gemini</div>
+            <div class="chip-action success">gemini-3-flash-preview finished writing pytest tests (score 15)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">29.4</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-idle">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">F</div>
+          <div class="chip-info">
+            <div class="chip-name">Flash</div>
+            <div class="chip-action ">gemini-2.0-flash is idle — registered but waiting for first task</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">25.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-idle">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">O</div>
+          <div class="chip-info">
+            <div class="chip-name">Owl</div>
+            <div class="chip-action ">owl-alpha is idle — registered but waiting for first task</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">25.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-idle">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">C</div>
+          <div class="chip-info">
+            <div class="chip-name">Compiled</div>
+            <div class="chip-action ">qwen-coder-compiled is idle — waiting for coding tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">20.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-senior-student status-idle">
+          <div class="chip-avatar" style="background:#f59e0b22;color:#f59e0b">Q</div>
+          <div class="chip-info">
+            <div class="chip-name">Quip</div>
+            <div class="chip-action ">foundry-qwen3.5-2b-text is idle — waiting for triage tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#f59e0b">15.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="zone">
+        <div class="zone-header">
+          <span class="zone-title"><span class="zone-icon">🌱</span> Students</span>
+          <span class="zone-count">10</span>
+        </div>
+        <div class="zone-agents">
+        <div class="agent-chip role-student status-completed">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">G</div>
+          <div class="chip-info">
+            <div class="chip-name">Gemma</div>
+            <div class="chip-action success">gemma-4-31b-it:free finished doing general coursework (score 21)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">21.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-idle">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">F</div>
+          <div class="chip-info">
+            <div class="chip-name">Free</div>
+            <div class="chip-action ">always-on-free is idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">20.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-idle">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">K</div>
+          <div class="chip-info">
+            <div class="chip-name">Kimi</div>
+            <div class="chip-action ">kimi-k2.6:free is idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">20.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-idle">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">Q</div>
+          <div class="chip-info">
+            <div class="chip-name">Qwen7b</div>
+            <div class="chip-action ">qwen2.5-coder:7b is idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">15.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-idle">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">Q</div>
+          <div class="chip-info">
+            <div class="chip-name">Qwen</div>
+            <div class="chip-action ">qwen2.5:7b is idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">15.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-completed">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">E</div>
+          <div class="chip-info">
+            <div class="chip-name">Empiric</div>
+            <div class="chip-action success">foundry-qwen2.5-coder-7b-empirical finished classifying issues by category (score 23)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">13.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-completed">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">O</div>
+          <div class="chip-info">
+            <div class="chip-name">Olmo</div>
+            <div class="chip-action success">foundry-olmo-3-7b finished classifying issues by category (score 18)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">12.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-completed">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">P</div>
+          <div class="chip-info">
+            <div class="chip-name">Phi</div>
+            <div class="chip-action success">foundry-phi4 finished writing Python code (score 5)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">10.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-completed">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">M</div>
+          <div class="chip-info">
+            <div class="chip-name">Min</div>
+            <div class="chip-action success">foundry-smollm3-3b finished writing Python code (score 5)</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">10.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div>
+        <div class="agent-chip role-student status-idle">
+          <div class="chip-avatar" style="background:#22c55e22;color:#22c55e">P</div>
+          <div class="chip-info">
+            <div class="chip-name">Phi4</div>
+            <div class="chip-action ">phi4 is idle — waiting for tasks</div>
+          </div>
+          <div class="chip-meta">
+            <div class="chip-score" style="color:#22c55e">10.0</div>
+            <div class="chip-time">13s ago</div>
+          </div>
+        </div></div>
+      </div></div>
+    <div class="activity-feed">
+      <div class="feed-header">
+        <span class="feed-title">📋 Activity Feed</span>
+        <span class="feed-count">39 events</span>
+      </div>
+      
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">phi4 is idle — waiting for tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">qwen2.5-coder:7b is idle — waiting for tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">qwen2.5:7b is idle — waiting for tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">always-on-free is idle — waiting for tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">kimi-k2.6:free is idle — waiting for tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">qwen-coder-compiled is idle — waiting for coding tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">foundry-qwen3.5-2b-text is idle — waiting for triage tasks</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-qwen2.5-coder-7b-empirical finished classifying issues by category (score 23)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-qwen2.5-coder-7b-empirical started classifying issues by category (easy)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-olmo-3-7b finished classifying issues by category (score 18)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-olmo-3-7b started classifying issues by category (easy)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">🔧</span>
+          <span class="feed-text">Staff: auditing scores — Audited 22 agents, found 0 anomalies, 0 recommendations</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">🔧</span>
+          <span class="feed-text">Staff: cleaning up stale data — Scanned 62 trajectories, pruned 3 stale ones</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-phi4 finished writing Python code (score 5)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-phi4 started writing Python code (easy) — studying</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-smollm3-3b finished writing Python code (score 5)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-smollm3-3b started writing Python code (easy) — studying</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">gemma-4-31b-it:free finished doing general coursework (score 21)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">gemma-4-31b-it:free started doing general coursework (easy) — studying</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">gemini-2.0-flash is idle — registered but waiting for first task</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">💤</span>
+          <span class="feed-text">owl-alpha is idle — registered but waiting for first task</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">gemini-3-flash-preview finished writing pytest tests (score 15)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">gemini-3-flash-preview started writing pytest tests (easy) — practicing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">north-coding finished writing Python code (score 35)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">north-coding started writing Python code (medium) — practicing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">always-on-max finished doing general coursework (score 35)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">always-on-max started doing general coursework (medium) — practicing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">smollm2:1.7b finished writing Python code (score 56)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">smollm2:1.7b started writing Python code (medium) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-coder-1.5b finished writing pytest tests (score 66)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-coder-1.5b started writing pytest tests (medium) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-coder-0.5b finished reviewing code (score 40)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-coder-0.5b started reviewing code (medium) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-coder-0.5b finished classifying issues by category (score 40)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-coder-0.5b started classifying issues by category (medium) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-coder-7b finished implementing code (score 71)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-coder-7b started implementing code (challenging) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">✅</span>
+          <span class="feed-text">foundry-coder-7b finished writing pytest tests (score 78)</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+        <div class="feed-entry">
+          <span class="feed-icon">▶️</span>
+          <span class="feed-text">foundry-coder-7b started writing pytest tests (challenging) — mentoring and reviewing</span>
+          <span class="feed-time">20:24:19</span>
+        </div>
+    </div>
+  </div>
+</div></main>
+</body>
+</html>

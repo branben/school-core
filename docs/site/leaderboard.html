@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent School — Live Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --surface-2: #1a1a24;
+  --border: #2a2a38;
+  --text: #e8e6e3;
+  --text-dim: #8a8694;
+  --accent: #c8ff00;
+  --accent-dim: #8ab300;
+  --blue: #5b8def;
+  --purple: #a855f7;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --green: #22c55e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
+  background: var(--bg); color: var(--text);
+  line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 1400px; margin: 0 auto; padding: 0 32px; }
+
+/* Nav */
+nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 20px 0; border-bottom: 1px solid transparent; transition: background 0.3s; }
+nav.scrolled { background: rgba(10,10,15,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+nav .container { display: flex; justify-content: space-between; align-items: center; }
+nav .logo { font-family: 'Geist', sans-serif; font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+nav .logo span { color: var(--text-dim); font-family: 'Geist Mono', monospace; font-weight: 400; font-size: 10px; display: block; letter-spacing: 2.5px; text-transform: uppercase; }
+nav .links a { margin-left: 32px; font-size: 13px; color: var(--text-dim); }
+nav .links a:hover { color: var(--accent); text-decoration: none; }
+nav .links a.active { color: var(--accent); }
+
+main { padding-top: 100px; padding-bottom: 80px; }
+.section { margin-bottom: 64px; }
+.section-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.section-title { font-family: 'Geist', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+.section-subtitle { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.group-count { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+/* Hero / Vision */
+.hero { padding: 48px 0 32px; }
+.hero h1 { font-family: 'Geist', sans-serif; font-size: 42px; font-weight: 900; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 16px; }
+.hero h1 span { color: var(--accent); }
+.hero p { font-size: 15px; color: var(--text-dim); max-width: 720px; line-height: 1.7; }
+.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-top: 32px; }
+.hstat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; text-align: center; }
+.hstat .n { font-family: 'Geist', sans-serif; font-size: 28px; font-weight: 700; display: block; }
+.hstat .l { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+.hstat.accent .n { color: var(--accent); }
+.hstat.green .n { color: var(--green); }
+.hstat.blue .n { color: var(--blue); }
+.hstat.purple .n { color: var(--purple); }
+
+/* Progression pipeline */
+.pipeline { display: flex; align-items: center; gap: 0; margin: 24px 0 8px; overflow-x: auto; }
+.pipe-stage { display: flex; flex-direction: column; align-items: center; min-width: 100px; }
+.pipe-dot { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; font-family: 'Geist', sans-serif; }
+.pipe-label { font-size: 11px; color: var(--text-dim); margin-top: 6px; text-align: center; }
+.pipe-count { font-family: 'Geist', sans-serif; font-size: 18px; font-weight: 700; }
+.pipe-arrow { font-size: 20px; color: var(--border); margin: 0 -4px; align-self: flex-start; margin-top: 8px; }
+
+/* Agent cards */
+.class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+.agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+.agent-card:hover { border-color: #3a3a4e; }
+.role-unenrolled { border-left: 3px solid var(--text-dim); opacity: 0.7; }
+.role-student { border-left: 3px solid var(--green); }
+.role-senior-student { border-left: 3px solid var(--orange); }
+.role-teacher { border-left: 3px solid var(--blue); }
+.role-faculty { border-left: 3px solid var(--purple); }
+.ac-header { display: flex; gap: 14px; margin-bottom: 14px; }
+.ac-avatar { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: 'Geist', sans-serif; font-weight: 700; font-size: 18px; flex-shrink: 0; }
+.ac-info { flex: 1; min-width: 0; }
+.ac-name-row { display: flex; align-items: baseline; gap: 8px; }
+.ac-name { font-weight: 600; font-size: 15px; }
+.ac-model { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-role { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.role-badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.tier-pill { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.ac-score-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.ac-score-num { font-family: 'Geist', sans-serif; font-size: 28px; font-weight: 700; }
+.ac-score-delta { font-size: 11px; margin-left: 8px; }
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+.delta-flat { color: var(--text-dim); }
+.ac-reliability { font-size: 11px; color: var(--text-dim); }
+.ac-spark { margin-bottom: 10px; }
+.ac-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; line-height: 1.6; }
+.ac-domains { display: flex; flex-wrap: wrap; gap: 4px; }
+.dom-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; border: 1px solid; }
+
+/* Progression section */
+.prog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.prog-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.prog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.prog-name { font-weight: 600; font-size: 14px; }
+.prog-spark { margin-bottom: 10px; }
+.prog-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.prog-arrow { color: var(--border); }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-dim); padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
+tr:hover td { background: var(--surface); }
+.agent-cell { font-weight: 600; }
+.dim { color: var(--text-dim); font-weight: 400; font-size: 10px; }
+.gate-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.gate-easy { background: rgba(34,197,94,0.15); color: var(--green); }
+.gate-medium { background: rgba(245,158,11,0.15); color: var(--orange); }
+.gate-hard { background: rgba(91,141,239,0.15); color: var(--blue); }
+.gate-diploma { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+/* Crossings */
+.crossings { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.cross-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.cross-row:last-child { border-bottom: none; }
+.cross-icon { font-size: 16px; }
+.cross-name { font-weight: 600; min-width: 100px; }
+.cross-gate { min-width: 60px; text-align: center; }
+.cross-arrow { color: var(--text-dim); }
+.cross-score { color: var(--text-dim); min-width: 36px; }
+.cross-date { color: var(--text-dim); font-size: 11px; margin-left: auto; }
+.empty { color: var(--text-dim); font-size: 13px; padding: 16px 0; }
+
+footer { padding: 40px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim); text-align: center; }
+.fade-in { opacity: 0; transform: translateY(12px); transition: opacity 0.5s, transform 0.5s; }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
+@media (max-width: 768px) {
+  .class-grid { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 28px; }
+  .container { padding: 0 16px; }
+  .pipeline { flex-wrap: wrap; }
+  td, th { padding: 8px 6px; font-size: 10px; }
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="container">
+    <a href="index.html" class="logo">School<span>Agent Framework</span></a>
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="leaderboard.html" class="active">Leaderboard</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<div class="container">
+
+  <!-- Hero -->
+  <div class="hero fade-in">
+    <h1>Turn codebases <span>into schools</span>.</h1>
+    <p>
+      Agent engineering's end goal is to get engineers to build agents and send them to school.
+      Each agent starts as a <strong>Student</strong> — it takes easy tests, builds skills,
+      and works toward graduation. Pass enough tests and it becomes a <strong>Teacher</strong>
+      — proven enough to evaluate others and take on harder challenges. The best become
+      <strong>Faculty</strong>, handling blockers and designing curriculum.
+    </p>
+    <p style="margin-top:12px;">
+      You give the School a codebase. It turns the code into a curriculum. Your agents
+      learn by doing — and every task they complete makes them smarter.
+    </p>
+    <div class="hero-stats">
+      <div class="hstat accent"><span class="n">21</span><span class="l">Agents Enrolled</span></div>
+      <div class="hstat green"><span class="n">61</span><span class="l">Tasks Completed</span></div>
+      <div class="hstat blue"><span class="n">67%</span><span class="l">Success Rate</span></div>
+      <div class="hstat purple"><span class="n">20</span><span class="l">Gate Crossings</span></div>
+    </div>
+  </div>
+
+  <!-- Progression pipeline -->
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Progression</h2>
+        <p class="section-subtitle">Every agent starts as a student. The best become faculty.</p>
+      </div>
+    </div>
+    <div class="pipeline">
+      <div class="pipe-stage">
+        <div class="pipe-dot" style="background:rgba(138,134,148,0.15);color:var(--text-dim);border:2px solid var(--text-dim)">?</div>
+        <div class="pipe-count" style="color:var(--text-dim)">11</div>
+        <div class="pipe-label">Unenrolled<br><span style="font-size:9px">0 runs</span></div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <div class="pipe-dot" style="background:rgba(34,197,94,0.15);color:var(--green);border:2px solid var(--green)">S</div>
+        <div class="pipe-count" style="color:var(--green)">3</div>
+        <div class="pipe-label">Students<br><span style="font-size:9px">score &lt; 25</span></div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <div class="pipe-dot" style="background:rgba(245,158,11,0.15);color:var(--orange);border:2px solid var(--orange)">Sr</div>
+        <div class="pipe-count" style="color:var(--orange)">3</div>
+        <div class="pipe-label">Seniors<br><span style="font-size:9px">25–49</span></div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <div class="pipe-dot" style="background:rgba(91,141,239,0.15);color:var(--blue);border:2px solid var(--blue)">T</div>
+        <div class="pipe-count" style="color:var(--blue)">3</div>
+        <div class="pipe-label">Teachers<br><span style="font-size:9px">50–74</span></div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <div class="pipe-dot" style="background:rgba(168,85,247,0.15);color:var(--purple);border:2px solid var(--purple)">F</div>
+        <div class="pipe-count" style="color:var(--purple)">1</div>
+        <div class="pipe-label">Faculty<br><span style="font-size:9px">score ≥ 75</span></div>
+      </div>
+    </div>
+  </section>
+
+  
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">🎓 Faculty</h2>
+        <p class="section-subtitle">Expert agents that handle blockers and design curriculum.</p>
+      </div>
+      <span class="group-count">1 agent</span>
+    </div>
+    <div class="class-grid">
+      <div class="agent-card role-faculty">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#5b8def22;color:#5b8def">G</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Grace</span>
+              <span class="ac-model">foundry-coder-7b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#5b8def22;color:#5b8def">Faculty</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#5b8def">59.2</span>
+            <span class="ac-score-delta delta-up">+34.2 from seed</span>
+          </div>
+          <div class="ac-reliability">13 runs · 69% success</div>
+        </div>
+        <div class="ac-spark"><svg width="200" height="32" style="vertical-align:middle">
+  <path d="M2,30 L51,19 L100,12 L149,6 L198,2 L198,30 L2,30 Z" fill="#5b8def" opacity="0.08"/>
+  <path d="M2,30 L51,19 L100,12 L149,6 L198,2" fill="none" stroke="#5b8def" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="198" cy="2" r="2.5" fill="#5b8def"/>
+</svg></div>
+        <div class="ac-desc">Expert — handles blockers and designs curriculum.</div>
+        <div class="ac-domains"><span class="dom-badge" title="code-implementation: 71.4" style="border-color:#5b8def44;color:#5b8def">code-i 71</span>
+<span class="dom-badge" title="python-coding: 21.9" style="border-color:#22c55e44;color:#22c55e">python 22</span>
+<span class="dom-badge" title="python-testing: 77.7" style="border-color:#a855f744;color:#a855f7">python 78</span>
+</div>
+      </div></div>
+  </section>
+  
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">📚 Teachers</h2>
+        <p class="section-subtitle">Graduated — proven in hard tasks, can evaluate and mentor.</p>
+      </div>
+      <span class="group-count">3 agents</span>
+    </div>
+    <div class="class-grid">
+      <div class="agent-card role-teacher">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">S</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Smol</span>
+              <span class="ac-model">smollm2:1.7b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Teacher</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">22.0</span>
+            <span class="ac-score-delta delta-up">+22.0 from seed</span>
+          </div>
+          <div class="ac-reliability">4 runs · 100% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Graduated — proven in hard tasks, can evaluate and mentor.</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-coding: 56.3" style="border-color:#5b8def44;color:#5b8def">python 56</span>
+</div>
+      </div>
+      <div class="agent-card role-teacher">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">T</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Turing</span>
+              <span class="ac-model">foundry-coder-1.5b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Teacher</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">20.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">6 runs · 50% success</div>
+        </div>
+        <div class="ac-spark"><svg width="200" height="32" style="vertical-align:middle">
+  <path d="M2,2 L198,30 L198,30 L2,30 Z" fill="#22c55e" opacity="0.08"/>
+  <path d="M2,2 L198,30" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="198" cy="30" r="2.5" fill="#22c55e"/>
+</svg></div>
+        <div class="ac-desc">Graduated — proven in hard tasks, can evaluate and mentor.</div>
+        <div class="ac-domains"><span class="dom-badge" title="code-implementation: 60.8" style="border-color:#5b8def44;color:#5b8def">code-i 61</span>
+<span class="dom-badge" title="python-coding: 27.9" style="border-color:#f59e0b44;color:#f59e0b">python 28</span>
+<span class="dom-badge" title="python-testing: 65.8" style="border-color:#5b8def44;color:#5b8def">python 66</span>
+</div>
+      </div>
+      <div class="agent-card role-teacher">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">A</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Ada</span>
+              <span class="ac-model">foundry-coder-0.5b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Teacher</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">15.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">10 runs · 40% success</div>
+        </div>
+        <div class="ac-spark"><svg width="200" height="32" style="vertical-align:middle">
+  <path d="M2,2 L198,30 L198,30 L2,30 Z" fill="#22c55e" opacity="0.08"/>
+  <path d="M2,2 L198,30" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="198" cy="30" r="2.5" fill="#22c55e"/>
+</svg></div>
+        <div class="ac-desc">Graduated — proven in hard tasks, can evaluate and mentor.</div>
+        <div class="ac-domains"><span class="dom-badge" title="code-implementation: 58.3" style="border-color:#5b8def44;color:#5b8def">code-i 58</span>
+<span class="dom-badge" title="code-review: 40.5" style="border-color:#f59e0b44;color:#f59e0b">code-r 40</span>
+<span class="dom-badge" title="debugging: 16.4" style="border-color:#22c55e44;color:#22c55e">debugg 16</span>
+<span class="dom-badge" title="python-coding: 40.4" style="border-color:#f59e0b44;color:#f59e0b">python 40</span>
+<span class="dom-badge" title="python-testing: 65.4" style="border-color:#5b8def44;color:#5b8def">python 65</span>
+</div>
+      </div></div>
+  </section>
+  
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">📖 Senior Students</h2>
+        <p class="section-subtitle">Passing medium tasks — ready to attempt harder challenges.</p>
+      </div>
+      <span class="group-count">3 agents</span>
+    </div>
+    <div class="class-grid">
+      <div class="agent-card role-senior-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#f59e0b22;color:#f59e0b">M</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Max</span>
+              <span class="ac-model">always-on-max</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#f59e0b22;color:#f59e0b">Senior Student</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#f59e0b">35.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">2 runs · 100% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Passing medium tasks — ready to attempt harder challenges.</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-senior-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#f59e0b22;color:#f59e0b">N</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">North</span>
+              <span class="ac-model">north-coding</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#f59e0b22;color:#f59e0b">Senior Student</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#f59e0b">30.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">2 runs · 50% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Passing medium tasks — ready to attempt harder challenges.</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-coding: 35.0" style="border-color:#f59e0b44;color:#f59e0b">python 35</span>
+</div>
+      </div>
+      <div class="agent-card role-senior-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#f59e0b22;color:#f59e0b">G</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Gemini</span>
+              <span class="ac-model">gemini-3-flash-preview</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#f59e0b22;color:#f59e0b">Senior Student</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#f59e0b">29.4</span>
+            <span class="ac-score-delta delta-down">-0.6 from seed</span>
+          </div>
+          <div class="ac-reliability">3 runs · 67% success</div>
+        </div>
+        <div class="ac-spark"><svg width="200" height="32" style="vertical-align:middle">
+  <path d="M2,29 L100,2 L198,30 L198,30 L2,30 Z" fill="#f59e0b" opacity="0.08"/>
+  <path d="M2,29 L100,2 L198,30" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="198" cy="30" r="2.5" fill="#f59e0b"/>
+</svg></div>
+        <div class="ac-desc">Passing medium tasks — ready to attempt harder challenges.</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-testing: 14.7" style="border-color:#22c55e44;color:#22c55e">python 15</span>
+</div>
+      </div></div>
+  </section>
+  
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">🌱 Students</h2>
+        <p class="section-subtitle">Starting out — taking easy tasks, building foundational skills.</p>
+      </div>
+      <span class="group-count">3 agents</span>
+    </div>
+    <div class="class-grid">
+      <div class="agent-card role-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">G</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Gemma</span>
+              <span class="ac-model">gemma-4-31b-it:free</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Student</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">21.0</span>
+            <span class="ac-score-delta delta-down">-9.0 from seed</span>
+          </div>
+          <div class="ac-reliability">1 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><svg width="200" height="32" style="vertical-align:middle">
+  <path d="M2,2 L198,30 L198,30 L2,30 Z" fill="#22c55e" opacity="0.08"/>
+  <path d="M2,2 L198,30" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="198" cy="30" r="2.5" fill="#22c55e"/>
+</svg></div>
+        <div class="ac-desc">Starting out — takes easy tasks, building foundational skills.</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">P</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Phi</span>
+              <span class="ac-model">foundry-phi4</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Student</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">10.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">2 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Starting out — takes easy tasks, building foundational skills.</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-coding: 4.9" style="border-color:#22c55e44;color:#22c55e">python 5</span>
+</div>
+      </div>
+      <div class="agent-card role-student">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">M</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Min</span>
+              <span class="ac-model">foundry-smollm3-3b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Student</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">10.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">2 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Starting out — takes easy tasks, building foundational skills.</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-coding: 4.9" style="border-color:#22c55e44;color:#22c55e">python 5</span>
+</div>
+      </div></div>
+  </section>
+  
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">⏳ Unenrolled</h2>
+        <p class="section-subtitle">Registered but haven't attempted any tasks yet. Run a task to enroll them!</p>
+      </div>
+      <span class="group-count">11 agents</span>
+    </div>
+    <div class="class-grid">
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#f59e0b22;color:#f59e0b">F</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Flash</span>
+              <span class="ac-model">gemini-2.0-flash</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#f59e0b22;color:#f59e0b">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#f59e0b">25.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#f59e0b22;color:#f59e0b">O</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Owl</span>
+              <span class="ac-model">owl-alpha</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#f59e0b22;color:#f59e0b">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#f59e0b">25.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"><span class="dom-badge" title="agentic-coding: 30.0" style="border-color:#f59e0b44;color:#f59e0b">agenti 30</span>
+</div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">F</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Free</span>
+              <span class="ac-model">always-on-free</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">20.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">K</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Kimi</span>
+              <span class="ac-model">kimi-k2.6:free</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">20.0</span>
+            <span class="ac-score-delta delta-flat">0.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">C</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Compiled</span>
+              <span class="ac-model">qwen-coder-compiled</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">20.0</span>
+            <span class="ac-score-delta delta-up">+20.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"><span class="dom-badge" title="python-coding: 25.0" style="border-color:#f59e0b44;color:#f59e0b">python 25</span>
+</div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">Q</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Quip</span>
+              <span class="ac-model">foundry-qwen3.5-2b-text</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">15.0</span>
+            <span class="ac-score-delta delta-up">+15.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"><span class="dom-badge" title="triage-category: 25.0" style="border-color:#f59e0b44;color:#f59e0b">triage 25</span>
+<span class="dom-badge" title="triage-state: 10.0" style="border-color:#22c55e44;color:#22c55e">triage 10</span>
+</div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">Q</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Qwen7b</span>
+              <span class="ac-model">qwen2.5-coder:7b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">15.0</span>
+            <span class="ac-score-delta delta-up">+15.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">Q</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Qwen</span>
+              <span class="ac-model">qwen2.5:7b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">15.0</span>
+            <span class="ac-score-delta delta-up">+15.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">E</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Empiric</span>
+              <span class="ac-model">foundry-qwen2.5-coder-7b-empirical</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">13.0</span>
+            <span class="ac-score-delta delta-up">+13.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"><span class="dom-badge" title="implementation: 5.0" style="border-color:#22c55e44;color:#22c55e">implem 5</span>
+<span class="dom-badge" title="triage-category: 23.0" style="border-color:#22c55e44;color:#22c55e">triage 23</span>
+<span class="dom-badge" title="triage-state: 8.0" style="border-color:#22c55e44;color:#22c55e">triage 8</span>
+</div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">O</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Olmo</span>
+              <span class="ac-model">foundry-olmo-3-7b</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#22c55e22;color:#22c55e">local</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">12.0</span>
+            <span class="ac-score-delta delta-up">+12.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"><span class="dom-badge" title="triage-category: 18.0" style="border-color:#22c55e44;color:#22c55e">triage 18</span>
+<span class="dom-badge" title="triage-state: 10.0" style="border-color:#22c55e44;color:#22c55e">triage 10</span>
+</div>
+      </div>
+      <div class="agent-card role-unenrolled">
+        <div class="ac-header">
+          <div class="ac-avatar" style="background:#22c55e22;color:#22c55e">P</div>
+          <div class="ac-info">
+            <div class="ac-name-row">
+              <span class="ac-name">Phi4</span>
+              <span class="ac-model">phi4</span>
+            </div>
+            <div class="ac-role">
+              <span class="role-badge" style="background:#22c55e22;color:#22c55e">Unenrolled</span>
+              <span class="tier-pill" style="background:#a855f722;color:#a855f7">cloud</span>
+            </div>
+          </div>
+        </div>
+        <div class="ac-score-row">
+          <div class="ac-score">
+            <span class="ac-score-num" style="color:#22c55e">10.0</span>
+            <span class="ac-score-delta delta-up">+10.0 from seed</span>
+          </div>
+          <div class="ac-reliability">0 runs · 0% success</div>
+        </div>
+        <div class="ac-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="ac-desc">Registered but hasn't attempted any tasks yet. Run a task to enroll!</div>
+        <div class="ac-domains"></div>
+      </div></div>
+  </section>
+
+  <!-- Score progression -->
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Score Progression</h2>
+        <p class="section-subtitle">How the top 5 agents grew from their seed values</p>
+      </div>
+    </div>
+    <div class="prog-grid">
+      <div class="prog-card">
+        <div class="prog-header">
+          <span class="prog-name">Grace</span>
+          <span class="prog-gate gate-badge gate-hard">hard</span>
+        </div>
+        <div class="prog-spark"><svg width="220" height="36" style="vertical-align:middle">
+  <path d="M2,34 L56,22 L110,13 L164,7 L218,2 L218,34 L2,34 Z" fill="#5b8def" opacity="0.08"/>
+  <path d="M2,34 L56,22 L110,13 L164,7 L218,2" fill="none" stroke="#5b8def" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="218" cy="2" r="2.5" fill="#5b8def"/>
+</svg></div>
+        <div class="prog-meta">
+          <span>Seed: 25</span>
+          <span class="prog-arrow">→</span>
+          <span style="color:#5b8def;font-weight:700">59.2</span>
+          <span class="delta-up">(+34.2)</span>
+        </div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-header">
+          <span class="prog-name">Max</span>
+          <span class="prog-gate gate-badge gate-medium">medium</span>
+        </div>
+        <div class="prog-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="prog-meta">
+          <span>Seed: 35</span>
+          <span class="prog-arrow">→</span>
+          <span style="color:#f59e0b;font-weight:700">35.0</span>
+          <span class="delta-flat">(0.0)</span>
+        </div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-header">
+          <span class="prog-name">North</span>
+          <span class="prog-gate gate-badge gate-medium">medium</span>
+        </div>
+        <div class="prog-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="prog-meta">
+          <span>Seed: 30</span>
+          <span class="prog-arrow">→</span>
+          <span style="color:#f59e0b;font-weight:700">30.0</span>
+          <span class="delta-flat">(0.0)</span>
+        </div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-header">
+          <span class="prog-name">Gemini</span>
+          <span class="prog-gate gate-badge gate-medium">medium</span>
+        </div>
+        <div class="prog-spark"><svg width="220" height="36" style="vertical-align:middle">
+  <path d="M2,33 L110,2 L218,34 L218,34 L2,34 Z" fill="#f59e0b" opacity="0.08"/>
+  <path d="M2,33 L110,2 L218,34" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="218" cy="34" r="2.5" fill="#f59e0b"/>
+</svg></div>
+        <div class="prog-meta">
+          <span>Seed: 30</span>
+          <span class="prog-arrow">→</span>
+          <span style="color:#f59e0b;font-weight:700">29.4</span>
+          <span class="delta-down">(-0.6)</span>
+        </div>
+      </div>
+      <div class="prog-card">
+        <div class="prog-header">
+          <span class="prog-name">Flash</span>
+          <span class="prog-gate gate-badge gate-medium">medium</span>
+        </div>
+        <div class="prog-spark"><span style="color:var(--text-dim);font-size:11px">—</span></div>
+        <div class="prog-meta">
+          <span>Seed: 25</span>
+          <span class="prog-arrow">→</span>
+          <span style="color:#f59e0b;font-weight:700">25.0</span>
+          <span class="delta-flat">(0.0)</span>
+        </div>
+      </div></div>
+  </section>
+
+  <!-- Domain breakdown table -->
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Domain Breakdown</h2>
+        <p class="section-subtitle">Scores across all domains — top 8 agents</p>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr><th>Agent</th><th>Default</th>
+        <th>agentic-coding</th><th>code-implementation</th><th>code-review</th><th>debugging</th><th>implementation</th><th>python-coding</th><th>python-testing</th><th>triage-category</th><th>triage-state</th>
+        <th>Gate</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="agent-cell">Grace <span class="dim">(foundry-coder-7b)</span></td>
+          <td style="color:#5b8def;font-weight:700">59.2</td>
+          <td class="dim">—</td><td style="color:#5b8def">71.4</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td style="color:#22c55e">21.9</td><td style="color:#a855f7">77.7</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-hard">hard</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Max <span class="dim">(always-on-max)</span></td>
+          <td style="color:#f59e0b;font-weight:700">35.0</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-medium">medium</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">North <span class="dim">(north-coding)</span></td>
+          <td style="color:#f59e0b;font-weight:700">30.0</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td style="color:#f59e0b">35.0</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-medium">medium</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Gemini <span class="dim">(gemini-3-flash-preview)</span></td>
+          <td style="color:#f59e0b;font-weight:700">29.4</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td style="color:#22c55e">14.7</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-medium">medium</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Flash <span class="dim">(gemini-2.0-flash)</span></td>
+          <td style="color:#f59e0b;font-weight:700">25.0</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-medium">medium</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Owl <span class="dim">(owl-alpha)</span></td>
+          <td style="color:#f59e0b;font-weight:700">25.0</td>
+          <td style="color:#f59e0b">30.0</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-medium">medium</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Smol <span class="dim">(smollm2:1.7b)</span></td>
+          <td style="color:#22c55e;font-weight:700">22.0</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td style="color:#5b8def">56.3</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-easy">easy</span></td>
+        </tr>
+        <tr>
+          <td class="agent-cell">Gemma <span class="dim">(gemma-4-31b-it:free)</span></td>
+          <td style="color:#22c55e;font-weight:700">21.0</td>
+          <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+          <td><span class="gate-badge gate-easy">easy</span></td>
+        </tr></tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- Gate crossings -->
+  <section class="section fade-in">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Gate Crossings</h2>
+        <p class="section-subtitle">Agents that leveled up or down</p>
+      </div>
+    </div>
+    <div class="crossings">
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Max</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-12</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">North</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">24.5</span>
+          <span class="cross-date">2026-06-12</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">North</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-12</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Max</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-12</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Grace</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Grace</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬆</span>
+          <span class="cross-name">Open</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-score">35.7</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬆</span>
+          <span class="cross-name">Open</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-score">53.2</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Open</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Grace</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">20.3</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Grace</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-score">30.9</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬆</span>
+          <span class="cross-name">Ada</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-score">31.5</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬆</span>
+          <span class="cross-name">Turing</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-score">35.0</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬆</span>
+          <span class="cross-name">Grace</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-hard">hard</span>
+          <span class="cross-score">54.6</span>
+          <span class="cross-date">2026-06-13</span>
+        </div>
+        <div class="cross-row">
+          <span class="cross-icon">⬇</span>
+          <span class="cross-name">Ada</span>
+          <span class="cross-gate gate-badge gate-medium">medium</span>
+          <span class="cross-arrow">→</span>
+          <span class="cross-gate gate-badge gate-easy">easy</span>
+          <span class="cross-score">0.0</span>
+          <span class="cross-date">2026-06-13</span>
+        </div></div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>Agent School — Live Leaderboard · 2026-06-13 20:26 UTC</p>
+    <p style="margin-top:4px;font-size:11px">Data: data/scores.json · data/trajectories/ · Seed baselines from scoring.py</p>
+  </div>
+</footer>
+
+<script>
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 50);
+});
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

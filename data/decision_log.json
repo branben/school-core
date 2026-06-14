@@ -1,0 +1,1777 @@
+[
+  {
+    "id": "02099713",
+    "timestamp": "2026-06-13T20:37:42.994218+00:00",
+    "type": "agent_selected",
+    "agent": "owl-alpha",
+    "context": {
+      "round": 1,
+      "agent_score": 25.0,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "owl-alpha",
+      "domain": "_default",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Senior Student role working on _default at easy level",
+    "task_id": "auto_1",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "c122d4ae",
+    "timestamp": "2026-06-13T20:37:42.997103+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "round": 2,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-coder-0.5b",
+      "domain": "code-review",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on code-review at medium level",
+    "task_id": "auto_2",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9b83d295",
+    "timestamp": "2026-06-13T20:37:42.999773+00:00",
+    "type": "agent_selected",
+    "agent": "qwen-coder-compiled",
+    "context": {
+      "round": 3,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "qwen-coder-compiled",
+      "domain": "python-coding",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-coding at medium level",
+    "task_id": "auto_3",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "3dcac4a1",
+    "timestamp": "2026-06-13T20:37:43.002028+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-qwen3.5-2b-text",
+    "context": {
+      "round": 4,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-qwen3.5-2b-text",
+      "domain": "_default",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on _default at easy level",
+    "task_id": "auto_4",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "a23eb3bd",
+    "timestamp": "2026-06-13T20:38:18.665116+00:00",
+    "type": "agent_selected",
+    "agent": "gemini-3-flash-preview",
+    "context": {
+      "round": 1,
+      "agent_score": 29.4,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "gemini-3-flash-preview",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on python-testing at medium level",
+    "task_id": "auto_1",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "59d9c966",
+    "timestamp": "2026-06-13T20:38:18.667930+00:00",
+    "type": "anchor_chosen",
+    "agent": "gemini-3-flash-preview",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": false
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Clean Architecture",
+        "SOLID Principles",
+        "SRP",
+        "DIP",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "e71998f4",
+    "timestamp": "2026-06-13T20:38:26.866954+00:00",
+    "type": "context_retrieved",
+    "agent": "gemini-3-flash-preview",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 49
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1294
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "ee99b5f9",
+    "timestamp": "2026-06-13T20:38:29.430173+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "round": 2,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-coder-0.5b",
+      "domain": "triage-category",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on triage-category at medium level",
+    "task_id": "auto_2",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "6bdb5335",
+    "timestamp": "2026-06-13T20:38:29.433291+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "triage-category",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve triage-category output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "3a6f6717",
+    "timestamp": "2026-06-13T20:38:31.786137+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-qwen3.5-2b-text",
+    "context": {
+      "round": 3,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-qwen3.5-2b-text",
+      "domain": "code-implementation",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on code-implementation at medium level",
+    "task_id": "auto_3",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "ee8670ea",
+    "timestamp": "2026-06-13T20:38:31.791961+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-qwen3.5-2b-text",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": false
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Clean Architecture",
+        "SOLID Principles",
+        "SRP",
+        "DIP",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "62d6bd73",
+    "timestamp": "2026-06-13T21:43:29.215842+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "813eb687",
+    "timestamp": "2026-06-13T21:43:31.241938+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 19
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1253
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "db709bbf",
+    "timestamp": "2026-06-13T21:44:56.880635+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9668d5e0",
+    "timestamp": "2026-06-13T21:44:57.948160+00:00",
+    "type": "context_retrieved",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 19
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1253
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "0db823ca",
+    "timestamp": "2026-06-13T21:44:58.313401+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "be418f52",
+    "timestamp": "2026-06-13T21:44:59.108292+00:00",
+    "type": "context_retrieved",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 12
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1267
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "fe411872",
+    "timestamp": "2026-06-13T21:45:57.101843+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "44792584",
+    "timestamp": "2026-06-13T21:45:58.176869+00:00",
+    "type": "context_retrieved",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 19
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1253
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "57f98406",
+    "timestamp": "2026-06-14T07:23:45.753928+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-phi4",
+    "context": {
+      "round": 1,
+      "agent_score": 10.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-phi4",
+      "domain": "code-implementation",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on code-implementation at easy level",
+    "task_id": "auto_1",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9126e983",
+    "timestamp": "2026-06-14T07:23:50.764669+00:00",
+    "type": "agent_selected",
+    "agent": "kimi-k2.6:free",
+    "context": {
+      "round": 2,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "kimi-k2.6:free",
+      "domain": "triage-category",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on triage-category at medium level",
+    "task_id": "auto_2",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "af1217c3",
+    "timestamp": "2026-06-14T07:23:55.776650+00:00",
+    "type": "agent_selected",
+    "agent": "gemma-4-31b-it:free",
+    "context": {
+      "round": 3,
+      "agent_score": 21.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "gemma-4-31b-it:free",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-testing at medium level",
+    "task_id": "auto_3",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "21a9d4f0",
+    "timestamp": "2026-06-14T07:24:00.795789+00:00",
+    "type": "agent_selected",
+    "agent": "qwen2.5-coder:7b",
+    "context": {
+      "round": 4,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "qwen2.5-coder:7b",
+      "domain": "debugging",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on debugging at medium level",
+    "task_id": "auto_4",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "0556e514",
+    "timestamp": "2026-06-14T07:24:20.037619+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "round": 1,
+      "agent_score": 59.2,
+      "role": "Teacher"
+    },
+    "choice": {
+      "selected": "foundry-coder-7b",
+      "domain": "python-coding",
+      "difficulty": "hard"
+    },
+    "expected": "Agent in Teacher role working on python-coding at hard level",
+    "task_id": "auto_1",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "61cb8fd7",
+    "timestamp": "2026-06-14T07:24:25.043496+00:00",
+    "type": "agent_selected",
+    "agent": "openhands",
+    "context": {
+      "round": 2,
+      "agent_score": 0.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "openhands",
+      "domain": "python-coding",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on python-coding at easy level",
+    "task_id": "auto_2",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "e2298735",
+    "timestamp": "2026-06-14T07:24:30.054665+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-smollm3-3b",
+    "context": {
+      "round": 3,
+      "agent_score": 10.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-smollm3-3b",
+      "domain": "python-coding",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on python-coding at easy level",
+    "task_id": "auto_3",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "590446d2",
+    "timestamp": "2026-06-14T07:24:35.067359+00:00",
+    "type": "agent_selected",
+    "agent": "always-on-max",
+    "context": {
+      "round": 4,
+      "agent_score": 35.0,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "always-on-max",
+      "domain": "debugging",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on debugging at medium level",
+    "task_id": "auto_4",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "e61bb281",
+    "timestamp": "2026-06-14T07:24:45.090090+00:00",
+    "type": "agent_selected",
+    "agent": "always-on-free",
+    "context": {
+      "round": 6,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "always-on-free",
+      "domain": "python-coding",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-coding at medium level",
+    "task_id": "auto_5",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "32264183",
+    "timestamp": "2026-06-14T07:24:50.123477+00:00",
+    "type": "agent_selected",
+    "agent": "openhands",
+    "context": {
+      "round": 7,
+      "agent_score": 0.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "openhands",
+      "domain": "python-coding",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on python-coding at easy level",
+    "task_id": "auto_6",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "26aba4f2",
+    "timestamp": "2026-06-14T07:24:55.138834+00:00",
+    "type": "agent_selected",
+    "agent": "gemini-2.0-flash",
+    "context": {
+      "round": 8,
+      "agent_score": 25.0,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "gemini-2.0-flash",
+      "domain": "triage-category",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on triage-category at medium level",
+    "task_id": "auto_7",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "55958722",
+    "timestamp": "2026-06-14T07:25:00.144094+00:00",
+    "type": "agent_selected",
+    "agent": "owl-alpha",
+    "context": {
+      "round": 9,
+      "agent_score": 25.0,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "owl-alpha",
+      "domain": "code-review",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on code-review at medium level",
+    "task_id": "auto_8",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9b1c0bfb",
+    "timestamp": "2026-06-14T07:25:10.163011+00:00",
+    "type": "agent_selected",
+    "agent": "smollm2:1.7b",
+    "context": {
+      "round": 11,
+      "agent_score": 22.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "smollm2:1.7b",
+      "domain": "code-implementation",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on code-implementation at medium level",
+    "task_id": "auto_9",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "72f81b3e",
+    "timestamp": "2026-06-14T07:25:15.173640+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "round": 12,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-coder-0.5b",
+      "domain": "debugging",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on debugging at medium level",
+    "task_id": "auto_10",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "ecdac3be",
+    "timestamp": "2026-06-14T07:25:20.198936+00:00",
+    "type": "agent_selected",
+    "agent": "smollm2:1.7b",
+    "context": {
+      "round": 13,
+      "agent_score": 22.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "smollm2:1.7b",
+      "domain": "python-coding",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-coding at medium level",
+    "task_id": "auto_11",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "2fa8cd20",
+    "timestamp": "2026-06-14T07:25:25.301550+00:00",
+    "type": "agent_selected",
+    "agent": "qwen-coder-compiled",
+    "context": {
+      "round": 14,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "qwen-coder-compiled",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-testing at medium level",
+    "task_id": "auto_12",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "75ac397a",
+    "timestamp": "2026-06-14T07:25:35.418497+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-phi4",
+    "context": {
+      "round": 16,
+      "agent_score": 10.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-phi4",
+      "domain": "python-coding",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on python-coding at easy level",
+    "task_id": "auto_13",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "d98048db",
+    "timestamp": "2026-06-14T07:25:40.488929+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-qwen3.5-2b-text",
+    "context": {
+      "round": 17,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-qwen3.5-2b-text",
+      "domain": "_default",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on _default at easy level",
+    "task_id": "auto_14",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "b061b987",
+    "timestamp": "2026-06-14T07:25:45.504155+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-smollm3-3b",
+    "context": {
+      "round": 18,
+      "agent_score": 10.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-smollm3-3b",
+      "domain": "python-testing",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on python-testing at easy level",
+    "task_id": "auto_15",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "b0a17c07",
+    "timestamp": "2026-06-14T07:25:50.523170+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-1.5b",
+    "context": {
+      "round": 19,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-coder-1.5b",
+      "domain": "triage-category",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on triage-category at medium level",
+    "task_id": "auto_16",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "ac2cefe7",
+    "timestamp": "2026-06-14T07:35:06.041411+00:00",
+    "type": "agent_selected",
+    "agent": "smollm2:1.7b",
+    "context": {
+      "round": 1,
+      "agent_score": 22.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "smollm2:1.7b",
+      "domain": "code-review",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on code-review at medium level",
+    "task_id": "auto_1",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "2256ce1e",
+    "timestamp": "2026-06-14T07:35:11.059840+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "round": 2,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-coder-0.5b",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-testing at medium level",
+    "task_id": "auto_2",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "f5adaca8",
+    "timestamp": "2026-06-14T07:35:16.079205+00:00",
+    "type": "agent_selected",
+    "agent": "qwen-coder-compiled",
+    "context": {
+      "round": 3,
+      "agent_score": 20.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "qwen-coder-compiled",
+      "domain": "code-implementation",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on code-implementation at medium level",
+    "task_id": "auto_3",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "1256326d",
+    "timestamp": "2026-06-14T07:35:21.140737+00:00",
+    "type": "agent_selected",
+    "agent": "gemini-3-flash-preview",
+    "context": {
+      "round": 4,
+      "agent_score": 29.4,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "gemini-3-flash-preview",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on python-testing at medium level",
+    "task_id": "auto_4",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "c6244d16",
+    "timestamp": "2026-06-14T07:35:31.175632+00:00",
+    "type": "agent_selected",
+    "agent": "qwen2.5:7b",
+    "context": {
+      "round": 6,
+      "agent_score": 15.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "qwen2.5:7b",
+      "domain": "python-testing",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on python-testing at medium level",
+    "task_id": "auto_5",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "1c60f96b",
+    "timestamp": "2026-06-14T07:35:36.198428+00:00",
+    "type": "agent_selected",
+    "agent": "owl-alpha",
+    "context": {
+      "round": 7,
+      "agent_score": 25.0,
+      "role": "Senior Student"
+    },
+    "choice": {
+      "selected": "owl-alpha",
+      "domain": "code-review",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Senior Student role working on code-review at medium level",
+    "task_id": "auto_6",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "6d202340",
+    "timestamp": "2026-06-14T07:35:41.211378+00:00",
+    "type": "agent_selected",
+    "agent": "gemma-4-31b-it:free",
+    "context": {
+      "round": 8,
+      "agent_score": 21.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "gemma-4-31b-it:free",
+      "domain": "debugging",
+      "difficulty": "medium"
+    },
+    "expected": "Agent in Student role working on debugging at medium level",
+    "task_id": "auto_7",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "6bf6b923",
+    "timestamp": "2026-06-14T07:35:46.230116+00:00",
+    "type": "agent_selected",
+    "agent": "foundry-phi4",
+    "context": {
+      "round": 9,
+      "agent_score": 10.0,
+      "role": "Student"
+    },
+    "choice": {
+      "selected": "foundry-phi4",
+      "domain": "debugging",
+      "difficulty": "easy"
+    },
+    "expected": "Agent in Student role working on debugging at easy level",
+    "task_id": "auto_8",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "774e76a3",
+    "timestamp": "2026-06-14T07:45:15.950372+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "3632a3c5",
+    "timestamp": "2026-06-14T07:45:27.635748+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "a98e2773",
+    "timestamp": "2026-06-14T07:49:35.995510+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "248c0966",
+    "timestamp": "2026-06-14T07:49:59.440319+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "30075e92",
+    "timestamp": "2026-06-14T07:54:36.442489+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "8946bca2",
+    "timestamp": "2026-06-14T08:01:57.787422+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "4a535feb",
+    "timestamp": "2026-06-14T08:04:34.778340+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "548fbc2c",
+    "timestamp": "2026-06-14T08:11:37.360222+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-7b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "f315dd8e",
+    "timestamp": "2026-06-14T08:16:54.498225+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "easy",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "YAGNI",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "303342fb",
+    "timestamp": "2026-06-14T08:18:47.229241+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9d24e4d9",
+    "timestamp": "2026-06-14T08:18:55.356330+00:00",
+    "type": "context_retrieved",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "65c5e97a",
+    "timestamp": "2026-06-14T08:20:20.443124+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "9593db53",
+    "timestamp": "2026-06-14T08:20:43.721956+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "Conventional Commits",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve git-operations output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "12f813d7",
+    "timestamp": "2026-06-14T08:21:04.654947+00:00",
+    "type": "anchor_chosen",
+    "agent": "foundry-coder-0.5b",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "400167fc",
+    "timestamp": "2026-06-14T15:02:51.434888+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "2d0b2257",
+    "timestamp": "2026-06-14T15:02:58.865553+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "b358515c",
+    "timestamp": "2026-06-14T15:04:00.779268+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "f8f67aa0",
+    "timestamp": "2026-06-14T15:07:09.256202+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "Conventional Commits",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve git-operations output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "36f04f1b",
+    "timestamp": "2026-06-14T15:09:07.185718+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "eaa2ed59",
+    "timestamp": "2026-06-14T15:09:09.285672+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "2981d300",
+    "timestamp": "2026-06-14T15:13:02.688251+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "45310e0d",
+    "timestamp": "2026-06-14T15:16:01.438897+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "Conventional Commits",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve git-operations output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "a0457a4b",
+    "timestamp": "2026-06-14T15:17:03.134913+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "570ad6f3",
+    "timestamp": "2026-06-14T15:26:56.697247+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "Red/Green TDD",
+        "Use Case",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve python-testing output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "f722f182",
+    "timestamp": "2026-06-14T15:27:02.705615+00:00",
+    "type": "context_retrieved",
+    "agent": "unknown",
+    "context": {
+      "domain": "python-testing",
+      "prompt_length": 1919
+    },
+    "choice": {
+      "context_injected": true,
+      "context_length": 1261
+    },
+    "expected": "Vault context should improve response quality and relevance",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "3fbde571",
+    "timestamp": "2026-06-14T15:28:50.804478+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "84b6c9ba",
+    "timestamp": "2026-06-14T15:31:36.357310+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "Conventional Commits",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve git-operations output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  },
+  {
+    "id": "dcba2442",
+    "timestamp": "2026-06-14T15:32:28.725583+00:00",
+    "type": "anchor_chosen",
+    "agent": "unknown",
+    "context": {
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "is_local": true
+    },
+    "choice": {
+      "anchors": [
+        "TDD Chicago School",
+        "SOLID Principles",
+        "DRY",
+        "KISS",
+        "YAGNI",
+        "Chain of Thought",
+        "Red/Green TDD",
+        "YAGNI",
+        "Distillation"
+      ],
+      "strategy": "semantic_anchors"
+    },
+    "expected": "Anchors should improve code-implementation output quality",
+    "task_id": "",
+    "outcome": null,
+    "score_delta": null,
+    "success": null
+  }
+]

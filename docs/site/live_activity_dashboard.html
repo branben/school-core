@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent School — Live Activity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --surface-2: #1a1a24;
+  --border: #2a2a38;
+  --text: #e8e6e3;
+  --text-dim: #8a8694;
+  --accent: #c8ff00;
+  --accent-dim: #8ab300;
+  --blue: #5b8def;
+  --purple: #a855f7;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --green: #22c55e;
+  --yellow: #eab308;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Nav ── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 16px 0;
+  background: rgba(10,10,15,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+nav .container { display: flex; justify-content: space-between; align-items: center; }
+nav .logo { font-family: 'Geist', sans-serif; font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+nav .logo span { color: var(--text-dim); font-family: 'Geist Mono', monospace; font-weight: 400; font-size: 10px; display: block; letter-spacing: 2.5px; text-transform: uppercase; }
+nav .links a { margin-left: 24px; font-size: 12px; color: var(--text-dim); }
+nav .links a:hover { color: var(--accent); text-decoration: none; }
+nav .links a.active { color: var(--accent); }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; margin-right: 6px;
+  animation: pulse 2s ease-in-out infinite;
+}
+.status-dot.online { background: var(--green); }
+.status-dot.offline { background: var(--red); animation: none; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.container { max-width: 1400px; margin: 0 auto; padding: 0 32px; }
+main { padding-top: 80px; padding-bottom: 60px; }
+
+/* ── Hero stats ── */
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 20px 0 32px;
+}
+.hstat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+}
+.hstat .n { font-family: 'Geist', sans-serif; font-size: 24px; font-weight: 700; display: block; }
+.hstat .l { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+.hstat.green .n { color: var(--green); }
+.hstat.blue .n { color: var(--blue); }
+.hstat.purple .n { color: var(--purple); }
+.hstat.orange .n { color: var(--orange); }
+
+/* ── Schoolyard layout ── */
+.schoolyard {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .schoolyard { grid-template-columns: 1fr; }
+}
+
+/* ── Location zones ── */
+.zones {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.zone {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  min-height: 120px;
+  transition: border-color 0.3s;
+}
+.zone:hover { border-color: #3a3a4e; }
+.zone-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.zone-title {
+  font-family: 'Geist', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.zone-icon { font-size: 18px; }
+.zone-count {
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.zone-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zone-empty {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ── Agent chip ── */
+.agent-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  transition: background 0.2s;
+  animation: fadeIn 0.4s ease;
+}
+.agent-chip:hover { background: #222230; }
+.agent-chip.role-student { border-left-color: var(--green); }
+.agent-chip.role-senior-student { border-left-color: var(--orange); }
+.agent-chip.role-teacher { border-left-color: var(--blue); }
+.agent-chip.role-faculty { border-left-color: var(--purple); }
+.agent-chip.role-unenrolled { border-left-color: var(--text-dim); opacity: 0.6; }
+.agent-chip.status-working { background: rgba(91,141,239,0.08); }
+.agent-chip.status-error { background: rgba(239,68,68,0.08); }
+.agent-chip.status-sleeping { background: rgba(168,85,247,0.08); }
+.agent-chip.status-idle { opacity: 0.5; }
+
+.chip-avatar {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Geist', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.chip-info { flex: 1; min-width: 0; }
+.chip-name { font-weight: 600; font-size: 12px; }
+.chip-action {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.chip-action.working { color: var(--blue); }
+.chip-action.error { color: var(--red); }
+.chip-action.success { color: var(--green); }
+.chip-action.milestone { color: var(--accent); font-weight: 600; }
+.chip-meta { text-align: right; flex-shrink: 0; }
+.chip-score { font-size: 11px; font-weight: 600; }
+.chip-time { font-size: 9px; color: var(--text-dim); }
+
+/* ── Activity feed (sidebar) ── */
+.activity-feed {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+.feed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.feed-title {
+  font-family: 'Geist', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+}
+.feed-count {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.feed-entry {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(42,42,56,0.4);
+  font-size: 11px;
+  animation: fadeIn 0.3s ease;
+}
+.feed-entry:last-child { border-bottom: none; }
+.feed-icon { flex-shrink: 0; font-size: 14px; width: 20px; text-align: center; }
+.feed-text { flex: 1; color: var(--text-dim); line-height: 1.5; }
+.feed-text strong { color: var(--text); font-weight: 600; }
+.feed-text .highlight { color: var(--accent); }
+.feed-time { flex-shrink: 0; font-size: 9px; color: var(--text-dim); opacity: 0.6; }
+
+/* ── Gate badge ── */
+.gate-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.gate-easy { background: rgba(34,197,94,0.15); color: var(--green); }
+.gate-medium { background: rgba(245,158,11,0.15); color: var(--orange); }
+.gate-hard { background: rgba(91,141,239,0.15); color: var(--blue); }
+.gate-diploma { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Loading state ── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.loading-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state h2 { font-family: 'Geist', sans-serif; font-size: 18px; color: var(--text); margin-bottom: 8px; }
+.empty-state p { font-size: 13px; max-width: 400px; margin: 0 auto; }
+
+/* ── Section header ── */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.section-title {
+  font-family: 'Geist', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a4e; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="index.html" class="logo">School<span>Agent Framework</span></a>
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="leaderboard.html">Leaderboard</a>
+      <a href="live_activity_dashboard.html" class="active">
+        <span class="status-dot online" id="statusDot"></span>
+        Live
+      </a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<div class="container">
+
+  <!-- Stats row -->
+  <div class="hero-stats" id="heroStats">
+    <div class="loading"><div class="loading-spinner"></div> Connecting…</div>
+  </div>
+
+  <!-- Main layout: zones + activity feed -->
+  <div class="schoolyard">
+    <div>
+      <div class="section-header">
+        <h2 class="section-title">🏫 Schoolyard</h2>
+        <span style="font-size:11px;color:var(--text-dim);" id="lastUpdate">—</span>
+      </div>
+      <div class="zones" id="zones">
+        <div class="loading"><div class="loading-spinner"></div> Loading agents…</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="activity-feed" id="activityFeed">
+        <div class="feed-header">
+          <span class="feed-title">📋 Activity Feed</span>
+          <span class="feed-count" id="feedCount">0 events</span>
+        </div>
+        <div id="feedEntries">
+          <div class="loading"><div class="loading-spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<script>
+const API_BASE = '/api';
+let lastTimestamp = '';
+let allEntries = [];
+let pollInterval = 2000; // 2 seconds
+
+// ── Agent name mapping (same as leaderboard.py) ──
+const AGENT_NAMES = {
+  "foundry-coder-0.5b": "Ada",
+  "foundry-coder-1.5b": "Turing",
+  "foundry-coder-7b": "Grace",
+  "foundry-smollm3-3b": "Min",
+  "foundry-phi4": "Phi",
+  "foundry-olmo-3-7b": "Olmo",
+  "foundry-qwen2.5-coder-7b-empirical": "Empiric",
+  "foundry-qwen3.5-2b-text": "Quip",
+  "gemini-3-flash-preview": "Gemini",
+  "gemma-4-31b-it:free": "Gemma",
+  "owl-alpha": "Owl",
+  "gemini-2.0-flash": "Flash",
+  "kimi-k2.6:free": "Kimi",
+  "always-on-max": "Max",
+  "always-on-free": "Free",
+  "north-coding": "North",
+  "openhands": "Open",
+  "qwen-coder-compiled": "Compiled",
+  "qwen2.5-coder:7b": "Qwen7b",
+  "qwen2.5:7b": "Qwen",
+  "phi4": "Phi4",
+  "smollm2:1.7b": "Smol",
+};
+
+const ROLE_ORDER = ["Faculty", "Teacher", "Senior Student", "Student", "Unenrolled"];
+const ROLE_ICONS = {
+  "Faculty": "🎓",
+  "Teacher": "📚",
+  "Senior Student": "📖",
+  "Student": "🌱",
+  "Unenrolled": "⏳",
+};
+const ROLE_ZONES = {
+  "Faculty": "faculty_office",
+  "Teacher": "classroom",
+  "Senior Student": "library",
+  "Student": "study_hall",
+  "Unenrolled": "courtyard",
+};
+
+const GATE_COLORS = {
+  "easy": "#22c55e",
+  "medium": "#f59e0b",
+  "hard": "#5b8def",
+  "diploma": "#a855f7",
+};
+
+function friendlyName(id) { return AGENT_NAMES[id] || id; }
+function timeAgo(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+function timeShort(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+// ── Fetch helpers ──
+async function fetchJSON(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// ── Render stats ──
+function renderStats(agents, entries) {
+  const total = agents.length;
+  const working = agents.filter(a => {
+    const act = a.latest_activity;
+    return act && act.status === 'in_progress';
+  }).length;
+  const errors = entries.filter(e => e.type === 'task_error' && e.timestamp > new Date(Date.now() - 300000).toISOString()).length;
+  const milestones = entries.filter(e => e.type === 'gate_cross').length;
+  const sleeping = entries.filter(e => e.type === 'agent_sleep' && !entries.find(x => x.type === 'agent_wake' && x.agent === e.agent && x.timestamp > e.timestamp)).length;
+
+  document.getElementById('heroStats').innerHTML = `
+    <div class="hstat green"><span class="n">${total}</span><span class="l">Agents</span></div>
+    <div class="hstat blue"><span class="n">${working}</span><span class="l">Working</span></div>
+    <div class="hstat orange"><span class="n">${errors}</span><span class="l">Errors (5m)</span></div>
+    <div class="hstat purple"><span class="n">${milestones}</span><span class="l">Gate Crossings</span></div>
+    <div class="hstat"><span class="n">${sleeping}</span><span class="l">Sleeping</span></div>
+  `;
+}
+
+// ── Render zones ──
+function renderZones(agents) {
+  const zones = {};
+  ROLE_ORDER.forEach(role => { zones[role] = []; });
+  agents.forEach(a => {
+    const role = a.role || "Unenrolled";
+    if (zones[role]) zones[role].push(a);
+  });
+
+  let html = '';
+  ROLE_ORDER.forEach(role => {
+    const members = zones[role];
+    if (!members || members.length === 0) return;
+    const icon = ROLE_ICONS[role] || '👤';
+    html += `
+      <div class="zone">
+        <div class="zone-header">
+          <span class="zone-title"><span class="zone-icon">${icon}</span> ${role}s</span>
+          <span class="zone-count">${members.length}</span>
+        </div>
+        <div class="zone-agents">
+          ${members.map(a => renderAgentChip(a)).join('')}
+        </div>
+      </div>`;
+  });
+
+  if (!html) {
+    html = `
+      <div class="empty-state" style="grid-column: 1/-1;">
+        <div class="icon">🏫</div>
+        <h2>The schoolyard is empty</h2>
+        <p>Run some tasks to see agents at work. Try <code>python cli.py</code> and use <code>run</code> or <code>route</code>.</p>
+      </div>`;
+  }
+
+  document.getElementById('zones').innerHTML = html;
+}
+
+function renderAgentChip(a) {
+  const name = friendlyName(a.id);
+  const initial = name[0];
+  const color = GATE_COLORS[a.gate] || '#8a8694';
+  const act = a.latest_activity || {};
+  const statusClass = act.status || 'idle';
+  const roleClass = 'role-' + (a.role || 'unenrolled').toLowerCase().replace(/ /g, '-');
+
+  let actionText = 'Idle — waiting for tasks';
+  let actionClass = '';
+  if (act.description) {
+    actionText = act.description;
+    if (act.status === 'in_progress') { actionClass = 'working'; }
+    else if (act.status === 'error') { actionClass = 'error'; }
+    else if (act.status === 'completed') { actionClass = 'success'; }
+    else if (act.status === 'milestone') { actionClass = 'milestone'; }
+  }
+
+  return `
+    <div class="agent-chip ${roleClass} status-${statusClass}" data-agent="${a.id}">
+      <div class="chip-avatar" style="background:${color}22;color:${color}">${initial}</div>
+      <div class="chip-info">
+        <div class="chip-name">${name}</div>
+        <div class="chip-action ${actionClass}">${actionText}</div>
+      </div>
+      <div class="chip-meta">
+        <div class="chip-score" style="color:${color}">${a.score.toFixed(1)}</div>
+        <div class="chip-time">${act.timestamp ? timeAgo(act.timestamp) : '—'}</div>
+      </div>
+    </div>`;
+}
+
+// ── Render activity feed ──
+function renderFeed(entries) {
+  document.getElementById('feedCount').textContent = `${entries.length} events`;
+
+  if (entries.length === 0) {
+    document.getElementById('feedEntries').innerHTML = `
+      <div class="empty-state" style="padding:20px;">
+        <p style="font-size:12px;">No activity yet. Run a task to see events here.</p>
+      </div>`;
+    return;
+  }
+
+  const icons = {
+    task_start: '▶️',
+    task_finish: '✅',
+    task_error: '❌',
+    gate_cross: '🎓',
+    agent_sleep: '😴',
+    agent_wake: '☀️',
+    agent_idle: '💤',
+    staff_run: '🔧',
+    self_directed: '🧠',
+    agent_enroll: '📝',
+  };
+
+  const html = entries.slice(-30).reverse().map(e => {
+    const icon = icons[e.type] || '📌';
+    const time = timeShort(e.timestamp);
+    let text = e.description || e.type;
+    // Bold the agent name
+    const agentName = e.agent ? friendlyName(e.agent.replace('staff:', '')) : '';
+    if (agentName && text.startsWith(e.agent === 'staff:' ? `Staff:` : e.agent)) {
+      text = `<strong>${agentName}</strong>${text.substring(e.agent.replace('staff:', '').length)}`;
+    }
+    if (e.gate_crossed) {
+      text += ` <span class="highlight">→ ${e.gate_crossed}</span>`;
+    }
+    return `
+      <div class="feed-entry">
+        <span class="feed-icon">${icon}</span>
+        <span class="feed-text">${text}</span>
+        <span class="feed-time">${time}</span>
+      </div>`;
+  }).join('');
+
+  document.getElementById('feedEntries').innerHTML = html;
+}
+
+// ── Main poll loop ──
+async function poll() {
+  const [activity, agents] = await Promise.all([
+    fetchJSON(`${API_BASE}/activity/recent?n=100`),
+    fetchJSON(`${API_BASE}/agents`),
+  ]);
+
+  if (!activity || !agents) {
+    document.getElementById('statusDot').className = 'status-dot offline';
+    return;
+  }
+
+  document.getElementById('statusDot').className = 'status-dot online';
+
+  const entries = activity.entries || [];
+  allEntries = entries;
+
+  renderStats(agents.agents || [], entries);
+  renderZones(agents.agents || []);
+  renderFeed(entries);
+
+  document.getElementById('lastUpdate').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+}
+
+// ── Start ──
+poll();
+setInterval(poll, pollInterval);
+</script>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent School — Week 24, 2026</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    max-width: 780px; margin: 2em auto; padding: 0 1.5em;
+    color: #1a1a2e; background: #faf9f6;
+    line-height: 1.6; font-size: 16px;
+  }
+  h1 { font-size: 2em; font-weight: 700; margin-bottom: 0.2em; color: #16213e; }
+  h2 { font-size: 1.4em; font-weight: 600; margin-top: 2em; color: #0f3460; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.3em; }
+  h3 { font-size: 1.15em; font-weight: 600; margin-top: 1.5em; color: #1a1a2e; }
+  .subtitle { color: #64748b; font-size: 0.95em; margin-bottom: 2em; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.8em; margin: 1em 0; }
+  .stat-card { background: white; border-radius: 10px; padding: 1em; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-align: center; }
+  .stat-card .number { font-size: 1.8em; font-weight: 700; color: #0f3460; display: block; }
+  .stat-card .label { font-size: 0.85em; color: #64748b; }
+  .stat-card.good .number { color: #059669; }
+  .stat-card.bad .number { color: #dc2626; }
+  .stat-card.warn .number { color: #d97706; }
+  .narrative { background: white; border-radius: 10px; padding: 1.2em 1.5em; margin: 1em 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .narrative p { margin: 0.6em 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1em 0; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  th { background: #1e293b; color: white; padding: 0.6em 0.8em; text-align: left; font-weight: 600; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.03em; }
+  td { padding: 0.5em 0.8em; border-bottom: 1px solid #f1f5f9; font-size: 0.95em; }
+  tr:last-child td { border-bottom: none; }
+  .delta-up { color: #059669; font-weight: 600; }
+  .delta-down { color: #dc2626; font-weight: 600; }
+  .delta-flat { color: #64748b; }
+  .gate-badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+  .gate-easy { background: #e0f2fe; color: #0369a1; }
+  .gate-medium { background: #fef3c7; color: #92400e; }
+  .gate-hard { background: #fce7f3; color: #9d174d; }
+  .gate-diploma { background: #d1fae5; color: #065f46; }
+  .failure-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 0.8em 1em; margin: 0.5em 0; border-radius: 0 8px 8px 0; font-size: 0.9em; }
+  .failure-box .agent { font-weight: 600; }
+  .up-arrow::before { content: "↑ "; color: #059669; }
+  .down-arrow::before { content: "↓ "; color: #dc2626; }
+  .footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #94a3b8; }
+  .tag { display: inline-block; background: #e2e8f0; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.8em; color: #475569; }
+</style>
+</head>
+<body>
+
+<h1>Week 24, 2026</h1>
+<p class="subtitle">June 11, 2026 &middot; Agent School weekly pulse</p>
+
+<div class="narrative">
+  <p><strong>7 tasks</strong> this week across 1 domains.
+  71% success rate (5 good, 2 bad).
+  Scores are climbing <strong>(+3.3 avg)</strong>.</p>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <span class="number">7</span>
+    <span class="label">tasks</span>
+  </div>
+  <div class="stat-card good">
+    <span class="number">71%</span>
+    <span class="label">success rate</span>
+  </div>
+  <div class="stat-card good">
+    <span class="number">+3.3</span>
+    <span class="label">avg score delta</span>
+  </div>
+  <div class="stat-card">
+    <span class="number">3</span>
+    <span class="label">agents active</span>
+  </div>
+</div>
+
+<h2>Current Scoreboard</h2>
+<p class="subtitle">Every agent's current score and gate across all domains.</p>
+
+<table>
+<tr><th>Agent</th><th>Domain</th><th>Score</th><th>Gate</th><th>Source</th></tr>
+<tr>
+  <td>foundry-coder-7b</td>
+  <td><span class="tag">_default</span></td>
+  <td>54.6</td>
+  <td><span class="gate-badge gate-hard">hard</span></td>
+  <td><span class="tag">foundry</span></td>
+</tr><tr>
+  <td>foundry-coder-7b</td>
+  <td><span class="tag">python-testing</span></td>
+  <td>48.0</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">foundry</span></td>
+</tr><tr>
+  <td>owl-alpha</td>
+  <td><span class="tag">agentic-coding</span></td>
+  <td>30.0</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>gemini-3-flash-preview</td>
+  <td><span class="tag">_default</span></td>
+  <td>29.4</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>gemini-2.0-flash</td>
+  <td><span class="tag">_default</span></td>
+  <td>25.0</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>owl-alpha</td>
+  <td><span class="tag">_default</span></td>
+  <td>25.0</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>qwen-coder-compiled</td>
+  <td><span class="tag">python-coding</span></td>
+  <td>25.0</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr><tr>
+  <td>gemma-4-31b-it:free</td>
+  <td><span class="tag">_default</span></td>
+  <td>21.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>foundry-coder-1.5b</td>
+  <td><span class="tag">_default</span></td>
+  <td>20.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">foundry</span></td>
+</tr><tr>
+  <td>kimi-k2.6:free</td>
+  <td><span class="tag">_default</span></td>
+  <td>20.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>qwen-coder-compiled</td>
+  <td><span class="tag">_default</span></td>
+  <td>20.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr><tr>
+  <td>foundry-coder-0.5b</td>
+  <td><span class="tag">_default</span></td>
+  <td>15.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">foundry</span></td>
+</tr><tr>
+  <td>qwen2.5-coder:7b</td>
+  <td><span class="tag">_default</span></td>
+  <td>15.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr><tr>
+  <td>qwen2.5:7b</td>
+  <td><span class="tag">_default</span></td>
+  <td>15.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr><tr>
+  <td>gemini-3-flash-preview</td>
+  <td><span class="tag">python-testing</span></td>
+  <td>14.7</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">cloud</span></td>
+</tr><tr>
+  <td>phi4</td>
+  <td><span class="tag">_default</span></td>
+  <td>10.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr><tr>
+  <td>smollm2:1.7b</td>
+  <td><span class="tag">_default</span></td>
+  <td>0.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td><span class="tag">ollama</span></td>
+</tr></table>
+<h2>Score Changes</h2>
+<p class="subtitle">Who gained, who lost, and what that means.</p>
+
+<table>
+<tr><th>Agent</th><th>Domain</th><th>Delta</th><th>Gate</th><th>Trend</th></tr>
+<tr>
+  <td>foundry-coder-7b</td>
+  <td><span class="tag">_default</span></td>
+  <td class="delta-up">+9.9</td>
+  <td><span class="gate-badge gate-hard">hard</span></td>
+  <td class="up-arrow">3x</td>
+</tr><tr>
+  <td>gemini-3-flash-preview</td>
+  <td><span class="tag">_default</span></td>
+  <td class="delta-down">-0.3</td>
+  <td><span class="gate-badge gate-medium">medium</span></td>
+  <td class="down-arrow">2x</td>
+</tr><tr>
+  <td>gemma-4-31b-it:free</td>
+  <td><span class="tag">_default</span></td>
+  <td class="delta-down">-9.0</td>
+  <td><span class="gate-badge gate-easy">easy</span></td>
+  <td class="down-arrow">1x</td>
+</tr></table>
+<h2>Gate Crossings</h2>
+<p class="subtitle">Agents that leveled up or dropped down this week.</p>
+<div class="narrative">
+  <p><strong>⬆ foundry-coder-7b</strong>
+  <span class="tag">_default</span>
+  <span class="gate-badge gate-medium">medium</span>
+  → <span class="gate-badge gate-hard">hard</span>
+  (score: 54.6)</p>
+</div><div class="narrative">
+  <p><strong>⬇ gemma-4-31b-it:free</strong>
+  <span class="tag">_default</span>
+  <span class="gate-badge gate-medium">medium</span>
+  → <span class="gate-badge gate-easy">easy</span>
+  (score: 21.0)</p>
+</div><div class="narrative">
+  <p><strong>⬇ gemini-3-flash-preview</strong>
+  <span class="tag">_default</span>
+  <span class="gate-badge gate-medium">medium</span>
+  → <span class="gate-badge gate-easy">easy</span>
+  (score: 0.0)</p>
+</div>
+<h2>Task Volume</h2>
+<p class="subtitle">What the system actually worked on.</p>
+
+<table>
+<tr><th>Domain</th><th>Tasks</th><th>% of Total</th></tr>
+<tr>
+  <td><span class="tag">_default</span></td>
+  <td>7</td>
+  <td>100% <span style="display:inline-block;height:8px;width:200.0px;background:#0f3460;border-radius:4px;vertical-align:middle;"></span></td>
+</tr></table>
+<h2>Agent Reliability</h2>
+<p class="subtitle">Who you can count on and who keeps dropping the ball.</p>
+
+<table>
+<tr><th>Agent</th><th>Attempts</th><th>Successes</th><th>Rate</th></tr>
+<tr>
+  <td>foundry-coder-7b</td>
+  <td>3</td>
+  <td>3</td>
+  <td class="good">100% (great)</td>
+</tr><tr>
+  <td>gemini-3-flash-preview</td>
+  <td>3</td>
+  <td>2</td>
+  <td class="warn">67% (shaky)</td>
+</tr><tr>
+  <td>gemma-4-31b-it:free</td>
+  <td>1</td>
+  <td>0</td>
+  <td class="bad">0% (unreliable)</td>
+</tr></table>
+<h2>Worst Failures</h2>
+<p class="subtitle">The most instructive breakdowns of the week.</p>
+<div class="failure-box">
+  <p><span class="agent">gemma-4-31b-it:free</span>
+  <span class="tag">_default</span>
+  <span class="tag">easy</span>
+  score 30 → 21 <span class="delta-down">-9</span></p>
+  <p style="font-family:monospace;font-size:0.85em;color:#991b1b;background:#fef2f2;padding:0.5em;border-radius:4px;">timed out</p>
+</div><div class="failure-box">
+  <p><span class="agent">gemini-3-flash-preview</span>
+  <span class="tag">_default</span>
+  <span class="tag">easy</span>
+  score 42 → 29 <span class="delta-down">-13</span></p>
+  <p style="font-family:monospace;font-size:0.85em;color:#991b1b;background:#fef2f2;padding:0.5em;border-radius:4px;">timed out</p>
+</div>
+<h2>Quality Trend</h2>
+<p class="subtitle">Are tasks getting better or worse over the week?</p>
+
+<div class="narrative">
+  <p>Average task score this week: <strong>46.7/100</strong>.</p>
+  <p>First half: <strong>70.0</strong> — Second half: <strong>23.3</strong>.
+  Quality is <strong>declining</strong>.</p>
+</div>
+
+<h2>Bottom Line</h2>
+<div class="narrative">
+  <p><strong>foundry-coder-7b</strong> had the strongest week, gaining <strong>9.9 points</strong> on average. This model is trending in the right direction and should be prioritized for routing in its proven domains.</p>
+  <p>3 agent(s) crossed gate thresholds this week. Each gate crossing represents real, measured improvement — not just a model swap but a genuine capability gain.</p>
+</div>
+<div class="footer">
+  <p>Generated 2026-06-11 18:07 &middot; Agent School weekly report</p>
+  <p>Data: ~/Documents/Knowledge Core/01-Projects/Agent School/school-core/data/trajectories &middot; Scores: ~/Documents/Knowledge Core/01-Projects/Agent School/school-core/data/scores.json</p>
+  <p><a href="file://~/Documents/Knowledge Core/01-Projects/Agent School/school-core/data/scores.json">View live scores</a></p>
+</div>
+
+</body>
+</html>

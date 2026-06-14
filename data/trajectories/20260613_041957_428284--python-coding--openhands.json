@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-13T04:19:57.428284+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "openhands",
+  "prompt": "Write a Python function that checks if a string is a palindrome. Include a docstring and one test case.",
+  "system_prompt": "You are a helpful coding assistant. Provide clear, correct, and concise answers.",
+  "response": "```python\ndef is_palindrome(s: str) -> bool:\n    \"\"\"Check if a string is a palindrome.\n\n    A palindrome reads the same forwards and backwards,\n    ignoring case and non-alphanumeric characters.\n\n    Args:\n        s: The string to check.\n\n    Returns:\n        True if the string is a palindrome, False otherwise.\n    \"\"\"\n    cleaned = \"\".join(ch.lower() for ch in s if ch.isalnum())\n    return cleaned == cleaned[::-1]\n\n# Test case\nassert is_palindrome(\"A man, a plan, a canal: Panama\") is True\nassert is_palindrome(\"hello\") is False\nprint(\"All tests passed.\")\n```\n\n**Key points:**\n- **Cleaning:** Strips non-alphanumeric characters and lowercases for a robust comparison.\n- **Core logic:** `cleaned == cleaned[::-1]` compares the string to its reverse.\n- **Time complexity:** O(n), where n is the length of the string.",
+  "task_score": 70.0,
+  "old_score": 0.0,
+  "new_score": 21.0,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "30"
+}

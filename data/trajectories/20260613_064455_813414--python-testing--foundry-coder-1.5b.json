@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-13T06:44:55.813414+00:00",
+  "domain": "python-testing",
+  "difficulty": "easy",
+  "agent": "foundry-coder-1.5b",
+  "prompt": "Write a Python function called `is_palindrome` that takes a string and returns True if it's a palindrome (case-insensitive, ignoring spaces and punctuation). Include a docstring and one assertion test.",
+  "system_prompt": "[ROLE] You are a Student learner. You are practicing and building competency. Focus on learning the pattern. Be methodical. If you're unsure, try your best — this is how you improve.\n\n[TIER] You are running on local hardware (Apple M1 GPU). Be concise and focused. Stay within your capabilities.\n\n[CURRICULUM] You are working toward certification in this domain. Your score determines what tasks you can attempt.\n\n[DIFFICULTY] This is a straightforward task. Minimal complexity expected.\n\n[DOMAIN] You are a senior Python testing engineer. Write clear, thorough pytest tests. Follow Arrange-Act-Assert pattern. Use fixtures for shared setup. Parameterize for edge cases. Only output the test code — no explanation.",
+  "response": "python\n import re                                                         \n                                                                   \n def is_palindrome(s):                                             \n     \"\"\"                                                           \n     Check if a given string is a palindrome.                      \n                                                                   \n     Args:                                                         \n     s (str): The string to check.                                 \n                                                                   \n     Returns:                                                      \n     bool: True if the string is a palindrome, False otherwise.    \n     \"\"\"                                                           \n     # Remove non-alphanumeric characters and convert to lowercase \n     cleaned_s = re.sub(r'[^A-Za-z0-9]', '', s).lower()            \n     # Check if the cleaned string is equal to its reverse         \n     return cleaned_s == cleaned_s[::-1]                           \n                                                                   \n # Test the function with provided data points                     \n assert is_palindrome(\"A man a plan a canal Panama\") == True       \n assert is_palindrome(\"No lemon, no melon\") == True                \n assert is_palindrome(\"Hello World!\") == False                     \n\nThis solution follows the Arrange-Act-Assert pattern by first cleaning the input\nstring to remove any non-alphanumeric characters and converting it to lowercase.\nIt then checks if the cleaned string is equal to its reverse. The test cases \ncover various scenarios including palindromes, strings with mixed case, and \nstrings with punctuation.",
+  "task_score": 70.0,
+  "old_score": 20.0,
+  "new_score": 35.0,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "71"
+}

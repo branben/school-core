@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-14T15:31:58.022845+00:00",
+  "domain": "git-operations",
+  "difficulty": "medium",
+  "agent": "foundry-coder-7b",
+  "prompt": "chore/repo-local-gaia-polecat is full of merge conflicts\n\n",
+  "system_prompt": "[ROLE] You are a Student in a learning system. Apply [Red/Green TDD]: write the test first, watch it fail, write minimum code to pass, then refactor. Follow [YAGNI] — only implement what the test demands. Your output is used for [Distillation] into smaller models.\n\n[DIFFICULTY] Requires multi-step reasoning. Consider edge cases and error paths.\n\n[DOMAIN] You are a git expert. Provide precise git commands and strategies. Explain the approach concisely, then give the exact commands to run.\n\n[DOMAIN_CONTEXT] Follow [Conventional Commits] format. Reference issue numbers.\n\n\nAnchors: [Red/Green TDD], [YAGNI], [Distillation], [Chain of Thought], [Conventional Commits]",
+  "response": "# Resolving Merge Conflicts in `repo-local-gaia-polecat`\n\n## Diagnosis First\n\nLet's understand the scope of the problem before acting.\n\n```bash\ncd repo-local-gaia-polecat\ngit status\n```\n\nThis will show you all conflicted files. If the output is overwhelming, narrow it down:\n\n```bash\ngit diff --stat HEAD...MERGE_HEAD\n```\n\nThis shows what changed between your branch and the incoming branch.\n\n---\n\n## Strategy Decision Tree\n\n### Option A: You want to keep YOUR version entirely\n\n```bash\ngit checkout --ours .\ngit add -A\ngit commit -m \"chore: resolve merge conflicts, keeping local changes\"\n```\n\n### Option B: You want to accept THEIR version entirely\n\n```bash\ngit checkout --theirs .\ngit add -A\ngit commit -m \"chore: resolve merge conflicts, accepting incoming changes\"\n```\n\n### Option C: Resolve file-by-file (recommended for mixed conflicts)\n\n```bash\n# See all conflicted files\ngit diff --name-only --diff-filter=U\n\n# For each conflicted file, open and resolve manually, then:\ngit add <resolved-file>\n\n# Or use a merge tool\ngit mergetool\n```\n\n### Option D: Abort and try a rebase instead (cleaner history)\n\n```bash\ngit merge --abort\ngit fetch origin\ngit rebase origin/main\n# Resolve conflicts per-commit (smaller, more manageable chunks)\n```\n\n---\n\n## If Conflicts Are in Many Files with Similar Patterns\n\nIf the conflicts follow a pattern (e.g., dependency lockfiles, generated code):\n\n```bash\n# Auto-resolve lockfiles by regenerating them\ngit checkout --theirs package-lock.json  # or yarn.lock, go.sum, etc.\nnpm install  # regenerate cleanly\ngit add package-lock.json\n```\n\n---\n\n## Nuclear Option: Fresh Start\n\nIf the repo is truly unrecoverable:\n\n```bash\ngit fetch origin\ngit reset --hard origin/main\n# Re-apply your local changes on top\n```\n\n---\n\n## Recommended Next Step\n\nRun `git status` first and share the output. The right strategy depends on **what's conflicting** and **which branch you're merging**.",
+  "task_score": 60,
+  "old_score": 54.507999999999996,
+  "new_score": 56.15559999999999,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "106"
+}

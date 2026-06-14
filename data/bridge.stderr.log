@@ -1,0 +1,5 @@
+~/.omniroute/school_bridge.sh: line 9: ~/Documents/Knowledge Core/01-Projects/School/school-core/data/bridge.stdout.log: Operation not permitted
+/Applications/Xcode.app/Contents/Developer/usr/bin/python3: can't open file 'issue_bridge.py': [Errno 1] Operation not permitted
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+chdir: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+/Applications/Xcode.app/Contents/Developer/usr/bin/python3: can't open file '~/Documents/Knowledge Core/01-Projects/School/school-core/issue_bridge.py': [Errno 1] Operation not permitted

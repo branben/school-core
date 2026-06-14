@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-12T13:07:17.573782+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "north-coding",
+  "prompt": "Write a Python function to find the longest common subsequence of two strings.",
+  "system_prompt": "You are a helpful coding assistant. Provide clear, correct, and concise answers.",
+  "response": "",
+  "task_score": 0.0,
+  "old_score": 35.0,
+  "new_score": 24.5,
+  "evaluation": null,
+  "error": "OmniRoute HTTP 403: {\"error\":{\"message\":\"[403]: <!doctype html>\"}}",
+  "engram_obs_id": "18"
+}

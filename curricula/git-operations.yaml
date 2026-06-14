@@ -1,0 +1,48 @@
+domain: git-operations
+description: >
+  Use git for version control — commit history management, branching strategies,
+  merge conflict resolution, and collaborative workflows. Calibrated for git 2.30+.
+version: 1
+
+gate_steps:
+  - score_required: 0
+    description: "Easy — basic commit, diff, log"
+    task_count: 3
+    tasks:
+      - "Stage and commit changes with a descriptive message following conventional commits format"
+      - "Use `git diff` and `git log --oneline` to inspect recent changes"
+      - "Create a branch, make a commit on it, and switch back to main"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 25
+    description: "Medium — amend, rebase, interactive staging"
+    task_count: 4
+    tasks:
+      - "Amend the most recent commit to fix a typo in the message"
+      - "Split a commit with unrelated changes into two separate commits using interactive add"
+      - "Rebase a feature branch onto main and resolve a simple merge conflict"
+      - "Use `git stash` to temporarily save work-in-progress and restore it later"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 50
+    description: "Hard — history rewriting, bisect, hooks"
+    task_count: 4
+    tasks:
+      - "Squash the last 3 commits on a feature branch into a single clean commit"
+      - "Use `git bisect` to find the commit that introduced a known bug"
+      - "Set up a pre-commit hook that runs linters on staged files"
+      - "Cherry-pick a specific commit from one branch onto another"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 75
+    description: "Diploma — workflow design, automation, team conventions"
+    task_count: 3
+    tasks:
+      - "Design a branching strategy for a team of 5 developers (main/staging/feature branches, release process)"
+      - "Write a script that automates a common git workflow (e.g., create PR branch from issue template)"
+      - "Set up git-worktree for parallel feature development and review the tradeoffs vs stashing"
+    evaluation_rubric:
+      task_score: 70

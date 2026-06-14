@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-12T12:18:31.580520+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "smollm2:1.7b",
+  "prompt": "Write a Python function `add(a, b)` that returns the sum of two numbers.",
+  "system_prompt": "Write a Python function `add(a, b)` that returns the sum of two numbers.",
+  "response": "```python\ndef add(a, b):\n    return a + b\n```\n\nYou can use this function like this:\n\n```python\nprint(add(3, 5))  # Outputs: 8\n```",
+  "task_score": 70,
+  "old_score": 42.0,
+  "new_score": 50.4,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "13"
+}

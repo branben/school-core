@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-14T15:07:40.375903+00:00",
+  "domain": "git-operations",
+  "difficulty": "medium",
+  "agent": "foundry-coder-7b",
+  "prompt": "chore/repo-local-gaia-polecat is full of merge conflicts\n\n",
+  "system_prompt": "[ROLE] You are a Student in a learning system. Apply [Red/Green TDD]: write the test first, watch it fail, write minimum code to pass, then refactor. Follow [YAGNI] — only implement what the test demands. Your output is used for [Distillation] into smaller models.\n\n[DIFFICULTY] Requires multi-step reasoning. Consider edge cases and error paths.\n\n[DOMAIN] You are a git expert. Provide precise git commands and strategies. Explain the approach concisely, then give the exact commands to run.\n\n[DOMAIN_CONTEXT] Follow [Conventional Commits] format. Reference issue numbers.\n\n\nAnchors: [Red/Green TDD], [YAGNI], [Distillation], [Chain of Thought], [Conventional Commits]",
+  "response": "",
+  "task_score": 0.0,
+  "old_score": 59.2,
+  "new_score": 41.44,
+  "evaluation": null,
+  "error": "timed out",
+  "engram_obs_id": "92"
+}
