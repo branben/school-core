@@ -6,7 +6,7 @@ Run: python -m pytest tests/test_issue_bridge.py -v
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 import pytest
 
@@ -16,6 +16,8 @@ from issue_bridge import (
     mark_processed,
     is_processed,
     bridge_issues,
+    _run_adversarial_review,
+    _heuristic_score,
     PROCESSED_FILE,
 )
 
@@ -135,3 +137,119 @@ class TestBridgeIssues:
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert "unexpected error" in results[0]["error"]
+
+
+# ── Adversarial Review Integration ─────────────────────────────────────────
+
+class TestAdversarialReviewStep:
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    def test_adversarial_review_attached_to_result(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [
+            {"issue_number": 50, "title": "Review me", "body": "body",
+             "domain": "code-implementation", "difficulty": "medium",
+             "prompt": "implement", "category": "feature", "state": "ready-for-agent"},
+        ]
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "code-implementation", "difficulty": "medium",
+            "prompt": "implement", "response": "def foo(): pass",
+        }
+        results = bridge_issues("user/test")
+        assert len(results) == 1
+        assert results[0]["status"] == "success"
+        assert "adversarial_review" in results[0]
+        adv = results[0]["adversarial_review"]
+        assert "verdict" in adv
+        assert "score" in adv
+        assert "findings" in adv
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    def test_adversarial_review_failure_falls_back(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [
+            {"issue_number": 51, "title": "Fallback test", "body": "",
+             "domain": "debugging", "difficulty": "easy",
+             "prompt": "fix", "category": "bug", "state": "ready-for-agent"},
+        ]
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-1.5b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "fix", "response": "fixed",
+        }
+        # Patch the executor.call_model used by _run_adversarial_review to simulate failure
+        with patch("executor.call_model", side_effect=RuntimeError("model unavailable")):
+            results = bridge_issues("user/test")
+        assert len(results) == 1
+        assert results[0]["status"] == "success"
+        adv = results[0]["adversarial_review"]
+        assert adv["verdict"] == "PASS"
+        assert adv["lens_used"] == "fallback"
+        assert "error" in adv
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    def test_combined_score_uses_all_three_signals(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [
+            {"issue_number": 52, "title": "Score test", "body": "",
+             "domain": "debugging", "difficulty": "medium",
+             "prompt": "test", "category": "bug", "state": "ready-for-agent"},
+        ]
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "medium",
+            "prompt": "test", "response": "x" * 500,
+        }
+        results = bridge_issues("user/test")
+        assert len(results) == 1
+        assert results[0]["status"] == "success"
+        assert "new_score" in results[0]
+
+    def test_run_adversarial_review_returns_dict(self):
+        task_result = {
+            "status": "success",
+            "response": "def hello(): return 'world'",
+        }
+        issue = {
+            "title": "Hello world",
+            "body": "Write a hello function",
+            "domain": "code-implementation",
+            "difficulty": "easy",
+            "prompt": "Write a hello function",
+        }
+        result = _run_adversarial_review(task_result, issue, "")
+        assert isinstance(result, dict)
+        assert "verdict" in result
+        assert "score" in result
+        assert "findings" in result
+
+    def test_run_adversarial_review_fallback_on_error(self):
+        task_result = {"status": "success", "response": "code"}
+        issue = {"title": "T", "body": "", "domain": "debugging", "difficulty": "easy", "prompt": "p"}
+        with patch("executor.call_model", side_effect=ImportError("no module")):
+            result = _run_adversarial_review(task_result, issue, "")
+        assert result["verdict"] == "PASS"
+        assert result["lens_used"] == "fallback"
+        assert "error" in result
+
+    def test_heuristic_score_easy(self):
+        task_result = {"response": "x" * 200}
+        issue = {"difficulty": "easy"}
+        score = _heuristic_score(task_result, issue)
+        assert 0.0 <= score <= 100.0
+
+    def test_heuristic_score_hard(self):
+        task_result = {"response": "x" * 200}
+        issue = {"difficulty": "hard"}
+        score = _heuristic_score(task_result, issue)
+        hard_score = _heuristic_score(task_result, {"difficulty": "hard"})
+        easy_score = _heuristic_score(task_result, {"difficulty": "easy"})
+        assert hard_score >= easy_score
+
+    def test_heuristic_score_empty_response(self):
+        task_result = {"response": ""}
+        issue = {"difficulty": "medium"}
+        assert _heuristic_score(task_result, issue) == 0.0

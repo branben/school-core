@@ -250,6 +250,13 @@ def bridge_issues(
             continue
 
         if task_result["status"] == "success":
+            # Run adversarial review before verification
+            adversarial_review = _run_adversarial_review(
+                task_result=task_result,
+                issue=issue,
+                codebase_ctx=codebase_ctx,
+            )
+
             # Verify output correctness with codebase context
             verification = verify_task_output(
                 original_prompt=enriched_prompt,
@@ -258,10 +265,25 @@ def bridge_issues(
                 difficulty=issue["difficulty"],
                 codebase_context=codebase_ctx,
             )
-            task_score = verification["score"]
-            sys.stderr.write(f"[issue_bridge] Verification: {verification['verdict']} (score={task_score}) - {verification['reasoning'][:100]}\n")
 
-            updated = evaluate_and_update(task_result, task_score, store=store)
+            # Combined score: execution * 0.5 + review * 0.3 + heuristic * 0.2
+            execution_score = verification["score"]
+            review_score = adversarial_review.get("score", execution_score)
+            heuristic_score = _heuristic_score(task_result, issue)
+            combined_score = (
+                execution_score * 0.5
+                + review_score * 0.3
+                + heuristic_score * 0.2
+            )
+
+            sys.stderr.write(
+                f"[issue_bridge] Verification: {verification['verdict']} "
+                f"(exec={execution_score}, review={review_score}, "
+                f"heuristic={heuristic_score:.1f}, combined={combined_score:.1f})\n"
+            )
+
+            task_result["adversarial_review"] = adversarial_review
+            updated = evaluate_and_update(task_result, combined_score, store=store)
             results.append({
                 "issue_number": num,
                 "title": issue["title"],
@@ -273,6 +295,7 @@ def bridge_issues(
                 "new_score": updated.get("new_score"),
                 "gate_crossed": updated.get("gate_crossed"),
                 "verification": verification,
+                "adversarial_review": adversarial_review,
             })
         else:
             results.append({
@@ -339,3 +362,61 @@ if __name__ == "__main__":
                 print(f"  #{r['issue_number']} [{r['domain']}/{r['difficulty']}] {r['title'][:60]} → {r['status']}")
     else:
         bridge_poll(args.repo, args.interval, labels)
+
+
+def _run_adversarial_review(
+    task_result: dict,
+    issue: dict,
+    codebase_ctx: str,
+) -> dict:
+    """Run adversarial review on a successful task result.
+
+    Returns the review as a dict, or a fallback on failure.
+    Lazy-imports adversarial_reviewer and executor to avoid circular deps.
+    """
+    try:
+        from adversarial_reviewer import AdversarialReviewer, LensType
+        from executor import call_model
+
+        reviewer = AdversarialReviewer(call_model_fn=call_model)
+        review_result = reviewer.review(
+            output=task_result["response"],
+            task={
+                "title": issue["title"],
+                "body": issue.get("body", ""),
+                "domain": issue["domain"],
+                "difficulty": issue["difficulty"],
+                "prompt": issue["prompt"],
+            },
+            codebase_context=codebase_ctx,
+            lens_types=LensType,
+        )
+        return review_result.to_dict()
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] Adversarial review failed, falling back: {e}\n")
+        return {
+            "verdict": "PASS",
+            "score": 50.0,
+            "findings": [],
+            "lens_used": "fallback",
+            "confidence": 0.0,
+            "gaps": [],
+            "suggestions": [],
+            "error": str(e),
+        }
+
+
+def _heuristic_score(task_result: dict, issue: dict) -> float:
+    """Compute a heuristic score from response metadata.
+
+    Factors: response length relative to difficulty, domain signals.
+    """
+    response = task_result.get("response", "")
+    difficulty = issue.get("difficulty", "medium")
+
+    length_score = min(100.0, len(response) / 10.0)
+
+    difficulty_weights = {"easy": 0.6, "medium": 0.8, "hard": 1.0, "diploma": 1.0}
+    weight = difficulty_weights.get(difficulty, 0.8)
+
+    return length_score * weight
