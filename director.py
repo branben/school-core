@@ -1,5 +1,8 @@
+import re
 import sys
+import yaml
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from scoring import ScoreStore, GATES
@@ -12,6 +15,7 @@ from triage_classifier import classify_issue
 from prompt_composer import compose_prompt
 from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
+from escalation_log import EscalationLog
 
 SYSTEM_PROMPTS = {
     "python-testing": (
@@ -36,6 +40,8 @@ DEFAULT_SYSTEM_PROMPT = (
 
 # Degraded mode state
 _degraded_mode = False
+
+_escalation_log = EscalationLog()
 
 # Session state tracking for sleep/wake
 _accepting_tasks = True
@@ -136,6 +142,48 @@ def triage_issue(title: str, labels: list, body: str = "") -> dict:
     """Classify an issue using the local rule-based classifier. Returns {category, state}."""
     category, state = classify_issue(title, labels, body)
     return {"category": category, "state": state}
+
+
+def _load_escalation_thresholds() -> dict:
+    config_path = Path(__file__).parent / "config" / "escalation_thresholds.yaml"
+    if not config_path.exists():
+        return {"easy": 3, "medium": 5, "hard": 7, "diploma": 8}
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f) or {}
+    thresholds = cfg.get("thresholds", {})
+    return {
+        "easy": thresholds.get("easy", 3),
+        "medium": thresholds.get("medium", 5),
+        "hard": thresholds.get("hard", 7),
+        "diploma": thresholds.get("diploma", 8),
+    }
+
+
+def _get_threshold(domain: str, difficulty: str) -> float:
+    thresholds = _load_escalation_thresholds()
+    config_path = Path(__file__).parent / "config" / "escalation_thresholds.yaml"
+    if config_path.exists():
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        domain_overrides = cfg.get("domain_overrides", {}).get(domain, {})
+        if difficulty in domain_overrides:
+            return float(domain_overrides[difficulty])
+    return float(thresholds.get(difficulty, 0))
+
+
+def _check_readiness(agent: str, domain: str, difficulty: str, prompt: str) -> float:
+    readiness_prompt = (
+        "On a scale of 1-10, how confident are you that you can solve this issue? "
+        "Reply with only a number."
+    )
+    try:
+        response = call_model(agent, readiness_prompt, timeout=10)
+        match = re.search(r"(\d+(?:\.\d+)?)", response.strip())
+        if not match:
+            return 0.0
+        return float(match.group(1))
+    except Exception:
+        return 0.0
 
 
 def run_task(
@@ -244,6 +292,21 @@ def run_task(
 
     # In degraded mode, filter to local-only agents
     candidates = _filter_local_candidates(candidates)
+
+    if not force_agent and candidates:
+        threshold = _get_threshold(domain, difficulty)
+        approved = []
+        for cand in candidates:
+            confidence = _check_readiness(cand, domain, domain, prompt)
+            if confidence >= threshold:
+                approved.append(cand)
+            else:
+                _escalation_log.log(
+                    agent=cand, domain=domain, difficulty=difficulty,
+                    confidence=confidence, threshold=threshold,
+                    escalated_to="next_candidate",
+                )
+        candidates = approved
 
     last_error = None
 

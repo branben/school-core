@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+from execution_scorer import ExecutionScorer
+from heuristic_scorer import HeuristicScorer
+
 SEED_AGENTS = {
     # Cloud models (via OmniRoute)
     "gemini-3-flash-preview": {"_default": 30},
@@ -29,6 +32,61 @@ HUMAN_CONFIRM_THRESHOLD = 10.0
 
 
 @dataclass
+class GroundedScore:
+    """Combined grounded score from three tiers."""
+    execution_score: Optional[float]
+    heuristic_score: float
+    llm_score: Optional[float]
+    combined: float
+    details: Dict[str, Any] = field(default_factory=dict)
+
+
+class GroundedScoreCalculator:
+    """Combines Tier 1 (execution) + Tier 2 (heuristic) + Tier 3 (LLM) scoring.
+
+    Combined formula: (exec or 0.5) * 0.5 + heuristic * 0.3 + (llm or 0.5) * 0.2
+    Missing tiers default to 0.5 (neutral) so they don't skew results.
+    """
+
+    def __init__(self):
+        self._execution_scorer = ExecutionScorer()
+        self._heuristic_scorer = HeuristicScorer()
+
+    def calculate(
+        self,
+        output: str,
+        codebase_context: str = "",
+        llm_score: Optional[float] = None,
+    ) -> GroundedScore:
+        """Calculate the combined grounded score."""
+        exec_score = self._execution_scorer.score(output, codebase_context)
+        heur_score = self._heuristic_scorer.score(output, codebase_context)
+
+        exec_normalized = (exec_score / 100.0) if exec_score is not None else 0.5
+        llm_normalized = (llm_score / 100.0) if llm_score is not None else 0.5
+
+        combined = (
+            exec_normalized * 0.5
+            + (heur_score / 100.0) * 0.3
+            + llm_normalized * 0.2
+        ) * 100.0
+
+        return GroundedScore(
+            execution_score=exec_score,
+            heuristic_score=heur_score,
+            llm_score=llm_score,
+            combined=round(combined, 2),
+            details={
+                "exec_weight": 0.5,
+                "heuristic_weight": 0.3,
+                "llm_weight": 0.2,
+                "exec_used": exec_score is not None,
+                "llm_used": llm_score is not None,
+            },
+        )
+
+
+@dataclass
 class ScoreRecommendation:
     agent: str
     domain: str
@@ -41,6 +99,7 @@ class ScoreStore:
         self.file_path = Path(file_path) if file_path else Path(__file__).parent / "data" / "scores.json"
         self.scores: Dict[str, Dict[str, float]] = {}
         self._audit_log: list = []
+        self._difficulty_weights: Dict[str, Dict[str, float]] = {}
         self.load()
 
     def load(self) -> None:
@@ -51,13 +110,28 @@ class ScoreStore:
         else:
             with self.file_path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-                # ensure numeric values
-                self.scores = {agent: {domain: float(val) for domain, val in domains.items()} for agent, domains in data.items()}
+                self.scores = {}
+                self._difficulty_weights = {}
+                for agent, domains in data.items():
+                    self.scores[agent] = {}
+                    self._difficulty_weights[agent] = {}
+                    for key, val in domains.items():
+                        if key.startswith("_difficulty_"):
+                            domain_key = key[len("_difficulty_"):]
+                            self._difficulty_weights[agent][domain_key] = float(val)
+                        else:
+                            self.scores[agent][key] = float(val)
 
     def save(self) -> None:
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        merged = {}
+        for agent, domains in self.scores.items():
+            merged[agent] = dict(domains)
+            if agent in self._difficulty_weights:
+                for domain, weight in self._difficulty_weights[agent].items():
+                    merged[agent][f"_difficulty_{domain}"] = weight
         with self.file_path.open("w", encoding="utf-8") as f:
-            json.dump(self.scores, f, indent=4, sort_keys=True)
+            json.dump(merged, f, indent=4, sort_keys=True)
 
     def get_score(self, agent_name: str, domain: str) -> float:
         return self.scores.get(agent_name, {}).get(domain, self.scores.get(agent_name, {}).get("_default", 0.0))
@@ -69,12 +143,22 @@ class ScoreStore:
         self.save()
 
     # EMA score update — new score = 70% old + 30% task
-    def update_score(self, agent_name: str, domain: str, task_score: float) -> float:
+    def update_score(self, agent_name: str, domain: str, task_score: float, difficulty_weight: float = 1.0) -> float:
         old = self.get_score(agent_name, domain)
         new = old * 0.7 + task_score * 0.3
         new = max(0.0, min(100.0, new))
         self.set_score(agent_name, domain, new)
+        self.set_difficulty_weight(agent_name, domain, difficulty_weight)
         return new
+
+    def set_difficulty_weight(self, agent_name: str, domain: str, weight: float) -> None:
+        if agent_name not in self._difficulty_weights:
+            self._difficulty_weights[agent_name] = {}
+        self._difficulty_weights[agent_name][domain] = max(0.0, min(2.0, float(weight)))
+        self.save()
+
+    def get_difficulty_weight(self, agent_name: str, domain: str) -> float:
+        return self._difficulty_weights.get(agent_name, {}).get(domain, 1.0)
 
     def add_agent(self, agent_name: str, initial_scores: Dict[str, float] = None) -> None:
         if agent_name in self.scores:
