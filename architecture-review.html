@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture Review — school-core</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <!-- HEADER -->
+      <header>
+        <h1 class="text-3xl font-bold tracking-tight">school-core Architecture Review</h1>
+        <p class="text-slate-500 mt-1">2026-06-14 &middot; Agent School &mdash; branben/sound-royale-ny</p>
+        <div class="flex gap-4 mt-4 text-xs text-slate-600">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded border-2 border-slate-800"></span> module</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-0.5 border-t-2 border-dashed border-slate-800"></span> seam</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-0.5 bg-red-600"></span> leakage</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-800"></span> deep module</span>
+        </div>
+      </header>
+
+      <!-- CANDIDATE 1: Curriculum is a toy box -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">1. Replace the static toy curriculum with a real codebase task adapter</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Strong</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">local-substitutable</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>autonomous_loop.py:58-197 — <span class="text-slate-800">CURRICULUM</span> dict</div>
+            <div>autonomous_loop.py:215-281 — <span class="text-slate-800">_pick_task_for_agent()</span></div>
+            <div>issue_bridge.py:174-267 — <span class="text-slate-800">bridge_issues()</span></div>
+            <div>github_fetcher.py:24-80 — <span class="text-slate-800">fetch_issues()</span></div>
+          </div>
+
+          <!-- BEFORE/AFTER -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-lg border border-red-200 bg-red-50/50 p-4">
+              <p class="text-xs font-semibold text-red-700 mb-3">BEFORE</p>
+              <pre class="mermaid text-xs">
+flowchart TD
+  S[AutonomousScheduler] -->|"random.choice(CURRICULUM)"| T["Toy prompt: 'Write is_palindrome()'"]
+  T --> D[run_task]
+  D --> R["Agent produces trivial code"]
+  R -->|"score=70 (hardcoded)"| SC[ScoreStore]
+  SC -->|"EMA: 70 → 70 → 70..."| G["Gate: easy → easy → easy"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class T,R leak
+              </pre>
+              <p class="text-xs text-red-700 mt-3">Static toy dict. Same 30 prompts forever. Agents plateau at "easy" because the curriculum never scales.</p>
+            </div>
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+              <p class="text-xs font-semibold text-emerald-700 mb-3">AFTER</p>
+              <pre class="mermaid text-xs">
+flowchart TD
+  GF[github_fetcher] -->|"real issues"| T[triage_classifier]
+  T -->|"ready-for-agent"| IB[issue_bridge]
+  IB -->|"issue body as prompt"| D[run_task]
+  D --> R["Agent reads codebase, writes real fix"]
+  R --> V[verify_task_output]
+  V -->|"score=0-100"| SC[ScoreStore]
+  SC -->|"EMA converges on true skill"| G["Gate: easy → medium → hard"]
+  classDef deep background:#1e293b,color:#fff;
+  class GF,T,IB,V deep
+              </pre>
+              <p class="text-xs text-emerald-700 mt-3">Real GitHub issues drive task selection. Verification scores actual output quality. Gates reflect real capability.</p>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> The CURRICULUM dict (autonomous_loop.py:58-197) is 30 static toy problems. Agents have run 50+ rounds producing <code>is_palindrome</code>, <code>factorial</code>, and <code>add(a, b)</code>. The EMA score converges to ~70 because every task is trivial and the hardcoded score was 70. The gate system is decorative — no agent ever crosses a gate from real capability growth.</p>
+            <p><strong>Solution:</strong> The issue_bridge already provides real-task drive (GitHub issues). The curriculum should be a fallback, not the primary path. Wire the bridge as the default task source; keep curriculum only for warm-up or when no issues are available. The real fix: agents need to <em>read the codebase</em> before writing code — the issue prompt should include repo context (file paths, existing code), not just the issue title.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>Agents produce real fixes, not toy functions</li>
+              <li>Verification scores reflect actual output quality</li>
+              <li>Gate crossings become meaningful capability signals</li>
+              <li>Delete 140 lines of static CURRICULUM dict</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANDIDATE 2: Dead routing abstraction -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">2. Delete routing.py — routing logic is duplicated in director.run_task</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Strong</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>routing.py:18-76 — <span class="text-slate-800">route_task()</span> — <span class="text-red-600">never imported</span></div>
+            <div>director.py:228-247 — <span class="text-slate-800">run_task()</span> candidate selection — <span class="text-amber-600">duplicates routing.py</span></div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-lg border border-red-200 bg-red-50/50 p-4">
+              <p class="text-xs font-semibold text-red-700 mb-3">BEFORE</p>
+              <pre class="mermaid text-xs">
+flowchart LR
+  subgraph "routing.py (DEAD)"
+    RT[route_task] -->|"qualifying_agents"| R1[agent]
+  end
+  subgraph "director.py (LIVE)"
+    D[run_task] -->|"qualifying_agents"| R2[agent]
+    R2 -->|_try_agent| EX[executor.call_model]
+  end
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class RT leak
+              </pre>
+              <p class="text-xs text-red-700 mt-3">Two sources of truth. routing.py is dead code — zero imports anywhere.</p>
+            </div>
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+              <p class="text-xs font-semibold text-emerald-700 mb-3">AFTER</p>
+              <pre class="mermaid text-xs">
+flowchart LR
+  D[run_task] -->|"qualifying_agents"| C["sorted candidates"]
+  C -->|"try in score order"| EX[executor.call_model]
+  EX -->|"success → response"| V[verify_task_output]
+  classDef deep background:#1e293b,color:#fff;
+  class D,V deep
+              </pre>
+              <p class="text-xs text-emerald-700 mt-3">Single source of truth in director.run_task. Delete routing.py.</p>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> <code>routing.py</code> defines <code>route_task()</code> (lines 18-76) with candidate selection and gate logic. <code>director.run_task</code> (lines 228-247) implements the same logic inline. <code>routing.py</code> is never imported by any module. This is dead code that creates confusion about where routing decisions actually live.</p>
+            <p><strong>Solution:</strong> Delete <code>routing.py</code>. The routing logic in <code>director.run_task</code> is the real implementation — it's already wired into both the autonomous loop and the issue bridge. Keeping two copies guarantees future divergence.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>Delete routing.py (76 lines of dead code)</li>
+              <li>Single source of truth for agent selection</li>
+              <li>Zero risk of routing logic diverging</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANDIDATE 3: Verification lacks codebase context -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">3. Give the verifier codebase context — right now it scores blind</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Worth exploring</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">ports &amp; adapters</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>issue_bridge.py:103-172 — <span class="text-slate-800">verify_task_output()</span></div>
+            <div>director.py:203-206 — <span class="text-slate-800">enrich_prompt()</span> (vault context)</div>
+            <div>context_orchestrator.py — <span class="text-slate-800">enrich_prompt()</span></div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-lg border border-red-200 bg-red-50/50 p-4">
+              <p class="text-xs font-semibold text-red-700 mb-3">BEFORE</p>
+              <pre class="mermaid text-xs">
+sequenceDiagram
+  participant IB as issue_bridge
+  participant D as director
+  participant V as verifier
+  participant E as executor
+
+  D->>E: run_task(prompt + vault_context)
+  E-->>D: response
+  IB->>V: verify(prompt, response)
+  Note over V: NO vault context
+  V-->>IB: score=90 (everything looks "comprehensive")
+              </pre>
+              <p class="text-xs text-red-700 mt-3">Verifier sees only the issue text + agent response. No repo structure, no existing code, no architecture. Gives 90 to "Step 1: Identify the Error Source" because it looks structured.</p>
+            </div>
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+              <p class="text-xs font-semibold text-emerald-700 mb-3">AFTER</p>
+              <pre class="mermaid text-xs">
+sequenceDiagram
+  participant IB as issue_bridge
+  participant CO as context_orchestrator
+  participant V as verifier
+  participant SC as scoring
+
+  IB->>CO: enrich_prompt(domain, issue_body)
+  CO-->>IB: vault_context + repo_tree
+  IB->>V: verify(prompt, response, context)
+  Note over V: Sees repo structure + existing code
+  V-->>SC: score=30 (response ignores codebase)
+              </pre>
+              <p class="text-xs text-emerald-700 mt-3">Verifier gets same vault context as the agent. Can check: "Does the response reference actual files? Does it match the codebase's patterns?"</p>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> <code>director.run_task</code> enriches prompts with vault context via <code>context_orchestrator.enrich_prompt()</code> (line 204). But <code>verify_task_output</code> in issue_bridge sends the raw prompt to the verifier with no context. The verifier has no idea what the codebase looks like, so it scores based on surface structure — bullet points and confident language get high scores regardless of substance.</p>
+            <p><strong>Solution:</strong> Pass the same vault context to the verifier. Add a <code>context</code> parameter to <code>verify_task_output</code> and include it in the verification prompt template. The verifier should see: repo tree, relevant file paths, the agent's system prompt, and the original issue — then judge whether the response actually addresses the real codebase.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>Verifier scores substance over structure</li>
+              <li>Hallucinated "Step 1: Identify..." gets low scores</li>
+              <li>Responses referencing real files get high scores</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANDIDATE 4: Triage classifier is bypassed -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">4. Wire triage_classifier into issue_bridge — currently it's a dead-end module</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Worth exploring</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>triage_classifier.py:19-72 — <span class="text-slate-800">classify_issue()</span></div>
+            <div>director.py:139-142 — <span class="text-slate-800">triage_issue()</span> — <span class="text-red-600">never called by issue_bridge</span></div>
+            <div>issue_bridge.py:188-210 — <span class="text-slate-800">bridge_issues()</span> — <span class="text-red-600">assumes ready-for-agent</span></div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> <code>triage_classifier.py</code> implements a rule-based classifier (label matching, keyword heuristics, body-length analysis) that categorizes issues as bug/enhancement and assigns a workflow state. But <code>issue_bridge.py</code> never calls it — line 188 fetches issues and line 196 iterates them, but the triage step is skipped entirely. The bridge assumes every fetched issue is already <code>ready-for-agent</code>. The classifier only exists as a helper in <code>director.triage_issue()</code> (line 139) which nothing calls.</p>
+            <p><strong>Solution:</strong> Add a triage step in <code>bridge_issues()</code> before dispatch. Call <code>classify_issue(issue["title"], issue["labels"], issue.get("body", ""))</code> and skip issues that return <code>needs-info</code> or <code>needs-triage</code>. This makes the pipeline self-healing — new issues get classified automatically instead of requiring manual labeling.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>New issues auto-classified on fetch</li>
+              <li>needs-info issues skipped (no wasted agent runs)</li>
+              <li>Classifier's state machine actually exercised</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANDIDATE 5: Staff plugin infrastructure is imported but never used -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">5. Clean dead imports — StaffSandbox, StaffLoader, StaffContext are imported but never instantiated</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">Strong</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>director.py:13-15 — <span class="text-red-600">from staff.sandbox import StaffSandbox</span> (never instantiated)</div>
+            <div>director.py:13-15 — <span class="text-red-600">from staff.loader import StaffLoader</span> (only used inside run_staff)</div>
+            <div>director.py:13-15 — <span class="text-red-600">from staff.plugin import StaffContext</span> (never used)</div>
+            <div>scoring.py:134-135 — <span class="text-red-600">_queue_for_confirmation()</span> stub (pass, never called)</div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> <code>director.py</code> imports <code>StaffSandbox</code>, <code>StaffLoader</code>, and <code>StaffContext</code> at the top level (lines 13-15) but only uses them inside <code>run_staff()</code> (line 431+). These imports create hard dependencies on the staff package for every director call, even though staff plugins are never invoked in the main flow. Similarly, <code>_queue_for_confirmation</code> in scoring.py is a stub that does nothing.</p>
+            <p><strong>Solution:</strong> Move staff imports inside <code>run_staff()</code> (lazy imports already used at line 439-440). Remove the top-level stub imports. Delete <code>_queue_for_confirmation</code> or implement it. This eliminates 3 unnecessary module-level dependencies.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>3 unused top-level imports removed</li>
+              <li>Staff package only loaded when staff tasks run</li>
+              <li>Cleaner dependency graph</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- CANDIDATE 6: Two entry points doing the same thing -->
+      <article class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xl font-semibold">6. Consolidate autonomous_loop.py and issue_bridge.py into one entry point</h2>
+          <div class="flex gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Speculative</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">ports &amp; adapters</span>
+          </div>
+        </div>
+        <div class="px-6 py-5 space-y-5">
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <div>autonomous_loop.py:562 — <span class="text-slate-800">if __name__</span> (curriculum + issue mode)</div>
+            <div>issue_bridge.py:269-280 — <span class="text-slate-800">bridge_poll()</span> (polling loop)</div>
+            <div>issue_bridge.py:282-293 — <span class="text-slate-800">if __name__</span> (single-run + polling)</div>
+          </div>
+
+          <div class="space-y-2">
+            <p><strong>Problem:</strong> <code>autonomous_loop.py</code> (562 lines) and <code>issue_bridge.py</code> (318 lines) both orchestrate the same pipeline: fetch tasks → dispatch to agents → score results. The autonomous loop has two modes: curriculum (synthetic) and issue-driven (delegates to <code>bridge_issues</code>). The issue bridge has its own polling loop (<code>bridge_poll</code>). Two entry points, two polling implementations, two CLI argument parsers — for what is fundamentally one pipeline.</p>
+            <p><strong>Solution:</strong> Merge into one entry point with mode selection: <code>python -m school --mode issues --repo user/repo</code> (issue-driven, the primary path) or <code>python -m school --mode curriculum</code> (synthetic fallback). One polling loop, one CLI, one place to add features. The issue_bridge flow becomes the default; curriculum becomes a legacy fallback.</p>
+            <ul class="list-disc pl-5 space-y-1 text-sm">
+              <li>One entry point, one polling loop</li>
+              <li>Issue-driven mode as default</li>
+              <li>Curriculum mode as fallback (or delete entirely)</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- TOP RECOMMENDATION -->
+      <section id="top-recommendation" class="rounded-xl border-2 border-emerald-500 bg-emerald-50 p-6">
+        <h2 class="text-xl font-bold text-emerald-900">Top Recommendation</h2>
+        <p class="mt-2 text-emerald-800"><strong>Candidate 1: Replace the static toy curriculum with a real codebase task adapter.</strong></p>
+        <p class="mt-2 text-sm text-emerald-700">This is the root cause of the "students produce nothing" problem. The CURRICULUM dict is 30 toy problems that agents have memorized. The EMA converges to 70 because every task is trivial. The gate system is decorative because no task is hard enough to fail.</p>
+        <p class="mt-2 text-sm text-emerald-700">The issue_bridge already provides the real-task path — it fetches GitHub issues and dispatches them. But the agents don't read the codebase before responding, so they produce generic advice instead of real fixes. The fix is: enrich the issue prompt with repo context (file tree, relevant source files) so agents can produce targeted fixes. Then the verifier (Candidate 3) checks whether the response actually references real files.</p>
+        <p class="mt-2 text-sm text-emerald-700">Candidates 2 and 5 (delete routing.py, clean dead imports) are quick wins — do them in the same pass. Candidate 4 (wire triage) is needed for the bridge to handle unlabeled issues. Candidate 6 (consolidate entry points) is a follow-up once the pipeline is stable.</p>
+      </section>
+
+    </main>
+  </body>
+</html>

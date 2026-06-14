@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-13T04:05:00.999348+00:00",
+  "domain": "_default",
+  "difficulty": "easy",
+  "agent": "foundry-coder-7b",
+  "prompt": "Write a single Python function that returns the factorial of n using recursion.",
+  "system_prompt": "You are a helpful coding assistant. Provide clear, correct, and concise answers.\n\n---\n### Context from Knowledge Vault\n**Relevant files from vault:**\n- `01-Projects/Agent School/school-core/cli.py` (relevance: 0.69)\n  ```\n  # Single agent error with trajectory — still show for transparency\n    if result[\"error\"] and result.get(\"trajectory\"):\n        print(f\"  Error from {result['agent']}: {result['error']}\")\n        print(f\"  (auto-scored as failure)\")\n        print(f\"  Trajectory saved: {result['trajectory']}\")\n      ...\n  ```\n- `01-Projects/Agent School/school-core/cli.py` (relevance: 0.69)\n  ```\n  print(f\"  Trajectory saved: {result['trajectory']}\")\n\n    if batch:\n        # Auto-evaluate: got a response = success\n        evaluate_and_update(result, 70, store=store)\n        old = result.get(\"old_score\")\n        new = result.get(\"new_score\")\n        crossed = result.get(\"gate_crossed\")\n        ...\n  ```\n- `01-Projects/Agent School/school-prototype/director_prototype.py` (relevance: 0.69)\n  ```\n  def get_score(agent_scores, domain):\n    return agent_scores.get(domain, agent_scores.get(\"_default\", 0))\n\ndef eligible_agents(domain, difficulty):\n    gate = GATES.get(difficulty)\n    if gate is None:\n        return []\n    eligible = []\n    for name, scores in agents.items():\n        if get_score(s...\n  ```\n---",
+  "response": "Certainly! Here's a simple Python function that calculates the factorial of a number `n` using recursion:\n\n```python\ndef factorial(n):\n    \"\"\"\n    Calculate the factorial of a given number n using recursion.\n    \n    Args:\n    n (int): The number to calculate the factorial of.\n    \n    Returns:\n    int: The factorial of n.\n    \n    Raises:\n    ValueError: If n is negative.\n    \"\"\"\n    if n < 0:\n        raise ValueError(\"Factorial is not defined for negative numbers.\")\n    elif n == 0 or n == 1:\n        return 1\n    else:\n        return n * factorial(n - 1)\n```\n\nThis function works as follows:\n- It first checks if `n` is negative and raises a `ValueError` if it is, since factorials are not defined for negative numbers.\n- If `n` is 0 or 1, it returns 1 because the factorial of 0 and 1 is 1.\n- For any other positive integer `n`, it recursively calls itself with `n-1` and multiplies the result by `n`.\n\nHere's an example of how you can use this function:\n\n```python\nprint(factorial(5))  # Output: 120\nprint(factorial(0))  # Output: 1\ntry:\n    print(factorial(-1))\nexcept ValueError as e:\n    print(e)  # Output: Factorial is not defined for negative numbers.\n```",
+  "task_score": null,
+  "old_score": 59.195499999999996,
+  "new_score": null,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "22"
+}

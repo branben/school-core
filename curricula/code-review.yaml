@@ -1,0 +1,48 @@
+domain: code-review
+description: >
+  Review code for correctness, maintainability, security, and style. Covers
+  structured review workflows, common anti-patterns, and providing actionable feedback.
+version: 1
+
+gate_steps:
+  - score_required: 0
+    description: "Easy — identify obvious issues"
+    task_count: 3
+    tasks:
+      - "Find and flag a hardcoded secret or API key in a code diff"
+      - "Identify a function that catches all exceptions with a bare `except:`"
+      - "Spot a variable that is assigned but never used"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 25
+    description: "Medium — logic, naming, structure"
+    task_count: 4
+    tasks:
+      - "Review a function with a data flow bug (wrong variable used in a calculation) and write a clear finding"
+      - "Flag a function that has too many parameters (>5) and suggest refactoring into a config object"
+      - "Identify a test that only tests the happy path and suggest missing edge cases"
+      - "Review a PR description that lacks context and identify what information is missing"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 50
+    description: "Hard — architecture, performance, security"
+    task_count: 4
+    tasks:
+      - "Review an N+1 query pattern in a database access layer and propose a fix using eager loading"
+      - "Identify a race condition in async code (missing lock or wrong shared state access)"
+      - "Review a migration script that could silently drop data and suggest safety guards"
+      - "Check for proper input validation in a public API endpoint and identify injection vectors"
+    evaluation_rubric:
+      task_score: 70
+
+  - score_required: 75
+    description: "Diploma — review process, mentorship, standards"
+    task_count: 3
+    tasks:
+      - "Establish code review guidelines for a team: what to check in each review, when to approve vs request changes"
+      - "Review a PR from a junior developer and write feedback that teaches, not just corrects"
+      - "Conduct a retrospective on the team's review process: find bottlenecks and propose improvements"
+    evaluation_rubric:
+      task_score: 70

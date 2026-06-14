@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-13T05:27:09.060018+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "foundry-coder-0.5b",
+  "prompt": "Write a Python function called `is_palindrome` that takes a string and returns True if it's a palindrome (case-insensitive, ignoring spaces and punctuation). Include a docstring and one assertion test.",
+  "system_prompt": "You are a senior Python coding assistant. Write clean, correct Python code. Follow PEP 8. Include docstrings and type hints. Only output the code — no explanation.",
+  "response": "python\n def is_palindrome(s):                                                        \n     \"\"\"                                                                      \n     Check if the input string is a palindrome, considering                   \n case-insensitivity,                                                          \n     ignoring spaces and punctuation.                                         \n                                                                              \n     Args:                                                                    \n     s (str): The string to check.                                            \n                                                                              \n     Returns:                                                                 \n     bool: True if the string is a palindrome, False otherwise.               \n     \"\"\"                                                                      \n     # Convert the string to lowercase and remove non-alphanumeric characters \n     cleaned_s = ''.join(char.lower() for char in s if char.isalnum())        \n     # Compare the cleaned string with its reverse                            \n     return cleaned_s == cleaned_s[::-1]                                      \n                                                                              \n # Test the function with provided data points                                \n assert is_palindrome(\"A man, a plan, a canal, Panama\") == True, \"Test case 1 \n failed\"                                                                      \n assert is_palindrome(\"No lemon, no melon\") == True, \"Test case 2 failed\"     \n assert is_palindrome(\"Hello, World!\") == False, \"Test case 3 failed\"         \n assert is_palindrome(\"\") == True, \"Test case 4 failed\"                       \n\nThis code snippet defines a function is_palindrome that checks if a given string\nis a palindrome, considering case insensitivity and ignoring spaces and \npunctuation. It uses list comprehension for cleaning the string and slicing to \ncompare it with its reverse. The assertions ensure the function behaves as \nexpected across various scenarios.",
+  "task_score": 70.0,
+  "old_score": 15.0,
+  "new_score": 15.0,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "66"
+}

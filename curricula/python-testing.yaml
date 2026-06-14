@@ -1,0 +1,77 @@
+domain: python-testing
+description: >
+  Write, fix, and design test suites using pytest. Covers unit tests, fixtures,
+  parameterization, mocking, integration tests, and test strategy. Calibrated for
+  Python codebases with pytest 7+.
+version: 1
+
+gate_steps:
+  - score_required: 0
+    description: "Easy — basic pytest usage, single assertions"
+    task_count: 3
+    tasks:
+      - "Write a single assert statement validating a function return value"
+      - "Run `pytest` on a known-passing test file and interpret the output"
+      - "Add a test for a pure function that takes two integers and returns their sum"
+    evaluation_rubric:
+      task_score: 70
+      conditions:
+        - "Test file runs without errors"
+        - "Assertion actually validates the expected behavior"
+        - "Test names follow pytest conventions (test_ prefix)"
+
+  - score_required: 25
+    description: "Medium — fixture setup, parameterization, edge cases"
+    task_count: 4
+    tasks:
+      - "Fix a failing assertion by correcting the expected value or the code under test"
+      - "Convert a test with repeated setup code to use a pytest fixture"
+      - "Parameterize a test to cover 3+ edge cases (empty input, None, large values)"
+      - "Add a test that verifies an exception is raised for invalid input (pytest.raises)"
+    evaluation_rubric:
+      task_score: 70
+      conditions:
+        - "All original tests still pass"
+        - "Fixtures use proper scope (function/module/session)"
+        - "Parameterized test covers boundary conditions, not just obvious cases"
+
+  - score_required: 50
+    description: "Hard — mocking, integration tests, test isolation"
+    task_count: 4
+    tasks:
+      - "Mock an external API call using pytest-monkeypatch or unittest.mock so tests run without network"
+      - "Write an integration test that exercises a database read/write path using a temporary database"
+      - "Add conftest.py fixtures shared across multiple test files in a module"
+      - "Refactor a flaky test (depends on test order or shared state) to be properly isolated"
+    evaluation_rubric:
+      task_score: 70
+      conditions:
+        - "Mocked tests do not make real network/filesystem calls"
+        - "Integration tests clean up resources after execution"
+        - "Refactored tests pass in any order when run with pytest-random-order"
+
+  - score_required: 75
+    description: "Diploma — test strategy, coverage analysis, test suite design"
+    task_count: 3
+    tasks:
+      - "Design a test strategy for a new feature with 3+ acceptance criteria, covering unit, integration, and edge case levels"
+      - "Review an existing test suite and identify coverage gaps using coverage.py; propose targeted additions"
+      - "Set up a CI pipeline step that runs tests with pytest-xdist parallelization and fails on coverage drop below threshold"
+    evaluation_rubric:
+      task_score: 70
+      conditions:
+        - "Test strategy document includes clear scope, risk areas, and success criteria"
+        - "Coverage review identifies at least 2 genuine gaps (not false positives)"
+        - "CI config is reproducible from documentation alone"
+
+  - score_required: 95
+    description: "Expert — mentor, framework extension, tooling"
+    task_count: 2
+    tasks:
+      - "Write a custom pytest plugin (e.g., custom marker, CLI option, or result reporter)"
+      - "Mentor a peer through a test design review: review their test PR and provide structured feedback on coverage, isolation, and assertion quality"
+    evaluation_rubric:
+      task_score: 70
+      conditions:
+        - "Plugin is installable via pip and registered in pyproject.toml entry points"
+        - "Mentoring feedback identifies at least 3 actionable improvements"

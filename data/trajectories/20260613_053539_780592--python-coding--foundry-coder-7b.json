@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-13T05:35:39.780592+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "foundry-coder-7b",
+  "prompt": "Write a Python function called `is_palindrome` that takes a string and returns True if it's a palindrome (case-insensitive, ignoring spaces and punctuation). Include a docstring and one assertion test.",
+  "system_prompt": "You are a senior Python coding assistant. Write clean, correct Python code. Follow PEP 8. Include docstrings and type hints. Only output the code — no explanation.",
+  "response": "python\n import re                                                                    \n                                                                              \n def is_palindrome(s: str) -> bool:                                           \n     \"\"\"                                                                      \n     Check if the given string is a palindrome, ignoring case, spaces, and    \n punctuation.                                                                 \n                                                                              \n     Args:                                                                    \n         s (str): The string to check.                                        \n                                                                              \n     Returns:                                                                 \n         bool: True if the string is a palindrome, False otherwise.           \n     \"\"\"                                                                      \n     cleaned = re.sub(r'[\\W_]', '', s.lower())                                \n     return cleaned == cleaned[::-1]                                          \n                                                                              \n # Assertion test                                                             \n assert is_palindrome(\"A man, a plan, a canal, Panama\") == True",
+  "task_score": 70.0,
+  "old_score": 59.2,
+  "new_score": 30.948987684999995,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "69"
+}

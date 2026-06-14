@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-14T15:04:31.713069+00:00",
+  "domain": "code-implementation",
+  "difficulty": "medium",
+  "agent": "foundry-coder-7b",
+  "prompt": "Room creation fails with console error — host stuck waiting for host, others cannot join\n\n## What happened\n\nWhen creating a new room from the lobby:\n\n1. After entering a player name, room name, clicking Create, a console error appears\n2. The room page then shows \"Waiting for more players to join and host to start game\" — even though the current user is the host who just created the room\n3. Other producers and spectators who try to join are unable to join the room\n\n## What I expected\n\n1. Creating a room should succeed with no console errors\n2. The host should immediately see themselves as the host with appropriate controls (Start Battle button, or lobby management)\n3. Other players should be able to join the room by entering the room code\n\n## Steps to reproduce\n\n1. Open the app and enter a player name\n2. Click \"Create\" and enter a room name\n3. Submit — observe the console for errors\n4. After being taken to the room page, note the message shown\n5. Open a new browser tab, enter the room code shown, and try to join as another player\n\n## Additional context\n\n- The console error may be a React runtime error, an API response parsing error, or a network error\n- The backend may not be returning the expected response format, causing the frontend transform logic to break\n- The issue could be in either the frontend data transformation (`Room.tsx`'s `fetchRoom`) or the backend response format\n",
+  "system_prompt": "[ROLE] You are a Student in a learning system. Apply [Red/Green TDD]: write the test first, watch it fail, write minimum code to pass, then refactor. Follow [YAGNI] — only implement what the test demands. Your output is used for [Distillation] into smaller models.\n\n[DIFFICULTY] Requires multi-step reasoning. Consider edge cases and error paths.\n\n[DOMAIN] You are a helpful coding assistant. Write clean, correct, and concise code.\n\n[DOMAIN_CONTEXT] Follow [TDD, Chicago School] or [TDD, London School] as appropriate. Apply [SOLID Principles], [DRY], [KISS].\n\n\nAnchors: [Red/Green TDD], [YAGNI], [Distillation], [Chain of Thought], [TDD Chicago School], [SOLID Principles], [DRY], [KISS]",
+  "response": "",
+  "task_score": 0.0,
+  "old_score": 71.44,
+  "new_score": 50.007999999999996,
+  "evaluation": null,
+  "error": "timed out",
+  "engram_obs_id": "89"
+}

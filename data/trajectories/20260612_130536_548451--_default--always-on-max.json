@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-12T13:05:36.548451+00:00",
+  "domain": "_default",
+  "difficulty": "easy",
+  "agent": "always-on-max",
+  "prompt": "Write a Python function to check if a string is a palindrome.",
+  "system_prompt": "You are a helpful coding assistant. Provide clear, correct, and concise answers.\n\n---\n### Context from Knowledge Vault\n**Relevant files from vault:**\n- `01-Projects/Agent School/school-core/engram_adapter.py` (relevance: 0.69)\n  ```\n  score_str = f\" score={score}\" if score is not None else \" (unscored)\"\n    error_flag = \" ERROR\" if trajectory.get(\"error\") else \"\"\n    title = f\"Trajectory: {domain}/{trajectory.get('difficulty', '?')} - {agent}{score_str}{error_flag}\"\n\n    msg_body = json.dumps(trajectory, ensure_ascii=False)\n\n    ...\n  ```\n- `04-Reference/Papers/OmniRoute AI Paper Optimization Analysis.md` (relevance: 0.69)\n  ```\n  ```python\ndef generate_and_verify(task, language=\"python\"):\n    \"\"\"Generate code, verify it compiles, retry if broken.\"\"\"\n\n    for attempt in range(3):\n        response = call_ollama_combo(\"ollama-coding\", task)\n\n        if language == \"python\":\n            try:\n                ast.parse(response)\n ...\n  ```\n- `01-Projects/Agent School/school-prototype/director_prototype.py` (relevance: 0.69)\n  ```\n  outcome = input(\"Outcome? (s=success, p=partial, f=fail): \").strip().lower()\n    task_score = {\"s\": 70, \"p\": 40, \"f\": 10}.get(outcome)\n    if task_score is None:\n        print(\"Invalid outcome, no score update.\")\n        return\n    old = get_score(agents[chosen], domain)\n    new = old * 0.7 + task_s...\n  ```\n---",
+  "response": "```python\ndef is_palindrome(s: str) -> bool:\n    \"\"\"Check if a string is a palindrome (case-insensitive, ignoring non-alphanumeric characters).\"\"\"\n    cleaned = ''.join(c.lower() for c in s if c.isalnum())\n    return cleaned == cleaned[::-1]\n```\n\n**Usage:**\n\n```python\nprint(is_palindrome(\"racecar\"))        # True\nprint(is_palindrome(\"A man, a plan, a canal: Panama\"))  # True\nprint(is_palindrome(\"hello\"))          # False\n```\n\n**How it works:**\n\n1. **Clean** the string — remove non-alphanumeric characters and convert to lowercase.\n2. **Compare** the cleaned string to its reverse (`[::-1]`).\n3. If they match, it's a palindrome.\n\n**Time complexity:** O(n)\n**Space complexity:** O(n)",
+  "task_score": null,
+  "old_score": 35.0,
+  "new_score": null,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "17"
+}

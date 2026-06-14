@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-12T12:16:02.320510+00:00",
+  "domain": "python-coding",
+  "difficulty": "easy",
+  "agent": "smollm2:1.7b",
+  "prompt": "route 0",
+  "system_prompt": "smollm2:1.7b",
+  "response": "The route you requested does not exist. Please check the spelling and try again.",
+  "task_score": 70,
+  "old_score": 30.0,
+  "new_score": 42.0,
+  "evaluation": null,
+  "error": null,
+  "engram_obs_id": "11"
+}

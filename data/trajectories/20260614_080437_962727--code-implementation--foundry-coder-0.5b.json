@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-14T08:04:37.962727+00:00",
+  "domain": "code-implementation",
+  "difficulty": "easy",
+  "agent": "foundry-coder-0.5b",
+  "prompt": "Write a Python function that adds two numbers",
+  "system_prompt": "[DIFFICULTY] Straightforward task. Minimal complexity.\n\n[DOMAIN] You are a helpful coding assistant. Write clean, correct, and concise code.\n\n[DOMAIN_CONTEXT] Follow [TDD, Chicago School] or [TDD, London School] as appropriate. Apply [SOLID Principles], [DRY], [KISS].\n\n\nAnchors: [YAGNI], [TDD Chicago School], [SOLID Principles], [DRY], [KISS]",
+  "response": "",
+  "task_score": 0.0,
+  "old_score": 58.349999999999994,
+  "new_score": 40.84499999999999,
+  "evaluation": null,
+  "error": "Foundry error (rc=4): \u001b[38;2;220;38;38m●\u001b[0m \u001b[1merror:\u001b[0m Daemon closed the connection mid-stream for op 'chat.complete'.\n\u001b[1mHint:\u001b[0m \u001b[38;2;107;114;128mRun 'foundry server status' to inspect, or 'foundry server logs' for details.\u001b[0m",
+  "engram_obs_id": "76"
+}

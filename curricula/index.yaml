@@ -1,0 +1,22 @@
+# Curricula Index — Agent School
+# Director reads this to discover available curricula.
+# Add new curricula by creating a YAML file and adding an entry here.
+
+curricula:
+  python-testing:
+    file: python-testing.yaml
+    description: "Write, fix, and design test suites using pytest"
+    gates: [0, 25, 50, 75, 95]
+    prerequisites: []
+
+  git-operations:
+    file: git-operations.yaml
+    description: "Version control workflows and history management with git"
+    gates: [0, 25, 50, 75]
+    prerequisites: []
+
+  code-review:
+    file: code-review.yaml
+    description: "Structured code review for correctness, security, and maintainability"
+    gates: [0, 25, 50, 75]
+    prerequisites: []
