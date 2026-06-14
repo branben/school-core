@@ -55,6 +55,9 @@ VERIFICATION_PROMPT_TEMPLATE = """You are a verification evaluator. Your job: de
 Domain: {domain}
 Difficulty: {difficulty}
 
+[CODEBASE CONTEXT]
+{codebase_context}
+
 Think through this step by step. Then output ONLY a JSON object:
 {{
   "score": <integer 0-100>,
@@ -105,6 +108,7 @@ def verify_task_output(
     agent_response: str,
     domain: str,
     difficulty: str,
+    codebase_context: str = "",
     verification_agent: str = "foundry-coder-1.5b",
 ) -> dict:
     """Verify agent output correctness using a structured evaluation prompt.
@@ -117,6 +121,7 @@ def verify_task_output(
         agent_response=agent_response,
         domain=domain,
         difficulty=difficulty,
+        codebase_context=codebase_context,
     )
 
     try:
@@ -193,10 +198,26 @@ def bridge_issues(
         sys.stderr.write("[issue_bridge] No actionable issues found.\n")
         return results
 
+    # Clone repo and build codebase context for enrichment
+    from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
+    cleanup_stale_caches()
+    repo_path = clone_repo(repo) if not dry_run else None
+
     for issue in issues:
         num = issue["issue_number"]
         if num in processed:
             continue
+
+        # Build codebase context for this issue
+        issue_text = f"{issue['title']}\n\n{issue.get('body', '')}"
+        codebase_ctx = ""
+        if repo_path:
+            codebase_ctx = build_codebase_context(repo_path, issue_text)
+
+        # Enrich prompt with codebase context
+        enriched_prompt = issue["prompt"]
+        if codebase_ctx:
+            enriched_prompt = f"{codebase_ctx}\n\n## Issue\n{issue['prompt']}"
 
         if dry_run:
             results.append({
@@ -205,13 +226,14 @@ def bridge_issues(
                 "domain": issue["domain"],
                 "difficulty": issue["difficulty"],
                 "status": "dry_run",
+                "codebase_context_chars": len(codebase_ctx),
             })
             processed.add(num)
             continue
 
         try:
             task_result = run_task(
-                prompt=issue["prompt"],
+                prompt=enriched_prompt,
                 domain=issue["domain"],
                 difficulty=issue["difficulty"],
                 force_agent=force_agent,
@@ -228,12 +250,13 @@ def bridge_issues(
             continue
 
         if task_result["status"] == "success":
-            # Verify output correctness instead of hardcoded score
+            # Verify output correctness with codebase context
             verification = verify_task_output(
-                original_prompt=issue["prompt"],
+                original_prompt=enriched_prompt,
                 agent_response=task_result["response"],
                 domain=issue["domain"],
                 difficulty=issue["difficulty"],
+                codebase_context=codebase_ctx,
             )
             task_score = verification["score"]
             sys.stderr.write(f"[issue_bridge] Verification: {verification['verdict']} (score={task_score}) - {verification['reasoning'][:100]}\n")

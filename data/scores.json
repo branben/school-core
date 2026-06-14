@@ -23,7 +23,7 @@
     "foundry-coder-7b": {
         "_default": 59.2,
         "code-implementation": 50.007999999999996,
-        "debugging": 68.18484399999998,
+        "debugging": 23.38740149199999,
         "git-operations": 56.15559999999999,
         "python-coding": 21.948987684999995,
         "python-testing": 53.8410565
@@ -167,7 +167,7 @@
     },
     "ses_scores_001": {
         "_default": 25.0,
-        "python-testing": 49.0
+        "python-testing": 70.0
     },
     "ses_timeout_001": {
         "_default": 25.0,
