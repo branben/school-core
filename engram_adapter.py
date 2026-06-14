@@ -33,6 +33,20 @@ def save_trajectory(trajectory: dict, filepath: str) -> Optional[str]:
     error_flag = " ERROR" if trajectory.get("error") else ""
     title = f"Trajectory: {domain}/{trajectory.get('difficulty', '?')} - {agent}{score_str}{error_flag}"
 
+    # Enrich observation with adversarial review findings (backward compatible)
+    if "adversarial_review" in trajectory:
+        review = trajectory["adversarial_review"]
+        trajectory["_review_findings_count"] = len(review.get("findings", []))
+        trajectory["_review_verdict"] = review.get("verdict", "?")
+        trajectory["_review_score"] = review.get("score", 0.0)
+
+    # Include grounded score components for Layer 3 pattern extraction
+    if "grounded_score" in trajectory:
+        gs = trajectory["grounded_score"]
+        if isinstance(gs, dict):
+            trajectory["_grounded_components"] = gs.get("components", {})
+            trajectory["_grounded_total"] = gs.get("total", 0.0)
+
     msg_body = json.dumps(trajectory, ensure_ascii=False)
 
     try:

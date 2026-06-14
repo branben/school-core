@@ -10,6 +10,7 @@ Defines data structures and serialization for sleep/wake lifecycle:
 """
 
 import json
+import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -254,8 +255,11 @@ def execute_sleep(
     )
     save_consolidation(consolidation)
 
-    # 5. Clear: log KV cache clearing (actual clearing is model-backend-specific)
-    # 6. Log: record sleep cycle to Library Log
+    # 5. Consolidate Layer 2 -> Layer 3: write high-value observations to archival YAML
+    _run_layer3_consolidation(session_id, episodic_history or [])
+
+    # 6. Clear: log KV cache clearing (actual clearing is model-backend-specific)
+    # 7. Log: record sleep cycle to Library Log
     log_entry = {
         "session_id": session_id,
         "agent": agent,
@@ -266,6 +270,33 @@ def execute_sleep(
     append_library_log(log_entry)
 
     return {"state": state, "consolidation": consolidation, "log_entry": log_entry}
+
+
+def _run_layer3_consolidation(session_id: str, episodic_history: list) -> None:
+    """Best-effort Layer 2 -> Layer 3 consolidation.
+
+    Extracts unique domains from episodic history and writes consolidation
+    YAML files for each. Failure is logged, not fatal.
+    """
+    try:
+        from consolidation_writer import write_consolidation
+        from engram_adapter import engram_available
+
+        if not engram_available() and not episodic_history:
+            return
+
+        # Group observations by domain
+        domains = set(e.get("domain", "_default") for e in episodic_history)
+        for domain in domains:
+            domain_obs = [e for e in episodic_history if e.get("domain", "_default") == domain]
+            try:
+                write_consolidation(session_id, domain, domain_obs)
+            except Exception as e:
+                sys.stderr.write(
+                    f"[sleep] consolidation write failed for {domain}: {e}\n"
+                )
+    except Exception as e:
+        sys.stderr.write(f"[sleep] layer 3 consolidation step failed: {e}\n")
 
 
 def _consolidate_episodic(episodic_history: list) -> str:
