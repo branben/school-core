@@ -1,7 +1,7 @@
 # GitHub Issue Fetcher Configuration
 # Point the Agent School at a repo to autonomously triage and solve issues.
 
-repo: "branben/sound-royale-ny"   # owner/repo format, e.g. "user/my-project"
+repo: "branben/school-core"        # owner/repo format, e.g. "user/my-project"
 poll_interval_seconds: 300        # How often to poll for new issues (seconds)
 labels: ["bug", "enhancement"]    # Issue labels to fetch
 
