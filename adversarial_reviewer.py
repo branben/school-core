@@ -113,7 +113,7 @@ class ReviewResult:
             "lens_used": self.lens_used,
             "confidence": self.confidence,
             "gaps": self.gaps,
-            "suggestions": self.suggestion,
+            "suggestions": self.suggestions,
         }
 
     def to_json(self) -> str:

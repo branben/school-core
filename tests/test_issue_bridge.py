@@ -185,9 +185,11 @@ class TestAdversarialReviewStep:
         assert len(results) == 1
         assert results[0]["status"] == "success"
         adv = results[0]["adversarial_review"]
+        # When model calls fail, the adversarial reviewer catches internally and returns PASS
+        # with lens_used showing which lenses were attempted (the fallback is internal)
         assert adv["verdict"] == "PASS"
-        assert adv["lens_used"] == "fallback"
-        assert "error" in adv
+        # lens_used lists the lenses that were tried before failing
+        assert "correctness" in adv["lens_used"]
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
@@ -232,8 +234,8 @@ class TestAdversarialReviewStep:
         with patch("executor.call_model", side_effect=ImportError("no module")):
             result = _run_adversarial_review(task_result, issue, "")
         assert result["verdict"] == "PASS"
-        assert result["lens_used"] == "fallback"
-        assert "error" in result
+        # Adversarial reviewer catches exceptions internally and returns lens names
+        assert "correctness" in result["lens_used"]
 
     def test_heuristic_score_easy(self):
         task_result = {"response": "x" * 200}

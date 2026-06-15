@@ -389,7 +389,7 @@ def _run_adversarial_review(
                 "prompt": issue["prompt"],
             },
             codebase_context=codebase_ctx,
-            lens_types=LensType,
+            lens_types=list(LensType),
         )
         return review_result.to_dict()
     except Exception as e:

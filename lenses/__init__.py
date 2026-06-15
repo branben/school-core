@@ -6,19 +6,6 @@ review axis. Lenses are stateless — the AdversarialReviewer orchestrates them.
 
 from adversarial_reviewer import LensType
 
-
-def get_lens_prompt(lens_type: LensType) -> str:
-    """Get the prompt template for a given lens type."""
-    return LENS_PROMPTS.get(lens_type, LENS_PROMPTS[LensType.CORRECTNESS])
-
-
-LENS_PROMPTS: dict[LensType, str] = {
-    LensType.CORRECTNESS: _CORRECTNESS_PROMPT,
-    LensType.SECURITY: _SECURITY_PROMPT,
-    LensType.COMPLETENESS: _COMPLETENESS_PROMPT,
-    LensType.SIMPLICITY: _SIMPLICITY_PROMPT,
-}
-
 _CORRECTNESS_PROMPT = """\
 You are a CORRECTNESS reviewer. Your job: find logic errors, wrong assumptions, \
 and incorrect solutions.
@@ -71,3 +58,15 @@ Focus on:
 5. Is the code self-documenting, or does it need explanation?
 
 This lens is deferred for Approach A. Only flag complexity that actively harms correctness."""
+
+LENS_PROMPTS: dict[LensType, str] = {
+    LensType.CORRECTNESS: _CORRECTNESS_PROMPT,
+    LensType.SECURITY: _SECURITY_PROMPT,
+    LensType.COMPLETENESS: _COMPLETENESS_PROMPT,
+    LensType.SIMPLICITY: _SIMPLICITY_PROMPT,
+}
+
+
+def get_lens_prompt(lens_type: LensType) -> str:
+    """Get the prompt template for a given lens type."""
+    return LENS_PROMPTS.get(lens_type, LENS_PROMPTS[LensType.CORRECTNESS])
