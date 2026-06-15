@@ -89,7 +89,11 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_successful_bridge(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_successful_bridge(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 10, "title": "Fix the thing", "body": "",
@@ -144,7 +148,11 @@ class TestBridgeIssues:
 class TestAdversarialReviewStep:
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_adversarial_review_attached_to_result(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_adversarial_review_attached_to_result(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 50, "title": "Review me", "body": "body",
@@ -193,7 +201,11 @@ class TestAdversarialReviewStep:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_combined_score_uses_all_three_signals(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_combined_score_uses_all_three_signals(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 52, "title": "Score test", "body": "",
@@ -210,7 +222,9 @@ class TestAdversarialReviewStep:
         assert results[0]["status"] == "success"
         assert "new_score" in results[0]
 
-    def test_run_adversarial_review_returns_dict(self):
+    @patch("executor.call_model")
+    def test_run_adversarial_review_returns_dict(self, mock_call_model):
+        mock_call_model.return_value = '{"findings": []}'
         task_result = {
             "status": "success",
             "response": "def hello(): return 'world'",
