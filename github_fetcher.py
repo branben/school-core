@@ -128,6 +128,10 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
     args = ["issue", "list", "--repo", repo, "--state", "open",
             "--json", "number,title,labels,body", "--limit", "50"]
 
+    if labels:
+        for label in labels:
+            args.extend(["--label", label])
+
     stdout = _gh_command(args)
     if stdout is None:
         return []
@@ -137,13 +141,6 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
     except json.JSONDecodeError as e:
         sys.stderr.write(f"[github_fetcher] Failed to parse gh output: {e}\n")
         return []
-
-    if labels:
-        label_set = set(labels)
-        raw_issues = [
-            issue for issue in raw_issues
-            if any(l.get("name", "") in label_set for l in issue.get("labels", []))
-        ]
 
     config = load_config()
     domain_overrides = config.get("domain_overrides", {})
