@@ -109,7 +109,7 @@ def verify_task_output(
     domain: str,
     difficulty: str,
     codebase_context: str = "",
-    verification_agent: str = "foundry-coder-1.5b",
+    verification_agent: str = "gemini-2.0-flash",
 ) -> dict:
     """Verify agent output correctness using a structured evaluation prompt.
 
@@ -173,6 +173,51 @@ def verify_task_output(
             "reasoning": f"Parse error: {e}",
             "gaps": ["Verification response unparseable"],
             "strengths": [],
+        }
+
+
+def _run_adversarial_review(
+    task_result: dict,
+    issue: dict,
+    codebase_ctx: str,
+) -> dict:
+    """Run adversarial review on a successful task result.
+
+    Returns the review as a dict, or a fallback on failure.
+    Lazy-imports adversarial_reviewer and executor to avoid circular deps.
+    """
+    try:
+        from adversarial_reviewer import AdversarialReviewer, LensType
+        from executor import call_model
+
+        # Use cloud model for adversarial review (fast, reliable); avoid local foundry models
+        # which can hang with 300s timeouts on M1
+        _call_model = lambda prompt, system_prompt=None, **kw: call_model("gemini-2.0-flash", prompt, system_prompt=system_prompt, **kw)
+        reviewer = AdversarialReviewer(call_model_fn=_call_model)
+        review_result = reviewer.review(
+            output=task_result["response"],
+            task={
+                "title": issue["title"],
+                "body": issue.get("body", ""),
+                "domain": issue["domain"],
+                "difficulty": issue["difficulty"],
+                "prompt": issue["prompt"],
+            },
+            codebase_context=codebase_ctx,
+            lens_types=list(LensType),
+        )
+        return review_result.to_dict()
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] Adversarial review failed, falling back: {e}\n")
+        return {
+            "verdict": "PASS",
+            "score": 50.0,
+            "findings": [],
+            "lens_used": "fallback",
+            "confidence": 0.0,
+            "gaps": [],
+            "suggestions": [],
+            "error": str(e),
         }
 
 
@@ -314,7 +359,7 @@ def bridge_issues(
     return results
 
 
-def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optional[List[str]] = None) -> None:
+def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optional[List[str]] = None, force_agent: Optional[str] = None) -> None:
     """Polling loop: fetch and bridge issues every `interval` seconds.
 
     Reads repo from config/github.yaml if not provided.
@@ -331,7 +376,7 @@ def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optiona
 
     try:
         while True:
-            results = bridge_issues(repo, labels)
+            results = bridge_issues(repo, labels, force_agent=force_agent)
             if results:
                 ok = sum(1 for r in results if r["status"] == "success")
                 fail = sum(1 for r in results if r["status"] != "success" and r["status"] != "dry_run")
@@ -340,70 +385,6 @@ def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optiona
             time.sleep(interval)
     except KeyboardInterrupt:
         print("\n[issue_bridge] Stopped.")
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Issue→Task Bridge")
-    parser.add_argument("--repo", help="Repository to poll (owner/repo)")
-    parser.add_argument("--interval", type=int, default=300, help="Poll interval in seconds")
-    parser.add_argument("--labels", help="Comma-separated label filter")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
-    parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
-    args = parser.parse_args()
-
-    labels = args.labels.split(",") if args.labels else None
-    if args.once:
-        results = bridge_issues(args.repo, labels, dry_run=args.dry_run)
-        if not results:
-            print("No new issues to bridge.")
-        else:
-            for r in results:
-                print(f"  #{r['issue_number']} [{r['domain']}/{r['difficulty']}] {r['title'][:60]} → {r['status']}")
-    else:
-        bridge_poll(args.repo, args.interval, labels)
-
-
-def _run_adversarial_review(
-    task_result: dict,
-    issue: dict,
-    codebase_ctx: str,
-) -> dict:
-    """Run adversarial review on a successful task result.
-
-    Returns the review as a dict, or a fallback on failure.
-    Lazy-imports adversarial_reviewer and executor to avoid circular deps.
-    """
-    try:
-        from adversarial_reviewer import AdversarialReviewer, LensType
-        from executor import call_model
-
-        reviewer = AdversarialReviewer(call_model_fn=call_model)
-        review_result = reviewer.review(
-            output=task_result["response"],
-            task={
-                "title": issue["title"],
-                "body": issue.get("body", ""),
-                "domain": issue["domain"],
-                "difficulty": issue["difficulty"],
-                "prompt": issue["prompt"],
-            },
-            codebase_context=codebase_ctx,
-            lens_types=list(LensType),
-        )
-        return review_result.to_dict()
-    except Exception as e:
-        sys.stderr.write(f"[issue_bridge] Adversarial review failed, falling back: {e}\n")
-        return {
-            "verdict": "PASS",
-            "score": 50.0,
-            "findings": [],
-            "lens_used": "fallback",
-            "confidence": 0.0,
-            "gaps": [],
-            "suggestions": [],
-            "error": str(e),
-        }
 
 
 def _heuristic_score(task_result: dict, issue: dict) -> float:
@@ -420,3 +401,26 @@ def _heuristic_score(task_result: dict, issue: dict) -> float:
     weight = difficulty_weights.get(difficulty, 0.8)
 
     return length_score * weight
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Issue→Task Bridge")
+    parser.add_argument("--repo", help="Repository to poll (owner/repo)")
+    parser.add_argument("--interval", type=int, default=300, help="Poll interval in seconds")
+    parser.add_argument("--labels", help="Comma-separated label filter")
+    parser.add_argument("--force-agent", help="Skip readiness checks; use a specific agent directly")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
+    parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
+    args = parser.parse_args()
+
+    labels = args.labels.split(",") if args.labels else None
+    if args.once:
+        results = bridge_issues(args.repo, labels, force_agent=args.force_agent, dry_run=args.dry_run)
+        if not results:
+            print("No new issues to bridge.")
+        else:
+            for r in results:
+                print(f"  #{r['issue_number']} [{r['domain']}/{r['difficulty']}] {r['title'][:60]} → {r['status']}")
+    else:
+        bridge_poll(args.repo, args.interval, labels, force_agent=args.force_agent)

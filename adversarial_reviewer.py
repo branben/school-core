@@ -316,17 +316,19 @@ class AdversarialReviewer:
 
     def _parse_lens_output(self, raw: str, lens_name: str) -> ReviewResult:
         """Parse the model's structured JSON output into ReviewResult."""
+        import re
         try:
-            json_str = raw
+            json_str = raw.strip()
             if "```" in json_str:
-                start = json_str.find("```")
-                end = json_str.find("```", start + 3)
-                if end != -1:
-                    json_str = json_str[start + 3:end].strip()
-                    if json_str.startswith("json"):
-                        json_str = json_str[4:].strip()
-            data = json.loads(json_str)
-        except (json.JSONDecodeError, KeyError):
+                match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", json_str)
+                if match:
+                    json_str = match.group(1).strip()
+            json_str = re.sub(r"^json\s*", "", json_str, flags=re.IGNORECASE)
+            idx = json_str.find("{")
+            if idx >= 0:
+                json_str = json_str[idx:]
+            data = json.loads(json_str, strict=False)
+        except (json.JSONDecodeError, KeyError, ValueError):
             logger.warning("lens_parse_failed", extra={"lens": lens_name, "raw": raw[:200]})
             return ReviewResult(verdict=Verdict.PASS, findings=[], lens_used=lens_name)
 
