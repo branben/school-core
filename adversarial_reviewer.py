@@ -156,7 +156,7 @@ class AdversarialReviewer:
     def __init__(self, call_model_fn: Callable):
         """Initialize with a model call function.
 
-        call_model_fn(prompt: str, system_prompt: str, **kwargs) -> str
+        call_model_fn(prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str
         """
         self._call_model = call_model_fn
         self._stats: dict[str, list[bool]] = {}  # lens_name -> [found_issues_bool]
@@ -273,7 +273,7 @@ class AdversarialReviewer:
         user_prompt = self._build_user_prompt(output, task, codebase_context)
 
         try:
-            raw = self._call_model("foundry-coder-1.5b", user_prompt, system_prompt=system_prompt)
+            raw = self._call_model(user_prompt, system_prompt=system_prompt)
             return self._parse_lens_output(raw, lens_type.value)
         except Exception as e:
             logger.warning("lens_review_failed", extra={"lens": lens_type.value, "error": str(e)})
@@ -317,10 +317,17 @@ class AdversarialReviewer:
     def _parse_lens_output(self, raw: str, lens_name: str) -> ReviewResult:
         """Parse the model's structured JSON output into ReviewResult."""
         try:
-            json_str = AdversarialReviewer._extract_json(raw)
-            data = json.loads(json_str, strict=False)
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning("lens_parse_failed", extra={"lens": lens_name, "error": str(e), "raw": raw[:200]})
+            json_str = raw
+            if "```" in json_str:
+                start = json_str.find("```")
+                end = json_str.find("```", start + 3)
+                if end != -1:
+                    json_str = json_str[start + 3:end].strip()
+                    if json_str.startswith("json"):
+                        json_str = json_str[4:].strip()
+            data = json.loads(json_str)
+        except (json.JSONDecodeError, KeyError):
+            logger.warning("lens_parse_failed", extra={"lens": lens_name, "raw": raw[:200]})
             return ReviewResult(verdict=Verdict.PASS, findings=[], lens_used=lens_name)
 
         findings = []
@@ -345,35 +352,6 @@ class AdversarialReviewer:
             lens_used=lens_name,
             confidence=min(1.0, len(findings) * 0.3 + 0.2) if findings else 0.5,
         )
-
-    @staticmethod
-    def _extract_json(raw: str) -> str:
-        """Extract valid JSON from a model response that may contain prefixes,
-        markdown code blocks, or truncated output."""
-        import re as _re
-
-        json_str = raw.strip()
-        # Strip common prefixes models add: "json", "JSON"
-        json_str = _re.sub(r'^(?:json|JSON)\s*', '', json_str)
-
-        # Extract from markdown code blocks if present
-        if "```" in json_str:
-            start = json_str.find("```")
-            end = json_str.find("```", start + 3)
-            if end != -1:
-                json_str = json_str[start + 3:end].strip()
-                json_str = _re.sub(r'^(?:json|JSON)\s*', '', json_str)
-
-        # Find the first '{' to start JSON
-        idx = json_str.find("{")
-        if idx >= 0:
-            json_str = json_str[idx:]
-
-        # Fix control characters in string values (literal newlines, tabs)
-        # Replace literal newlines inside JSON strings with escaped versions
-        json_str = json_str.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
-        return json_str
 
     def _calculate_confidence(self, findings: list[Finding]) -> float:
         """Calculate confidence based on finding count and consistency."""

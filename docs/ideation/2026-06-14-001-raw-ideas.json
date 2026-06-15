@@ -1,0 +1,106 @@
+[
+  {
+    "title": "Execution-based scoring: run student patches against the real test suite",
+    "summary": "Replace the blind LLM verifier with execution-based scoring: check out the repo, apply the student's patch, run the project's test suite, and score based on pass-rate delta. A patch that passes 3 new tests scores higher than one that passes 0. This eliminates the 'Step 1: Identify the Error Source' 90-point problem entirely.",
+    "axis": "Scoring & feedback accuracy",
+    "basis": "direct: The current verifier (foundry-coder-1.5b) gives 90/EXCELLENT for generic advice because it sees structure, not substance. The scoring.py EMA converges to ~70 because every score is inflated.",
+    "why_it_matters": "Without ground-truth execution, the scoring system rewards confidence over correctness. Students learn to produce bullet points, not working code.",
+    "meeting_test": "Switching to execution-based scoring would fundamentally change what 'good work' means in this system — that's a strategy decision."
+  },
+  {
+    "title": "Two-stage fix: scaffold → refine with self-critique",
+    "summary": "After the student produces an initial patch, have the model generate a self-critique ('what could be better?'), then feed that back as an instruction for a second-pass refinement. Research shows self-critique + refinement significantly improves code quality.",
+    "axis": "Solution generation quality",
+    "basis": "external: arXiv 2402.01845 'Self-Critique and Refinement for LLM Code Generation' — models that critique their own output and retry produce measurably better code.",
+    "why_it_matters": "Students currently produce first-draft output with no iteration loop. A self-critique step would catch missing imports, type errors, and incomplete fixes before scoring.",
+    "meeting_test": "Adding a self-critique loop doubles per-issue cost — is the quality gain worth it?"
+  },
+  {
+    "title": "Curriculum scheduler based on issue complexity, not static difficulty",
+    "summary": "Instead of the current medium/hard labels (manually assigned), auto-classify issues by complexity: count of files touched, lines changed in recent fixes, number of failing tests. Start students on single-file, single-function issues. Only dispatch multi-module bugs after they've crossed the 'hard' gate. Build a real curriculum from the issue corpus automatically.",
+    "axis": "Progressive difficulty",
+    "basis": "external: arXiv 2405.06721 'Curriculum Learning for Code-Fixing Agents' — using failing-test count + cyclomatic complexity as a curriculum scheduler improves agent learning curves vs flat difficulty.",
+    "why_it_matters": "The current gate system is decorative because all issues are the same difficulty tier (medium). A real curriculum scheduler would make gates meaningful — students actually grow instead of plateauing.",
+    "meeting_test": "This replaces the hand-authored difficulty map with algorithmic complexity scoring — changes how issues enter the pipeline."
+  },
+  {
+    "title": "Trajectory replay: fine-tune students on their own high-scoring work",
+    "summary": "Store successful (issue → patch → score > 80) trajectories. Periodically fine-tune the student models on their own high-scoring work (DAgger-style). Students literally learn from their past successes, building repo-specific expertise over time.",
+    "axis": "Growth loop closure",
+    "basis": "external: OpenAI DAgger research — agents fine-tuned on their own expert trajectories improve faster than agents trained on demonstration data alone.",
+    "why_it_matters": "Right now scoring is a dead end — it updates an EMA number but doesn't improve the student. With trajectory replay, high-quality work compounds into actual model improvement.",
+    "meeting_test": "Fine-tuning requires GPU budget and a training pipeline — this is the highest-cost, highest-impact idea."
+  },
+  {
+    "title": "Repository AST context: embed code structure, not just file contents",
+    "summary": "Beyond the current file-tree + keyword-matching approach, extract the actual code structure: class definitions, function signatures, import graphs. Embed this as a 'code map' in the prompt so students see how components relate, not just what files exist.",
+    "axis": "Issue comprehension",
+    "basis": "direct: Current repo_reader.py extracts file tree + keyword-matched file contents. But seeing 'Room.tsx exists' is different from knowing 'Room.tsx exports a component that fetches from /api/room via useState + useEffect'. The former tells students WHERE to look; the latter tells them WHAT to change.",
+    "why_it_matters": "Students produce generic advice because they don't understand the code architecture. An AST-level context map would let them trace the call chain from issue symptom to root cause.",
+    "meeting_test": "AST parsing adds complexity and per-language dependencies — is the repo worth the investment?"
+  },
+  {
+    "title": "Meta-learning the verifier: update scoring model from human-validated patches",
+    "summary": "Collect human binary labels (correct/incorrect) on student patches. Use these to continuously update the verification model, so the reward function evolves as students improve. Start with LLM-based verification, but calibrate it with human feedback over time.",
+    "axis": "Scoring & feedback accuracy",
+    "basis": "external: 'Meta-learning of reward models' — continuously updating the verifier from validated patches prevents the reward model from drifting as the agent's capabilities change.",
+    "why_it_matters": "A static verifier becomes less accurate as students improve (ceiling effects). A meta-learning verifier stays calibrated — it knows what 'good' looks like at each capability level.",
+    "meeting_test": "Adds human-in-the-loop requirement — who validates, how often, and how much does it cost?"
+  },
+  {
+    "title": "Issue decomposition: break complex issues into sub-tasks before dispatch",
+    "summary": "Before dispatching an issue, analyze it: does it require changes in multiple files? Multiple steps? If so, decompose it into sub-issues and dispatch them sequentially. Each sub-issue gets its own codebase context scoped to just the files it needs to touch.",
+    "axis": "Issue comprehension",
+    "basis": "reasoned: Large issues overwhelm small models (0.5b, 1.5b). A 7-step fix spanning 4 files is too much context. But each individual step (fix the API call, update the view, add error handling) is manageable. Decomposition turns one impossible issue into three achievable ones.",
+    "why_it_matters": "Currently, multi-file issues get a very large context block and students produce generic responses. Decomposition would increase success rate and make scoring more granular.",
+    "meeting_test": "Issue decomposition requires multi-step reasoning — who does the decomposition (LLM vs rules) and how do we score sub-tasks?"
+  },
+  {
+    "title": "Peer review: have one student critique another's patch",
+    "summary": "After Student A produces a patch, dispatch it to Student B as a code review task: 'Review this patch for the following issue. Is it correct? Complete? What's missing?' Combine both scores. This mimics real engineering practice and catches issues the blind verifier misses.",
+    "axis": "Scoring & feedback accuracy",
+    "basis": "external: Research on peer code review in software engineering — structured review catches 60-90% of defects that automated analysis misses. Also: current ce-code-review skill uses multi-agent review.",
+    "why_it_matters": "A second pair of eyes (even an imperfect one) catches what the first missed. It also teaches students to read and evaluate code, not just write it.",
+    "meeting_test": "Doubles the compute per issue — but the educational value of review may justify the cost."
+  },
+  {
+    "title": "Confidence-gated escalation: auto-escalate low-confidence patches to stronger models",
+    "summary": "After the first student produces a patch, the verifier estimates confidence. If confidence is low (score 50-60), automatically escalate the issue to a stronger model (1.5b → 7b cloud) for a second attempt. Track which issues need escalation as a measure of curriculum difficulty.",
+    "axis": "Progressive difficulty",
+    "basis": "reasoned: The current system picks one agent by score ranking. But sometimes the best available student still isn't good enough. An escalation loop would ensure hard issues get solved while tracking which issues are beyond current capabilities — useful data for curriculum design.",
+    "why_it_matters": "Some issues are genuinely too hard for small models. Forcing them to try anyway wastes compute and inflates the EMA with low-quality work. Escalation focuses effort where it can succeed.",
+    "meeting_test": "What confidence threshold triggers escalation? And does this create a 'rich get richer' dynamic where stronger models get easier issues?"
+  },
+  {
+    "title": "Issue-to-spec: extract structured requirements before coding",
+    "summary": "Before dispatching an issue to a student, use an LLM to extract a structured spec: what files need to change, what the expected behavior is, what edge cases to handle. Give this spec to both the student (as prompt context) and the verifier (as evaluation rubric). This makes the implicit requirements explicit.",
+    "axis": "Solution generation quality",
+    "basis": "direct: Current prompts are just 'title + body'. The student has to infer requirements from ambiguous issue text. A structured spec would say: 'Fix the createRoom function in backend/game_engine/consumers.py to handle the case where host disconnects. Expected behavior: room should not be created. Edge case: disconnect during room creation.'",
+    "why_it_matters": "Spec extraction turns a vague issue into a testable specification. Students produce better work when they know exactly what 'done' looks like, and verifiers score more accurately against explicit criteria.",
+    "meeting_test": "Adds an LLM call per issue (cost) but dramatically improves both student output and verifier accuracy."
+  },
+  {
+    "title": "Spaced repetition: re-dispatch high-value issues with increasing difficulty",
+    "summary": "Maintain an issue store with difficulty ratings. Periodically re-dispatch previously-solved issues at higher challenge levels: 'Add tests for the fix you made last week', 'Refactor this module you modified', 'Handle the edge case you missed'. This reinforces learning through spaced repetition.",
+    "axis": "Growth loop closure",
+    "basis": "external: Spaced repetition is one of the most robust findings in learning science — revisiting material at increasing intervals dramatically improves long-term retention. Applied to code: revisiting your own past work at higher difficulty levels compounds understanding.",
+    "why_it_matters": "Students currently see each issue once. They produce a patch, get a score, and move on. No retention, no deeper understanding. Spaced repetition would turn one-shot fixes into lasting capability.",
+    "meeting_test": "This is a significant feature — issue store, scheduling, escalated prompt generation. Worth scoping as a separate plan."
+  },
+  {
+    "title": "Model-tier curriculum: route issues by estimated difficulty to appropriate model size",
+    "summary": "Use issue complexity metrics (files touched, historical fix size, test failure count) to route simple issues to 0.5b (fast, cheap) and complex issues to 7b (slow, expensive). Track success rates per tier. As students improve, issues automatically escalate to the next tier.",
+    "axis": "Progressive difficulty",
+    "basis": "direct: Current COMBO_MAP routes foundry-coder-7b to cloud (openrouter/owl-alpha) and foundry-coder-1.5b to local. But routing is based on score, not issue complexity. A 0.5b model should handle 'fix a typo' while 7b handles 'debug race condition in websocket handler'. Automatic model-tier routing based on issue complexity would be a real curriculum.",
+    "why_it_matters": "Right now small models waste time on hard issues (producing garbage) and big models waste time on easy issues. Complexity-based routing matches challenge to capability — the definition of good pedagogy.",
+    "meeting_test": "Requires an issue complexity estimators — what signals predict difficulty for a given model size?"
+  },
+  {
+    "title": "Live codebase sandbox: students see test results in real-time",
+    "summary": "Give students a sandboxed environment where they can run tests and see results as part of their task. The prompt includes: 'Run pytest. Observe the failing test. Fix the code. Run pytest again.' This turns code generation into a feedback loop, not a one-shot generation.",
+    "axis": "Solution generation quality",
+    "basis": "external: SWE-bench and similar benchmarks show that agents with access to test execution produce 2-4x more correct patches than agents that generate from context alone. The test-feedback loop is the single highest-leverage intervention.",
+    "why_it_matters": "Students currently generate a patch and never see if it works. A live sandbox would let them iterate — they'd catch their own mistakes before scoring. This is the difference between 'write code' and 'debug code'.",
+    "meeting_test": "Sandboxing adds infrastructure complexity (containers, timeouts) — but nothing else comes close for fix quality."
+  }
+]
