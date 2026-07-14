@@ -71,6 +71,29 @@ Every piece of work passes through challenge before scoring. This is not optiona
 
 **The circuit breaker:** If the adversarial reviewer agrees with the student (no findings), escalate to a second opinion. Recursive sycophancy is a real risk. We track agreement rates per reviewer and flag when drift is detected.
 
+## Operational Reality (what is wired vs. aspirational)
+
+This file describes the *target* architecture. To avoid the school silently
+over-claiming its own capabilities, here is what is actually operational as of
+the verify-gate addition:
+
+| Capability | Status | Notes |
+|------------|--------|-------|
+| **Students (Hermes)** | ✅ Wired | `orca` terminal dispatch; `--yolo --accept-hooks`. |
+| **Principal verify gate (execute code)** | ✅ Wired | `verify_gate.py` + `flake.nix#verifyShell` (Determinate Nix). Runs typecheck/test hermetically before review. |
+| **Serena (symbol pre-read)** | ✅ Wired | Used for symbol grounding in practice. |
+| **Adversarial review (text)** | ✅ Wired | `adversarial_reviewer.py` — judges student *prose*. |
+| **Layer 0 — CocoIndex vault** | ⚠️ Aspirational | `context_orchestrator._cocoindex_context` calls `ccc`; requires CocoIndex install + a vault. Not needed for the verify-gate. |
+| **Layer 2 — Engram trajectories** | ⚠️ Aspirational | `engram_adapter` required; not wired in the run that produced this note. |
+| **AgentMail bus (2-judge)** | ⚠️ Aspirational | The two-judge (CTO+COO) dispatch via AgentMail is designed but was run as a single reviewer in practice. |
+| **Bookbag-as-contract** | ⚠️ Partial | Students should write `~/.hermes/bookbag/<bead>.json`; PTY tail-drop can prevent it — verify on disk, don't trust the report. |
+
+**The principle that matters most:** *the compiler runs before the critic
+speaks.* For a long time the pipeline only ran the critic on prose. The
+`verify_gate` stage closes that gap. If you add CocoIndex/Engram, they enrich
+*context* — they do not replace executing the code.
+
+
 ## The Memory Architecture
 
 Four layers, each with a distinct lifetime and retrieval pattern:
@@ -81,6 +104,8 @@ Four layers, each with a distinct lifetime and retrieval pattern:
 | 1 | Structural | File tree, symbol index, import graphs | CocoIndex + repo_reader |
 | 2 | Episodic | Trajectories, decisions, recent observations | Engram |
 | 3 | Archival | Sleep/wake consolidation, handoff anchors | Obsidian + Engram REM cycles |
+
+
 
 Students wake up loading Layer 0 + Layer 1 for the target repo + relevant Layer 3 archives. During a session, they accumulate Layer 2 observations. On sleep, Layer 2 consolidates into Layer 3.
 
