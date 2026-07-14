@@ -47,6 +47,7 @@ class LensType(str, Enum):
     CORRECTNESS = "correctness"
     SECURITY = "security"
     COMPLETENESS = "completeness"
+    BUILD = "build"  # Executable verification: does the code compile/test? Fed by verify_gate.
     SIMPLICITY = "simplicity"  # Approach B — deferred for now
 
 

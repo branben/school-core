@@ -176,6 +176,28 @@ def verify_task_output(
         }
 
 
+def _run_verify_gate(
+    repo_path: Optional[Path],
+    issue: dict,
+) -> Optional[dict]:
+    """Run the hermetic verify gate (compile/typecheck/test) on the cloned repo.
+
+    Returns the verify_gate result dict, or None on any failure (non-blocking —
+    we never let the gate itself block the pipeline; a gate failure is reported
+    as a finding, not a crash). Requires Determinate Nix (see flake.nix).
+    """
+    if not repo_path or not repo_path.exists():
+        return None
+    try:
+        from verify_gate import run_verify_gate
+        project_verify = Path(repo_path) / "project_verify.yaml"
+        return run_verify_gate(repo_path, project_verify if project_verify.exists() else None)
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] verify_gate failed (non-blocking): {e}\n")
+        return {"passed": False, "failures": [{"cmd": "(verify_gate)", "exit": None,
+                                                "stderr": f"verify_gate error: {e}"}]}
+
+
 def _run_adversarial_review(
     task_result: dict,
     issue: dict,
@@ -295,12 +317,34 @@ def bridge_issues(
             continue
 
         if task_result["status"] == "success":
+            # NEW: run the code before the critic speaks (campus.md #3).
+            # Compile/typecheck/test failures become CRITICAL findings fed
+            # into the adversarial reviewer, so broken code can't pass review.
+            verify_result = _run_verify_gate(repo_path, issue)
+
             # Run adversarial review before verification
             adversarial_review = _run_adversarial_review(
                 task_result=task_result,
                 issue=issue,
                 codebase_ctx=codebase_ctx,
             )
+
+            # Merge verify-gate failures into the review as CRITICAL findings.
+            # This is the enforcement of campus.md #3: the compiler runs before
+            # the critic speaks; a broken build cannot earn a PASS.
+            if verify_result and not verify_result.get("passed"):
+                from adversarial_reviewer import Finding, Severity
+                for f in verify_result.get("failures", []):
+                    adversarial_review.setdefault("findings", []).append({
+                        "section": "build/verify",
+                        "issue_class": "compile_error",
+                        "severity": "CRITICAL",
+                        "citation": f['cmd'],
+                        "description": (f.get("stderr") or "verify command failed")[:500],
+                        "suggestion": "Fix the build/typecheck/test failure before review.",
+                    })
+                adversarial_review["verdict"] = "FAIL"
+                adversarial_review["score"] = 0.0
 
             # Verify output correctness with codebase context
             verification = verify_task_output(
