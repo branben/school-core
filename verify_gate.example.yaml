@@ -1,0 +1,28 @@
+# verify_gate.example.yaml — template for verify_gate.py
+#
+# Copy to a target repo as `project_verify.yaml`. verify_gate discovers this
+# (or infers from package.json/pyproject) and runs each command inside the
+# hermetic Nix shell. Only the repo's OWN declared commands run.
+#
+# WHY THE `mobile` BLOCK MATTERS:
+# The Orca mobile app typechecks SEPARATELY from root (mobile.yml runs
+# `npx tsc --noEmit` with working-directory: mobile). A root `pnpm typecheck`
+# passing does NOT cover it. PR #8605 (#6784) shipped files with broken
+# imports that root typecheck missed; a maintainer caught them only via the
+# mobile typecheck. Declaring both here makes verify_gate run the mobile
+# check, so that class of error is caught automatically.
+
+verify:
+  - name: root typecheck
+    cmd: pnpm run typecheck
+    cwd: .
+
+  - name: root lint
+    cmd: node config/scripts/check-max-lines-ratchet.mjs
+    cwd: .
+
+  # Example of a sub-project that typechecks independently (the Orca gap).
+  # Uncomment and adapt for repos with a separately-typechecked subdir:
+  # - name: mobile typecheck (separate project)
+  #   cmd: cd mobile && npx tsc --noEmit
+  #   cwd: .
