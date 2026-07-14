@@ -41,16 +41,8 @@ adversarial review as CRITICAL findings (see `config/anchors.yaml` →
    including **sub-projects** (e.g. a `mobile/` dir with its own package.json
    that typechecks independently), and `pyproject.toml` (`pytest`/`ruff`).
 
-Example `project_verify.yaml`:
-```yaml
-verify:
-  - name: root typecheck
-    cmd: pnpm run typecheck
-    cwd: .
-  - name: mobile typecheck
-    cmd: cd mobile && npx tsc --noEmit
-    cwd: .
-```
+Example `project_verify.yaml` (with the Orca per-subproject-motivation):
+see `verify_gate.example.yaml` at the repo root.
 
 ## Tier B — optional (context enrichment)
 
