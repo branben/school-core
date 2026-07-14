@@ -181,6 +181,32 @@ anchor_registry:
       - "Prefer a simple if/else over a design pattern for two cases"
     difficulty_gate: easy
 
+  - name: "Compile-Before-Critic"
+    tier: principle
+    domain: code-implementation
+    activation_pattern: "Execute the code (typecheck/test/build) and feed real failures into review before judging prose"
+    expected_behaviors:
+      - "Verification runs the student's actual artifact, not just reads their description of it"
+      - "Compile/typecheck/test failures become CRITICAL findings, never silent"
+      - "Per-subproject commands are discovered (e.g. a mobile/ dir that typechecks separately)"
+    examples:
+      - "verify_gate runs `cd mobile && npx tsc` and a broken import fails the review"
+      - "A root typecheck passes but the sub-project check catches the real error"
+    difficulty_gate: medium
+
+  - name: "Nix-Verify-Shell"
+    tier: technique
+    domain: code-implementation
+    activation_pattern: "Run untrusted student code inside a hermetic Nix devShell (no network, cached clone), not on the host"
+    expected_behaviors:
+      - "Verify commands execute in `nix develop .#verifyShell`, isolated from host toolchain"
+      - "Only the repo's own declared verify commands run — never free-form student scripts"
+      - "Cached clone is copied to a writable scratch dir; the cache is never mutated"
+    examples:
+      - "flake.nix exposes verifyShell with node/pnpm/python; verify_gate shells into it"
+      - "Student patch is applied in the clone, then typecheck runs hermetically"
+    difficulty_gate: medium
+
   - name: "DRY"
     tier: principle
     domain: code-implementation
