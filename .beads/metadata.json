@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "school_core",
+  "project_id": "d518508c-2c67-42a9-9df5-fcb8eb153f6e"
+}
