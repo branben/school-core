@@ -48,7 +48,7 @@ pytest -q      # 377 tests, ~15s
 
 ## The visibility layer (what gets rendered)
 
-school-core ships **competency** visualization, not task-board visualization:
+school-core ships both **competency** visualization and a **task-board** (kanban) view:
 
 | Artifact | Module | What it shows |
 |----------|--------|---------------|
@@ -56,12 +56,17 @@ school-core ships **competency** visualization, not task-board visualization:
 | **Activity dashboard** | `generate_activity_dashboard.py` | Timeline of school activity. |
 | **Weekly report** | `docs/weekly_report.py` | Per-week gate-crossing summary (`docs/weekly/*.html`). |
 | **Architecture review** | `architecture-review.html` | Static module/seam map (generated). |
+| **Task Board** | `board.py`, `activity_server.py` | Kanban of GitHub issues -> agent tasks -> review -> done. 4 columns (To Do / In Progress / In Review / Done). Self-contained HTML, vanilla fetch poll, no JS framework. Public view: https://9c438bcc.ht-ml.app/ |
 
-**There is no kanban / trello / swimlane / card-board view in this repo.** If you
-need task-flow visualization, that lives in a separate project (the
-`agent-school-core` conductor, which renders a bead/bookbag board from `bd`
-state). school-core visualizes *agent growth* (leaderboard + dashboards), not
-*issue flow*. Keep that distinction in mind before you advertise "kanban."
+school-core NOW ships a [Task Board](#task-board-durable-cloud-board) (kanban) alongside the competency views.
+
+## Task Board (durable cloud board)
+
+A self-contained kanban board that visualizes the GitHub Issue → Task → Review → Done pipeline.
+
+- **Local preview:** Run `python activity_server.py` then open http://localhost:8765/board.
+- **Regenerate + publish:** Run `board.py` to produce `board.html`, then publish via `lavish-axi share board.html`.
+- **Durability model (one line):** State in Git (`data/`), execution in CI (`.github/workflows/school-loop.yml`), view hosted on [ht-ml.app](https://9c438bcc.ht-ml.app/).
 
 ## Layout
 
