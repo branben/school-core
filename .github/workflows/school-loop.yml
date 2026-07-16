@@ -1,0 +1,54 @@
+# School Loop — Durable Cloud Board runner
+#
+# Runs the bridge loop on GitHub's servers every 5 minutes so execution
+# survives laptop death.  Commits updated state back to the repo so data
+# survives disk death.
+#
+# Axes (durability core):
+#   1. STATE IN GIT — data/* committed + pushed
+#   2. EXECUTION IN CI — this workflow, not the laptop
+#   3. VIEW HOSTED — board.html published to ht-ml.app (Task 6)
+
+name: School Loop
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SCHOOL_REPO: branben/school-core
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Populate issue cache from GitHub
+        run: python populate_board_cache.py
+
+      - name: Run bridge loop
+        run: python -m issue_bridge --repo "$SCHOOL_REPO" --once
+
+      - name: Commit and push state changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/issues_cache.json data/processed_issues.json data/last_run.json
+          git diff --cached --quiet || (git commit -m "chore: update board state [skip ci]" && git push)
