@@ -29,6 +29,42 @@ ACTIVITY_LOG_PATH = Path(__file__).parent / "data" / "activity_log.json"
 SCORES_PATH = Path(__file__).parent / "data" / "scores.json"
 DASHBOARD_PATH = Path(__file__).parent / "docs" / "site" / "live_activity_dashboard.html"
 
+# Board data paths (network-free — local files only)
+BOARD_PROCESSED_PATH = Path(__file__).parent / "data" / "processed_issues.json"
+BOARD_LAST_RUN_PATH = Path(__file__).parent / "data" / "last_run.json"
+BOARD_CACHE_PATH = Path(__file__).parent / "data" / "issues_cache.json"
+
+
+def _load_board_data() -> tuple[list[dict], list[int], list[dict]]:
+    """Load board data from local JSON files.
+
+    Returns (issues_cache, processed, last_run) triple.
+    All three sources are network-free — reads ``data/`` files only.
+    Missing or corrupt files are handled gracefully (empty defaults).
+    """
+    issues_cache: list[dict] = []
+    if BOARD_CACHE_PATH.exists():
+        try:
+            issues_cache = json.loads(BOARD_CACHE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            issues_cache = []
+
+    processed: list[int] = []
+    if BOARD_PROCESSED_PATH.exists():
+        try:
+            processed = json.loads(BOARD_PROCESSED_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            processed = []
+
+    last_run: list[dict] = []
+    if BOARD_LAST_RUN_PATH.exists():
+        try:
+            last_run = json.loads(BOARD_LAST_RUN_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            last_run = []
+
+    return issues_cache, processed, last_run
+
 
 class ActivityHandler(SimpleHTTPRequestHandler):
     """Serve activity log JSON and the dashboard."""
@@ -46,6 +82,10 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self._serve_agents()
         elif path == "/health":
             self._serve_health()
+        elif path == "/api/board.json":
+            self._serve_board_json()
+        elif path == "/board":
+            self._serve_board()
         else:
             self._serve_dashboard()
 
@@ -123,6 +163,60 @@ class ActivityHandler(SimpleHTTPRequestHandler):
 
     def _serve_health(self):
         self._json_response({"status": "ok"})
+
+    def _serve_board_json(self):
+        """GET /api/board.json — column-grouped board data (network-free)."""
+        from board import assign_column, _build_last_run_map
+
+        try:
+            issues_cache, processed, last_run = _load_board_data()
+        except Exception as e:
+            self._json_response({"error": f"Failed to load board data: {e}"}, 500)
+            return
+
+        processed_set: set[int] = set(processed)
+        lr_map = _build_last_run_map(last_run)
+
+        columns: dict[str, list[dict]] = {
+            "todo": [],
+            "in_progress": [],
+            "in_review": [],
+            "done": [],
+        }
+
+        for issue in issues_cache:
+            col = assign_column(issue, processed_set, lr_map)
+            lr_entry = lr_map.get(issue["issue_number"])
+            columns[col].append({
+                "n": issue["issue_number"],
+                "t": issue.get("title", ""),
+                "dom": issue.get("domain", ""),
+                "diff": issue.get("difficulty", ""),
+                "a": str(lr_entry.get("agent", "")) if lr_entry else "",
+                "s": lr_entry.get("score") if lr_entry else None,
+            })
+
+        self._json_response({"columns": columns})
+
+    def _serve_board(self):
+        """GET /board — rendered kanban board HTML."""
+        from board import build_board_html
+
+        try:
+            issues_cache, processed, last_run = _load_board_data()
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Failed to load board data: {e}".encode())
+            return
+
+        html = build_board_html(issues_cache, processed, last_run)
+        body = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_dashboard(self):
         if DASHBOARD_PATH.exists():
