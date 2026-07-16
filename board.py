@@ -105,29 +105,47 @@ def assign_column(
 # ── Card renderer ────────────────────────────────────────────────────────────
 
 
-def _render_card(issue: dict, lr_entry: Optional[dict]) -> str:
-    """Render a single kanban card HTML snippet.
+def _normalize_card(issue: dict, lr_entry: Optional[dict]) -> dict:
+    """Canonical card shape shared by the static render, the live JS poll, and
+    the ``/api/board.json`` endpoint.
+
+    Keys: ``n`` (number), ``t`` (title), ``dom`` (domain), ``diff``
+    (difficulty), ``a`` (agent), ``s`` (score), ``traj`` (trajectory basename).
+    """
+    return {
+        "n": issue.get("issue_number", issue.get("number", "")),
+        "t": issue.get("title", ""),
+        "dom": issue.get("domain", ""),
+        "diff": issue.get("difficulty", ""),
+        "a": str(lr_entry.get("agent", "")) if lr_entry else "",
+        "s": lr_entry.get("score") if lr_entry else None,
+        "traj": Path(lr_entry.get("trajectory", "")).name
+        if lr_entry and lr_entry.get("trajectory")
+        else None,
+    }
+
+
+def _render_card(card: dict) -> str:
+    """Render a single kanban card HTML snippet from a canonical card dict.
 
     Parameters
     ----------
-    issue : dict
-        Issue dict with keys ``issue_number``, ``title``, ``domain``,
-        ``difficulty``.
-    lr_entry : dict or None
-        The latest last-run entry for this issue (if any); may carry ``agent``
-        and ``score``.
+    card : dict
+        Canonical card (see :func:`_normalize_card`) with keys ``n``, ``t``,
+        ``dom``, ``diff``, ``a``, ``s``.
 
     Returns
     -------
     str
         HTML ``<div class="card">…</div>`` (no newline at end).
     """
-    num = issue["issue_number"]
-    title = escape(issue.get("title", ""))
-    domain = escape(issue.get("domain", ""))
-    difficulty = escape(issue.get("difficulty", ""))
-    agent = escape(str(lr_entry.get("agent", ""))) if lr_entry else ""
-    score = lr_entry.get("score") if lr_entry else None
+    num = escape(str(card.get("n", "")))
+    title = escape(str(card.get("t", "")))
+    domain = escape(str(card.get("dom", "")))
+    difficulty = escape(str(card.get("diff", "")))
+    agent = escape(str(card.get("a", "")))
+    score = card.get("s")
+    traj = card.get("traj")
 
     parts = ['<div class="card">']
     parts.append(f'<div class="card-number">#{num}</div>')
@@ -142,6 +160,8 @@ def _render_card(issue: dict, lr_entry: Optional[dict]) -> str:
         parts.append(f'<div class="card-agent">agent: {agent}</div>')
     if score is not None:
         parts.append(f'<div class="card-score">{score}</div>')
+    if traj:
+        parts.append(f'<a class="card-session" href="/trajectory/{escape(str(traj))}">session ↗</a>')
     parts.append("</div>")
     return "".join(parts)
 
@@ -156,14 +176,17 @@ _CSS = r""":root {
   --brass-dim: #8a7a40;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { font-size: 16px; }
+html, body { height: 100%; }
 body {
   background: var(--ink);
   color: var(--cream);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.5;
-  padding: 2rem;
-  min-height: 100vh;
+  padding: 1rem 1.25rem;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 h1, h2, h3, h4 {
   font-family: Georgia, 'Palatino Linotype', Palatino, 'Times New Roman', serif;
@@ -180,9 +203,10 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 1rem;
-  margin-bottom: 1.5rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
   border-bottom: 1px solid var(--brass-dim);
+  flex: 0 0 auto;
 }
 .board-header time {
   font-size: 0.8rem;
@@ -192,31 +216,52 @@ h2 {
 .board-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
   min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 .col {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--brass-dim);
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.6rem;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .col h2 {
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
   border-bottom: 1px solid rgba(192, 160, 80, 0.2);
+  flex: 0 0 auto;
+}
+.col-count {
+  font-size: 0.7rem;
+  background: rgba(138, 122, 64, 0.2);
+  color: var(--brass-dim);
+  padding: 0.1rem 0.45rem;
+  border-radius: 8px;
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
 }
 .cards {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.4rem;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
 }
 .card {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(192, 160, 80, 0.15);
   border-radius: 6px;
-  padding: 0.7rem;
+  padding: 0.5rem 0.55rem;
   transition: border-color 0.2s, background 0.2s;
 }
 .card:hover {
@@ -225,14 +270,18 @@ h2 {
 }
 .card-number {
   font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--brass-dim);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.15rem;
 }
 .card-title {
-  font-size: 0.9rem;
-  margin-bottom: 0.4rem;
-  line-height: 1.4;
+  font-size: 0.82rem;
+  margin-bottom: 0.3rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .card-badges {
   display: flex;
@@ -264,11 +313,35 @@ h2 {
   font-size: 0.8rem;
   color: var(--brass);
 }
+.card-session {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.65rem;
+  color: var(--brass);
+  text-decoration: none;
+  margin-top: 0.2rem;
+  display: inline-block;
+}
+.card-session:hover {
+  text-decoration: underline;
+}
 .empty-col {
   color: var(--brass-dim);
   font-size: 0.8rem;
   padding: 1rem 0;
   text-align: center;
+}
+.board-filter {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--brass-dim);
+  border-radius: 4px;
+  color: var(--cream);
+  padding: 0.25rem 0.5rem;
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  width: 180px;
+}
+.board-filter::placeholder {
+  color: var(--brass-dim);
 }
 """
 
@@ -372,10 +445,7 @@ def build_board_html(
     for issue in issues:
         col = assign_column(issue, processed_set, lr_map)
         lr_entry = lr_map.get(issue["issue_number"])
-        columns[col].append({
-            "issue": issue,
-            "lr_entry": lr_entry,
-        })
+        columns[col].append(_normalize_card(issue, lr_entry))
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -383,14 +453,12 @@ def build_board_html(
     col_html_parts: list[str] = []
     for key, label in _COLUMN_META:
         items = columns[key]
-        cards_html = "".join(
-            _render_card(item["issue"], item["lr_entry"]) for item in items
-        )
+        cards_html = "".join(_render_card(item) for item in items)
         if not cards_html:
             cards_html = '<div class="empty-col">\u2014</div>'
         col_html_parts.append(
             f'<section class="col" data-status="{key}">'
-            f"<h2>{label}</h2>"
+            f"<h2>{label}<span class=\"col-count\">{len(items)}</span></h2>"
             f'<div class="cards">{cards_html}</div>'
             f"</section>\n"
         )
@@ -407,6 +475,7 @@ def build_board_html(
         "<body>\n"
         '<div class="board-header">\n'
         "<h1>Task Board</h1>\n"
+        '<input id="board-filter" class="board-filter" placeholder="filter titles…" oninput="boardFilter()">\n'
         f'<time datetime="{now}">Updated {now}</time>\n'
         "</div>\n"
         '<div class="board-grid">\n'

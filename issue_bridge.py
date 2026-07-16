@@ -328,7 +328,7 @@ def bridge_issues(
             try:
                 record_run(
                     PROCESSED_FILE.parent / "last_run.json",
-                    {"issue": num, "status": "dry_run", "agent": force_agent, "score": None},
+                    {"issue": num, "status": "dry_run", "agent": force_agent, "score": None, "trajectory": None},
                 )
             except Exception as e:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e}\n")
@@ -353,7 +353,7 @@ def bridge_issues(
             try:
                 record_run(
                     PROCESSED_FILE.parent / "last_run.json",
-                    {"issue": num, "status": "error", "agent": None, "score": None},
+                    {"issue": num, "status": "error", "agent": None, "score": None, "trajectory": None},
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
@@ -437,6 +437,7 @@ def bridge_issues(
                         "status": "success",
                         "agent": task_result.get("agent"),
                         "score": combined_score,
+                        "trajectory": task_result.get("trajectory"),
                     },
                 )
             except Exception as e_rec:
@@ -458,6 +459,7 @@ def bridge_issues(
                         "status": task_result.get("status", "error"),
                         "agent": task_result.get("agent"),
                         "score": None,
+                        "trajectory": None,
                     },
                 )
             except Exception as e_rec:
