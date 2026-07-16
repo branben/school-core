@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 ACTIVITY_LOG_PATH = Path(__file__).parent / "data" / "activity_log.json"
 SCORES_PATH = Path(__file__).parent / "data" / "scores.json"
 DASHBOARD_PATH = Path(__file__).parent / "docs" / "site" / "live_activity_dashboard.html"
+TRAJECTORY_DIR = Path(__file__).parent / "data" / "trajectories"
 
 # Board data paths (network-free — local files only)
 BOARD_PROCESSED_PATH = Path(__file__).parent / "data" / "processed_issues.json"
@@ -86,6 +87,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self._serve_board_json()
         elif path == "/board":
             self._serve_board()
+        elif path.startswith("/trajectory/"):
+            self._serve_trajectory(path[len("/trajectory/"):])
         else:
             self._serve_dashboard()
 
@@ -215,6 +218,47 @@ class ActivityHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_trajectory(self, traj_id: str) -> None:
+        """GET /trajectory/<id> — serve a run's trajectory JSON (text/plain).
+
+        ``traj_id`` is a bare filename (e.g. ``20260612_001113_x--_default--m.json``).
+        Rejects path traversal / non-filename characters with 400, missing files
+        with 404, and pretty-prints the JSON as text/plain on 200.
+        """
+        import re
+
+        if not traj_id or not re.fullmatch(r"[A-Za-z0-9_.\-]+", traj_id):
+            self.send_response(400)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Invalid trajectory id")
+            return
+
+        traj_path = TRAJECTORY_DIR / traj_id
+        if not traj_path.exists():
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Trajectory not found")
+            return
+
+        try:
+            data = json.loads(traj_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(f"Failed to read trajectory: {e}".encode())
+            return
+
+        body = json.dumps(data, indent=2, ensure_ascii=False).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
