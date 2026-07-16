@@ -18,7 +18,8 @@ import argparse
 import json
 import sys
 import threading
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+import time
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -87,6 +88,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self._serve_board_json()
         elif path == "/board":
             self._serve_board()
+        elif path == "/stream":
+            self._serve_stream()
         elif path.startswith("/trajectory/"):
             self._serve_trajectory(path[len("/trajectory/"):])
         else:
@@ -169,13 +172,52 @@ class ActivityHandler(SimpleHTTPRequestHandler):
 
     def _serve_board_json(self):
         """GET /api/board.json — column-grouped board data (network-free)."""
-        from board import assign_column, _build_last_run_map
+        try:
+            payload = self._build_board_json_payload()
+        except Exception as e:
+            self._json_response({"error": f"Failed to load board data: {e}"}, 500)
+            return
+        self._json_response(payload)
+
+    def _serve_board(self):
+        """GET /board — rendered kanban board HTML."""
+        from board import build_board_html
 
         try:
             issues_cache, processed, last_run = _load_board_data()
         except Exception as e:
-            self._json_response({"error": f"Failed to load board data: {e}"}, 500)
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Failed to load board data: {e}".encode())
             return
+
+        html = build_board_html(issues_cache, processed, last_run)
+        body = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _build_board_json_payload(self) -> dict:
+        """Build the board JSON payload (same shape as ``/api/board.json``).
+
+        Returns ``{"columns": {"todo": […], "in_progress": […], …}}``.
+        Safe to call from the SSE streaming loop — never sends HTTP headers.
+        """
+        from board import assign_column, _build_last_run_map
+
+        try:
+            issues_cache, processed, last_run = _load_board_data()
+        except Exception:
+            return {
+                "columns": {
+                    "todo": [],
+                    "in_progress": [],
+                    "in_review": [],
+                    "done": [],
+                }
+            }
 
         processed_set: set[int] = set(processed)
         lr_map = _build_last_run_map(last_run)
@@ -199,27 +241,111 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                 "s": lr_entry.get("score") if lr_entry else None,
             })
 
-        self._json_response({"columns": columns})
+        return {"columns": columns}
 
-    def _serve_board(self):
-        """GET /board — rendered kanban board HTML."""
-        from board import build_board_html
+    def _serve_stream(self):
+        """GET /stream — SSE live-update endpoint.
+
+        Sends an initial ``event: board`` with the current column-grouped board
+        JSON, then polls ``data/`` files every ~2 seconds.  When any watched
+        file changes (mtime or size) a fresh ``event: board`` is emitted.  If
+        ``activity_log.json`` has grown since the last check, an additional
+        ``event: activity`` is emitted with the new entries.
+
+        Gracefully handles missing/corrupt data files via
+        :meth:`_build_board_json_payload`.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+        watch_files: list[Path] = [
+            BOARD_CACHE_PATH,
+            BOARD_PROCESSED_PATH,
+            BOARD_LAST_RUN_PATH,
+            ACTIVITY_LOG_PATH,
+        ]
+
+        def _snapshot() -> dict[str, tuple]:
+            """Return ``{str(path): (mtime, size)}`` for every watch file."""
+            snap: dict[str, tuple] = {}
+            for f in watch_files:
+                try:
+                    s = f.stat()
+                    snap[str(f)] = (s.st_mtime, s.st_size)
+                except OSError:
+                    snap[str(f)] = None
+            return snap
+
+        def _emit_board() -> None:
+            data = json.dumps(
+                self._build_board_json_payload(), ensure_ascii=False
+            )
+            self.wfile.write(f"event: board\ndata: {data}\n\n".encode())
+            self.wfile.flush()
+
+        # ── Track activity-log size ──────────────────────────────────────
+        prev_activity_count = 0
+        if ACTIVITY_LOG_PATH.exists():
+            try:
+                prev_activity_count = len(
+                    json.loads(ACTIVITY_LOG_PATH.read_text()).get("entries", [])
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        prev_snap = _snapshot()
+
+        # ── Initial push ─────────────────────────────────────────────────
+        _emit_board()
 
         try:
-            issues_cache, processed, last_run = _load_board_data()
-        except Exception as e:
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(f"Failed to load board data: {e}".encode())
-            return
+            while True:
+                time.sleep(2)
 
-        html = build_board_html(issues_cache, processed, last_run)
-        body = html.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+                new_snap = _snapshot()
+                if new_snap == prev_snap:
+                    continue
+                prev_snap = new_snap
+
+                # At least one watched file changed → re-emit board
+                _emit_board()
+
+                # Check for new activity entries since last emit
+                new_count = 0
+                if ACTIVITY_LOG_PATH.exists():
+                    try:
+                        new_count = len(
+                            json.loads(ACTIVITY_LOG_PATH.read_text()).get(
+                                "entries", []
+                            )
+                        )
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
+                if new_count > prev_activity_count:
+                    try:
+                        all_entries: list[dict] = json.loads(
+                            ACTIVITY_LOG_PATH.read_text()
+                        ).get("entries", [])
+                        new_entries = all_entries[prev_activity_count:]
+                        if new_entries:
+                            payload = json.dumps(
+                                new_entries, ensure_ascii=False
+                            )
+                            self.wfile.write(
+                                f"event: activity\ndata: {payload}\n\n".encode()
+                            )
+                            self.wfile.flush()
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                    prev_activity_count = new_count
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Client disconnected — stop the stream quietly
+            pass
 
     def _serve_trajectory(self, traj_id: str) -> None:
         """GET /trajectory/<id> — serve a run's trajectory JSON (text/plain).
@@ -295,7 +421,7 @@ def main():
     parser.add_argument("--port", type=int, default=8765, help="Port to serve on")
     args = parser.parse_args()
 
-    server = HTTPServer(("127.0.0.1", args.port), ActivityHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), ActivityHandler)
     print(f"Activity server running at http://127.0.0.1:{args.port}")
     print(f"  Dashboard:     http://127.0.0.1:{args.port}/")
     print(f"  Activity API:  http://127.0.0.1:{args.port}/api/activity")
