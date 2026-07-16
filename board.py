@@ -343,6 +343,15 @@ h2 {
 .board-filter::placeholder {
   color: var(--brass-dim);
 }
+.live-indicator {
+  font-size: 0.75rem;
+  color: #555;
+  transition: color 0.3s;
+  margin-right: 0.5rem;
+}
+.live-indicator.on {
+  color: #4caf50;
+}
 """
 
 _JS_POLL = """
@@ -378,6 +387,26 @@ _JS_POLL = """
       container.innerHTML = html;
     }
   }
+  function live(on) {
+    var ind = document.getElementById('live-indicator');
+    if (ind) ind.className = 'live-indicator' + (on ? ' on' : '');
+  }
+  // SSE live stream (primary)
+  if (typeof EventSource !== 'undefined') {
+    var es = new EventSource('/stream');
+    es.addEventListener('board', function(e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (data && data.columns) rerender(data.columns);
+      } catch(_) {}
+    });
+    es.addEventListener('activity', function(e) {
+      // Optional: could append to a #live-log div here
+    });
+    es.onopen = function() { live(true); };
+    es.onerror = function() { live(false); };
+  }
+  // Fallback: 15s poll (for browsers that don't support EventSource)
   function poll() {
     fetch('/api/board.json')
       .then(function(r) { return r.json(); })
@@ -475,6 +504,7 @@ def build_board_html(
         "<body>\n"
         '<div class="board-header">\n'
         "<h1>Task Board</h1>\n"
+        '<span id="live-indicator" class="live-indicator">● live</span>\n'
         '<input id="board-filter" class="board-filter" placeholder="filter titles…" oninput="boardFilter()">\n'
         f'<time datetime="{now}">Updated {now}</time>\n'
         "</div>\n"
