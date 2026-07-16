@@ -187,12 +187,12 @@ class TestCloneRepo:
         )
 
         # Create a fake clone directory that the function creates via mkdtemp
-        fake_clone = tmp_path / "sound-royale-ny"
+        fake_clone = tmp_path / "Hello-World"
         fake_clone.mkdir()
         (fake_clone / ".git").mkdir()
 
         with patch("repo_reader.tempfile.mkdtemp", return_value=str(fake_clone)):
-            result = clone_repo("branben/sound-royale-ny")
+            result = clone_repo("octocat/Hello-World")
             assert result is not None
             assert result.exists()
 

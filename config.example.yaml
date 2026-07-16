@@ -1,0 +1,19 @@
+# school-core — example configuration
+# Copy to config.yaml and edit. All values are overridable via env vars or CLI args.
+
+github:
+  repo: "YOUR-USER/YOUR-REPO"   # owner/repo to triage + solve
+  poll_interval_seconds: 300
+  labels: ["bug", "enhancement"]
+  difficulty_overrides:
+    p0: hard
+    p1: medium
+  domain_overrides:
+    security: code-review
+
+# Optional: path to a KnowledgeCore / Obsidian-style vault for context enrichment.
+# Leave as null to disable. Resolved relative to the repo if a relative path is given.
+vault_path: null
+
+# Optional: Engram project name for trajectory persistence (auto-detected).
+engram_project: "agent-school"

@@ -5,7 +5,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_VAULT = Path("~/Documents/Knowledge Core")
+# Default vault path. Resolves to <repo>/data/vault so the framework works
+# out-of-the-box without a personal path. Override via the vault_path argument
+# or by setting AGENT_SCHOOL_VAULT env var.
+import os
+
+_REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_VAULT = Path(os.environ.get("AGENT_SCHOOL_VAULT", _REPO_ROOT / "data" / "vault"))
 
 # Approximate char budget for Layer 3 archival context.
 # Total context budget is ~10K chars; Layer 0 + Layer 1 can use ~2K,

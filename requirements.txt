@@ -1,0 +1,9 @@
+# school-core runtime + dev dependencies
+# Core is mostly Python 3.9+ stdlib. These are the only third-party needs.
+PyYAML>=6.0
+pytest>=7.0          # for the test suite
+
+# Optional integrations (gracefully skipped if absent):
+#   - engram  (persistent memory adapter; detected at runtime)
+#   - cocoindex / serena (code-context; optional)
+#   - Nix flake.nix provides a hermetic verify-shell (node20, pnpm, python312, ripgrep, fd, jq)
