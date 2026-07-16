@@ -56,7 +56,7 @@ school-core ships both **competency** visualization and a **task-board** (kanban
 | **Activity dashboard** | `generate_activity_dashboard.py` | Timeline of school activity. |
 | **Weekly report** | `docs/weekly_report.py` | Per-week gate-crossing summary (`docs/weekly/*.html`). |
 | **Architecture review** | `architecture-review.html` | Static module/seam map (generated). |
-| **Task Board** | `board.py`, `activity_server.py` | Kanban of GitHub issues -> agent tasks -> review -> done. 4 columns (To Do / In Progress / In Review / Done). Self-contained HTML, vanilla fetch poll, no JS framework. Public view: https://9c438bcc.ht-ml.app/ |
+| **Task Board** | `board.py`, `activity_server.py` | Kanban of GitHub issues -> agent tasks -> review -> done. 4 columns (To Do / In Progress / In Review / Done). Self-contained HTML, vanilla fetch poll, no JS framework. Public view: https://28f34587.ht-ml.app/ |
 
 school-core NOW ships a [Task Board](#task-board-durable-cloud-board) (kanban) alongside the competency views.
 
@@ -66,7 +66,7 @@ A self-contained kanban board that visualizes the GitHub Issue → Task → Revi
 
 - **Local preview:** Run `python activity_server.py` then open http://localhost:8765/board.
 - **Regenerate + publish:** Run `board.py` to produce `board.html`, then publish via `lavish-axi share board.html`.
-- **Durability model (one line):** State in Git (`data/`), execution in CI (`.github/workflows/school-loop.yml`), view hosted on [ht-ml.app](https://9c438bcc.ht-ml.app/).
+- **Durability model (one line):** State in Git (`data/`), execution in CI (`.github/workflows/school-loop.yml`), view hosted on [ht-ml.app](https://28f34587.ht-ml.app/).
 
 ## Layout
 
