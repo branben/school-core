@@ -96,6 +96,13 @@ def populate_cache(repo: str = "branben/school-core") -> list[dict]:
         sys.stderr.write(
             f"[populate_board_cache] OS error running gh: {e} — writing empty cache.\n"
         )
+    else:
+        # gh ran but exited non-zero (e.g. auth/scope failure) — surface it.
+        if result.returncode != 0:
+            sys.stderr.write(
+                f"[populate_board_cache] gh exited {result.returncode}: "
+                f"{result.stderr.strip()[:200]} — writing empty cache.\n"
+            )
 
     # Atomic write: temp → os.replace
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)

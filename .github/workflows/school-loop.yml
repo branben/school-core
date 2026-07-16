@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  issues: read
 
 env:
   SCHOOL_REPO: branben/school-core
