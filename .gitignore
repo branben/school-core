@@ -33,6 +33,11 @@ Thumbs.db
 
 # Project data (runtime-generated, not source)
 data/
+# Durability-critical state: MUST be tracked so board survives disk loss / rebuild.
+# These are small, append-only/regenerable — safe to commit. (Negates data/ above.)
+!data/issues_cache.json
+!data/last_run.json
+!data/processed_issues.json
 .omo/
 
 # Logs
