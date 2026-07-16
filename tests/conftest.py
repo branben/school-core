@@ -1,6 +1,53 @@
 """Shared fixtures for school-core tests."""
 
+import json
+from pathlib import Path
+
 import pytest
+
+from scoring import ScoreStore
+
+
+@pytest.fixture
+def store(tmp_path):
+    """Temp ScoreStore so production code never writes the live data/scores.json.
+
+    Any test that exercises a path which persists scores MUST inject this
+    (e.g. bridge_issues(..., store=store)) to avoid polluting real data.
+    """
+    scores_file = tmp_path / "scores.json"
+    scores_file.write_text(json.dumps({
+        "foundry-coder-7b": {"_default": 25.0, "debugging": 40.0, "code-implementation": 30.0},
+        "foundry-coder-1.5b": {"_default": 20.0, "debugging": 40.0},
+    }))
+    return ScoreStore(file_path=str(scores_file))
+
+
+@pytest.fixture(autouse=True)
+def isolate_data_dirs(tmp_path, monkeypatch):
+    """Redirect every live data/*.json writer to a temp dir.
+
+    Production modules default their persistence paths to the repo's
+    data/ directory (scores.json, activity_log.json, decision_log.json,
+    escalation_log.json). Without this, importing/using those modules in a
+    test silently writes test noise into the real data files. Point all of
+    them (and the cached singletons) at tmp_path so local test runs never
+    pollute the live dashboard data.
+    """
+    import activity_log
+    import decision_log
+    import escalation_log
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "activity_log.json")
+    monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "decision_log.json")
+    monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "escalation_log.json")
+
+    # Reset cached singletons so they pick up the redirected paths.
+    activity_log._default_log = None
+    decision_log._default_log = None
 
 
 @pytest.fixture(autouse=True)

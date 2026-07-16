@@ -25,6 +25,7 @@ from typing import List, Optional
 
 from github_fetcher import fetch_issues, load_config
 from executor import call_model, COMBO_MAP, ExecutorError
+from scoring import ScoreStore
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
@@ -277,15 +278,20 @@ def bridge_issues(
     labels: Optional[List[str]] = None,
     force_agent: Optional[str] = None,
     dry_run: bool = False,
+    store: Optional[ScoreStore] = None,
 ) -> list[dict]:
     """Fetch actionable issues and dispatch each as a Director task.
 
     Returns list of result dicts, one per issue processed.
+
+    `store` is injectable for test isolation; when omitted a live ScoreStore
+    (data/scores.json) is used in production. Tests MUST pass a temp store to
+    avoid polluting the real scores file.
     """
     from director import run_task, evaluate_and_update
-    from scoring import ScoreStore
 
-    store = ScoreStore()
+    if store is None:
+        store = ScoreStore()
     issues = fetch_issues(repo, labels)
     processed = _load_processed()
     results = []
