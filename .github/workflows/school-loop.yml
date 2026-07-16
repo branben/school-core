@@ -57,3 +57,30 @@ jobs:
           git add -f data/issues_cache.json data/processed_issues.json 2>/dev/null || true
           if [ -f data/last_run.json ]; then git add -f data/last_run.json 2>/dev/null || true; fi
           git diff --cached --quiet || (git commit -m "chore: update board state [skip ci]" && git push)
+
+      - name: Publish board to ht-ml.app
+        # Regenerate board.html from the just-committed data/, re-share, and record
+        # the (rotating) URL in board-url.txt so it stays discoverable. ht-ml.app has
+        # no in-place update flag, so each share yields a new URL — board-url.txt is
+        # the source of truth for "current board".
+        run: |
+          python -c "
+          import json
+          from pathlib import Path
+          from board import build_board_html
+          def load(ref):
+              try: return json.loads(Path(ref).read_text() or '[]')
+              except Exception: return []
+          cache = load('data/issues_cache.json')
+          proc = load('data/processed_issues.json')
+          lr = load('data/last_run.json')
+          Path('board.html').write_text(build_board_html(cache, proc, lr))
+          print('regenerated board.html')
+          "
+          # re-share (URL rotates each time; record it)
+          URL=$(npx -y lavish-axi share board.html 2>/dev/null | grep -oE 'https://[a-z0-9]+\.ht-ml\.app/' | head -1)
+          echo "$URL" > board-url.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f board-url.txt 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "chore: publish board [skip ci]" && git push)
