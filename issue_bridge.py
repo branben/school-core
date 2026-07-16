@@ -16,8 +16,10 @@ Usage:
 """
 
 import json
+import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -101,6 +103,33 @@ def mark_processed(issue_number: int) -> None:
 def is_processed(issue_number: int) -> bool:
     """Check if an issue has already been processed."""
     return issue_number in _load_processed()
+
+
+def record_run(path: Path, entry: dict) -> None:
+    """Append an entry to a JSON-list run log at *path*, atomically.
+
+    Each entry gets a server-side ``timestamp`` (ISO-8601 UTC) added if
+    the entry does not already have one.  Writes to a temporary file then
+    renames for crash-safe atomicity.  Creates parent directories as needed.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if "timestamp" not in entry:
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+    # Read existing runs (empty list if file missing or corrupt)
+    existing: list[dict] = []
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = []
+
+    existing.append(entry)
+
+    # Atomic write: temp → rename
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(existing, indent=2))
+    os.replace(tmp, path)
 
 
 def verify_task_output(
@@ -296,6 +325,13 @@ def bridge_issues(
                 "codebase_context_chars": len(codebase_ctx),
             })
             processed.add(num)
+            try:
+                record_run(
+                    PROCESSED_FILE.parent / "last_run.json",
+                    {"issue": num, "status": "dry_run", "agent": force_agent, "score": None},
+                )
+            except Exception as e:
+                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e}\n")
             continue
 
         try:
@@ -314,6 +350,13 @@ def bridge_issues(
                 "status": "error",
                 "error": str(e),
             })
+            try:
+                record_run(
+                    PROCESSED_FILE.parent / "last_run.json",
+                    {"issue": num, "status": "error", "agent": None, "score": None},
+                )
+            except Exception as e_rec:
+                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
             continue
 
         if task_result["status"] == "success":
@@ -386,6 +429,18 @@ def bridge_issues(
                 "verification": verification,
                 "adversarial_review": adversarial_review,
             })
+            try:
+                record_run(
+                    PROCESSED_FILE.parent / "last_run.json",
+                    {
+                        "issue": num,
+                        "status": "success",
+                        "agent": task_result.get("agent"),
+                        "score": combined_score,
+                    },
+                )
+            except Exception as e_rec:
+                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
         else:
             results.append({
                 "issue_number": num,
@@ -395,6 +450,18 @@ def bridge_issues(
                 "status": task_result.get("status", "error"),
                 "error": task_result.get("error"),
             })
+            try:
+                record_run(
+                    PROCESSED_FILE.parent / "last_run.json",
+                    {
+                        "issue": num,
+                        "status": task_result.get("status", "error"),
+                        "agent": task_result.get("agent"),
+                        "score": None,
+                    },
+                )
+            except Exception as e_rec:
+                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
 
         # Mark processed regardless of outcome (don't retry failed issues)
         processed.add(num)
