@@ -1,180 +1,100 @@
 {
-    "always-on-free": {
-        "_default": 20.0
-    },
-    "always-on-max": {
-        "_default": 35.0
-    },
-    "foundry-coder-0.5b": {
-        "_default": 15.0,
-        "code-implementation": 55.71404999999999,
-        "code-review": 40.4615,
-        "debugging": 16.3515,
-        "git-operations": 31.5,
-        "python-coding": 40.4383145,
-        "python-testing": 61.76286708134999
-    },
-    "foundry-coder-1.5b": {
-        "_default": 20.0,
-        "code-implementation": 81.48908,
-        "python-coding": 27.86,
-        "python-testing": 73.05649999999999
-    },
-    "foundry-coder-7b": {
-        "_default": 59.2,
-        "code-implementation": 50.007999999999996,
-        "debugging": 23.38740149199999,
-        "git-operations": 56.15559999999999,
-        "python-coding": 21.948987684999995,
-        "python-testing": 53.8410565
-    },
-    "foundry-olmo-3-7b": {
-        "_default": 12.0,
-        "triage-category": 18.0,
-        "triage-state": 10.0
-    },
-    "foundry-phi4": {
-        "_default": 10.0,
-        "python-coding": 4.8999999999999995
-    },
-    "foundry-qwen2.5-coder-7b-empirical": {
-        "_default": 13.0,
-        "implementation": 5.0,
-        "triage-category": 23.0,
-        "triage-state": 8.0
-    },
-    "foundry-qwen3.5-2b-text": {
-        "_default": 15.0,
-        "triage-category": 25.0,
-        "triage-state": 10.0
-    },
-    "foundry-smollm3-3b": {
-        "_default": 10.0,
-        "python-coding": 4.8999999999999995
-    },
-    "gemini-2.0-flash": {
-        "_default": 25.0
-    },
-    "gemini-3-flash-preview": {
-        "_default": 29.4,
-        "python-testing": 14.7
-    },
-    "gemma-4-31b-it:free": {
-        "_default": 21.0
-    },
-    "kimi-k2.6:free": {
-        "_default": 20.0
-    },
-    "north-coding": {
-        "_default": 30.0,
-        "python-coding": 35.0
-    },
-    "openhands": {
-        "python-coding": 69.03110989593
-    },
-    "owl-alpha": {
-        "_default": 25.0,
-        "agentic-coding": 30.0
-    },
-    "phi4": {
-        "_default": 10.0
-    },
-    "qwen-coder-compiled": {
-        "_default": 20.0,
-        "python-coding": 25.0
-    },
-    "qwen2.5-coder:7b": {
-        "_default": 15.0
-    },
-    "qwen2.5:7b": {
-        "_default": 15.0
-    },
-    "ses_cmd_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_cmd_002": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_cons_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_custom_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_cycle_0": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_cycle_1": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_cycle_2": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_empty_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_happy_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_idem_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_idle_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_life_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_log_0": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_log_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_log_1": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_log_2": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_old": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_queued_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_roundtrip_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "ses_scores_001": {
-        "_default": 25.0,
-        "python-testing": 70.0
-    },
-    "ses_timeout_001": {
-        "_default": 25.0,
-        "python-testing": 65.4
-    },
-    "smollm2:1.7b": {
-        "_default": 22.0,
-        "python-coding": 56.279999999999994
-    }
+  "always-on-free": {
+    "_default": 20.0
+  },
+  "always-on-max": {
+    "_default": 35.0
+  },
+  "foundry-coder-0.5b": {
+    "_default": 15.0,
+    "code-implementation": 55.71404999999999,
+    "code-review": 40.4615,
+    "debugging": 16.3515,
+    "git-operations": 31.5,
+    "python-coding": 40.4383145,
+    "python-testing": 61.76286708134999
+  },
+  "foundry-coder-1.5b": {
+    "_default": 20.0,
+    "_difficulty_debugging": 1.0,
+    "code-implementation": 81.48908,
+    "debugging": 37.8806,
+    "python-coding": 27.86,
+    "python-testing": 73.05649999999999
+  },
+  "foundry-coder-7b": {
+    "_default": 59.2,
+    "_difficulty_code-implementation": 1.0,
+    "_difficulty_debugging": 1.0,
+    "code-implementation": 62.87631999999999,
+    "debugging": 66.19382789822919,
+    "git-operations": 56.15559999999999,
+    "python-coding": 21.948987684999995,
+    "python-testing": 53.8410565
+  },
+  "foundry-olmo-3-7b": {
+    "_default": 12.0,
+    "triage-category": 18.0,
+    "triage-state": 10.0
+  },
+  "foundry-phi4": {
+    "_default": 10.0,
+    "python-coding": 4.8999999999999995
+  },
+  "foundry-qwen2.5-coder-7b-empirical": {
+    "_default": 13.0,
+    "implementation": 5.0,
+    "triage-category": 23.0,
+    "triage-state": 8.0
+  },
+  "foundry-qwen3.5-2b-text": {
+    "_default": 15.0,
+    "triage-category": 25.0,
+    "triage-state": 10.0
+  },
+  "foundry-smollm3-3b": {
+    "_default": 10.0,
+    "python-coding": 4.8999999999999995
+  },
+  "gemini-2.0-flash": {
+    "_default": 25.0
+  },
+  "gemini-3-flash-preview": {
+    "_default": 29.4,
+    "python-testing": 14.7
+  },
+  "gemma-4-31b-it:free": {
+    "_default": 21.0
+  },
+  "kimi-k2.6:free": {
+    "_default": 20.0
+  },
+  "north-coding": {
+    "_default": 30.0,
+    "python-coding": 35.0
+  },
+  "openhands": {
+    "python-coding": 69.03110989593
+  },
+  "owl-alpha": {
+    "_default": 25.0,
+    "agentic-coding": 30.0
+  },
+  "phi4": {
+    "_default": 10.0
+  },
+  "qwen-coder-compiled": {
+    "_default": 20.0,
+    "python-coding": 25.0
+  },
+  "qwen2.5-coder:7b": {
+    "_default": 15.0
+  },
+  "qwen2.5:7b": {
+    "_default": 15.0
+  },
+  "smollm2:1.7b": {
+    "_default": 22.0,
+    "python-coding": 56.279999999999994
+  }
 }
