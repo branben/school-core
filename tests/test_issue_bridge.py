@@ -20,6 +20,7 @@ from issue_bridge import (
     _heuristic_score,
     PROCESSED_FILE,
 )
+from scoring import ScoreStore
 
 
 # ── Processed Issue Tracking ──────────────────────────────────────────────
@@ -58,31 +59,31 @@ class TestProcessedTracking:
 
 class TestBridgeIssues:
     @patch("issue_bridge.fetch_issues")
-    def test_empty_issues_returns_empty(self, mock_fetch):
+    def test_empty_issues_returns_empty(self, mock_fetch, store):
         mock_fetch.return_value = []
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert results == []
 
     @patch("issue_bridge.fetch_issues")
-    def test_skips_already_processed(self, mock_fetch, tmp_path, monkeypatch):
+    def test_skips_already_processed(self, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mark_processed(1)
         mock_fetch.return_value = [
             {"issue_number": 1, "title": "Already done", "body": "",
              "domain": "debugging", "difficulty": "medium", "prompt": "done", "category": "bug", "state": "ready-for-agent"},
         ]
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 0
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_dry_run_does_not_execute(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_dry_run_does_not_execute(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 5, "title": "Dry run test", "body": "",
              "domain": "debugging", "difficulty": "easy", "prompt": "test", "category": "bug", "state": "ready-for-agent"},
         ]
-        results = bridge_issues("user/test", dry_run=True)
+        results = bridge_issues("user/test", dry_run=True, store=store)
         assert len(results) == 1
         assert results[0]["status"] == "dry_run"
         mock_task.assert_not_called()
@@ -91,7 +92,7 @@ class TestBridgeIssues:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_successful_bridge(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_successful_bridge(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -105,7 +106,7 @@ class TestBridgeIssues:
             "domain": "debugging", "difficulty": "medium",
             "prompt": "fix this", "response": "ok",
         }
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
         assert results[0]["issue_number"] == 10
@@ -114,7 +115,7 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_task_failure_still_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_task_failure_still_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 20, "title": "Flaky issue", "body": "",
@@ -122,14 +123,14 @@ class TestBridgeIssues:
              "category": "bug", "state": "ready-for-agent"},
         ]
         mock_task.return_value = {"status": "error", "error": "model unavailable"}
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert is_processed(20)
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_handles_run_task_exception(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_handles_run_task_exception(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 30, "title": "Boom", "body": "",
@@ -137,7 +138,7 @@ class TestBridgeIssues:
              "category": "bug", "state": "ready-for-agent"},
         ]
         mock_task.side_effect = RuntimeError("unexpected error")
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert "unexpected error" in results[0]["error"]
@@ -150,7 +151,7 @@ class TestAdversarialReviewStep:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_adversarial_review_attached_to_result(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_adversarial_review_attached_to_result(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -164,7 +165,7 @@ class TestAdversarialReviewStep:
             "domain": "code-implementation", "difficulty": "medium",
             "prompt": "implement", "response": "def foo(): pass",
         }
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
         assert "adversarial_review" in results[0]
@@ -175,7 +176,7 @@ class TestAdversarialReviewStep:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_adversarial_review_failure_falls_back(self, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_adversarial_review_failure_falls_back(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 51, "title": "Fallback test", "body": "",
@@ -189,7 +190,7 @@ class TestAdversarialReviewStep:
         }
         # Patch the executor.call_model used by _run_adversarial_review to simulate failure
         with patch("executor.call_model", side_effect=RuntimeError("model unavailable")):
-            results = bridge_issues("user/test")
+            results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
         adv = results[0]["adversarial_review"]
@@ -203,7 +204,7 @@ class TestAdversarialReviewStep:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_combined_score_uses_all_three_signals(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch):
+    def test_combined_score_uses_all_three_signals(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -217,7 +218,7 @@ class TestAdversarialReviewStep:
             "domain": "debugging", "difficulty": "medium",
             "prompt": "test", "response": "x" * 500,
         }
-        results = bridge_issues("user/test")
+        results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
         assert "new_score" in results[0]
