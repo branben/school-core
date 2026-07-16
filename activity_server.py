@@ -71,6 +71,14 @@ def _load_board_data() -> tuple[list[dict], list[int], list[dict]]:
 class ActivityHandler(SimpleHTTPRequestHandler):
     """Serve activity log JSON and the dashboard."""
 
+    def handle(self) -> None:
+        # Silence client disconnects (SSE streams + Cloudflare edge re-requests
+        # drop connections mid-stream). A reset peer is normal, not an error.
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
