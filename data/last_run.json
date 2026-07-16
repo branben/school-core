@@ -1,0 +1,66 @@
+[
+  {
+    "issue": 9,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:37.267752+00:00"
+  },
+  {
+    "issue": 8,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:37.651934+00:00"
+  },
+  {
+    "issue": 7,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:38.037228+00:00"
+  },
+  {
+    "issue": 6,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:38.414689+00:00"
+  },
+  {
+    "issue": 4,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:38.648613+00:00"
+  },
+  {
+    "issue": 3,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:38.939309+00:00"
+  },
+  {
+    "issue": 2,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:39.245309+00:00"
+  },
+  {
+    "issue": 1,
+    "status": "error",
+    "agent": "unknown",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-16T19:46:39.634500+00:00"
+  }
+]
