@@ -37,6 +37,8 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     import activity_log
     import decision_log
     import escalation_log
+    import scoring
+    import sleep_state
 
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -44,10 +46,25 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "activity_log.json")
     monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "decision_log.json")
     monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "escalation_log.json")
+    monkeypatch.setattr(sleep_state, "SCORES_PATH", data_dir / "scores.json")
 
     # Reset cached singletons so they pick up the redirected paths.
     activity_log._default_log = None
     decision_log._default_log = None
+
+    # Bulletproof scores isolation: any ScoreStore() created WITHOUT an
+    # explicit file_path (e.g. mcp_server's module-level store, director
+    # fallbacks, autonomous_loop) is redirected to tmp. An explicitly passed
+    # file_path is always preserved, so production behaviour is untouched.
+    tmp_scores = data_dir / "scores.json"
+    orig_init = scoring.ScoreStore.__init__
+
+    def _isolated_init(self, file_path=None, *a, **kw):
+        if file_path is None:
+            file_path = str(tmp_scores)
+        return orig_init(self, file_path, *a, **kw)
+
+    monkeypatch.setattr(scoring.ScoreStore, "__init__", _isolated_init)
 
 
 @pytest.fixture(autouse=True)
