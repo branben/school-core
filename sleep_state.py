@@ -23,6 +23,7 @@ import yaml
 SESSIONS_DIR = Path(__file__).parent / "data" / "sessions"
 CONSOLIDATION_DIR = Path(__file__).parent / "data" / "sessions" / "consolidation"
 LIBRARY_LOG_PATH = Path(__file__).parent / "data" / "sessions" / "library_log.yaml"
+SCORES_PATH = Path(__file__).parent / "data" / "scores.json"
 
 
 # ── Exceptions ───────────────────────────────────────────────────────────────
@@ -323,7 +324,7 @@ def _save_scores_snapshot(session_id: str, scores: dict) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(scores, f, indent=2)
     # also update scores.json for persistence across restarts
-    scores_file = Path(__file__).parent / "data" / "scores.json"
+    scores_file = SCORES_PATH
     if scores_file.exists():
         with open(scores_file, "r", encoding="utf-8") as f:
             all_scores = json.load(f)
