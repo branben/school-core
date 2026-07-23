@@ -196,6 +196,60 @@ def list_repos() -> list[str]:
         return []
 
 
+def fetch_single_issue(owner: str, repo: str, number: int) -> Optional[dict]:
+    """Fetch one GitHub issue by number and classify it into a Director task.
+
+    Returns a dict with keys:
+        issue_number, title, body, domain, difficulty, prompt, category, state
+    or None on any gh failure. Reuses the same classification/domain mapping
+    as fetch_issues so the conductor's --issue bridge stays consistent.
+    """
+    stdout = _gh_command([
+        "issue", "view", str(number),
+        "--repo", f"{owner}/{repo}",
+        "--json", "number,title,labels,body",
+    ])
+    if stdout is None:
+        return None
+    try:
+        issue = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        sys.stderr.write(f"[github_fetcher] Failed to parse gh issue view: {e}\n")
+        return None
+
+    number = issue.get("number", number)
+    title = issue.get("title", "")
+    body = issue.get("body", "") or ""
+    gh_labels = issue.get("labels", [])
+    label_names = [l.get("name", "") for l in gh_labels] if isinstance(gh_labels, list) else []
+
+    config = load_config()
+    category, state = classify_issue(title, label_names, body)
+
+    domain_overrides = config.get("domain_overrides", {})
+    domain = None
+    for override_label, override_domain in domain_overrides.items():
+        if any(override_label in l.lower() for l in label_names):
+            domain = override_domain
+            break
+    if domain is None:
+        domain = _map_domain(category, label_names, title)
+
+    difficulty = _map_difficulty(label_names, config)
+    prompt = f"{title}\n\n{body}"
+
+    return {
+        "issue_number": number,
+        "title": title,
+        "body": body,
+        "domain": domain,
+        "difficulty": difficulty,
+        "prompt": prompt,
+        "category": category,
+        "state": state,
+    }
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="GitHub Issue Fetcher")
