@@ -1,6 +1,5 @@
 import json
-import re
-import subprocess
+import os
 import sys
 import uuid
 import urllib.request
@@ -9,42 +8,49 @@ from typing import Optional
 
 OMNIROUTE_BASE = "http://localhost:20128/v1"
 A2A_BASE = "http://localhost:20128/a2a"
-API_KEY = "sk-1f24b3ef61d2e1f9-a3db47-823f823a"
+API_KEY = os.environ.get("OMNIROUTE_API_KEY", "sk-1f24b3ef61d2e1f9-a3db47-823f823a")
 
 COMBO_MAP = {
-    # Cloud models (via OmniRoute)
-    "gemini-3-flash-preview": "free-stack",
-    "gemma-4-31b-it:free": "free-stack",
-    "owl-alpha": "openrouter/owl-alpha",
-    "gemini-2.0-flash": "free-stack",
-    "kimi-k2.6:free": "free-stack",
-    "always-on-max": "always-on-max",
-    "always-on-free": "always-on-free",
-    "north-coding": "north-coding",
-    # Local models (via Foundry Local — GPU-accelerated, subprocess transport)
-    # 0.5b and 1.5b run fine on M1 16GB; 7b+ causes OOM/paging → use cloud instead
-    "foundry-coder-0.5b": "foundry/qwen2.5-coder-0.5b",
-    "foundry-coder-1.5b": "foundry/qwen2.5-coder-1.5b",
-    "foundry-coder-7b": "openrouter/owl-alpha",  # Cloud: 7b too large for local M1 16GB
-    "foundry-smollm3-3b": "foundry/smollm3-3b",
-    "foundry-phi4": "foundry/phi-4",
-    # A2A agents (agent-to-agent protocol — fallback)
+    # Specialized roles — each role has a specific tool domain and model assignment.
+    # Roles replace the old fungible "student" agents. Domain determines role;
+    # score determines whether the role is qualified for the task difficulty.
+    "searcher": "auto/best-free",
+    "executor": "auto/best-free",
+    "reviewer": "mistral/mistral-small-latest",
+    "browser": "auto/best-free",
+    "coder": "auto/best-free",
+    # A2A fallback (agent-to-agent protocol)
     "openhands": "a2a/antigravity",
     "a2a-agent": "a2a/antigravity",
 }
+
+# Domain → Role mapping. When a task comes in with a given domain,
+# the director routes it to the specialized role that handles that domain.
+DOMAIN_ROLE_MAP = {
+    "code-search": "searcher",
+    "debugging": "searcher",
+    "python-testing": "coder",
+    "python-coding": "coder",
+    "code-implementation": "coder",
+    "code-review": "reviewer",
+    "adversarial-review": "reviewer",
+    "git-operations": "executor",
+    "terminal": "executor",
+    "web-automation": "browser",
+    "_default": "coder",
+}
+
+
+def get_role_for_domain(domain: str) -> str:
+    """Map a task domain to the specialized role that handles it."""
+    return DOMAIN_ROLE_MAP.get(domain, DOMAIN_ROLE_MAP["_default"])
 
 
 class ExecutorError(Exception):
     pass
 
 
-FOUNDRY = "foundry"
 A2A = "a2a"
-
-FOUNDRY_MAX_TOKENS = 2048
-FOUNDRY_TEMPERATURE = 0.3
-
-_FORMATTING_RE = re.compile(r'\x1b\[[0-9;]*m|[\u2500-\u257f]')
 
 
 def _omniroute_call(combo: str, messages: list, timeout: int) -> dict:
@@ -78,66 +84,6 @@ def _omniroute_call(combo: str, messages: list, timeout: int) -> dict:
     except json.JSONDecodeError as e:
         preview = raw[:300] if raw else "empty response"
         raise ExecutorError(f"Invalid JSON: {e} | raw: {preview}")
-
-
-def _foundry_call(model_name: str, messages: list, timeout: int) -> dict:
-    """Call a Foundry Local model via `foundry complete` subprocess.
-
-    Foundry's OpenAI-compatible REST API does not reliably bind to a port,
-    so we use the CLI directly. The model_name here is the short alias
-    (e.g., 'qwen2.5-coder-0.5b'), not the full variant ID.
-    """
-    # Build a single prompt from messages (foundry complete takes a single prompt)
-    prompt_parts = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system":
-            prompt_parts.append(f"System: {content}")
-        elif role == "assistant":
-            prompt_parts.append(f"Assistant: {content}")
-        else:
-            prompt_parts.append(content)
-    prompt = "\n\n".join(prompt_parts)
-
-    cmd = [
-        "foundry", "complete", model_name, prompt,
-        "--max-tokens", str(FOUNDRY_MAX_TOKENS),
-        "--temperature", str(FOUNDRY_TEMPERATURE),
-    ]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=timeout, check=False, text=True,
-        )
-    except subprocess.TimeoutExpired:
-        raise ExecutorError(f"Foundry model '{model_name}' timed out after {timeout}s")
-    except FileNotFoundError:
-        raise ExecutorError("Foundry CLI not found in PATH")
-
-    if result.returncode != 0:
-        stderr = result.stderr.strip()[:500] if result.stderr else ""
-        # Auto-load model if not loaded
-        if "not loaded" in stderr.lower():
-            sys.stderr.write(f"[executor] Loading Foundry model {model_name}...\n")
-            try:
-                subprocess.run(
-                    ["foundry", "model", "load", model_name],
-                    capture_output=True, timeout=120, check=True,
-                )
-            except (subprocess.CalledProcessError, FileNotFoundError) as load_err:
-                raise ExecutorError(f"Foundry auto-load failed: {load_err}")
-            sys.stderr.write("[executor] Loaded. Retrying...\n")
-            return _foundry_call(model_name, messages, timeout)
-        raise ExecutorError(f"Foundry error (rc={result.returncode}): {stderr}")
-
-    # Strip terminal formatting (box-drawing, ANSI codes) from output
-    raw_output = _FORMATTING_RE.sub("", result.stdout).strip()
-
-    # Extract code blocks if present — return the full formatted output
-    return {
-        "choices": [{"message": {"content": raw_output}}],
-        "model": model_name,
-    }
 
 
 def _a2a_call(
@@ -274,8 +220,7 @@ def _a2a_poll(task_id: str, timeout: int = 120) -> str:
     )
 
 
-CLOUD_TIMEOUT = 30  # OmniRoute free-stack is unreliable — fail fast
-FOUNDRY_TIMEOUT = 300  # Foundry models: 7b ~15s, phi-4 ~30s, cold loads ~60s
+CLOUD_TIMEOUT = 45  # Auto/best-free dream stack (6 providers, auto-failover) — generous timeout
 CLOUD_HEALTH_TIMEOUT = 5  # Quick ping for cloud availability check
 
 
@@ -296,12 +241,6 @@ def cloud_available() -> bool:
         return False
 
 
-def is_local_agent(agent_name: str) -> bool:
-    """Returns True if the agent runs on local hardware (Foundry GPU)."""
-    combo = COMBO_MAP.get(agent_name, "")
-    return combo.startswith(f"{FOUNDRY}/")
-
-
 def call_model(
     agent_name: str,
     prompt: str,
@@ -317,11 +256,11 @@ def call_model(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    # Route: Foundry (local GPU), A2A (agent-to-agent), or OmniRoute (cloud)
-    if combo.startswith(f"{FOUNDRY}/"):
-        model_name = combo.split("/", 1)[1]
-        result = _foundry_call(model_name, messages, timeout or FOUNDRY_TIMEOUT)
-    elif combo.startswith(f"{A2A}/"):
+    # Route: A2A (agent-to-agent) or OmniRoute (cloud).
+    # Role-based tool dispatch: each role gets a tailored system prompt injected
+    # by the director before call_model is invoked. This function handles only
+    # the transport layer.
+    if combo.startswith(f"{A2A}/"):
         agent_target = combo.split("/", 1)[1]
         return _a2a_call(
             task_text=prompt,
