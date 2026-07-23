@@ -18,6 +18,25 @@
 
 ---
 
+## Persona Resolution (SOUL.md)
+
+All 8 personas (principal, teacher-cto, teacher-coo, student-{searcher,
+executor, coder, reviewer, browser}) are **committed in-repo** under
+`config/profiles/<name>/SOUL.md` and are the **authoritative** source. The
+runtime resolves each persona via `load_soul(name)` (defined in
+`conductor.py` / `leaf.py` / `teacher.py`) with this order:
+
+1. `<repo>/config/profiles/<name>/SOUL.md` — committed, authoritative.
+2. `~/.hermes/profiles/<name>/SOUL.md` — machine-local **override** only.
+3. empty → caller's generic fallback prompt.
+
+**Implication:** `git clone` + run works with real personas on a fresh
+machine — no manual copy to `~/.hermes/profiles/` is required. The HOME copy
+is an *override*, not a dependency; it cannot silently shadow the committed
+persona unless it exists intentionally.
+
+---
+
 ## 1. Bookbag State Machine
 
 The bookbag (`~/.hermes/bookbag/<bead>.json`) is the **ground-truth

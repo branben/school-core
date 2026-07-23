@@ -48,6 +48,24 @@ from sleep_state import execute_sleep, execute_wake
 
 logger = logging.getLogger(__name__)
 
+
+def load_soul(profile_name: str) -> str:
+    """Resolve a persona's SOUL.md.
+
+    Resolution order (single source of truth = repo config/profiles):
+        1. ``<repo>/config/profiles/<name>/SOUL.md``  (committed, authoritative)
+        2. ``~/.hermes/profiles/<name>/SOUL.md``       (machine-local override)
+        3. empty string (caller supplies a generic fallback)
+    """
+    repo_soul = Path(__file__).parent / "config" / "profiles" / profile_name / "SOUL.md"
+    if repo_soul.exists():
+        return repo_soul.read_text().strip()
+    home_soul = Path.home() / ".hermes" / "profiles" / profile_name / "SOUL.md"
+    if home_soul.exists():
+        return home_soul.read_text().strip()
+    return ""
+
+
 # ── Role configuration ───────────────────────────────────────────────────────
 
 TEACHER_LENSES = {
@@ -470,13 +488,9 @@ class TeacherWorktree:
         Returns:
             Raw model response string (JSON expected by caller).
         """
-        # ── Read SOUL.md ────────────────────────────────────────────────
-        soul_path = (
-            Path.home() / ".hermes" / "profiles" / f"teacher-{self.role}" / "SOUL.md"
-        )
-        if soul_path.exists():
-            soul = soul_path.read_text().strip()
-        else:
+        # ── Read SOUL.md (repo config/profiles primary, ~/.hermes override) ──
+        soul = load_soul(f"teacher-{self.role}")
+        if not soul:
             soul = f"You are a {self.role} reviewer. Output ONLY a JSON object."
 
         # ── Compose full review prompt ──────────────────────────────────

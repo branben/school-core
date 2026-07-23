@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -34,6 +35,7 @@ from bookbag import read_bookbag, list_bookbags, wait_for_verdicts
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
+from github_fetcher import fetch_single_issue
 
 # Map domain -> role for dispatch
 DOMAIN_ROLE = {
@@ -54,10 +56,82 @@ def load_principal_soul() -> str:
     Mirrors the 3-line read pattern in teacher.py / leaf.py. Falls back to a
     minimal system prompt if the profile file is absent.
     """
-    soul_path = Path.home() / ".hermes" / "profiles" / "principal" / "SOUL.md"
-    if soul_path.exists():
-        return soul_path.read_text().strip()
-    return "You are the Principal of Agent School. Orchestrate the pipeline, do not execute tasks."
+    return load_soul("principal")
+
+
+def load_soul(profile_name: str) -> str:
+    """Resolve a persona's SOUL.md.
+
+    Resolution order (single source of truth = repo config/profiles):
+        1. ``<repo>/config/profiles/<name>/SOUL.md``  (committed, authoritative)
+        2. ``~/.hermes/profiles/<name>/SOUL.md``       (machine-local override)
+        3. empty string (caller supplies a generic fallback)
+
+    Keeping the repo copy authoritative means `git clone` + run works without
+    a manual copy step; HOME remains an optional local override that cannot
+    silently shadow the committed persona without being intentional.
+    """
+    repo_soul = Path(__file__).parent / "config" / "profiles" / profile_name / "SOUL.md"
+    if repo_soul.exists():
+        return repo_soul.read_text().strip()
+    home_soul = Path.home() / ".hermes" / "profiles" / profile_name / "SOUL.md"
+    if home_soul.exists():
+        return home_soul.read_text().strip()
+    return ""
+
+
+def _parse_issue_ref(ref: str) -> tuple[str, str, int]:
+    """Parse a GitHub issue reference into (owner, repo, number).
+
+    Accepts either ``owner/repo#123`` or a full GitHub issue URL
+    (https://github.com/owner/repo/issues/123). Raises ValueError if
+    the reference can't be parsed.
+    """
+    ref = ref.strip()
+    m = re.search(r"github\.com/([^/]+)/([^/]+)/issues/(\d+)", ref)
+    if not m:
+        m = re.search(r"([^/\s]+)/([^/#\s]+)#(\d+)", ref)
+    if not m:
+        raise ValueError(
+            f"Could not parse issue ref {ref!r}. Expected 'owner/repo#123' "
+            f"or a full GitHub issue URL."
+        )
+    owner, repo, number = m.group(1), m.group(2), int(m.group(3))
+    return owner, repo, number
+
+
+def _run_issue(args, store):
+    """Fetch a single GitHub issue and dispatch it through the Principal pipeline."""
+    try:
+        owner, repo, number = _parse_issue_ref(args.issue)
+    except ValueError as e:
+        print(f"\u274c {e}")
+        return
+
+    print(f"\U0001f4e6 PRINCIPAL \u2014 fetching issue {owner}/{repo}#{number}")
+    try:
+        issue = fetch_single_issue(owner, repo, number)
+    except Exception as e:
+        print(f"\u274c Failed to fetch issue: {e}")
+        return
+
+    if issue is None:
+        print(f"\u274c gh could not fetch {owner}/{repo}#{number} (auth? exists?)")
+        return
+
+    domain = issue["domain"]
+    difficulty = issue["difficulty"]
+    role = args.agent or DOMAIN_ROLE.get(domain, "student")
+    print(f"   Title : {issue['title']}")
+    print(f"   Domain: {domain}  Difficulty: {difficulty}  Role: {role}")
+    if issue.get("state") != "ready-for-agent":
+        print(f"   \u26a0 Classified state={issue.get('state')!r} (not 'ready-for-agent') \u2014 dispatching anyway")
+
+    # Delegate to the single-task pipeline (handles --async + two-judge review).
+    args.task = issue["prompt"]
+    args.domain = domain
+    args.difficulty = difficulty
+    _run_single_task(args, store)
 
 
 def main():
@@ -67,6 +141,10 @@ def main():
     parser.add_argument("--domain", default="python-coding", help="Task domain")
     parser.add_argument("--difficulty", default="easy", help="Task difficulty")
     parser.add_argument("--agent", default=None, help="Force a specific agent/role")
+    parser.add_argument("--issue", default=None,
+                        help="GitHub issue to process, e.g. 'owner/repo#123' or a full "
+                             "issue URL. Fetched via gh, classified, and dispatched through "
+                             "the Principal pipeline (run_leaf -> two-judge review).")
     parser.add_argument("--loop", action="store_true", help="Autonomous loop mode")
     parser.add_argument("--rounds", type=int, default=5, help="Number of rounds in loop mode")
     parser.add_argument("--async", action="store_true", dest="async_mode",
@@ -103,6 +181,11 @@ def main():
             print(f"\U0001f9f9 Removed {count} study-* worktrees")
         except OrcaUnavailableError as e:
             print(f"\u26a0 Orca not available: {e}")
+        return
+
+    if args.issue:
+        store = ScoreStore()
+        _run_issue(args, store)
         return
 
     # ── Core pipeline ────────────────────────────────────────────────────
