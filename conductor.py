@@ -37,16 +37,21 @@ from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
 from github_fetcher import fetch_single_issue
 
-# Map domain -> role for dispatch
+# Map domain -> role for dispatch. Roles MUST exist in executor.COMBO_MAP
+# (searcher, executor, reviewer, browser, coder, openhands, a2a-agent);
+# "student"/"tester"/"debugger" are NOT valid dispatch roles, so unknown
+# domains fall back to "coder" (the universal code role) rather than a
+# nonexistent agent.
 DOMAIN_ROLE = {
     "code-search": "searcher",
     "terminal": "executor",
     "code-review": "reviewer",
     "web-automation": "browser",
     "python-coding": "coder",
-    "python-testing": "tester",
-    "debugging": "debugger",
-    "_default": "student",
+    "python-testing": "coder",
+    "debugging": "coder",
+    "code-implementation": "coder",
+    "_default": "coder",
 }
 
 
