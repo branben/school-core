@@ -34,6 +34,29 @@ COMBO_MAP = {
 }
 
 
+# Domain -> specialized role. Used by director.py (get_role_for_domain) to
+# pick the dispatch role when none is forced. Roles MUST exist in COMBO_MAP
+# above (searcher/executor/reviewer/browser/coder/...).
+DOMAIN_ROLE_MAP = {
+    "code-search": "searcher",
+    "debugging": "searcher",
+    "python-testing": "coder",
+    "python-coding": "coder",
+    "code-implementation": "coder",
+    "code-review": "reviewer",
+    "adversarial-review": "reviewer",
+    "git-operations": "executor",
+    "terminal": "executor",
+    "web-automation": "browser",
+    "_default": "coder",
+}
+
+
+def get_role_for_domain(domain: str) -> str:
+    """Map a task domain to the specialized role that handles it."""
+    return DOMAIN_ROLE_MAP.get(domain, DOMAIN_ROLE_MAP["_default"])
+
+
 class ExecutorError(Exception):
     pass
 
