@@ -132,11 +132,92 @@ def _run_issue(args, store):
     if issue.get("state") != "ready-for-agent":
         print(f"   \u26a0 Classified state={issue.get('state')!r} (not 'ready-for-agent') \u2014 dispatching anyway")
 
-    # Delegate to the single-task pipeline (handles --async + two-judge review).
+    # Delegate to the pipeline. --async boots persistent teacher worktrees
+    # (CTO+COO) and polls bookbags; otherwise run sync inline two-judge review.
     args.task = issue["prompt"]
     args.domain = domain
     args.difficulty = difficulty
-    _run_single_task(args, store)
+    if args.async_mode:
+        _run_issue_async(args, store, role)
+    else:
+        _run_single_task(args, store)
+
+
+def _run_issue_async(args, store, role):
+    """Single-issue async path: boot teachers, run one leaf, poll verdicts.
+
+    Mirrors _run_async_loop's topology for one issue — the CTO/COO teacher
+    worktrees are persistent (visible in Orca's sidebar) and review the
+    student's bookbag via the signal protocol, instead of the principal
+    running both reviews inline.
+    """
+    print(f"\U0001f504 PRINCIPAL — async dispatch {role} / {args.domain}")
+    print(f"   Persona: {load_principal_soul()[:80].splitlines()[0]}\n")
+
+    teachers = _boot_teachers()
+    if len(teachers) < 2:
+        print("  \u26a0\ufe0f Could not boot both teachers — falling back to sync review")
+        if teachers:
+            _shutdown_teachers(teachers)
+        _run_single_task(args, store)
+        return
+
+    cto = teachers.get("cto")
+    coo = teachers.get("coo")
+    print(f"  \u2705 CTO worktree: {cto.worktree_name}")
+    print(f"  \u2705 COO worktree: {coo.worktree_name}\n")
+
+    leaf = None
+    try:
+        leaf = StudentLeaf(role=role, domain=args.domain,
+                           difficulty=args.difficulty, store=store)
+        leaf.boot()
+        leaf.write_brief(args.task)
+        result = leaf.run_via_hermes(args.task)
+        if result.get("status") != "success":
+            print(f"  \u274c leaf LLM failed: {result.get('error', result.get('status'))}")
+            leaf.dispose()
+            _shutdown_teachers(teachers)
+            return
+        leaf.signal_ready()
+        print(f"  \u2705 bead={leaf.bead[:20]} ({len(result.get('response', ''))} chars) — teachers notified\n")
+
+        cto_v, coo_v = wait_for_verdicts(leaf.bead, timeout=args.handoff_timeout)
+        bag = read_bookbag(leaf.bead) or {}
+        result["review"] = {
+            "cto_verdict": cto_v,
+            "coo_verdict": coo_v,
+            "cto_score": bag.get("cto_score", 0),
+            "coo_score": bag.get("coo_score", 0),
+            "findings": bag.get("findings", []),
+            "accepted": bag.get("accepted", False),
+        }
+        result["task_score"] = _compute_task_score(bag) if bag else 0
+
+        accepted = result["review"].get("accepted", False)
+        mark = "\u2705 YES" if accepted else "\u274c NO"
+        print("\U0001f50d TWO-JUDGE REVIEW (async)")
+        print(f"  CTO: {cto_v}  COO: {coo_v}  Accepted: {mark}")
+        findings = result["review"].get("findings", [])
+        print(f"  Findings: {len(findings)}")
+        for f in findings[:3]:
+            print(f"    - [{f.get('severity', '?')}] {f.get('description', '')[:100]}")
+
+        updated = evaluate_and_update(result, result.get("task_score", 0), store=store)
+        old_s = updated.get("old_score", 0)
+        new_s = updated.get("new_score", 0)
+        crossed = updated.get("gate_crossed", "")
+        gate_msg = f" \U0001f389 {crossed}!" if crossed else ""
+        print(f"\U0001f4ca Score: {old_s:.1f} \u2192 {new_s:.1f}{gate_msg}")
+    except Exception as e:
+        print(f"  \u274c async dispatch error: {e}")
+    finally:
+        if leaf is not None:
+            try:
+                leaf.dispose()
+            except Exception:
+                pass
+        _shutdown_teachers(teachers)
 
 
 def main():
