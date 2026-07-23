@@ -502,7 +502,7 @@ def run_task(
             system_prompt = SYSTEM_PROMPTS.get(domain, DEFAULT_SYSTEM_PROMPT)
 
     # Inject vault context (includes past bookbag feedback for this role)
-    context_blob = enrich_prompt(domain, prompt, role=role)
+    context_blob = enrich_prompt(domain, prompt)
     if context_blob:
         system_prompt = system_prompt + context_blob
         get_decision_log().log(
