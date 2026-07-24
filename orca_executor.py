@@ -735,19 +735,25 @@ class OrcaExecutionManager:
 
         start = time.monotonic()
         own_terminal = handle is None
-        if own_terminal:
-            handle = self.create_terminal(title=f"hermes-{bead[:8]}")
+        # NOTE: do NOT pre-create a terminal here. When own_terminal, we create
+        # the Hermes terminal directly via `terminal create --command` below and
+        # capture its handle — creating one first (then a second via
+        # --command) would orphan the first and leave the Hermes terminal open.
 
         try:
             launch_cmd = f"bash {shlex.quote(str(launcher))}"
             if own_terminal:
-                # orca terminal create --command runs the launcher on startup
-                self._run_orca([
+                # `terminal create --command` spawns the Hermes terminal AND runs
+                # the launcher on startup. Capture its handle so finally closes
+                # the *actual* Hermes terminal (not a throwaway one).
+                result = self._run_orca([
                     "terminal", "create",
                     "--worktree", f"path:{wp}",
                     "--title", f"hermes-{bead[:8]}",
                     "--command", launch_cmd,
                 ], timeout=15)
+                terminal = result.get("terminal", result)
+                handle = terminal.get("handle", handle)
             else:
                 self._run_orca([
                     "terminal", "send",
@@ -784,7 +790,7 @@ class OrcaExecutionManager:
             return response
 
         finally:
-            if own_terminal:
+            if own_terminal and handle:
                 self.close_terminal(handle)
             # Clean up transient artifacts (response file kept for audit trail)
             for f in (task_file, launcher, done_file):

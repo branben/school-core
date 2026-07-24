@@ -506,9 +506,10 @@ class TestWorktreeDisposal:
         result = mgr.close_worktree("/tmp/nonexistent-path-xyz123")
         assert result is True, "Should return True when path doesn't exist"
 
-    def test_close_worktree_orca_succeeds_first_try(self, mgr, monkeypatch):
+    def test_close_worktree_orca_succeeds_first_try(self, mgr, monkeypatch, tmp_path):
         """When the Orca CLI succeeds, the path is removed on first attempt."""
         call_count = [0]
+        dummy_worktree = tmp_path / "dummy-rm-test-first"
 
         def mock_run_orca(args, timeout=15):
             call_count[0] += 1
@@ -516,46 +517,43 @@ class TestWorktreeDisposal:
             assert "--force" in args
             # Simulate successful removal: delete the path
             import shutil
-            shutil.rmtree(dummy_worktree, ignore_errors=True)
+            shutil.rmtree(str(dummy_worktree), ignore_errors=True)
             return {"ok": True}
 
-        dummy_worktree = "/tmp/dummy-rm-test-first"
-        import shutil
-        shutil.rmtree(dummy_worktree, ignore_errors=True)
-        Path(dummy_worktree).mkdir(parents=True, exist_ok=True)
+        dummy_worktree.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
 
-        result = mgr.close_worktree(dummy_worktree)
+        result = mgr.close_worktree(str(dummy_worktree))
         assert result is True
         assert call_count[0] == 1, "Should succeed on first attempt"
-        assert not Path(dummy_worktree).exists()
+        assert not dummy_worktree.exists()
 
-    def test_close_worktree_retry_then_succeed(self, mgr, monkeypatch):
+    def test_close_worktree_retry_then_succeed(self, mgr, monkeypatch, tmp_path):
         """When Orca fails once but succeeds on retry, removal succeeds."""
         call_count = [0]
-        dummy_worktree = "/tmp/dummy-rm-test-retry"
-        import shutil
-        shutil.rmtree(dummy_worktree, ignore_errors=True)
-        Path(dummy_worktree).mkdir(parents=True, exist_ok=True)
+        dummy_worktree = tmp_path / "dummy-rm-test-retry"
+        dummy_worktree.mkdir(parents=True, exist_ok=True)
 
         def mock_run_orca(args, timeout=15):
             call_count[0] += 1
             if call_count[0] < 2:
                 raise OrcaUnavailableError("Simulated Orca failure")
             import shutil
-            shutil.rmtree(dummy_worktree, ignore_errors=True)
+            shutil.rmtree(str(dummy_worktree), ignore_errors=True)
             return {"ok": True}
 
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
 
-        result = mgr.close_worktree(dummy_worktree)
+        result = mgr.close_worktree(str(dummy_worktree))
         assert result is True
         assert call_count[0] == 2, f"Should retry once, got {call_count[0]}"
-        assert not Path(dummy_worktree).exists()
+        assert not dummy_worktree.exists()
 
-    def test_close_worktree_returns_false_when_both_fail(self, mgr, monkeypatch):
+    def test_close_worktree_returns_false_when_both_fail(self, mgr, monkeypatch, tmp_path):
         """If both CLI attempts fail, close_worktree returns False (no raise)."""
         call_count = [0]
+        dummy_worktree = tmp_path / "real-dir-both-fail"
+        dummy_worktree.mkdir(parents=True, exist_ok=True)
 
         def mock_run_orca(args, timeout=15):
             call_count[0] += 1
@@ -564,6 +562,7 @@ class TestWorktreeDisposal:
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
 
         # Use a path that exists so both attempts are attempted
-        result = mgr.close_worktree("/tmp")
+        result = mgr.close_worktree(str(dummy_worktree))
         assert result is False, "Should return False when CLI cannot remove it"
         assert call_count[0] == 2, "Should attempt twice (initial + 1 retry)"
+        assert dummy_worktree.exists(), "Mock never removed it"
