@@ -117,11 +117,13 @@ class StudentLeaf:
         difficulty: str = "easy",
         store: Optional[ScoreStore] = None,
         handoff_timeout: float = HANDOFF_TIMEOUT,
+        repo_path: Optional[Path] = None,
     ):
         self.role = role
         self.domain = domain
         self.difficulty = difficulty
         self.handoff_timeout = handoff_timeout
+        self.repo_path = repo_path  # None -> school-core (single-repo mode)
 
         # Auto-generate unique identifiers
         rand = uuid.uuid4().hex[:8]
@@ -168,7 +170,9 @@ class StudentLeaf:
         """
         self._mgr = OrcaExecutionManager()
         try:
-            self.worktree_path = self._mgr.create_worktree(self.worktree_name)
+            self.worktree_path = self._mgr.create_worktree(
+                self.worktree_name, repo_path=self.repo_path
+            )
             self._booted = True
             logger.info("[leaf:%s] Booted worktree at %s", self.bead[:12], self.worktree_path)
             return self.worktree_path

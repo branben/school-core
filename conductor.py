@@ -27,6 +27,7 @@ import sys
 import re
 import shlex
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -178,12 +179,12 @@ def _run_issue(args, store):
     args.domain = domain
     args.difficulty = difficulty
     if args.async_mode:
-        _run_issue_async(args, store, role)
+        _run_issue_async(args, store, role, target_repo=f"{owner}/{repo}")
     else:
         _run_single_task(args, store)
 
 
-def _run_issue_async(args, store, role):
+def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
     """Single-issue async path: boot teachers, run one leaf, poll verdicts.
 
     Mirrors _run_async_loop's topology for one issue — the CTO/COO teacher
@@ -208,9 +209,20 @@ def _run_issue_async(args, store, role):
     print(f"  \u2705 COO worktree: {coo.worktree_name}\n")
 
     leaf = None
+    target_path = None
+    if target_repo:
+        # Cross-repo dispatch: clone a FRESH copy of the target repo so the
+        # student never starts from a contaminated/stale base tree.
+        try:
+            from repo_reader import clone_repo
+            target_path = clone_repo(target_repo, force_fresh=True)
+        except Exception as e:
+            print(f"  ⚠ Could not clone target repo {target_repo}: {e} — falling back to school-core")
+            target_path = None
     try:
         leaf = StudentLeaf(role=role, domain=args.domain,
-                           difficulty=args.difficulty, store=store)
+                           difficulty=args.difficulty, store=store,
+                           repo_path=target_path)
         leaf.boot()
         leaf.write_brief(args.task)
         result = leaf.run_via_hermes(args.task)

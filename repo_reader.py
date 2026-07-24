@@ -18,7 +18,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-
+from typing import Optional
 CACHE_DIR = Path.home() / ".cache" / "school-core" / "repos"
 MAX_FILE_CHARS = 2000
 MAX_FILES = 5
@@ -56,13 +56,27 @@ def _git(repo_path: Path, *args, timeout: int = 30) -> str:
         return ""
 
 
-def clone_repo(repo_slug: str) -> Path:
+def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     """Get or create a cached clone of a GitHub repo.
 
-    Returns the path to the local clone. Refreshes with git pull if already cached.
+    Returns the path to the local clone. By default refreshes a cached clone
+    with ``git pull --ff-only``. Pass ``force_fresh=True`` to discard any
+    cached clone (which may carry uncommitted/diverged state forward) and do a
+    clean depth-1 clone — required for dispatch so a student never starts from
+    a contaminated base tree.
+
+    Args:
+        repo_slug: ``owner/repo`` to clone.
+        force_fresh: If True, remove the cache dir and re-clone from origin.
+
+    Returns:
+        Path to the clone, or None on failure.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     repo_path = CACHE_DIR / repo_slug.replace("/", "__")
+
+    if force_fresh and repo_path.exists():
+        shutil.rmtree(repo_path, ignore_errors=True)
 
     if repo_path.exists() and (repo_path / ".git").exists():
         # Refresh existing clone
