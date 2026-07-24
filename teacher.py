@@ -146,26 +146,10 @@ class TeacherWorktree:
         """
         self._mgr = OrcaExecutionManager()
 
-        # Try creation first
-        try:
-            self.worktree_path = self._mgr.create_worktree(self.worktree_name)
-            # Create a persistent terminal for Hermes reviews.
-            # Use a distinct title to avoid collision with the run-loop terminal
-            # (which also uses "teacher-{role}" — created by _boot_teachers()).
-            self._review_terminal = self._mgr.create_terminal(
-                title=f"teacher-{self.role}-review"
-            )
-            self._booted = True
-            logger.info(
-                "[teacher:%s] Created worktree at %s",
-                self.role, self.worktree_path,
-            )
-            return self.worktree_path
-        except OrcaUnavailableError:
-            # Creation failed — try rediscovery
-            pass
-
-        # Rediscovery: find existing teacher worktree in Orca's list
+        # Rediscover first (idempotency): if a worktree named self.worktree_name
+        # already exists in Orca, reuse it. Orca auto-suffixes
+        # `worktree create --name X` when X already exists (X-2, X-3...), so
+        # calling create() unconditionally spawns a duplicate on every re-boot.
         try:
             result = self._mgr._run_orca(["worktree", "list"], timeout=15)
             wts = result.get("worktrees", [])
@@ -174,8 +158,6 @@ class TeacherWorktree:
                 dirname = Path(path).name if path else ""
                 if dirname == self.worktree_name and path:
                     self.worktree_path = path
-                    # Create a persistent terminal for Hermes reviews.
-                    # Use distinct title to avoid collision with run-loop terminal.
                     self._review_terminal = self._mgr.create_terminal(
                         title=f"teacher-{self.role}-review"
                     )
@@ -188,9 +170,25 @@ class TeacherWorktree:
         except Exception:
             pass
 
+        # No existing worktree — create it.
+        try:
+            self.worktree_path = self._mgr.create_worktree(self.worktree_name)
+            self._review_terminal = self._mgr.create_terminal(
+                title=f"teacher-{self.role}-review"
+            )
+            self._booted = True
+            logger.info(
+                "[teacher:%s] Created worktree at %s",
+                self.role, self.worktree_path,
+            )
+            return self.worktree_path
+        except OrcaUnavailableError:
+            pass
+
+        # Fall through to error if neither rediscovery nor creation worked.
         raise TeacherError(
-            f"Failed to boot teacher '{self.role}': "
-            f"could not create or rediscover worktree '{self.worktree_name}'"
+            f"[teacher:{self.role}] could not create or rediscover worktree "
+            f"'{self.worktree_name}'"
         )
 
     def sleep(self, duration_minutes: float = 0.0) -> dict:
