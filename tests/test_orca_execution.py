@@ -482,15 +482,12 @@ class TestConductorOrcaFlow:
 
 @skip_without_orca
 class TestWorktreeDisposal:
-    """Test hardened close_worktree() and force_dispose_worktree().
+    """Test close_worktree() against the native Orca CLI contract.
 
-    These tests validate the three-tier disposal strategy:
-      1. Orca CLI (mocked)
-      2. git worktree remove (real, but safe on dummy dirs)
-      3. rm -rf (real, tested against temp dirs)
-
-    The tests use real filesystem operations for tiers 2+3 since
-    those are system commands we can safely run on dummy directories.
+    The git/rm-rmtree fallback was removed: Orca owns worktree lifecycle and
+    the CLI dispose (``orca worktree rm --worktree path:<p> --force``) is the
+    single, verified disposal path. close_worktree() retries once on a
+    transient failure and returns False (never raises) if both attempts fail.
     """
 
     @pytest.fixture
@@ -504,40 +501,28 @@ class TestWorktreeDisposal:
         except OrcaUnavailableError:
             pytest.skip("Orca not running — skipping disposal tests")
 
-    @pytest.fixture
-    def dummy_worktree(self, tmp_path):
-        """Create a dummy directory structure resembling a worktree.
-
-        Contains a .git pointer file and a few subdirectories to
-        simulate a real worktree. Tests can call close_worktree()
-        or force_dispose_worktree() on this path.
-        """
-        wt_path = tmp_path / "dummy-worktree-test"
-        wt_path.mkdir(parents=True)
-        (wt_path / ".git").write_text("gitdir: /fake/main/.git/worktrees/dummy\n")
-        (wt_path / "README.md").write_text("# Dummy worktree for testing")
-        (wt_path / "src").mkdir()
-        (wt_path / "src" / "test.py").write_text("print('hello')")
-        return str(wt_path)
-
-    # ── close_worktree tests ───────────────────────────────────────────────
-
     def test_close_worktree_idempotent_nonexistent(self, mgr):
         """close_worktree() on a non-existent path returns True."""
         result = mgr.close_worktree("/tmp/nonexistent-path-xyz123")
         assert result is True, "Should return True when path doesn't exist"
 
-    def test_close_worktree_orca_succeeds_first_try(self, mgr, dummy_worktree, monkeypatch):
-        """When Orca CLI succeeds, worktree is removed on first attempt."""
+    def test_close_worktree_orca_succeeds_first_try(self, mgr, monkeypatch):
+        """When the Orca CLI succeeds, the path is removed on first attempt."""
         call_count = [0]
 
         def mock_run_orca(args, timeout=15):
             call_count[0] += 1
+            assert args[0:2] == ["worktree", "rm"]
+            assert "--force" in args
             # Simulate successful removal: delete the path
             import shutil
             shutil.rmtree(dummy_worktree, ignore_errors=True)
-            return {"status": "removed"}
+            return {"ok": True}
 
+        dummy_worktree = "/tmp/dummy-rm-test-first"
+        import shutil
+        shutil.rmtree(dummy_worktree, ignore_errors=True)
+        Path(dummy_worktree).mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
 
         result = mgr.close_worktree(dummy_worktree)
@@ -545,106 +530,40 @@ class TestWorktreeDisposal:
         assert call_count[0] == 1, "Should succeed on first attempt"
         assert not Path(dummy_worktree).exists()
 
-    def test_close_worktree_retry_on_orca_failure(self, mgr, dummy_worktree, monkeypatch):
-        """When Orca fails twice but succeeds on third attempt."""
+    def test_close_worktree_retry_then_succeed(self, mgr, monkeypatch):
+        """When Orca fails once but succeeds on retry, removal succeeds."""
+        call_count = [0]
+        dummy_worktree = "/tmp/dummy-rm-test-retry"
+        import shutil
+        shutil.rmtree(dummy_worktree, ignore_errors=True)
+        Path(dummy_worktree).mkdir(parents=True, exist_ok=True)
+
+        def mock_run_orca(args, timeout=15):
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise OrcaUnavailableError("Simulated Orca failure")
+            import shutil
+            shutil.rmtree(dummy_worktree, ignore_errors=True)
+            return {"ok": True}
+
+        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
+
+        result = mgr.close_worktree(dummy_worktree)
+        assert result is True
+        assert call_count[0] == 2, f"Should retry once, got {call_count[0]}"
+        assert not Path(dummy_worktree).exists()
+
+    def test_close_worktree_returns_false_when_both_fail(self, mgr, monkeypatch):
+        """If both CLI attempts fail, close_worktree returns False (no raise)."""
         call_count = [0]
 
         def mock_run_orca(args, timeout=15):
             call_count[0] += 1
-            if call_count[0] < 3:
-                raise OrcaUnavailableError("Simulated Orca failure")
-            # Third attempt succeeds
-            import shutil
-            shutil.rmtree(dummy_worktree, ignore_errors=True)
-            return {"status": "removed"}
-
-        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
-
-        result = mgr.close_worktree(dummy_worktree)
-        assert result is True
-        assert call_count[0] == 3, f"Should retry 3 times, got {call_count[0]}"
-        assert not Path(dummy_worktree).exists()
-
-    def test_close_worktree_falls_back_to_rm_rf(self, mgr, dummy_worktree, monkeypatch):
-        """When Orca fails all 3 attempts, rm -rf fallback still removes it."""
-        def mock_run_orca(args, timeout=15):
-            raise OrcaUnavailableError("Simulated Orca failure")
-
-        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
-
-        # git worktree remove will fail (not a real worktree),
-        # but rm -rf will succeed
-        result = mgr.close_worktree(dummy_worktree)
-        assert result is True, "rm -rf fallback should remove the directory"
-        assert not Path(dummy_worktree).exists()
-
-    def test_close_worktree_git_remove_fallback(self, mgr, dummy_worktree, monkeypatch):
-        """When Orca fails, git worktree remove should be attempted.
-
-        For a dummy (non-git) directory, git worktree remove will fail
-        too, but rm -rf still succeeds. We verify the full chain runs.
-        """
-        orca_attempts = [0]
-
-        def mock_run_orca(args, timeout=15):
-            orca_attempts[0] += 1
-            raise OrcaUnavailableError(f"Simulated failure #{orca_attempts[0]}")
-
-        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
-
-        result = mgr.close_worktree(dummy_worktree)
-        assert result is True, "Should eventually succeed via rm -rf"
-        assert orca_attempts[0] == 3, "Should try Orca 3 times before falling back"
-        assert not Path(dummy_worktree).exists()
-
-    # ── force_dispose_worktree tests ───────────────────────────────────────
-
-    def test_force_dispose_removes_directory(self, mgr, dummy_worktree):
-        """force_dispose_worktree() removes a directory without touching Orca."""
-        assert Path(dummy_worktree).exists()
-        result = mgr.force_dispose_worktree(dummy_worktree)
-        assert result is True
-        assert not Path(dummy_worktree).exists()
-
-    def test_force_dispose_idempotent(self, mgr):
-        """force_dispose_worktree() on a non-existent path returns True."""
-        result = mgr.force_dispose_worktree("/tmp/nonexistent-force-dispose-test")
-        assert result is True
-
-    def test_force_dispose_nested_structure(self, mgr, tmp_path):
-        """force_dispose_worktree() handles deeply nested directories."""
-        deep = tmp_path / "deep" / "nested" / "worktree" / "with" / "files"
-        deep.mkdir(parents=True)
-        (deep / "data.txt").write_text("hello")
-        (deep / "subdir").mkdir()
-        (deep / "subdir" / "nested.txt").write_text("world")
-
-        assert deep.exists()
-        result = mgr.force_dispose_worktree(str(deep))
-        assert result is True
-        assert not deep.exists()
-
-    # ── Exception safety tests ─────────────────────────────────────────────
-
-    def test_close_worktree_returns_false_when_all_strategies_fail(self, mgr, monkeypatch):
-        """If EVERY strategy fails, close_worktree returns False (not raises)."""
-        def mock_run_orca(args, timeout=15):
             raise OrcaUnavailableError("Orca down")
 
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
 
-        # Patch shutil.rmtree to also fail
-        import shutil as shutil_mod
-        original_rmtree = shutil_mod.rmtree
-
-        def failing_rmtree(path, **kwargs):
-            raise OSError("Permission denied (simulated)")
-
-        monkeypatch.setattr(shutil_mod, "rmtree", failing_rmtree)
-
-        # Use a path that exists so all strategies are attempted
+        # Use a path that exists so both attempts are attempted
         result = mgr.close_worktree("/tmp")
-        assert result is False, "Should return False when nothing can remove it"
-
-        # Restore for other tests
-        monkeypatch.setattr(shutil_mod, "rmtree", original_rmtree)
+        assert result is False, "Should return False when CLI cannot remove it"
+        assert call_count[0] == 2, "Should attempt twice (initial + 1 retry)"

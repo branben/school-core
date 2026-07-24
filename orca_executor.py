@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -270,15 +271,21 @@ class OrcaExecutionManager:
     def create_worktree(self, name: str) -> str:
         """Create a child worktree for a student round.
 
-        Uses `orca worktree create --name <name> --repo <path>` to create a
-        proper child worktree linked to the school-core project. These worktrees
-        appear in Orca's UI sidebar (unlike --no-parent bare worktrees).
+        Uses the native one-call ``orca worktree create --name <name> --repo
+        <path>`` contract (verified against the live Orca runtime: the worktree
+        is created as a fresh checkout under ``~/orca/workspaces/…`` and the
+        returned ``id`` is ``"<uuid>::<path>"``). These worktrees appear in
+        Orca's UI sidebar.
 
-        The worktree is a real git worktree with a .git pointer file linking
-        back to the main repo. Each student round gets its own worktree for:
+        Each student round gets its own worktree for:
         - Isolation: task files, briefs, and outputs scoped per round
         - Visibility: appears in Orca's UI sidebar
         - Audit trail: each round's state preserved on disk
+
+        IMPORTANT: the created worktree lives at Orca's checkout path, NOT
+        inside ``REPO_PATH``. Always use the returned ``path`` for any file
+        operations inside the worktree; use ``REPO_PATH`` only as the ``--repo``
+        selector target (never to resolve files inside a child worktree).
 
         Args:
             name: Worktree name (e.g., "study-coder-r1").
@@ -309,75 +316,19 @@ class OrcaExecutionManager:
             )
         return path
 
-    @staticmethod
-    def _hard_remove_worktree(path: str) -> bool:
-        """Force-remove a worktree directory without using Orca CLI.
-
-        Shared by ``close_worktree()`` (strategies 2-3) and
-        ``force_dispose_worktree()`` (strategies 1-2).
-
-        Tries ``git worktree remove --force`` followed by
-        ``shutil.rmtree`` as a nuclear fallback. Also runs
-        ``git worktree prune`` to clean stale ``.git/worktrees/`` entries.
-
-        Args:
-            path: Absolute path to the worktree directory.
-
-        Returns:
-            ``True`` if removed, ``False`` if still present.
-        """
-        p = Path(path)
-        if not p.exists():
-            return True
-
-        # Strategy A: git worktree remove (bypasses Orca)
-        try:
-            subprocess.run(
-                ["git", "worktree", "remove", "--force", path],
-                capture_output=True,
-                timeout=30,
-            )
-            subprocess.run(
-                ["git", "worktree", "prune"],
-                capture_output=True,
-                timeout=10,
-            )
-            if not p.exists():
-                return True
-        except Exception:
-            pass
-
-        # Strategy B: rm -rf (nuclear option)
-        try:
-            shutil.rmtree(path, ignore_errors=True)
-            if not p.exists():
-                return True
-        except Exception:
-            pass
-
-        return False
-
     def close_worktree(self, path: str) -> bool:
-        """Remove a worktree by path with retry logic and fallback strategies.
+        """Remove a worktree by path via the native Orca CLI.
 
-        Strategy (tried in order):
-
-        1. **Orca CLI with retries** — ``orca worktree rm --force`` up to 3
-           attempts with exponential backoff (1s, 2s). Covers the common case
-           where Orca is temporarily busy.
-
-        2. **Hard remove** — delegates to ``_hard_remove_worktree()`` which
-           tries ``git worktree remove --force`` then ``rm -rf``.
-
-        After each strategy, the method verifies the path no longer exists
-        on disk before returning success.
+        Uses ``orca worktree rm --worktree path:<path> --force`` — the single,
+        verified disposal contract (the git/rm-rmtree fallback was removed:
+        Orca owns worktree lifecycle, and the CLI dispose is reliable).
 
         Args:
             path: Absolute path to the worktree.
 
         Returns:
-            ``True`` if the worktree was successfully removed (or was
-            already gone), ``False`` if all strategies failed.
+            ``True`` if the worktree was removed (or was already gone),
+            ``False`` if the CLI call failed and the path still exists.
 
         Idempotent:
             Returns ``True`` immediately if the path does not exist.
@@ -386,40 +337,24 @@ class OrcaExecutionManager:
         if not p.exists():
             return True  # Already gone — idempotent
 
-        # ── Strategy 1: Orca CLI with retries ──────────────────────────────
-        for attempt in range(3):
+        try:
+            self._run_orca([
+                "worktree", "rm",
+                "--worktree", f"path:{path}",
+                "--force",
+            ], timeout=15)
+        except Exception:
+            # A single failure may mean Orca was momentarily busy; retry once.
             try:
                 self._run_orca([
                     "worktree", "rm",
                     "--worktree", f"path:{path}",
                     "--force",
                 ], timeout=15)
-                if not p.exists():
-                    return True
             except Exception:
-                pass
+                return False
 
-            if attempt < 2:
-                time.sleep(2 ** attempt)  # 1s, then 2s
-
-        # ── Strategy 2: hard remove (git + rm -rf) ─────────────────────────
-        return self._hard_remove_worktree(path)
-
-    def force_dispose_worktree(self, path: str) -> bool:
-        """Nuclear option: bypass Orca entirely and force-remove a worktree.
-
-        Delegates to ``_hard_remove_worktree()`` which tries
-        ``git worktree remove --force`` followed by ``rm -rf``. Does NOT
-        attempt the Orca CLI path — call this when Orca is known to be
-        unavailable or ``close_worktree()`` has already failed.
-
-        Args:
-            path: Absolute path to the worktree.
-
-        Returns:
-            ``True`` if removed, ``False`` if still present.
-        """
-        return self._hard_remove_worktree(path)
+        return not p.exists()
 
     def cleanup_worktrees_by_prefix(self, prefix: str = "study-") -> int:
         """Remove all worktrees whose path (or name) starts with a given prefix.
@@ -736,20 +671,20 @@ class OrcaExecutionManager:
         timeout_ms: int = HERMES_TIMEOUT_MS,
         handle: Optional[str] = None,
     ) -> str:
-        """Run Hermes agent in one-shot mode inside the worktree's Orca terminal.
+        """Run Hermes agent inside the worktree's Orca terminal and capture output.
 
-        Pipeline:
+        Pipeline (skill-compliant — no nested-quote ``terminal send`` mangling):
             1. Write task to ``.hermes/briefs/{bead}-hermes-task.txt``
-            2. Create Orca terminal (unless ``handle`` is provided)
-            3. Send ``hermes chat -q "$(cat task-file)" --yolo --quiet --max-turns 1``
-               with output redirected to ``.hermes/outputs/response.txt``
-            4. Poll for XEXITCODE marker (up to timeout_ms)
-            5. Read ``response.txt`` from disk
-            6. Close terminal (unless ``handle`` was provided — caller owns lifecycle)
-
-        Uses file redirect (> response.txt) instead of terminal tail capture
-        because Hermes produces streaming output (thinking, tool calls, final
-        response) that can exceed terminal buffer limits.
+            2. Write a launcher ``bash`` script (``run-hermes.sh``) that runs
+               ``hermes chat -q "$(cat task.txt)" …`` into ``response.txt`` and
+               touches a ``DONE`` sentinel.
+            3. Launch that script via ``orca terminal create --command`` (or send
+               to an existing ``handle``). The script is referenced by PATH — no
+               inline quotes that Orca would mangle.
+            4. Poll the ``DONE`` sentinel file (up to timeout_ms) — stable, unlike
+               scraping the terminal buffer for an XEXITCODE marker.
+            5. Read ``response.txt`` from disk.
+            6. Close terminal (unless ``handle`` was provided — caller owns lifecycle).
 
         Args:
             worktree_path: Path to the leaf worktree.
@@ -772,66 +707,74 @@ class OrcaExecutionManager:
         outputs_dir.mkdir(parents=True, exist_ok=True)
         briefs_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write task to a file with escaped double quotes (avoids shell injection)
+        # Write task to a file (read by the launcher via $(cat …))
         task_file = briefs_dir / f"{bead}-hermes-task.txt"
-        safe_task = task.replace('\\', '\\\\').replace('"', '\\"')
-        task_file.write_text(safe_task, encoding="utf-8")
+        task_file.write_text(task, encoding="utf-8")
 
         response_file = outputs_dir / "response.txt"
-        # Remove stale response file if present
-        if response_file.exists():
-            response_file.unlink()
+        done_file = outputs_dir / f"{bead}-hermes-done"
+        launcher = briefs_dir / f"{bead}-run-hermes.sh"
+        # Remove stale artifacts if present
+        for f in (response_file, done_file, launcher):
+            if f.exists():
+                f.unlink()
+
+        # Launcher script: run hermes, capture output, touch DONE sentinel.
+        # The $(cat task_file) keeps the multi-line task out of the terminal
+        # command line, avoiding the quote-mangling trap entirely.
+        launcher.write_text(
+            "#!/usr/bin/env bash\n"
+            f'cd {shlex.quote(str(wp))}\n'
+            f'hermes chat -q "$(cat {shlex.quote(str(task_file))})" '
+            f"--yolo --quiet --max-turns 1 "
+            f"> {shlex.quote(str(response_file))} 2>&1\n"
+            f'touch {shlex.quote(str(done_file))}\n',
+            encoding="utf-8",
+        )
+        launcher.chmod(0o755)
 
         start = time.monotonic()
         own_terminal = handle is None
         if own_terminal:
             handle = self.create_terminal(title=f"hermes-{bead[:8]}")
-        timed_out = False
 
         try:
-            # ---- Baseline read ----
-            baseline = self._read_terminal_tail(handle)
-            baseline_cursor = baseline.get("latestCursor", "0")
+            launch_cmd = f"bash {shlex.quote(str(launcher))}"
+            if own_terminal:
+                # orca terminal create --command runs the launcher on startup
+                self._run_orca([
+                    "terminal", "create",
+                    "--worktree", f"path:{wp}",
+                    "--title", f"hermes-{bead[:8]}",
+                    "--command", launch_cmd,
+                ], timeout=15)
+            else:
+                self._run_orca([
+                    "terminal", "send",
+                    "--terminal", handle,
+                    "--text", launch_cmd,
+                    "--enter",
+                ], timeout=10)
 
-            # ---- Send Hermes command with file redirect + exit code marker ----
-            hermes_cmd = (
-                f'cd {wp} && '
-                f'hermes chat -q "$(cat {task_file})" --yolo --quiet --max-turns 1 '
-                f'> {response_file} 2>&1 ; '
-                f'echo "XEXITCODE:$?"'
-            )
-            self._run_orca([
-                "terminal", "send",
-                "--terminal", handle,
-                "--text", hermes_cmd,
-                "--enter",
-            ], timeout=10)
-
-            # ---- Poll for XEXITCODE marker ----
+            # ---- Poll the DONE sentinel (stable) instead of terminal scraping ----
             deadline = start + (timeout_ms / 1000)
             while time.monotonic() < deadline:
-                time.sleep(self.POLL_INTERVAL)
-
-                poll_result = self._read_terminal_tail(handle, cursor=baseline_cursor)
-                poll_tail = poll_result.get("tail", [])
-                cleaned = self._clean_tail_lines(poll_tail)
-                if cleaned and self.EXIT_CODE_RE.match(cleaned[-1].strip()):
+                if done_file.exists():
                     break
+                time.sleep(self.POLL_INTERVAL)
             else:
-                timed_out = True
+                # Timed out before DONE touched
+                if response_file.exists():
+                    response = response_file.read_text(encoding="utf-8").strip()
+                    if response:
+                        # Partial response is better than nothing
+                        return response
+                raise OrcaUnavailableError(
+                    f"Hermes timed out after {timeout_ms}ms for bead={bead}"
+                )
 
-            # ---- Read response from file ----
-            if response_file.exists():
-                response = response_file.read_text(encoding="utf-8").strip()
-            else:
-                response = ""
-
-            if timed_out:
-                if not response:
-                    raise OrcaUnavailableError(
-                        f"Hermes timed out after {timeout_ms}ms for bead={bead}"
-                    )
-                # Partial response is better than nothing
+            response = response_file.read_text(encoding="utf-8").strip() \
+                if response_file.exists() else ""
 
             if not response:
                 raise OrcaUnavailableError(
@@ -843,9 +786,10 @@ class OrcaExecutionManager:
         finally:
             if own_terminal:
                 self.close_terminal(handle)
-            # Clean up task file (response file kept for audit)
-            if task_file.exists():
-                task_file.unlink()
+            # Clean up transient artifacts (response file kept for audit trail)
+            for f in (task_file, launcher, done_file):
+                if f.exists():
+                    f.unlink()
 
     def cleanup_tempspace(self, bead: str) -> None:
         """Remove tempspace files for a completed task."""
