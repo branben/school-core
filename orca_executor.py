@@ -338,7 +338,14 @@ class OrcaExecutionManager:
         # worktree create will accept them. school-core (REPO_PATH) is already
         # registered, so skip the registration round-trip in that case.
         if repo_path is not None and Path(repo_path).resolve() != Path(self.REPO_PATH).resolve():
-            self._register_repo(Path(repo_path))
+            registered = self._register_repo(Path(repo_path))
+            if registered is None:
+                # Registration failure means Orca is down or repo add failed.
+                # Surface a clear error rather than failing opaquely at
+                # worktree create with a repo_not_found.
+                raise OrcaUnavailableError(
+                    f"Failed to register target repo with Orca: {repo_path}"
+                )
         result = self._run_orca([
             "worktree", "create",
             "--name", name,
