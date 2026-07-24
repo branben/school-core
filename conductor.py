@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import sys
 import re
+import shlex
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -280,9 +281,39 @@ def main():
     parser.add_argument("--list-bookbags", action="store_true", help="List all bookbags on disk")
     parser.add_argument("--clean-worktrees", action="store_true",
                         help="Remove all study-* worktrees created by previous runs")
+    parser.add_argument("--serve", action="store_true", dest="serve",
+                        help="Launch a persistent principal loop in a dedicated "
+                             "Orca 'principal' terminal (survives the foreground "
+                             "process; use instead of --loop for always-on school)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume after crash: scan bookbags for partial verdicts, rediscover teachers, complete handoffs")
+
+    # ── Standalone utilities ─────────────────────────────────────────────
+
     args = parser.parse_args()
+
+    # ── Persistent principal (serve mode) ──────────────────────────────
+    # Launch the principal loop into a dedicated Orca 'principal' terminal
+    # so the orchestrator survives beyond a single foreground invocation.
+    # Mirrors how teachers are booted (run_principal_loop.py inside a
+    # terminal). Without this, the principal only runs as a foreground
+    # `conductor.py --issue ... --async` and the principal terminal is dead.
+    if args.serve:
+        try:
+            mgr = OrcaExecutionManager()
+            launcher = Path(__file__).parent / "scripts" / "run_principal_loop.py"
+            handle = _find_or_create_terminal(mgr, "principal")
+            cmd = f"cd {shlex.quote(str(Path(__file__).parent))} && python3 {shlex.quote(str(launcher))}"
+            mgr._run_orca([
+                "terminal", "send",
+                "--terminal", handle,
+                "--text", cmd,
+                "--enter",
+            ], timeout=10)
+            print(f"\U0001f4e1 principal: serve loop started in terminal {handle}")
+        except Exception as e:
+            print(f"\u26a0\ufe0f principal serve failed — {e}")
+        return
 
     # ── Standalone utilities ─────────────────────────────────────────────
 
@@ -736,6 +767,29 @@ def _default_tasks() -> list[tuple[str, str]]:
     ]
 
 
+def _find_or_create_terminal(mgr: "OrcaExecutionManager", title: str) -> str:
+    """Return a terminal handle for `title`, reusing an existing one if present.
+
+    Orca's ``create_terminal`` never dedupes by title, so repeated
+    dispatches accumulated duplicate ``teacher-cto`` / ``teacher-coo``
+    terminals. This scans the existing terminal list for a matching
+    title and reuses it; otherwise it creates a fresh terminal.
+    """
+    try:
+        result = mgr._run_orca(["terminal", "list"], timeout=15)
+    except Exception:
+        return mgr.create_terminal(title=title)
+    terminals = result.get("terminals", result.get("result", {}).get("terminals", []))
+    if isinstance(result.get("result"), dict):
+        terminals = result["result"].get("terminals", terminals)
+    for term in terminals:
+        t_title = term.get("title") or term.get("name") or ""
+        handle = term.get("handle") or term.get("id") or ""
+        if t_title == title and handle:
+            return handle
+    return mgr.create_terminal(title=title)
+
+
 def _boot_teachers() -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
@@ -760,15 +814,17 @@ def _boot_teachers() -> dict[str, TeacherWorktree]:
             # The teacher process will poll bookbags and fill verdicts.
             # Use a fresh OrcaExecutionManager for terminal control (the
             # teacher already booted and owns the worktree lifecycle).
+            #
+            # Launch via a script file (not `python3 -c "..."`) to avoid
+            # the nested-quote mangling Orca's `terminal send` does to
+            # inline -c commands, which left teacher terminals empty.
             mgr = OrcaExecutionManager()
-            handle = mgr.create_terminal(title=f"teacher-{role}")
+            launcher = Path(__file__).parent / "scripts" / "run_teacher_loop.py"
+            handle = _find_or_create_terminal(mgr, f"teacher-{role}")
             cmd = (
-                f"cd {teacher.worktree_path} && "
-                f"PYTHONPATH={Path(__file__).parent} "
-                f"python3 -c \""
-                f"from teacher import TeacherWorktree; "
-                f"t = TeacherWorktree('{role}'); t.boot(); t.run_loop()"
-                f"\""
+                f"cd {shlex.quote(str(teacher.worktree_path))} && "
+                f"PYTHONPATH={shlex.quote(str(Path(__file__).parent))} "
+                f"python3 {shlex.quote(str(launcher))} {shlex.quote(role)}"
             )
             mgr._run_orca([
                 "terminal", "send",
