@@ -146,20 +146,33 @@ class TeacherWorktree:
         """
         self._mgr = OrcaExecutionManager()
 
-        # Rediscover first (idempotency): if a worktree named self.worktree_name
-        # already exists in Orca, reuse it. Orca auto-suffixes
-        # `worktree create --name X` when X already exists (X-2, X-3...), so
-        # calling create() unconditionally spawns a duplicate on every re-boot.
+        # Rediscover first (idempotency): Orca auto-suffixes
+        # `worktree create --name X` when X already exists (X-2, X-3...),
+        # so an unconditionally-create() call spawns a duplicate on every
+        # re-boot. Scan the Orca worktree list for ANY worktree whose
+        # displayName (or path basename) is the canonical name OR a
+        # suffixed variant (teacher-cto / teacher-cto-4), and reuse it.
+        def _wt_name(wt: dict) -> str:
+            nm = wt.get("displayName") or ""
+            if nm:
+                return nm
+            pt = wt.get("path") or ""
+            return Path(pt).name if pt else ""
+
         try:
             result = self._mgr._run_orca(["worktree", "list"], timeout=15)
             wts = result.get("worktrees", [])
             for wt in wts:
-                path = wt.get("path", "") or ""
-                dirname = Path(path).name if path else ""
-                if dirname == self.worktree_name and path:
+                nm = _wt_name(wt)
+                if nm == self.worktree_name or nm.startswith(self.worktree_name + "-"):
+                    path = wt.get("path") or ""
+                    if not path and "::" in wt.get("id", ""):
+                        path = wt["id"].split("::", 1)[1]
+                    if not path:
+                        continue
                     self.worktree_path = path
                     self._review_terminal = self._mgr.create_terminal(
-                        title=f"teacher-{self.role}-review"
+                        title="teacher-" + self.role + "-review"
                     )
                     self._booted = True
                     logger.info(
@@ -170,11 +183,11 @@ class TeacherWorktree:
         except Exception:
             pass
 
-        # No existing worktree — create it.
+        # No existing worktree - create it.
         try:
             self.worktree_path = self._mgr.create_worktree(self.worktree_name)
             self._review_terminal = self._mgr.create_terminal(
-                title=f"teacher-{self.role}-review"
+                title="teacher-" + self.role + "-review"
             )
             self._booted = True
             logger.info(
@@ -187,8 +200,8 @@ class TeacherWorktree:
 
         # Fall through to error if neither rediscovery nor creation worked.
         raise TeacherError(
-            f"[teacher:{self.role}] could not create or rediscover worktree "
-            f"'{self.worktree_name}'"
+            "[teacher:" + self.role + "] could not create or rediscover worktree '"
+            + self.worktree_name + "'"
         )
 
     def sleep(self, duration_minutes: float = 0.0) -> dict:

@@ -186,25 +186,26 @@ class TestBoot:
         assert t._booted
 
     def test_boot_rediscovery_on_existing(self, mock_mgr):
-        """When the worktree already exists in Orca, boot() should reuse it
-        (rediscover-first) instead of creating a suffixed duplicate."""
+        """When a SUFFIXED worktree already exists (Orca auto-suffixes
+        `teacher-cto` -> `teacher-cto-4`), boot() should reuse it
+        (rediscover-first) instead of creating yet another duplicate.
+        """
         mock_mgr._run_orca.return_value = {
             "worktrees": [
-                {"name": "", "path": "/tmp/worktrees/teacher-cto"},
-                {"name": "", "path": "/tmp/worktrees/teacher-coo"},
+                {"name": "", "path": "/tmp/worktrees/teacher-cto-4"},
+                {"name": "", "path": "/tmp/worktrees/teacher-coo-2"},
             ]
         }
-
         t = TeacherWorktree("cto")
         path = t.boot()
 
-        # Rediscover-first: create_worktree must NOT be called when the
-        # worktree is already present in the Orca worktree list.
+        # Rediscover-first: create_worktree must NOT be called when a
+        # suffixed variant already exists in the Orca worktree list.
         mock_mgr.create_worktree.assert_not_called()
         mock_mgr._run_orca.assert_called_once_with(["worktree", "list"], timeout=15)
-        assert path == "/tmp/worktrees/teacher-cto"
+        assert path == "/tmp/worktrees/teacher-cto-4"
+        assert t.worktree_path == path
         assert t._booted
-
     def test_boot_creates_when_absent(self, mock_mgr):
         """When no matching worktree exists, boot() should create it."""
         mock_mgr._run_orca.return_value = {"worktrees": []}
