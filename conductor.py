@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, wait_for_verdicts
+from bookbag import read_bookbag, list_bookbags, wait_for_verdicts, locked_update_bookbag
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
@@ -103,6 +103,45 @@ def _parse_issue_ref(ref: str) -> tuple[str, str, int]:
         )
     owner, repo, number = m.group(1), m.group(2), int(m.group(3))
     return owner, repo, number
+
+
+def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
+    """Compute and persist the bookbag 'accepted' flag from both verdicts.
+
+    Must match director.run_task's acceptance contract (director.py:313):
+    accepted requires BOTH judges PASS at score >= 50, with NO critical
+    finding (a CRITICAL finding is an automatic veto). The teacher review
+    loops write their individual verdicts/scores/findings but never set
+    'accepted', and evaluate_and_update (which conductor calls) does not
+    re-derive it — so this flag, once persisted, is authoritative.
+
+    Returns the computed acceptance so callers can report it, but only
+    returns True if the write actually reached disk (locked_update_bookbag
+    returns None on lock-acquisition failure — it does not raise).
+    """
+    bag = read_bookbag(bead) or {}
+    try:
+        cto_score = float(bag.get("cto_score", 0) or 0)
+        coo_score = float(bag.get("coo_score", 0) or 0)
+    except (TypeError, ValueError):
+        cto_score = coo_score = 0.0
+    findings = (bag.get("cto_findings", []) or []) + (bag.get("coo_findings", []) or [])
+    has_critical = any(
+        str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
+    )
+    accepted = (
+        cto_v == "PASS"
+        and coo_v == "PASS"
+        and cto_score >= 50
+        and coo_score >= 50
+        and not has_critical
+    )
+    written = locked_update_bookbag(bead, lock_timeout=10.0, accepted=accepted)
+    if written is None:
+        print(f"[principal] WARNING: accepted flag for {bead} NOT persisted "
+              f"(lock timeout) — disk may show stale accepted=False")
+        return False
+    return accepted
 
 
 def _run_issue(args, store):
@@ -184,13 +223,14 @@ def _run_issue_async(args, store, role):
 
         cto_v, coo_v = wait_for_verdicts(leaf.bead, timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead) or {}
+        accepted = _persist_acceptance(leaf.bead, cto_v, coo_v)
         result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
             "cto_score": bag.get("cto_score", 0),
             "coo_score": bag.get("coo_score", 0),
             "findings": bag.get("findings", []),
-            "accepted": bag.get("accepted", False),
+            "accepted": accepted,
         }
         result["task_score"] = _compute_task_score(bag) if bag else 0
 
@@ -425,13 +465,14 @@ def _run_async_loop(args, store):
                 cto_v, coo_v = wait_for_verdicts(bead, timeout=args.handoff_timeout)
                 bag = read_bookbag(bead)
                 if bag:
+                    accepted = _persist_acceptance(bead, cto_v, coo_v)
                     result["review"] = {
                         "cto_verdict": cto_v,
                         "coo_verdict": coo_v,
                         "cto_score": bag.get("cto_score", 0),
                         "coo_score": bag.get("coo_score", 0),
                         "findings": bag.get("findings", []),
-                        "accepted": bag.get("accepted", False),
+                        "accepted": accepted,
                     }
                     result["task_score"] = _compute_task_score(bag)
 
@@ -590,6 +631,7 @@ def _resume_loop(args, store):
                 bag_refreshed = read_bookbag(bead) or bag
                 bag_refreshed["cto_verdict"] = cto_v
                 bag_refreshed["coo_verdict"] = coo_v
+                bag_refreshed["accepted"] = _persist_acceptance(bead, cto_v, coo_v)
                 reviewed.append(bag_refreshed)
                 completed += 1
                 print(f"  {idx+1}/{len(pending)} {bead[:30]} [{student}/{domain}] "
