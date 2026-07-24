@@ -15,7 +15,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -76,28 +75,34 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     repo_path = CACHE_DIR / repo_slug.replace("/", "__")
 
     if force_fresh and repo_path.exists():
+        # Discard any cached clone (may carry uncommitted/diverged state) so the
+        # student starts from a clean base tree. Clone lands in the stable
+        # cache path (not a throwaway temp dir) so it can be reused/swept.
         shutil.rmtree(repo_path, ignore_errors=True)
 
     if repo_path.exists() and (repo_path / ".git").exists():
-        # Refresh existing clone
-        _git(repo_path, "pull", "--ff-only")
-        return repo_path
+        if force_fresh:
+            # Stale clone just removed above; fall through to re-clone below.
+            pass
+        else:
+            # Refresh existing clone
+            _git(repo_path, "pull", "--ff-only")
+            return repo_path
 
-    # Fresh clone
-    temp_dir = tempfile.mkdtemp(prefix="school-clone-")
+    # Fresh (or force_fresh re-)clone into the stable cache path.
     try:
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", f"https://github.com/{repo_slug}.git", str(temp_dir)],
+            ["git", "clone", "--depth", "1", f"https://github.com/{repo_slug}.git", str(repo_path)],
             capture_output=True, timeout=120, check=False, text=True,
         )
         if result.returncode != 0:
             sys.stderr.write(f"[repo_reader] Failed to clone {repo_slug}: {result.stderr.strip()[:200]}\n")
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            shutil.rmtree(repo_path, ignore_errors=True)
             return None
-        return Path(temp_dir)
+        return repo_path
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         sys.stderr.write(f"[repo_reader] Clone error for {repo_slug}: {e}\n")
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(repo_path, ignore_errors=True)
         return None
 
 
