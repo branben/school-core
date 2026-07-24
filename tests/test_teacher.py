@@ -206,6 +206,64 @@ class TestBoot:
         assert path == "/tmp/worktrees/teacher-cto-4"
         assert t.worktree_path == path
         assert t._booted
+
+    def test_boot_rediscovery_on_existing_unsuffixed(self, mock_mgr):
+        """Canonical (non-suffixed) worktree must also be reused."""
+        mock_mgr._run_orca.return_value = {
+            "worktrees": [
+                {"name": "", "path": "/tmp/worktrees/teacher-cto"},
+                {"name": "", "path": "/tmp/worktrees/teacher-coo"},
+            ]
+        }
+        t = TeacherWorktree("cto")
+        path = t.boot()
+        mock_mgr.create_worktree.assert_not_called()
+        assert path == "/tmp/worktrees/teacher-cto"
+        assert t._booted
+
+    def test_boot_rediscovery_displayname(self, mock_mgr):
+        """Rediscovery must work when displayName carries the name
+        (the field Orca's live worktree list populates)."""
+        mock_mgr._run_orca.return_value = {
+            "worktrees": [
+                {"displayName": "teacher-cto-4", "path": "/tmp/worktrees/teacher-cto-4"},
+            ]
+        }
+        t = TeacherWorktree("cto")
+        path = t.boot()
+        mock_mgr.create_worktree.assert_not_called()
+        assert path == "/tmp/worktrees/teacher-cto-4"
+        assert t._booted
+
+    def test_boot_rediscovery_name_field(self, mock_mgr):
+        """Rediscovery must fall back to the 'name' field when displayName
+        is empty (defensive: matches Orca clients that populate 'name'
+        instead of 'displayName')."""
+        mock_mgr._run_orca.return_value = {
+            "worktrees": [
+                {"name": "teacher-cto", "displayName": "", "path": "/tmp/worktrees/teacher-cto"},
+            ]
+        }
+        t = TeacherWorktree("cto")
+        path = t.boot()
+        mock_mgr.create_worktree.assert_not_called()
+        assert path == "/tmp/worktrees/teacher-cto"
+        assert t._booted
+
+    def test_boot_rediscovery_ignores_unrelated_suffix(self, mock_mgr):
+        """A worktree like 'teacher-cto-backup' must NOT be treated as a
+        suffixed variant (only digit suffixes are matches)."""
+        mock_mgr._run_orca.return_value = {
+            "worktrees": [
+                {"name": "", "path": "/tmp/worktrees/teacher-cto-backup"},
+            ]
+        }
+        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("exists")
+        t = TeacherWorktree("cto")
+        with pytest.raises(TeacherError):
+            t.boot()
+        mock_mgr.create_worktree.assert_called_once()
+
     def test_boot_creates_when_absent(self, mock_mgr):
         """When no matching worktree exists, boot() should create it."""
         mock_mgr._run_orca.return_value = {"worktrees": []}
