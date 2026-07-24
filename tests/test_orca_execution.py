@@ -44,6 +44,13 @@ from orca_executor import (
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Live-Orca tests create a real OrcaExecutionManager and shell out to the Orca
+# CLI / git worktree. They are skipped by default; opt in with ORCA_LIVE_TESTS=1.
+skip_without_orca = pytest.mark.skipif(
+    os.environ.get("ORCA_LIVE_TESTS") != "1",
+    reason="set ORCA_LIVE_TESTS=1 to run live-Orca integration tests",
+)
+
 
 @pytest.fixture
 def track_cleanup(manager):
@@ -179,6 +186,7 @@ echo "hello"
 # ── Orca Execution Tests (require running Orca) ──────────────────────────────
 
 
+@skip_without_orca
 class TestOrcaExecution:
     """Test the Orca sandbox with real code that exercises different paths.
 
@@ -188,6 +196,8 @@ class TestOrcaExecution:
       - Exit code detection
       - Timeout behavior
       - stdout/stderr parsing
+
+    Skipped unless ORCA_LIVE_TESTS=1 (they spin up a real OrcaExecutionManager).
     """
 
     def test_execute_successful_code(self, manager, track_cleanup):
@@ -470,6 +480,7 @@ class TestConductorOrcaFlow:
 # ── Worktree Disposal Tests ──────────────────────────────────────────────────
 
 
+@skip_without_orca
 class TestWorktreeDisposal:
     """Test hardened close_worktree() and force_dispose_worktree().
 

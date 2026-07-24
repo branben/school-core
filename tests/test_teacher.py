@@ -186,8 +186,8 @@ class TestBoot:
         assert t._booted
 
     def test_boot_rediscovery_on_existing(self, mock_mgr):
-        """When creation fails, boot() should rediscover existing worktree."""
-        mock_mgr.create_worktree.side_effect = [OrcaUnavailableError("exists")]
+        """When the worktree already exists in Orca, boot() should reuse it
+        (rediscover-first) instead of creating a suffixed duplicate."""
         mock_mgr._run_orca.return_value = {
             "worktrees": [
                 {"name": "", "path": "/tmp/worktrees/teacher-cto"},
@@ -198,15 +198,28 @@ class TestBoot:
         t = TeacherWorktree("cto")
         path = t.boot()
 
-        mock_mgr.create_worktree.assert_called_once_with("teacher-cto")
+        # Rediscover-first: create_worktree must NOT be called when the
+        # worktree is already present in the Orca worktree list.
+        mock_mgr.create_worktree.assert_not_called()
         mock_mgr._run_orca.assert_called_once_with(["worktree", "list"], timeout=15)
+        assert path == "/tmp/worktrees/teacher-cto"
+        assert t._booted
+
+    def test_boot_creates_when_absent(self, mock_mgr):
+        """When no matching worktree exists, boot() should create it."""
+        mock_mgr._run_orca.return_value = {"worktrees": []}
+
+        t = TeacherWorktree("cto")
+        path = t.boot()
+
+        mock_mgr.create_worktree.assert_called_once_with("teacher-cto")
         assert path == "/tmp/worktrees/teacher-cto"
         assert t._booted
 
     def test_boot_fails_when_no_worktree(self, mock_mgr):
         """boot() should raise if creation and rediscovery both fail."""
-        mock_mgr.create_worktree.side_effect = [OrcaUnavailableError("not found")]
         mock_mgr._run_orca.return_value = {"worktrees": []}
+        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("not found")
 
         t = TeacherWorktree("cto")
         with pytest.raises(TeacherError, match="could not create or rediscover"):
@@ -216,12 +229,12 @@ class TestBoot:
 
     def test_boot_rediscovery_no_match(self, mock_mgr):
         """Rediscovery should skip worktrees with non-matching names."""
-        mock_mgr.create_worktree.side_effect = [OrcaUnavailableError("exists")]
         mock_mgr._run_orca.return_value = {
             "worktrees": [
                 {"name": "", "path": "/tmp/worktrees/something-else"},
             ]
         }
+        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("exists")
 
         t = TeacherWorktree("cto")
         with pytest.raises(TeacherError):
@@ -229,7 +242,6 @@ class TestBoot:
 
     def test_boot_rediscovery_scans_path_basename(self, mock_mgr):
         """Rediscovery should check path basename (since Orca names are empty)."""
-        mock_mgr.create_worktree.side_effect = [OrcaUnavailableError("exists")]
         mock_mgr._run_orca.return_value = {
             "worktrees": [
                 {"name": "", "path": "/Users/test/orca/workspaces/school-core/teacher-cto"},
