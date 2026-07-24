@@ -108,17 +108,39 @@ def _parse_issue_ref(ref: str) -> tuple[str, str, int]:
 def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
     """Compute and persist the bookbag 'accepted' flag from both verdicts.
 
-    Contract (bookbag.py / director.py): accepted is True only when BOTH
-    CTO and COO PASS. The teacher review loops write their individual
-    verdicts but never set 'accepted', so the Principal must derive it once
-    both verdicts are in and write it back. Without this, every bookbag
-    stays accepted=False even on a dual PASS.
+    Must match director.run_task's acceptance contract (director.py:313):
+    accepted requires BOTH judges PASS at score >= 50, with NO critical
+    finding (a CRITICAL finding is an automatic veto). The teacher review
+    loops write their individual verdicts/scores/findings but never set
+    'accepted', and evaluate_and_update (which conductor calls) does not
+    re-derive it — so this flag, once persisted, is authoritative.
+
+    Returns the computed acceptance so callers can report it, but only
+    returns True if the write actually reached disk (locked_update_bookbag
+    returns None on lock-acquisition failure — it does not raise).
     """
-    accepted = cto_v == "PASS" and coo_v == "PASS"
+    bag = read_bookbag(bead) or {}
     try:
-        locked_update_bookbag(bead, lock_timeout=10.0, accepted=accepted)
-    except Exception as e:
-        print(f"[principal] could not persist accepted flag for {bead}: {e}")
+        cto_score = float(bag.get("cto_score", 0) or 0)
+        coo_score = float(bag.get("coo_score", 0) or 0)
+    except (TypeError, ValueError):
+        cto_score = coo_score = 0.0
+    findings = (bag.get("cto_findings", []) or []) + (bag.get("coo_findings", []) or [])
+    has_critical = any(
+        str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
+    )
+    accepted = (
+        cto_v == "PASS"
+        and coo_v == "PASS"
+        and cto_score >= 50
+        and coo_score >= 50
+        and not has_critical
+    )
+    written = locked_update_bookbag(bead, lock_timeout=10.0, accepted=accepted)
+    if written is None:
+        print(f"[principal] WARNING: accepted flag for {bead} NOT persisted "
+              f"(lock timeout) — disk may show stale accepted=False")
+        return False
     return accepted
 
 
