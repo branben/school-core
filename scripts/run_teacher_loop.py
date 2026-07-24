@@ -10,6 +10,13 @@ inline `-c` commands, which previously produced empty/dead teacher
 terminals.
 """
 import sys
+from pathlib import Path
+
+# Ensure the repo root (parent of scripts/) is importable so
+# `from teacher import TeacherWorktree` resolves regardless of cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from teacher import TeacherWorktree
 

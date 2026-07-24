@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import sys
 import re
+import shlex
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -302,7 +303,7 @@ def main():
             mgr = OrcaExecutionManager()
             launcher = Path(__file__).parent / "scripts" / "run_principal_loop.py"
             handle = _find_or_create_terminal(mgr, "principal")
-            cmd = f"cd {Path(__file__).parent} && python3 {launcher}"
+            cmd = f"cd {shlex.quote(str(Path(__file__).parent))} && python3 {shlex.quote(str(launcher))}"
             mgr._run_orca([
                 "terminal", "send",
                 "--terminal", handle,
@@ -821,9 +822,9 @@ def _boot_teachers() -> dict[str, TeacherWorktree]:
             launcher = Path(__file__).parent / "scripts" / "run_teacher_loop.py"
             handle = _find_or_create_terminal(mgr, f"teacher-{role}")
             cmd = (
-                f"cd {teacher.worktree_path} && "
-                f"PYTHONPATH={Path(__file__).parent} "
-                f"python3 {launcher} {role}"
+                f"cd {shlex.quote(str(teacher.worktree_path))} && "
+                f"PYTHONPATH={shlex.quote(str(Path(__file__).parent))} "
+                f"python3 {shlex.quote(str(launcher))} {shlex.quote(role)}"
             )
             mgr._run_orca([
                 "terminal", "send",
