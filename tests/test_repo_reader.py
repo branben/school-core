@@ -16,6 +16,7 @@ from repo_reader import (
     find_relevant_files,
     get_file_tree,
     cleanup_stale_caches,
+    CACHE_DIR,
 )
 
 
@@ -186,15 +187,12 @@ class TestCloneRepo:
             args=[], returncode=0, stdout="", stderr=""
         )
 
-        # Create a fake clone directory that the function creates via mkdtemp
-        fake_clone = tmp_path / "Hello-World"
-        fake_clone.mkdir()
-        (fake_clone / ".git").mkdir()
-
-        with patch("repo_reader.tempfile.mkdtemp", return_value=str(fake_clone)):
-            result = clone_repo("octocat/Hello-World")
-            assert result is not None
-            assert result.exists()
+        # clone_repo now clones into the stable cache path (CACHE_DIR/repo__slug),
+        # not a temp dir. Verify it returns that deterministic path.
+        result = clone_repo("octocat/Hello-World")
+        assert result is not None
+        expected = CACHE_DIR / "octocat__Hello-World"
+        assert result == expected
 
     @patch("repo_reader.subprocess.run")
     def test_returns_none_on_failure(self, mock_run):

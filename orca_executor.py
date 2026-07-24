@@ -268,7 +268,38 @@ class OrcaExecutionManager:
 
     # ── Worktree lifecycle ────────────────────────────────────────────────────
 
-    def create_worktree(self, name: str) -> str:
+    def _register_repo(self, repo_path: Path) -> Optional[str]:
+        """Ensure a repo path is known to Orca; return its repo id.
+
+        Orca requires a repo to be registered (``orca repo add --path``)
+        before ``worktree create --repo <path>`` will accept it. A fresh
+        cross-repo clone is not registered, so this is mandatory for
+        cross-repo dispatch. Idempotent: if already listed, reuse the id.
+
+        Args:
+            repo_path: Absolute path to the local clone.
+
+        Returns:
+            The Orca repo id, or None if registration failed.
+        """
+        try:
+            listed = self._run_orca(["repo", "list"], timeout=15)
+        except OrcaUnavailableError:
+            return None
+        repos = listed.get("repos", listed.get("repositories", []))
+        for r in repos if isinstance(repos, list) else []:
+            if isinstance(r, dict) and Path(str(r.get("path", ""))).resolve() == Path(repo_path).resolve():
+                return r.get("id")
+        # Not registered — add it.
+        try:
+            added = self._run_orca(["repo", "add", "--path", str(repo_path)], timeout=30)
+        except OrcaUnavailableError:
+            return None
+        if isinstance(added, dict):
+            return added.get("id") or added.get("repo", {}).get("id")
+        return None
+
+    def create_worktree(self, name: str, repo_path: Optional[Path] = None) -> str:
         """Create a child worktree for a student round.
 
         Uses the native one-call ``orca worktree create --name <name> --repo
@@ -284,11 +315,17 @@ class OrcaExecutionManager:
 
         IMPORTANT: the created worktree lives at Orca's checkout path, NOT
         inside ``REPO_PATH``. Always use the returned ``path`` for any file
-        operations inside the worktree; use ``REPO_PATH`` only as the ``--repo``
-        selector target (never to resolve files inside a child worktree).
+        operations inside the worktree.
+
+        Cross-repo dispatch: pass ``repo_path`` (the cloned target repo, e.g.
+        from ``repo_reader.clone_repo(owner/repo, force_fresh=True)``) to scope
+        the worktree to the target repo. When omitted, falls back to
+        ``REPO_PATH`` (single-repo / school-core mode).
 
         Args:
             name: Worktree name (e.g., "study-coder-r1").
+            repo_path: Optional target repo path for ``--repo``. Defaults to
+                ``REPO_PATH``.
 
         Returns:
             Absolute path to the created worktree.
@@ -296,10 +333,23 @@ class OrcaExecutionManager:
         Raises:
             OrcaUnavailableError: If worktree cannot be created.
         """
+        target = repo_path or self.REPO_PATH
+        # Cross-repo targets (fresh clones) must be registered with Orca before
+        # worktree create will accept them. school-core (REPO_PATH) is already
+        # registered, so skip the registration round-trip in that case.
+        if repo_path is not None and Path(repo_path).resolve() != Path(self.REPO_PATH).resolve():
+            registered = self._register_repo(Path(repo_path))
+            if registered is None:
+                # Registration failure means Orca is down or repo add failed.
+                # Surface a clear error rather than failing opaquely at
+                # worktree create with a repo_not_found.
+                raise OrcaUnavailableError(
+                    f"Failed to register target repo with Orca: {repo_path}"
+                )
         result = self._run_orca([
             "worktree", "create",
             "--name", name,
-            "--repo", str(self.REPO_PATH),
+            "--repo", str(target),
         ], timeout=30)
 
         # Response format: {"worktree": {"id": "<uuid>::<path>", ...}}

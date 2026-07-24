@@ -15,10 +15,9 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
-
+from typing import Optional
 CACHE_DIR = Path.home() / ".cache" / "school-core" / "repos"
 MAX_FILE_CHARS = 2000
 MAX_FILES = 5
@@ -56,34 +55,54 @@ def _git(repo_path: Path, *args, timeout: int = 30) -> str:
         return ""
 
 
-def clone_repo(repo_slug: str) -> Path:
+def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     """Get or create a cached clone of a GitHub repo.
 
-    Returns the path to the local clone. Refreshes with git pull if already cached.
+    Returns the path to the local clone. By default refreshes a cached clone
+    with ``git pull --ff-only``. Pass ``force_fresh=True`` to discard any
+    cached clone (which may carry uncommitted/diverged state forward) and do a
+    clean depth-1 clone — required for dispatch so a student never starts from
+    a contaminated base tree.
+
+    Args:
+        repo_slug: ``owner/repo`` to clone.
+        force_fresh: If True, remove the cache dir and re-clone from origin.
+
+    Returns:
+        Path to the clone, or None on failure.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     repo_path = CACHE_DIR / repo_slug.replace("/", "__")
 
-    if repo_path.exists() and (repo_path / ".git").exists():
-        # Refresh existing clone
-        _git(repo_path, "pull", "--ff-only")
-        return repo_path
+    if force_fresh and repo_path.exists():
+        # Discard any cached clone (may carry uncommitted/diverged state) so the
+        # student starts from a clean base tree. Clone lands in the stable
+        # cache path (not a throwaway temp dir) so it can be reused/swept.
+        shutil.rmtree(repo_path, ignore_errors=True)
 
-    # Fresh clone
-    temp_dir = tempfile.mkdtemp(prefix="school-clone-")
+    if repo_path.exists() and (repo_path / ".git").exists():
+        if force_fresh:
+            # Stale clone just removed above; fall through to re-clone below.
+            pass
+        else:
+            # Refresh existing clone
+            _git(repo_path, "pull", "--ff-only")
+            return repo_path
+
+    # Fresh (or force_fresh re-)clone into the stable cache path.
     try:
         result = subprocess.run(
-            ["git", "clone", "--depth", "1", f"https://github.com/{repo_slug}.git", str(temp_dir)],
+            ["git", "clone", "--depth", "1", f"https://github.com/{repo_slug}.git", str(repo_path)],
             capture_output=True, timeout=120, check=False, text=True,
         )
         if result.returncode != 0:
             sys.stderr.write(f"[repo_reader] Failed to clone {repo_slug}: {result.stderr.strip()[:200]}\n")
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            shutil.rmtree(repo_path, ignore_errors=True)
             return None
-        return Path(temp_dir)
+        return repo_path
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         sys.stderr.write(f"[repo_reader] Clone error for {repo_slug}: {e}\n")
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(repo_path, ignore_errors=True)
         return None
 
 

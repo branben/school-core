@@ -566,3 +566,100 @@ class TestWorktreeDisposal:
         assert result is False, "Should return False when CLI cannot remove it"
         assert call_count[0] == 2, "Should attempt twice (initial + 1 retry)"
         assert dummy_worktree.exists(), "Mock never removed it"
+
+
+@skip_without_orca
+class TestCreateWorktreeRepoPath:
+    """create_worktree() must scope --repo to the target clone for cross-repo dispatch."""
+
+    @pytest.fixture
+    def mgr(self):
+        try:
+            return OrcaExecutionManager()
+        except OrcaUnavailableError:
+            pytest.skip("Orca not running — skipping create_worktree tests")
+
+    def test_create_worktree_uses_target_repo_path(self, mgr, monkeypatch, tmp_path):
+        """Cross-repo: registers missing repo (repo list -> repo add) then scopes --repo."""
+        target = tmp_path / "sound-royale-ny-clone"
+        calls = []
+
+        def mock_run_orca(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["worktree", "create"]:
+                return {"worktree": {"id": f"uuid::{target}"}}
+            if args[:2] == ["repo", "list"]:
+                # target not yet registered
+                return {"repos": []}
+            if args[:2] == ["repo", "add"]:
+                return {"id": "repo-id-123"}
+            return {"id": "repo-id-123"}
+
+        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
+        returned = mgr.create_worktree("study-coder-r1", repo_path=target)
+
+        repo_list = [c for c in calls if c[:2] == ["repo", "list"]]
+        repo_add = [c for c in calls if c[:2] == ["repo", "add"]]
+        wt = [c for c in calls if c[:2] == ["worktree", "create"]]
+        assert len(repo_list) == 1, "must check repo list once"
+        assert len(repo_add) == 1, "must add missing target repo"
+        assert repo_add[0][3] == str(target), "repo add must use --path <target>"
+        assert len(wt) == 1, "must create exactly one worktree"
+        idx = wt[0].index("--repo")
+        assert wt[0][idx + 1] == str(target), "repo_path must scope --repo to target"
+        assert str(mgr.REPO_PATH) not in wt[0], "must NOT fall back to REPO_PATH"
+        assert returned == str(target), "returned path must be the worktree id path"
+
+    def test_create_worktree_skips_registration_when_already_listed(self, mgr, monkeypatch, tmp_path):
+        """Cross-repo but already registered: repo list -> NO repo add (idempotent)."""
+        target = tmp_path / "sound-royale-ny-clone"
+        calls = []
+
+        def mock_run_orca(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["worktree", "create"]:
+                return {"worktree": {"id": f"uuid::{target}"}}
+            if args[:2] == ["repo", "list"]:
+                # target already known to Orca
+                return {"repos": [{"path": str(target), "id": "repo-id-123"}]}
+            return {"id": "repo-id-123"}
+
+        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
+        mgr.create_worktree("study-coder-r1", repo_path=target)
+
+        assert not [c for c in calls if c[:2] == ["repo", "add"]], \
+            "must NOT re-add an already-listed repo"
+        wt = next(c for c in calls if c[:2] == ["worktree", "create"])
+        assert wt[wt.index("--repo") + 1] == str(target)
+
+    def test_create_worktree_raises_when_registration_fails(self, mgr, monkeypatch, tmp_path):
+        """If repo registration fails, surface OrcaUnavailableError (not opaque repo_not_found)."""
+        target = tmp_path / "sound-royale-ny-clone"
+        calls = []
+
+        def mock_run_orca(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["repo", "list"]:
+                return {"repos": []}
+            if args[:2] == ["repo", "add"]:
+                # simulate repo add failing
+                raise OrcaUnavailableError("repo add failed")
+            return {"id": "x"}
+
+        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
+        with pytest.raises(OrcaUnavailableError):
+            mgr.create_worktree("study-coder-r1", repo_path=target)
+
+    def test_create_worktree_defaults_to_repo_path(self, mgr, monkeypatch):
+        """When repo_path is None, --repo falls back to REPO_PATH (single-repo)."""
+        calls = []
+
+        def mock_run_orca(args, timeout=30):
+            calls.append(list(args))
+            return {"worktree": {"id": "uuid::/some/orca/workspace/study-coder-r1"}}
+
+        monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
+        mgr.create_worktree("study-coder-r1")
+
+        idx = calls[0].index("--repo")
+        assert calls[0][idx + 1] == str(mgr.REPO_PATH), "default --repo is REPO_PATH"
