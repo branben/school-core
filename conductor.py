@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, wait_for_verdicts
+from bookbag import read_bookbag, list_bookbags, wait_for_verdicts, locked_update_bookbag
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
@@ -103,6 +103,23 @@ def _parse_issue_ref(ref: str) -> tuple[str, str, int]:
         )
     owner, repo, number = m.group(1), m.group(2), int(m.group(3))
     return owner, repo, number
+
+
+def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
+    """Compute and persist the bookbag 'accepted' flag from both verdicts.
+
+    Contract (bookbag.py / director.py): accepted is True only when BOTH
+    CTO and COO PASS. The teacher review loops write their individual
+    verdicts but never set 'accepted', so the Principal must derive it once
+    both verdicts are in and write it back. Without this, every bookbag
+    stays accepted=False even on a dual PASS.
+    """
+    accepted = cto_v == "PASS" and coo_v == "PASS"
+    try:
+        locked_update_bookbag(bead, lock_timeout=10.0, accepted=accepted)
+    except Exception as e:
+        print(f"[principal] could not persist accepted flag for {bead}: {e}")
+    return accepted
 
 
 def _run_issue(args, store):
@@ -184,13 +201,14 @@ def _run_issue_async(args, store, role):
 
         cto_v, coo_v = wait_for_verdicts(leaf.bead, timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead) or {}
+        accepted = _persist_acceptance(leaf.bead, cto_v, coo_v)
         result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
             "cto_score": bag.get("cto_score", 0),
             "coo_score": bag.get("coo_score", 0),
             "findings": bag.get("findings", []),
-            "accepted": bag.get("accepted", False),
+            "accepted": accepted,
         }
         result["task_score"] = _compute_task_score(bag) if bag else 0
 
@@ -425,13 +443,14 @@ def _run_async_loop(args, store):
                 cto_v, coo_v = wait_for_verdicts(bead, timeout=args.handoff_timeout)
                 bag = read_bookbag(bead)
                 if bag:
+                    accepted = _persist_acceptance(bead, cto_v, coo_v)
                     result["review"] = {
                         "cto_verdict": cto_v,
                         "coo_verdict": coo_v,
                         "cto_score": bag.get("cto_score", 0),
                         "coo_score": bag.get("coo_score", 0),
                         "findings": bag.get("findings", []),
-                        "accepted": bag.get("accepted", False),
+                        "accepted": accepted,
                     }
                     result["task_score"] = _compute_task_score(bag)
 
@@ -590,6 +609,7 @@ def _resume_loop(args, store):
                 bag_refreshed = read_bookbag(bead) or bag
                 bag_refreshed["cto_verdict"] = cto_v
                 bag_refreshed["coo_verdict"] = coo_v
+                bag_refreshed["accepted"] = _persist_acceptance(bead, cto_v, coo_v)
                 reviewed.append(bag_refreshed)
                 completed += 1
                 print(f"  {idx+1}/{len(pending)} {bead[:30]} [{student}/{domain}] "
