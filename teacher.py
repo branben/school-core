@@ -146,17 +146,19 @@ class TeacherWorktree:
         """
         self._mgr = OrcaExecutionManager()
 
-        # Single-source-of-truth rediscovery (Gap: Lifecycle invariant).
+        # Single-source-of-truth rediscovery (Lifecycle invariant).
         # Reuse the persistent worktree if it already exists; never mint a
         # suffixed clone (teacher-cto-2 / -lens-2) — that suffix spray is the
         # zombie-worktree pressure. create_worktree_persistent() handles the
         # scan-and-reuse centrally in orca_executor.
+        #
+        # NOTE: boot() NO LONGER spawns a `teacher-*-review` terminal. The
+        # review loop is owned by an Orca automation (see conductor._boot_teachers
+        # → run_teacher_review_once.py), so Orca owns the schedule and there is
+        # no per-boot terminal spray.
         try:
             self.worktree_path = self._mgr.create_worktree_persistent(
                 self.worktree_name
-            )
-            self._review_terminal = self._mgr.create_terminal(
-                title="teacher-" + self.role + "-review"
             )
             self._booted = True
             logger.info(

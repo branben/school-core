@@ -244,6 +244,7 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         cto_v, coo_v = wait_for_verdicts(leaf.bead, timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead) or {}
         accepted = _persist_acceptance(leaf.bead, cto_v, coo_v)
+        _validate_verdict(leaf.bead)
         result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
@@ -509,6 +510,7 @@ def _run_async_loop(args, store):
                 bag = read_bookbag(bead)
                 if bag:
                     accepted = _persist_acceptance(bead, cto_v, coo_v)
+                    _validate_verdict(bead)
                     result["review"] = {
                         "cto_verdict": cto_v,
                         "coo_verdict": coo_v,
@@ -865,15 +867,16 @@ def _teardown_serve() -> None:
         if a.get("name") == name:
             mgr._run_orca(["automations", "remove", "--id", a["id"]], timeout=15)
             print(f"  \U0001f5d1 removed principal automation {a['id']}")
-    # Close the persistent teacher worktrees (rediscover by prefix, dispose).
+    # Remove the teacher automations (Gap D) + close the persistent worktrees.
     for role in ("cto", "coo"):
+        orca_automations_remove(f"agent-school-teacher-{role}")
         try:
             t = TeacherWorktree(role)
             t.boot()  # rediscover-or-create (safe: reuses existing)
             t.close()
-            print(f"  \U0001f9f9 teacher-{role}: worktree closed")
+            print(f"  🧹 teacher-{role}: worktree closed")
         except Exception as e:
-            print(f"  \u26a0\ufe0f teacher-{role}: close error — {e}")
+            print(f"  ⚠️ teacher-{role}: close error — {e}")
 
 
 def orca_automations_list() -> list[dict]:
@@ -896,6 +899,74 @@ def orca_automations_list() -> list[dict]:
     return []
 
 
+def orca_automations_create(
+    *,
+    name: str,
+    prompt: str,
+    trigger: str = "hourly",
+    workspace: Optional[str] = None,
+) -> Optional[str]:
+    """Create (or reuse) a scheduling automation via Orca.
+
+    Mirrors the principal migration: Orca owns the schedule, so the teacher
+    review loop no longer lives in a while-True pane + per-boot terminal
+    spray (run_teacher_loop.py). Returns the automation id, or ``None`` if
+    creation failed.
+    """
+    mgr = OrcaExecutionManager()
+    existing = [a for a in (orca_automations_list() or []) if a.get("name") == name]
+    if existing:
+        return existing[0].get("id")
+    args = [
+        "automations", "create",
+        "--name", name,
+        "--trigger", trigger,
+        "--prompt", prompt,
+        "--provider", "hermes",
+        "--json",
+    ]
+    if workspace:
+        args += ["--workspace", workspace]
+    try:
+        res = mgr._run_orca(args, timeout=30)
+    except Exception as e:
+        print(f"  ⚠️ automation create '{name}' failed — {e}")
+        return None
+    r = res.get("result", res)
+    if isinstance(r, dict):
+        return (r.get("automation") or r).get("id") or r.get("id")
+    return None
+
+
+def orca_automations_remove(name: str) -> None:
+    """Remove all automations matching ``name`` (best-effort)."""
+    mgr = OrcaExecutionManager()
+    for a in (orca_automations_list() or []):
+        if a.get("name") == name:
+            try:
+                mgr._run_orca(["automations", "remove", "--id", a["id"]], timeout=15)
+                print(f"  🗑 removed automation {name} ({a['id']})")
+            except Exception as e:
+                print(f"  ⚠️ automation remove '{name}' failed — {e}")
+
+
+def _validate_verdict(bead: str) -> None:
+    """Enforce the Gap-B verdict-record contract at the principal reconcile point.
+
+    The bookbag after the refactor holds ONLY the two-judge output. This is a
+    guard, not a task blocker: a malformed record is logged (so the human sees
+    it on the dashboard) but the dispatch still completes.
+    """
+    try:
+        from bookbag import validate_verdict_record
+    except Exception:
+        return
+    ok, issues = validate_verdict_record(bead)
+    if not ok:
+        print(f"  ⚠️ verdict-record contract violation for {bead}: "
+              f"{'; '.join(issues)}")
+
+
 def _boot_teachers() -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
@@ -913,36 +984,38 @@ def _boot_teachers() -> dict[str, TeacherWorktree]:
     for role in ("cto", "coo"):
         try:
             teacher = TeacherWorktree(role)
-            teacher.boot()
+            teacher.boot()  # rediscover-or-create the persistent worktree
             teachers[role] = teacher
 
-            # Start the review loop in the teacher's worktree terminal.
-            # The teacher process will poll bookbags and fill verdicts.
-            # Use a fresh OrcaExecutionManager for terminal control (the
-            # teacher already booted and owns the worktree lifecycle).
-            #
-            # Launch via a script file (not `python3 -c "..."`) to avoid
-            # the nested-quote mangling Orca's `terminal send` does to
-            # inline -c commands, which left teacher terminals empty.
-            mgr = OrcaExecutionManager()
-            launcher = Path(__file__).parent / "scripts" / "run_teacher_loop.py"
-            handle = _find_or_create_terminal(mgr, f"teacher-{role}")
-            cmd = (
-                f"cd {shlex.quote(str(teacher.worktree_path))} && "
-                f"PYTHONPATH={shlex.quote(str(Path(__file__).parent))} "
-                f"python3 {shlex.quote(str(launcher))} {shlex.quote(role)}"
+            # Gap D: launch the teacher as a NATIVE Orca automation (Orca owns
+            # the schedule). No while-True pane, no per-boot terminal spray
+            # (the old run_teacher_loop.py anti-pattern that minted a
+            # teacher-*-review terminal every boot). The automation targets
+            # the teacher's persistent worktree and runs run_teacher_review_once
+            # on a trigger; review_cycle() inside does the one-pass judge.
+            name = f"agent-school-teacher-{role}"
+            prompt = (
+                f"Run the {role.upper()} review pass for Agent-School. Each tick: "
+                f"execute `python3 scripts/run_teacher_review_once.py {role}` from "
+                f"the repo root. That runs exactly one pass over un-reviewed "
+                f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
+                f"COO = COMPLETENESS), writes your verdict into "
+                f"~/.hermes/bookbag/<bead>.json, then exits. Do not edit code or "
+                f"open terminals — Orca schedules you; only run the script."
             )
-            mgr._run_orca([
-                "terminal", "send",
-                "--terminal", handle,
-                "--text", cmd,
-                "--enter",
-            ], timeout=10)
-
-            print(f"  \U0001f4e1 teacher-{role}: terminal started")
+            aid = orca_automations_create(
+                name=name,
+                prompt=prompt,
+                trigger="every 5m",
+                workspace=f"path:{teacher.worktree_path}",
+            )
+            if aid:
+                print(f"  🧑‍🏫 teacher-{role}: automation up (id={aid})")
+            else:
+                print(f"  ⚠️ teacher-{role}: automation not created — review won't run")
 
         except Exception as e:
-            print(f"  \u274c teacher-{role}: boot failed — {e}")
+            print(f"  ❌ teacher-{role}: boot failed — {e}")
             # Clean up any partial boot
             if role in teachers:
                 try:
