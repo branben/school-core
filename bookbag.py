@@ -160,6 +160,46 @@ def validate_bookbag(bead: str) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
+# ── Verdict-record contract (post-refactor, Gap B) ──────────────────────────
+#
+# The bookbag is the DURABLE VERDICT RECORD only. Task lifecycle (status,
+# claim, dispatch, files_changed, verification) lives in `bd` (beads) — the
+# repo-mandated tracker. The bead id IS the bookbag id. This validator checks
+# the two-judge contract the teachers write; it does NOT reimplement task
+# tracking (that is `bd`'s job, per CLAUDE.md/AGENTS.md).
+VERDICT_REQUIRED = ["bead", "cto_verdict", "coo_verdict", "accepted", "timestamp"]
+
+
+def validate_verdict_record(bead: str) -> tuple[bool, list[str]]:
+    """Validate the verdict-record contract (Gap B).
+
+    The bookbag after the refactor holds ONLY the two-judge output:
+        bead, cto_verdict, coo_verdict, accepted, findings, score, timestamp
+
+    Returns (is_valid, list_of_issues).
+    """
+    bag = read_bookbag(bead)
+    if bag is None:
+        return False, ["verdict record not found"]
+
+    issues = []
+    for key in VERDICT_REQUIRED:
+        if key not in bag:
+            issues.append(f"missing verdict field: {key}")
+
+    cv = bag.get("cto_verdict")
+    cov = bag.get("coo_verdict")
+    accepted = bag.get("accepted")
+    if accepted is True and not (cv == "PASS" and cov == "PASS"):
+        issues.append("accepted=true but CTO/COO verdicts are not both PASS")
+    if cv == "FAIL" and accepted is True:
+        issues.append("CTO verdict FAIL but accepted=true")
+    if cov == "FAIL" and accepted is True:
+        issues.append("COO verdict FAIL but accepted=true")
+
+    return len(issues) == 0, issues
+
+
 def list_bookbags() -> list[str]:
     """List all bead IDs with bookbags on disk."""
     if not BOOKBAG_DIR.exists():

@@ -46,7 +46,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from activity_log import ActivityLog, get_log
 
+# Shared activity log — used to emit student dispatch stages so a human
+# can watch async runs on the live dashboard (activity_server.py).
+_log = get_log()
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
 
@@ -297,6 +301,61 @@ class OrcaExecutionManager:
             return None
         if isinstance(added, dict):
             return added.get("id") or added.get("repo", {}).get("id")
+        return None
+
+    def create_worktree_persistent(
+        self, name: str, repo_path: Optional[Path] = None
+    ) -> str:
+        """Rediscover-or-create a PERSISTENT worktree (principal / cto / coo).
+
+        Lifecycle invariant (docs/school-core-architecture.md → Lifecycle):
+        the 3 persistent roles are created ONCE and reused. Re-booting an
+        existing role must REUSE its worktree (by prefix), never mint a new
+        suffixed clone (``cto-2``, ``cto-lens-2`` …) — that suffix spray is
+        the source of zombie-worktree pressure.
+
+        Returns the path of the existing (rediscovered) or newly created
+        worktree.
+        """
+        existing = self._find_worktree_by_prefix(name)
+        if existing:
+            return existing
+        return self.create_worktree(name, repo_path=repo_path)
+
+    def _find_worktree_by_prefix(self, prefix: str) -> Optional[str]:
+        """Return the path of an existing worktree for a persistent role.
+
+        Tolerant match: the canonical name is ``teacher-<role>``
+        (``teacher-cto``), but legacy worktrees may be named differently
+        (e.g. ``cto-lens-2`` from an earlier boot). Match if the worktree
+        basename contains the *role token* (``cto`` / ``coo`` / ``principal``)
+        as a hyphen/word segment, so rediscovery reuses the existing
+        worktree instead of minting a new suffixed clone (the zombie-spray
+        source). Avoids matching unrelated names (e.g. ``protonic``).
+        """
+        # Derive the role token from the prefix: "teacher-cto" -> "cto".
+        role = prefix.split("-")[-1] if "-" in prefix else prefix
+        try:
+            listing = self._run_orca(["worktree", "list"], timeout=15)
+        except Exception:
+            return None
+        wts = listing.get("worktrees", listing.get("items", []))
+        if isinstance(listing.get("result"), list):
+            wts = listing["result"]
+        for wt in wts:
+            for key in ("displayName", "name", "path"):
+                val = wt.get(key) or ""
+                base = val.rsplit("/", 1)[-1] if key == "path" else val
+                if not base:
+                    continue
+                # Token match: basename == role, starts with "role-", or
+                # contains "-role-" (handles cto-lens-2 / teacher-cto).
+                if base == role or base.startswith(role + "-") or f"-{role}-" in base:
+                    p = wt.get("path") or ""
+                    wt_id = wt.get("id", "")
+                    if "::" in wt_id:
+                        p = wt_id.split("::", 1)[1]
+                    return p or base
         return None
 
     def create_worktree(self, name: str, repo_path: Optional[Path] = None) -> str:
@@ -720,6 +779,7 @@ class OrcaExecutionManager:
         task: str,
         timeout_ms: int = HERMES_TIMEOUT_MS,
         handle: Optional[str] = None,
+        role: str = "student",
     ) -> str:
         """Run Hermes agent inside the worktree's Orca terminal and capture output.
 
@@ -792,6 +852,8 @@ class OrcaExecutionManager:
 
         try:
             launch_cmd = f"bash {shlex.quote(str(launcher))}"
+            _log.student_stage(bead, role, "hermes_thinking",
+                                repo=str(wp))
             if own_terminal:
                 # `terminal create --command` spawns the Hermes terminal AND runs
                 # the launcher on startup. Capture its handle so finally closes
@@ -833,10 +895,13 @@ class OrcaExecutionManager:
                 if response_file.exists() else ""
 
             if not response:
+                _log.student_stage(bead, role, "error",
+                                detail="Hermes produced no output")
                 raise OrcaUnavailableError(
                     f"Hermes produced no output for bead={bead}"
                 )
 
+            _log.student_stage(bead, role, "done")
             return response
 
         finally:

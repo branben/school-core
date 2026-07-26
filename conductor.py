@@ -38,6 +38,9 @@ from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
 from github_fetcher import fetch_single_issue
+from activity_log import ActivityLog
+
+_log = ActivityLog()
 
 # Map domain -> role for dispatch. Roles MUST exist in executor.COMBO_MAP
 # (searcher, executor, reviewer, browser, coder, openhands, a2a-agent);
@@ -226,6 +229,10 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         leaf.boot()
         leaf.write_brief(args.task)
         result = leaf.run_via_hermes(args.task)
+        _log.student_stage(leaf.bead, role, "bookbag_written",
+                            repo=str(target_path) if target_path else "")
+        _log.student_stage(leaf.bead, role, "teachers_reviewing",
+                            repo=str(target_path) if target_path else "")
         if result.get("status") != "success":
             print(f"  \u274c leaf LLM failed: {result.get('error', result.get('status'))}")
             leaf.dispose()
@@ -294,37 +301,30 @@ def main():
     parser.add_argument("--clean-worktrees", action="store_true",
                         help="Remove all study-* worktrees created by previous runs")
     parser.add_argument("--serve", action="store_true", dest="serve",
-                        help="Launch a persistent principal loop in a dedicated "
-                             "Orca 'principal' terminal (survives the foreground "
-                             "process; use instead of --loop for always-on school)")
+                        help="Launch the school via NATIVE Orca primitives: a "
+                             "persistent principal automation (Orca owns the "
+                             "schedule) plus persistent teacher worktrees. "
+                             "Retires the old while-True pane loop.")
+    parser.add_argument("--stop-serve", action="store_true", dest="stop_serve",
+                        help="Tear down the --serve school: remove the principal "
+                             "automation and dispose teacher worktrees.")
     parser.add_argument("--resume", action="store_true",
                         help="Resume after crash: scan bookbags for partial verdicts, rediscover teachers, complete handoffs")
 
-    # ── Standalone utilities ─────────────────────────────────────────────
-
     args = parser.parse_args()
 
-    # ── Persistent principal (serve mode) ──────────────────────────────
-    # Launch the principal loop into a dedicated Orca 'principal' terminal
-    # so the orchestrator survives beyond a single foreground invocation.
-    # Mirrors how teachers are booted (run_principal_loop.py inside a
-    # terminal). Without this, the principal only runs as a foreground
-    # `conductor.py --issue ... --async` and the principal terminal is dead.
+    # ── Serve mode: native Orca spawn (Gap C/D) ────────────────────────
+    # The principal is an Orca *automation* (--provider hermes) — Orca owns
+    # the schedule, no while-True pane. Teachers are persistent worktrees
+    # (rediscover-or-create, so re-serve never mints cto-2/cto-3). The
+    # bookbag file stays the durable verdict record; the loop polls it
+    # inside the Hermes agent prompt, not as a Python process in a pane.
+    if args.stop_serve:
+        _teardown_serve()
+        return
+
     if args.serve:
-        try:
-            mgr = OrcaExecutionManager()
-            launcher = Path(__file__).parent / "scripts" / "run_principal_loop.py"
-            handle = _find_or_create_terminal(mgr, "principal")
-            cmd = f"cd {shlex.quote(str(Path(__file__).parent))} && python3 {shlex.quote(str(launcher))}"
-            mgr._run_orca([
-                "terminal", "send",
-                "--terminal", handle,
-                "--text", cmd,
-                "--enter",
-            ], timeout=10)
-            print(f"\U0001f4e1 principal: serve loop started in terminal {handle}")
-        except Exception as e:
-            print(f"\u26a0\ufe0f principal serve failed — {e}")
+        _launch_serve()
         return
 
     # ── Standalone utilities ─────────────────────────────────────────────
@@ -800,6 +800,100 @@ def _find_or_create_terminal(mgr: "OrcaExecutionManager", title: str) -> str:
         if t_title == title and handle:
             return handle
     return mgr.create_terminal(title=title)
+
+
+def _launch_serve() -> None:
+    """Boot the school via native Orca primitives (Gap C/D).
+
+    - Principal  → ``orca automations create --provider hermes`` (Orca owns
+      the schedule; no while-True pane in a terminal).
+    - Teachers   → persistent worktrees (rediscover-or-create, so re-serve
+      never mints cto-2/cto-3). The review loop still runs inside the
+      teacher's own terminal (the leaf/teacher Hermes agent), which is the
+      Orca-native path once ``--agent hermes`` boot lands.
+
+    Idempotent: re-running --serve reuses the existing automation + worktrees.
+    """
+    mgr = OrcaExecutionManager()
+    repo_root = Path(__file__).parent
+
+    # 1. Principal automation (deduped by name).
+    name = "agent-school-principal"
+    existing = [
+        a for a in (orca_automations_list() or [])
+        if a.get("name") == name
+    ]
+    if existing:
+        print(f"  \U0001f4e1 principal automation already running (id={existing[0]['id']})")
+    else:
+        prompt = (
+            "You are the Agent-School Principal (Hermes, -p principal). "
+            "Each tick: read `bd ready` for open beads; classify + EFC-route "
+            "each to a student leaf; wait for both CTO and COO verdicts in "
+            "~/.hermes/bookbag/<bead>.json; apply the acceptance rule "
+            "(both PASS AND score>=50 AND no critical -> accepted); notify the "
+            "human via AgentMail. On /fix from the human, re-dispatch a fresh "
+            "student (never edit yourself). Do not watch terminals or read logs."
+        )
+        res = mgr._run_orca([
+            "automations", "create",
+            "--name", name,
+            "--trigger", "hourly",
+            "--prompt", prompt,
+            "--provider", "hermes",
+            "--workspace", f"path:{repo_root}",
+            "--json",
+        ], timeout=30)
+        aid = (res.get("result", {}).get("automation", {}).get("id")
+               or res.get("id") or "??")
+        print(f"  \U0001f4e1 principal automation created (id={aid})")
+
+    # 2. Teachers (persistent worktrees, rediscover-or-create).
+    teachers = _boot_teachers()
+    for role in teachers:
+        print(f"  \U0001f9e9 teacher-{role}: persistent worktree up")
+
+    print("\n\U0001f3d7 School is serving (native Orca). "
+          "Stop with: python3 conductor.py --stop-serve")
+
+
+def _teardown_serve() -> None:
+    """Tear down the --serve school (Gap C/D)."""
+    mgr = OrcaExecutionManager()
+    name = "agent-school-principal"
+    for a in (orca_automations_list() or []):
+        if a.get("name") == name:
+            mgr._run_orca(["automations", "remove", "--id", a["id"]], timeout=15)
+            print(f"  \U0001f5d1 removed principal automation {a['id']}")
+    # Close the persistent teacher worktrees (rediscover by prefix, dispose).
+    for role in ("cto", "coo"):
+        try:
+            t = TeacherWorktree(role)
+            t.boot()  # rediscover-or-create (safe: reuses existing)
+            t.close()
+            print(f"  \U0001f9f9 teacher-{role}: worktree closed")
+        except Exception as e:
+            print(f"  \u26a0\ufe0f teacher-{role}: close error — {e}")
+
+
+def orca_automations_list() -> list[dict]:
+    """List Orca automations as a list of dicts (best-effort).
+
+    Handles the live response shape: {"ok":true,"result":{"automations":[…]}}.
+    """
+    try:
+        mgr = OrcaExecutionManager()
+        res = mgr._run_orca(["automations", "list", "--json"], timeout=15)
+    except Exception:
+        return []
+    if isinstance(res, list):
+        return res
+    r = res.get("result", res)
+    if isinstance(r, dict):
+        return r.get("automations", r.get("items", []))
+    if isinstance(r, list):
+        return r
+    return []
 
 
 def _boot_teachers() -> dict[str, TeacherWorktree]:

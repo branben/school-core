@@ -146,66 +146,21 @@ class TeacherWorktree:
         """
         self._mgr = OrcaExecutionManager()
 
-        # Rediscover first (idempotency): Orca auto-suffixes
-        # `worktree create --name X` when X already exists (X-2, X-3...),
-        # so an unconditionally-create() call spawns a duplicate on every
-        # re-boot. Scan the Orca worktree list for ANY worktree whose
-        # displayName (or path basename) is the canonical name OR a
-        # suffixed variant (teacher-cto / teacher-cto-4), and reuse it.
-        def _wt_name(wt: dict) -> str:
-            # Orca's worktree list returns displayName (live) but some
-            # versions/clients populate `name`; fall back to path basename.
-            # Check all three so rediscovery works regardless of which
-            # field Orca populates (or if path is empty).
-            for key in ("displayName", "name", "path"):
-                val = wt.get(key) or ""
-                if key == "path":
-                    val = Path(val).name if val else ""
-                if val:
-                    return val
-            return ""
-
+        # Single-source-of-truth rediscovery (Gap: Lifecycle invariant).
+        # Reuse the persistent worktree if it already exists; never mint a
+        # suffixed clone (teacher-cto-2 / -lens-2) — that suffix spray is the
+        # zombie-worktree pressure. create_worktree_persistent() handles the
+        # scan-and-reuse centrally in orca_executor.
         try:
-            result = self._mgr._run_orca(["worktree", "list"], timeout=15)
-            wts = result.get("worktrees", [])
-            for wt in wts:
-                nm = _wt_name(wt)
-                # Match canonical name OR a digit-suffixed variant
-                # (teacher-cto / teacher-cto-4), but NOT unrelated names
-                # like teacher-cto-backup or teacher-cto-legacy.
-                is_match = (
-                    nm == self.worktree_name
-                    or nm.startswith(self.worktree_name + "-")
-                    and nm[len(self.worktree_name) + 1:].isdigit()
-                )
-                if is_match:
-                    path = wt.get("path") or ""
-                    if not path and "::" in wt.get("id", ""):
-                        path = wt["id"].split("::", 1)[1]
-                    if not path:
-                        continue
-                    self.worktree_path = path
-                    self._review_terminal = self._mgr.create_terminal(
-                        title="teacher-" + self.role + "-review"
-                    )
-                    self._booted = True
-                    logger.info(
-                        "[teacher:%s] Rediscovered worktree at %s",
-                        self.role, self.worktree_path,
-                    )
-                    return self.worktree_path
-        except Exception:
-            pass
-
-        # No existing worktree - create it.
-        try:
-            self.worktree_path = self._mgr.create_worktree(self.worktree_name)
+            self.worktree_path = self._mgr.create_worktree_persistent(
+                self.worktree_name
+            )
             self._review_terminal = self._mgr.create_terminal(
                 title="teacher-" + self.role + "-review"
             )
             self._booted = True
             logger.info(
-                "[teacher:%s] Created worktree at %s",
+                "[teacher:%s] Persistent worktree at %s (rediscover-or-create)",
                 self.role, self.worktree_path,
             )
             return self.worktree_path

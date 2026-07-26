@@ -43,6 +43,9 @@ from typing import Optional
 from bookbag import BookbagSignal, wait_for_verdicts, write_bookbag, HANDOFF_TIMEOUT
 from director import run_task
 from orca_executor import OrcaExecutionManager, StudentBrief, OrcaUnavailableError
+from activity_log import ActivityLog
+
+_log = ActivityLog()
 from scoring import ScoreStore
 
 logger = logging.getLogger(__name__)
@@ -170,9 +173,13 @@ class StudentLeaf:
         """
         self._mgr = OrcaExecutionManager()
         try:
+            _log.student_stage(self.bead, self.role, "clone",
+                                repo=str(self.repo_path) if self.repo_path else "")
             self.worktree_path = self._mgr.create_worktree(
                 self.worktree_name, repo_path=self.repo_path
             )
+            _log.student_stage(self.bead, self.role, "boot",
+                                repo=str(self.repo_path) if self.repo_path else "")
             self._booted = True
             logger.info("[leaf:%s] Booted worktree at %s", self.bead[:12], self.worktree_path)
             return self.worktree_path
@@ -251,6 +258,7 @@ class StudentLeaf:
                 worktree_path=self.worktree_path,
                 bead=self.bead,
                 task=full_prompt,
+                role=self.role,
             )
         except OrcaUnavailableError as e:
             logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)
