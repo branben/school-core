@@ -382,9 +382,15 @@ class OrcaExecutionManager:
                 base = val.rsplit("/", 1)[-1] if key == "path" else val
                 if not base:
                     continue
-                # Token match: basename == role, starts with "role-", or
-                # contains "-role-" (handles cto-lens-2 / teacher-cto).
-                if base == role or base.startswith(role + "-") or f"-{role}-" in base:
+                # Token match: exact prefix (canonical name), basename == role,
+                # starts with "role-", or contains "-role-" (handles cto-lens-2
+                # / teacher-cto / teacher-cto-4).
+                if (
+                    base == prefix
+                    or base == role
+                    or base.startswith(role + "-")
+                    or f"-{role}-" in base
+                ):
                     p = wt.get("path") or ""
                     wt_id = wt.get("id", "")
                     if "::" in wt_id:

@@ -322,14 +322,16 @@ class TestSignal:
     """signal_ready() and wait_for_handoff()."""
 
     def test_signal_ready_creates_bookbag_signal(self, mock_mgr, mock_bookbag_signal):
-        """signal_ready() should create a BookbagSignal and call ready()."""
+        """signal_ready() should create a repo-scoped BookbagSignal and call ready()."""
         leaf = StudentLeaf("coder", "python-coding")
         leaf.boot()
         leaf.bead = "test-bead-1234"
+        leaf.repo_path = None  # default → __global__ namespace
 
         leaf.signal_ready()
 
-        mock_bookbag_signal.assert_called_once_with("test-bead-1234")
+        # Repo namespace must be threaded so repo-scoped consumers find the flag.
+        mock_bookbag_signal.assert_called_once_with("test-bead-1234", repo="__global__")
         mock_bookbag_signal.return_value.ready.assert_called_once()
 
     def test_wait_for_handoff_calls_wait_for_verdicts(self, mock_mgr, mock_wait_for_verdicts):
