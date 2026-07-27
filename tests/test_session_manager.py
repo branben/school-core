@@ -234,9 +234,9 @@ class TestRunTask:
     def test_agent_role_is_defined(self):
         from director import _agent_role
         assert _agent_role("a", 80) == "Faculty"
-        assert _agent_role("a", 60) == "Teacher"
-        assert _agent_role("a", 30) == "Senior Student"
-        assert _agent_role("a", 10) == "Student"
+        assert _agent_role("a", 60) == "Senior"
+        assert _agent_role("a", 30) == "Junior"
+        assert _agent_role("a", 10) == "Trainee"
 
     def test_run_task_compiles_and_imports(self):
         import importlib, director

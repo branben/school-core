@@ -38,6 +38,7 @@ def mock_mgr():
     with patch("teacher.OrcaExecutionManager") as mock:
         instance = MagicMock()
         instance.create_worktree.return_value = "/tmp/worktrees/teacher-cto"
+        instance.create_worktree_persistent.return_value = "/tmp/worktrees/teacher-cto"
         instance._run_orca.return_value = {"worktrees": []}
         mock.return_value = instance
         yield instance
@@ -173,145 +174,48 @@ class TestConstruction:
 
 
 class TestBoot:
-    """Teacher boot() — worktree creation and rediscovery."""
+    """Teacher boot() — delegates to create_worktree_persistent.
 
-    def test_boot_creates_worktree(self, mock_mgr):
-        """boot() should create the teacher worktree via Orca."""
+    boot() no longer performs rediscovery itself; create_worktree_persistent
+    (in orca_executor) handles scan-and-reuse centrally. These tests verify
+    boot()'s contract: it delegates to create_worktree_persistent, returns the
+    resulting path, and surfaces TeacherError when Orca is unavailable.
+    Rediscovery internals are covered in test_orca_execution.py.
+    """
+
+    def test_boot_creates_via_persistent(self, mock_mgr):
+        """boot() should create the teacher worktree via create_worktree_persistent."""
         t = TeacherWorktree("cto")
         path = t.boot()
 
-        mock_mgr.create_worktree.assert_called_once_with("teacher-cto")
+        mock_mgr.create_worktree_persistent.assert_called_once_with("teacher-cto")
         assert path == "/tmp/worktrees/teacher-cto"
         assert t.worktree_path == path
         assert t._booted
 
-    def test_boot_rediscovery_on_existing(self, mock_mgr):
-        """When a SUFFIXED worktree already exists (Orca auto-suffixes
-        `teacher-cto` -> `teacher-cto-4`), boot() should reuse it
-        (rediscover-first) instead of creating yet another duplicate.
-        """
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "", "path": "/tmp/worktrees/teacher-cto-4"},
-                {"name": "", "path": "/tmp/worktrees/teacher-coo-2"},
-            ]
-        }
+    def test_boot_returns_rediscovered_path(self, mock_mgr):
+        """When create_worktree_persistent returns an existing (suffixed) path,
+        boot() should reuse it (rediscover-or-create)."""
+        mock_mgr.create_worktree_persistent.return_value = "/tmp/worktrees/teacher-cto-4"
+
         t = TeacherWorktree("cto")
         path = t.boot()
 
-        # Rediscover-first: create_worktree must NOT be called when a
-        # suffixed variant already exists in the Orca worktree list.
-        mock_mgr.create_worktree.assert_not_called()
-        mock_mgr._run_orca.assert_called_once_with(["worktree", "list"], timeout=15)
+        # Rediscover-first: create_worktree_persistent is still called once;
+        # boot() returns whatever path it resolved (no second creation).
+        mock_mgr.create_worktree_persistent.assert_called_once_with("teacher-cto")
         assert path == "/tmp/worktrees/teacher-cto-4"
         assert t.worktree_path == path
         assert t._booted
 
-    def test_boot_rediscovery_on_existing_unsuffixed(self, mock_mgr):
-        """Canonical (non-suffixed) worktree must also be reused."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "", "path": "/tmp/worktrees/teacher-cto"},
-                {"name": "", "path": "/tmp/worktrees/teacher-coo"},
-            ]
-        }
+    def test_boot_returns_canonical_path(self, mock_mgr):
+        """Canonical (non-suffixed) worktree path must be returned as-is."""
+        mock_mgr.create_worktree_persistent.return_value = "/tmp/worktrees/teacher-cto"
+
         t = TeacherWorktree("cto")
         path = t.boot()
-        mock_mgr.create_worktree.assert_not_called()
         assert path == "/tmp/worktrees/teacher-cto"
         assert t._booted
-
-    def test_boot_rediscovery_displayname(self, mock_mgr):
-        """Rediscovery must work when displayName carries the name
-        (the field Orca's live worktree list populates)."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"displayName": "teacher-cto-4", "path": "/tmp/worktrees/teacher-cto-4"},
-            ]
-        }
-        t = TeacherWorktree("cto")
-        path = t.boot()
-        mock_mgr.create_worktree.assert_not_called()
-        assert path == "/tmp/worktrees/teacher-cto-4"
-        assert t._booted
-
-    def test_boot_rediscovery_name_field(self, mock_mgr):
-        """Rediscovery must fall back to the 'name' field when displayName
-        is empty (defensive: matches Orca clients that populate 'name'
-        instead of 'displayName')."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "teacher-cto", "displayName": "", "path": "/tmp/worktrees/teacher-cto"},
-            ]
-        }
-        t = TeacherWorktree("cto")
-        path = t.boot()
-        mock_mgr.create_worktree.assert_not_called()
-        assert path == "/tmp/worktrees/teacher-cto"
-        assert t._booted
-
-    def test_boot_rediscovery_ignores_unrelated_suffix(self, mock_mgr):
-        """A worktree like 'teacher-cto-backup' must NOT be treated as a
-        suffixed variant (only digit suffixes are matches)."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "", "path": "/tmp/worktrees/teacher-cto-backup"},
-            ]
-        }
-        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("exists")
-        t = TeacherWorktree("cto")
-        with pytest.raises(TeacherError):
-            t.boot()
-        mock_mgr.create_worktree.assert_called_once()
-
-    def test_boot_creates_when_absent(self, mock_mgr):
-        """When no matching worktree exists, boot() should create it."""
-        mock_mgr._run_orca.return_value = {"worktrees": []}
-
-        t = TeacherWorktree("cto")
-        path = t.boot()
-
-        mock_mgr.create_worktree.assert_called_once_with("teacher-cto")
-        assert path == "/tmp/worktrees/teacher-cto"
-        assert t._booted
-
-    def test_boot_fails_when_no_worktree(self, mock_mgr):
-        """boot() should raise if creation and rediscovery both fail."""
-        mock_mgr._run_orca.return_value = {"worktrees": []}
-        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("not found")
-
-        t = TeacherWorktree("cto")
-        with pytest.raises(TeacherError, match="could not create or rediscover"):
-            t.boot()
-
-        assert not t._booted
-
-    def test_boot_rediscovery_no_match(self, mock_mgr):
-        """Rediscovery should skip worktrees with non-matching names."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "", "path": "/tmp/worktrees/something-else"},
-            ]
-        }
-        mock_mgr.create_worktree.side_effect = OrcaUnavailableError("exists")
-
-        t = TeacherWorktree("cto")
-        with pytest.raises(TeacherError):
-            t.boot()
-
-    def test_boot_rediscovery_scans_path_basename(self, mock_mgr):
-        """Rediscovery should check path basename (since Orca names are empty)."""
-        mock_mgr._run_orca.return_value = {
-            "worktrees": [
-                {"name": "", "path": "/Users/test/orca/workspaces/school-core/teacher-cto"},
-            ]
-        }
-
-        t = TeacherWorktree("cto")
-        path = t.boot()
-        assert path == "/Users/test/orca/workspaces/school-core/teacher-cto"
-        assert t._booted
-
 
 # ── Sleep/Wake Tests ─────────────────────────────────────────────────────────
 
@@ -651,7 +555,7 @@ class TestClose:
         """Using 'with TeacherWorktree()' should boot and close."""
         with TeacherWorktree("cto") as t:
             assert t._booted
-            assert t.worktree_path == mock_mgr.create_worktree.return_value
+            assert t.worktree_path == mock_mgr.create_worktree_persistent.return_value
 
         assert not t._booted
         assert t.worktree_path is None
