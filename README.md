@@ -169,7 +169,7 @@ agent that built it is *getting better*, and at what.
 pip install -r requirements.txt        # stdlib-only core; OmniRoute/Orca are external runtimes
 
 # Point it at your repos (multi-repo namespacing):
-cp config/github.example.yaml config/github.yaml
+cp -f config/github.example.yaml config/github.yaml
 #   edit: target_repos: [owner/repo-a, owner/repo-b], orchestrator_repo: owner/school-core
 
 python conductor.py --serve             # Principal as a persistent Orca automation
