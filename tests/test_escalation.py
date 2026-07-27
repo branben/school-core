@@ -17,10 +17,12 @@ from scoring import ScoreStore
 
 @pytest.fixture
 def tmp_scores(tmp_path):
+    # Seed a REAL executor role (coder) so run_task's call_model role
+    # validation passes. (agent-a/agent-b are not valid COMBO_MAP roles.)
     scores_file = tmp_path / "scores.json"
     scores_file.write_text(json.dumps({
-        "agent-a": {"_default": 55.0, "python-testing": 60.0},
-        "agent-b": {"_default": 50.0, "python-testing": 55.0},
+        "coder": {"_default": 55.0, "python-testing": 60.0},
+        "reviewer": {"_default": 50.0, "python-testing": 55.0},
     }))
     return ScoreStore(file_path=str(scores_file))
 
@@ -133,13 +135,10 @@ class TestDispatchHappyPath:
 
 class TestDispatchEscalation:
     def test_low_confidence_skips_to_next(self, tmp_scores):
-        # agent-a declines (4 < 7), agent-b accepts (8 >= 7)
-        call_count = 0
+        # coder declines (readiness 4 < 7) -> escalate to A2A fallback (openhands)
         def mock_call_model(agent, prompt, system_prompt=None, timeout=None):
-            nonlocal call_count
-            call_count += 1
             if "confident" in prompt.lower():
-                if agent == "agent-a":
+                if agent == "coder":
                     return "4"
                 return "8"
             return "task response"
@@ -152,7 +151,8 @@ class TestDispatchEscalation:
                 store=tmp_scores,
             )
         assert result["status"] == "success"
-        assert result["agent"] == "agent-b"
+        assert result["agent"] == "openhands"
+        assert result["escalation"] is True
 
     def test_all_decline_falls_to_a2a(self, tmp_scores):
         def mock_call_model(agent, prompt, system_prompt=None, timeout=None):
