@@ -66,8 +66,19 @@ def _repo_dir(repo: str) -> Path:
 
 
 def bead_path(bead: str, repo: str = REPO_GLOBAL) -> Path:
-    """Resolve the path for a bead's bookbag file within a repo namespace."""
-    return _repo_dir(repo) / f"{bead}.json"
+    """Resolve the path for a bead's bookbag file within a repo namespace.
+
+    Backward compat: for the global namespace, legacy installs wrote
+    bookbags flat under BOOKBAG_DIR/<bead>.json. If the namespaced
+    ``__global__/<bead>.json`` does not exist but the flat file does,
+    return the flat path so existing bookbags stay readable.
+    """
+    namespaced = _repo_dir(repo) / f"{bead}.json"
+    if repo == REPO_GLOBAL and not namespaced.exists():
+        flat = BOOKBAG_DIR / f"{bead}.json"
+        if flat.exists():
+            return flat
+    return namespaced
 
 
 def exists(bead: str, repo: str = REPO_GLOBAL) -> bool:

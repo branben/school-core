@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag
+from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag, REPO_GLOBAL
 from school_mail import notify_verdict
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
@@ -398,7 +398,7 @@ def main():
 
     if args.loop:
         if args.async_mode:
-            _run_async_loop(args, store)
+            _run_async_loop(args, store, repo=args.repo or "__global__")
         else:
             _run_sync_loop(args, store)
 
@@ -431,7 +431,7 @@ def _run_sync_loop(args, store):
     _print_leaderboard(store)
 
 
-def _run_async_loop(args, store):
+def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
     """Phase 2 async loop: boot teachers, dispatch all, poll for verdicts.
 
     Pipeline:
@@ -447,8 +447,8 @@ def _run_async_loop(args, store):
     print(f"   Persona: {load_principal_soul()[:80].splitlines()[0]}\n")
 
     # ── Step 1: Boot teachers ─────────────────────────────────────────
-    print("\U0001f3eb Booting teacher worktrees...")
-    teachers = _boot_teachers()
+    print("🏫 Booting teacher worktrees...")
+    teachers = _boot_teachers(repo)
     if len(teachers) < 2:
         print("  \u26a0\ufe0f Could not boot both teachers (need CTO+COO) — falling back to sync mode")
         if teachers:
@@ -536,17 +536,24 @@ def _run_async_loop(args, store):
             label = f"[{role}/{domain}]"
 
             try:
-                cto_v, coo_v = wait_for_verdicts(bead, timeout=args.handoff_timeout)
-                bag = read_bookbag(bead)
+                cto_v, coo_v = wait_for_verdicts(
+                    bead, repo=repo, timeout=args.handoff_timeout
+                )
+                bag = read_bookbag(bead, repo)
                 if bag:
-                    accepted = _persist_acceptance(bead, cto_v, coo_v)
-                    _validate_verdict(bead)
+                    accepted = _persist_acceptance(bead, cto_v, coo_v, repo=repo)
+                    _validate_verdict(bead, repo=repo)
+                    # Teachers write cto_findings/coo_findings (not a combined
+                    # "findings" key) in async mode — combine for display.
+                    findings = (bag.get("cto_findings", []) or []) + (
+                        bag.get("coo_findings", []) or []
+                    )
                     result["review"] = {
                         "cto_verdict": cto_v,
                         "coo_verdict": coo_v,
                         "cto_score": bag.get("cto_score", 0),
                         "coo_score": bag.get("coo_score", 0),
-                        "findings": bag.get("findings", []),
+                        "findings": findings,
                         "accepted": accepted,
                     }
                     result["task_score"] = _compute_task_score(bag)
@@ -841,7 +848,11 @@ def _principal_prompt(repo: str = "__global__") -> str:
     bookbag namespace so teachers + students for OTHER repos never get
     cross-repo verdicts.
     """
-    bag_ns = "~/.hermes/bookbag/" if repo == "__global__" else f"~/.hermes/bookbag/{repo}/"
+    bag_ns = (
+        "~/.hermes/bookbag/"
+        if repo == "__global__"
+        else f"~/.hermes/bookbag/{repo.replace('/', '__')}/"
+    )
     scope = "" if repo == "__global__" else f"Repo scope: {repo}. "
     return (
         "You are the Agent-School Principal (Hermes, -p principal). "
@@ -1052,7 +1063,7 @@ def _validate_verdict(bead: str, repo: str = "__global__") -> None:
               f"{'; '.join(issues)}")
 
 
-def _boot_teachers(repo: str = "__global__") -> dict[str, TeacherWorktree]:
+def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
     Creates `teacher-cto` and `teacher-coo` Orca child worktrees (scoped to
@@ -1084,7 +1095,7 @@ def _boot_teachers(repo: str = "__global__") -> dict[str, TeacherWorktree]:
             name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
             prompt = (
                 f"Run the {role.upper()} review pass for Agent-School. Each tick: "
-                f"execute `python3 scripts/run_teacher_review_once.py {role}` from "
+                f"execute `python3 scripts/run_teacher_review_once.py {role} {repo}` from "
                 f"the repo root. That runs exactly one pass over un-reviewed "
                 f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
                 f"COO = COMPLETENESS), writes your verdict into "

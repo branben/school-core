@@ -31,16 +31,8 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# Project data (runtime-generated, not source)
-# Ignore the dir's CONTENTS (data/*) — NOT the dir itself — so the negations
-# below can re-include specific durability-critical files. (A bare `data/`
-# ignores the directory entirely and git never evaluates the negations.)
-data/*
-# Durability-critical state: MUST be tracked so board survives disk loss / rebuild.
-# These are small, append-only/regenerable — safe to commit.
-!data/issues_cache.json
-!data/last_run.json
-!data/processed_issues.json
+# Project data (runtime-generated cache/state — never tracked; regenerates on run)
+data/
 .omo/
 
 # Logs
