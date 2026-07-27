@@ -25,6 +25,26 @@ SEED_AGENTS = {
     "foundry-phi4": {"_default": 10},
 }
 
+# Repo namespace for the score store. When the school runs against a single
+# repo (no per-repo teacher pairs), scores stay in the legacy global file.
+# When multi-repo dispatch is enabled, each repo gets its OWN scores file so a
+# role's learned capacity on one repo does not leak/pollute another repo.
+REPO_GLOBAL = "__global__"
+
+
+def _scores_file_for(repo: str) -> Path:
+    """Resolve the per-repo scores.json path.
+
+    Global (default) → ``data/scores.json`` (legacy filename, preserved).
+    Per-repo         → ``data/scores-<safe_repo>.json`` (filesystem-safe).
+    """
+    base = Path(__file__).parent / "data"
+    if repo == REPO_GLOBAL:
+        return base / "scores.json"
+    safe = repo.replace("/", "__")
+    return base / f"scores-{safe}.json"
+
+
 GATES = {"easy": 0, "medium": 25, "hard": 50, "diploma": 75}
 
 MAX_DELTA = 15.0
@@ -95,8 +115,12 @@ class ScoreRecommendation:
     source_plugin: str
 
 class ScoreStore:
-    def __init__(self, file_path: str = None):
-        self.file_path = Path(file_path) if file_path else Path(__file__).parent / "data" / "scores.json"
+    def __init__(self, file_path: str = None, repo: str = "__global__"):
+        if file_path is not None:
+            self.file_path = Path(file_path)
+        else:
+            self.file_path = _scores_file_for(repo)
+        self.repo = repo
         self.scores: Dict[str, Dict[str, float]] = {}
         self._audit_log: list = []
         self._difficulty_weights: Dict[str, Dict[str, float]] = {}

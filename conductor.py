@@ -33,11 +33,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, wait_for_verdicts, locked_update_bookbag
+from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag
+from school_mail import notify_verdict
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
-from github_fetcher import fetch_single_issue
+from github_fetcher import fetch_single_issue, load_config
+from activity_log import ActivityLog
+
+_log = ActivityLog()
 
 # Map domain -> role for dispatch. Roles MUST exist in executor.COMBO_MAP
 # (searcher, executor, reviewer, browser, coder, openhands, a2a-agent);
@@ -107,7 +111,7 @@ def _parse_issue_ref(ref: str) -> tuple[str, str, int]:
     return owner, repo, number
 
 
-def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
+def _persist_acceptance(bead: str, cto_v: str, coo_v: str, repo: str = "__global__") -> bool:
     """Compute and persist the bookbag 'accepted' flag from both verdicts.
 
     Must match director.run_task's acceptance contract (director.py:313):
@@ -121,7 +125,7 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
     returns True if the write actually reached disk (locked_update_bookbag
     returns None on lock-acquisition failure — it does not raise).
     """
-    bag = read_bookbag(bead) or {}
+    bag = read_bookbag(bead, repo) or {}
     try:
         cto_score = float(bag.get("cto_score", 0) or 0)
         coo_score = float(bag.get("coo_score", 0) or 0)
@@ -138,7 +142,7 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str) -> bool:
         and coo_score >= 50
         and not has_critical
     )
-    written = locked_update_bookbag(bead, lock_timeout=10.0, accepted=accepted)
+    written = locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
     if written is None:
         print(f"[principal] WARNING: accepted flag for {bead} NOT persisted "
               f"(lock timeout) — disk may show stale accepted=False")
@@ -195,6 +199,11 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
     print(f"\U0001f504 PRINCIPAL — async dispatch {role} / {args.domain}")
     print(f"   Persona: {load_principal_soul()[:80].splitlines()[0]}\n")
 
+    # Scope the score store to the target repo so a role's learned capacity
+    # (EMA score across tasks) stays per-repo and never leaks across repos.
+    repo_slug = target_repo or "__global__"
+    store = ScoreStore(repo=repo_slug)
+
     teachers = _boot_teachers()
     if len(teachers) < 2:
         print("  \u26a0\ufe0f Could not boot both teachers — falling back to sync review")
@@ -226,6 +235,10 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         leaf.boot()
         leaf.write_brief(args.task)
         result = leaf.run_via_hermes(args.task)
+        _log.student_stage(leaf.bead, role, "bookbag_written",
+                            repo=str(target_path) if target_path else "")
+        _log.student_stage(leaf.bead, role, "teachers_reviewing",
+                            repo=str(target_path) if target_path else "")
         if result.get("status") != "success":
             print(f"  \u274c leaf LLM failed: {result.get('error', result.get('status'))}")
             leaf.dispose()
@@ -234,9 +247,10 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         leaf.signal_ready()
         print(f"  \u2705 bead={leaf.bead[:20]} ({len(result.get('response', ''))} chars) — teachers notified\n")
 
-        cto_v, coo_v = wait_for_verdicts(leaf.bead, timeout=args.handoff_timeout)
-        bag = read_bookbag(leaf.bead) or {}
-        accepted = _persist_acceptance(leaf.bead, cto_v, coo_v)
+        cto_v, coo_v = wait_for_verdicts(leaf.bead, repo=target_repo or "__global__", timeout=args.handoff_timeout)
+        bag = read_bookbag(leaf.bead, target_repo or "__global__") or {}
+        accepted = _persist_acceptance(leaf.bead, cto_v, coo_v, repo=target_repo or "__global__")
+        _validate_verdict(leaf.bead, repo=target_repo or "__global__")
         result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
@@ -251,6 +265,15 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         mark = "\u2705 YES" if accepted else "\u274c NO"
         print("\U0001f50d TWO-JUDGE REVIEW (async)")
         print(f"  CTO: {cto_v}  COO: {coo_v}  Accepted: {mark}")
+        # Notify the human operator via AgentMail (best-effort; never crashes).
+        try:
+            notify_verdict(
+                leaf.bead, accepted, cto_v, coo_v,
+                repo=target_repo or "__global__",
+                summary=result["review"].get("findings", []) and f"{len(result['review']['findings'])} findings",
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"  \u26a0 AgentMail notify failed: {e}")
         findings = result["review"].get("findings", [])
         print(f"  Findings: {len(findings)}")
         for f in findings[:3]:
@@ -294,53 +317,51 @@ def main():
     parser.add_argument("--clean-worktrees", action="store_true",
                         help="Remove all study-* worktrees created by previous runs")
     parser.add_argument("--serve", action="store_true", dest="serve",
-                        help="Launch a persistent principal loop in a dedicated "
-                             "Orca 'principal' terminal (survives the foreground "
-                             "process; use instead of --loop for always-on school)")
+                        help="Launch the school via NATIVE Orca primitives: a "
+                             "persistent principal automation (Orca owns the "
+                             "schedule) plus persistent teacher worktrees. "
+                             "Retires the old while-True pane loop.")
+    parser.add_argument("--stop-serve", action="store_true", dest="stop_serve",
+                        help="Tear down the --serve school: remove the principal "
+                             "automation and dispose teacher worktrees.")
+    parser.add_argument("--repo", default=None,
+                        help="Target repo slug (owner/repo) for this dispatch. "
+                             "Namespaces the bookbag + score store per repo so a "
+                             "standalone --task/--issue lands in the right repo's "
+                             "files instead of __global__. Defaults to __global__.")
     parser.add_argument("--resume", action="store_true",
                         help="Resume after crash: scan bookbags for partial verdicts, rediscover teachers, complete handoffs")
 
-    # ── Standalone utilities ─────────────────────────────────────────────
-
     args = parser.parse_args()
 
-    # ── Persistent principal (serve mode) ──────────────────────────────
-    # Launch the principal loop into a dedicated Orca 'principal' terminal
-    # so the orchestrator survives beyond a single foreground invocation.
-    # Mirrors how teachers are booted (run_principal_loop.py inside a
-    # terminal). Without this, the principal only runs as a foreground
-    # `conductor.py --issue ... --async` and the principal terminal is dead.
+    # ── Serve mode: native Orca spawn (Gap C/D) ────────────────────────
+    # The principal is an Orca *automation* (--provider hermes) — Orca owns
+    # the schedule, no while-True pane. Teachers are persistent worktrees
+    # (rediscover-or-create, so re-serve never mints cto-2/cto-3). The
+    # bookbag file stays the durable verdict record; the loop polls it
+    # inside the Hermes agent prompt, not as a Python process in a pane.
+    if args.stop_serve:
+        _teardown_serve()
+        return
+
     if args.serve:
-        try:
-            mgr = OrcaExecutionManager()
-            launcher = Path(__file__).parent / "scripts" / "run_principal_loop.py"
-            handle = _find_or_create_terminal(mgr, "principal")
-            cmd = f"cd {shlex.quote(str(Path(__file__).parent))} && python3 {shlex.quote(str(launcher))}"
-            mgr._run_orca([
-                "terminal", "send",
-                "--terminal", handle,
-                "--text", cmd,
-                "--enter",
-            ], timeout=10)
-            print(f"\U0001f4e1 principal: serve loop started in terminal {handle}")
-        except Exception as e:
-            print(f"\u26a0\ufe0f principal serve failed — {e}")
+        _launch_serve()
         return
 
     # ── Standalone utilities ─────────────────────────────────────────────
 
     if args.list_bookbags:
-        bags = list_bookbags()
-        print(f"Bookbags on disk ({len(bags)}):")
-        for b in bags:
-            bag = read_bookbag(b)
+        pairs = list_bookbags_full()
+        print(f"Bookbags on disk ({len(pairs)}):")
+        for repo, b in pairs:
+            bag = read_bookbag(b, repo)
             if bag:
                 accepted = "\u2705" if bag.get("accepted") else "\u274c"
                 student = bag.get("student", "?")
                 domain = bag.get("domain", "?")
-                print(f"  {accepted} {b:40s} {student:12s} {domain:20s}")
+                print(f"  {accepted} [{repo}] {b:36s} {student:12s} {domain:20s}")
             else:
-                print(f"  ?  {b}")
+                print(f"  ?  [{repo}] {b}")
         return
 
     if args.clean_worktrees:
@@ -353,13 +374,23 @@ def main():
         return
 
     if args.issue:
-        store = ScoreStore()
+        # Namespace the score store by the issue's repo so a role's learned
+        # capacity stays per-repo (matches the multi-repo serve topology).
+        repo_slug = None
+        try:
+            o, r, _ = _parse_issue_ref(args.issue)
+            repo_slug = f"{o}/{r}"
+        except Exception:
+            repo_slug = None
+        store = ScoreStore(repo=repo_slug or "__global__")
         _run_issue(args, store)
         return
 
     # ── Core pipeline ────────────────────────────────────────────────────
 
-    store = ScoreStore()
+    # Namespace the score store by --repo (if given) so standalone --task
+    # dispatch keeps a role's learning per-repo instead of __global__.
+    store = ScoreStore(repo=args.repo or "__global__")
 
     if args.resume:
         _resume_loop(args, store)
@@ -391,7 +422,7 @@ def _run_sync_loop(args, store):
 
         result = run_leaf(
             task_prompt=task, role=role, domain=domain,
-            difficulty=args.difficulty, store=store,
+            difficulty=args.difficulty, store=store, repo=args.repo,
         )
 
         _score_and_print_round(result, store)
@@ -509,6 +540,7 @@ def _run_async_loop(args, store):
                 bag = read_bookbag(bead)
                 if bag:
                     accepted = _persist_acceptance(bead, cto_v, coo_v)
+                    _validate_verdict(bead)
                     result["review"] = {
                         "cto_verdict": cto_v,
                         "coo_verdict": coo_v,
@@ -554,7 +586,7 @@ def _run_single_task(args, store):
 
     result = run_leaf(
         task_prompt=args.task, role=role, domain=args.domain,
-        difficulty=args.difficulty, store=store,
+        difficulty=args.difficulty, store=store, repo=args.repo,
     )
 
     task_score = result.get("task_score", 0)
@@ -607,7 +639,7 @@ def _resume_loop(args, store):
     print("\U0001f504 Resume mode — recovering from interruption\n")
 
     # ── Step 1: Scan bookbags ──────────────────────────────────────────
-    all_beads = list_bookbags()
+    all_beads = list_bookbags_full()
     if not all_beads:
         print("  No bookbags found — nothing to resume.")
         return
@@ -616,8 +648,8 @@ def _resume_loop(args, store):
     reviewed: list[dict] = []  # both verdicts filled, not yet scored
     empty: list[dict] = []     # neither verdict filled
 
-    for bead in all_beads:
-        bag = read_bookbag(bead)
+    for repo, bead in all_beads:
+        bag = read_bookbag(bead, repo)
         if not bag:
             continue
 
@@ -802,13 +834,232 @@ def _find_or_create_terminal(mgr: "OrcaExecutionManager", title: str) -> str:
     return mgr.create_terminal(title=title)
 
 
-def _boot_teachers() -> dict[str, TeacherWorktree]:
+def _principal_prompt(repo: str = "__global__") -> str:
+    """Build the per-repo Principal automation prompt.
+
+    In multi-repo mode the prompt scopes the principal to its repo's
+    bookbag namespace so teachers + students for OTHER repos never get
+    cross-repo verdicts.
+    """
+    bag_ns = "~/.hermes/bookbag/" if repo == "__global__" else f"~/.hermes/bookbag/{repo}/"
+    scope = "" if repo == "__global__" else f"Repo scope: {repo}. "
+    return (
+        "You are the Agent-School Principal (Hermes, -p principal). "
+        f"{scope}"
+        "Each tick: read `bd ready` for open beads; classify + EFC-route "
+        "each to a student leaf; wait for both CTO and COO verdicts in "
+        f"{bag_ns}<bead>.json; apply the acceptance rule "
+        "(both PASS AND score>=50 AND no critical -> accepted); notify the "
+        "human via AgentMail. On /fix from the human, re-dispatch a fresh "
+        "student (never edit yourself). Do not watch terminals or read logs."
+    )
+
+
+def _launch_serve() -> None:
+    """Boot the school via native Orca primitives (Gap C/D).
+
+    Multi-repo aware (config.github.yaml `target_repos`):
+
+    - Single-repo (target_repos empty) → ONE principal automation
+      (``agent-school-principal``) + a CTO/COO teacher pair scoped to
+      ``__global__``. This is exactly the legacy serve behavior.
+    - Multi-repo (target_repos populated) → one principal automation PER
+      repo (``agent-school-principal-<slug>``) + a CTO/COO teacher pair
+      scoped to that repo's bookbag namespace. Teachers poll only their
+      own repo; verdicts never collide across repos.
+
+    - Principal  → ``orca automations create --provider hermes`` (Orca owns
+      the schedule; no while-True pane in a terminal).
+    - Teachers   → persistent worktrees (rediscover-or-create, so re-serve
+      never mints cto-2/cto-3). The review loop still runs inside the
+      teacher's own terminal (the leaf/teacher Hermes agent), which is the
+      Orca-native path once ``--agent hermes`` boot lands.
+
+    Idempotent: re-running --serve reuses the existing automations + worktrees.
+    """
+    mgr = OrcaExecutionManager()
+    repo_root = Path(__file__).parent
+    cfg = load_config()
+    target_repos: list[dict] = cfg.get("target_repos") or []
+
+    def _boot_principal(repo: str, slug: str) -> None:
+        # Orca automation names cannot contain '/'; slugify owner/repo slugs.
+        safe = slug.replace("/", "__")
+        name = "agent-school-principal" if repo == "__global__" else f"agent-school-principal-{safe}"
+        existing = [
+            a for a in (orca_automations_list() or [])
+            if a.get("name") == name
+        ]
+        if existing:
+            print(f"  \U0001f4e1 principal automation already running (id={existing[0]['id']})")
+            return
+        res = mgr._run_orca([
+            "automations", "create",
+            "--name", name,
+            "--trigger", "hourly",
+            "--prompt", _principal_prompt(repo),
+            "--provider", "hermes",
+            "--workspace", f"path:{repo_root}",
+            "--json",
+        ], timeout=30)
+        aid = (res.get("result", {}).get("automation", {}).get("id")
+               or res.get("id") or "??")
+        print(f"  \U0001f4e1 principal automation created (id={aid})")
+
+    if not target_repos:
+        # ── Single-repo mode (legacy) ──
+        _boot_principal("__global__", "global")
+        teachers = _boot_teachers("__global__")
+        for role in teachers:
+            print(f"  \U0001f9e9 teacher-{role}: persistent worktree up")
+    else:
+        # ── Multi-repo mode ──
+        for entry in target_repos:
+            slug = entry.get("slug") or entry.get("repo")
+            if not slug:
+                print(f"  \u26a0 skipping target_repos entry with no slug: {entry!r}")
+                continue
+            _boot_principal(slug, slug)
+            teachers = _boot_teachers(slug)
+            for role in teachers:
+                print(f"  \U0001f9e9 teacher-{role}-{slug}: persistent worktree up")
+
+    print("\n\U0001f3d7 School is serving (native Orca). "
+          "Stop with: python3 conductor.py --stop-serve")
+
+
+def _teardown_serve() -> None:
+    """Tear down the --serve school (Gap C/D). Multi-repo aware."""
+    mgr = OrcaExecutionManager()
+    cfg = load_config()
+    target_repos: list[dict] = cfg.get("target_repos") or []
+
+    # Remove principal automation(s). Single-repo → one; multi-repo → one per repo.
+    principal_names = {"agent-school-principal"}
+    for entry in target_repos:
+        slug = entry.get("slug") or entry.get("repo")
+        if slug:
+            principal_names.add(f"agent-school-principal-{slug.replace('/', '__')}")
+    for a in (orca_automations_list() or []):
+        if a.get("name") in principal_names:
+            mgr._run_orca(["automations", "remove", "--id", a["id"]], timeout=15)
+            print(f"  \U0001f5d1 removed principal automation {a['id']}")
+
+    # Remove the teacher automations (Gap D) + close the persistent worktrees.
+    repos_for_teardown = ["__global__"] if not target_repos else [
+        (entry.get("slug") or entry.get("repo")) for entry in target_repos
+    ]
+    for repo in repos_for_teardown:
+        if not repo:
+            continue
+        suffix = "" if repo == "__global__" else f"-{repo.replace('/', '__')}"
+        for role in ("cto", "coo"):
+            orca_automations_remove(f"agent-school-teacher-{role}{suffix}")
+            try:
+                t = TeacherWorktree(role, repo=repo)
+                t.boot()  # rediscover-or-create (safe: reuses existing)
+                t.close()
+                print(f"  \U0001f9e9 teacher-{role}{suffix}: worktree closed")
+            except Exception as e:
+                print(f"  ⚠️ teacher-{role}{suffix}: close error — {e}")
+
+
+def orca_automations_list() -> list[dict]:
+    """List Orca automations as a list of dicts (best-effort).
+
+    Handles the live response shape: {"ok":true,"result":{"automations":[…]}}.
+    """
+    try:
+        mgr = OrcaExecutionManager()
+        res = mgr._run_orca(["automations", "list", "--json"], timeout=15)
+    except Exception:
+        return []
+    if isinstance(res, list):
+        return res
+    r = res.get("result", res)
+    if isinstance(r, dict):
+        return r.get("automations", r.get("items", []))
+    if isinstance(r, list):
+        return r
+    return []
+
+
+def orca_automations_create(
+    *,
+    name: str,
+    prompt: str,
+    trigger: str = "hourly",
+    workspace: Optional[str] = None,
+) -> Optional[str]:
+    """Create (or reuse) a scheduling automation via Orca.
+
+    Mirrors the principal migration: Orca owns the schedule, so the teacher
+    review loop no longer lives in a while-True pane + per-boot terminal
+    spray (run_teacher_loop.py). Returns the automation id, or ``None`` if
+    creation failed.
+    """
+    mgr = OrcaExecutionManager()
+    existing = [a for a in (orca_automations_list() or []) if a.get("name") == name]
+    if existing:
+        return existing[0].get("id")
+    args = [
+        "automations", "create",
+        "--name", name,
+        "--trigger", trigger,
+        "--prompt", prompt,
+        "--provider", "hermes",
+        "--json",
+    ]
+    if workspace:
+        args += ["--workspace", workspace]
+    try:
+        res = mgr._run_orca(args, timeout=30)
+    except Exception as e:
+        print(f"  ⚠️ automation create '{name}' failed — {e}")
+        return None
+    r = res.get("result", res)
+    if isinstance(r, dict):
+        return (r.get("automation") or r).get("id") or r.get("id")
+    return None
+
+
+def orca_automations_remove(name: str) -> None:
+    """Remove all automations matching ``name`` (best-effort)."""
+    mgr = OrcaExecutionManager()
+    for a in (orca_automations_list() or []):
+        if a.get("name") == name:
+            try:
+                mgr._run_orca(["automations", "remove", "--id", a["id"]], timeout=15)
+                print(f"  🗑 removed automation {name} ({a['id']})")
+            except Exception as e:
+                print(f"  ⚠️ automation remove '{name}' failed — {e}")
+
+
+def _validate_verdict(bead: str, repo: str = "__global__") -> None:
+    """Enforce the Gap-B verdict-record contract at the principal reconcile point.
+
+    The bookbag after the refactor holds ONLY the two-judge output. This is a
+    guard, not a task blocker: a malformed record is logged (so the human sees
+    it on the dashboard) but the dispatch still completes.
+    """
+    try:
+        from bookbag import validate_verdict_record
+    except Exception:
+        return
+    ok, issues = validate_verdict_record(bead, repo)
+    if not ok:
+        print(f"  ⚠️ verdict-record contract violation for {bead}: "
+              f"{'; '.join(issues)}")
+
+
+def _boot_teachers(repo: str = "__global__") -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
-    Creates `teacher-cto` and `teacher-coo` Orca child worktrees and
-    starts the teacher review loop inside each via Orca terminals.
-    Teachers poll `~/.hermes/bookbag/` for un-reviewed bookbags and
-    fill verdicts asynchronously.
+    Creates `teacher-cto` and `teacher-coo` Orca child worktrees (scoped to
+    the target repo when multi-repo dispatch is enabled) and starts the
+    teacher review loop inside each via Orca terminals. Teachers poll
+    `~/.hermes/bookbag/<repo>/` for un-reviewed bookbags and fill verdicts
+    asynchronously.
 
     Returns:
         Dict mapping role name ("cto", "coo") to TeacherWorktree instance,
@@ -818,37 +1069,41 @@ def _boot_teachers() -> dict[str, TeacherWorktree]:
 
     for role in ("cto", "coo"):
         try:
-            teacher = TeacherWorktree(role)
-            teacher.boot()
+            teacher = TeacherWorktree(role, repo=repo)
+            teacher.boot()  # rediscover-or-create the persistent worktree
             teachers[role] = teacher
 
-            # Start the review loop in the teacher's worktree terminal.
-            # The teacher process will poll bookbags and fill verdicts.
-            # Use a fresh OrcaExecutionManager for terminal control (the
-            # teacher already booted and owns the worktree lifecycle).
-            #
-            # Launch via a script file (not `python3 -c "..."`) to avoid
-            # the nested-quote mangling Orca's `terminal send` does to
-            # inline -c commands, which left teacher terminals empty.
-            mgr = OrcaExecutionManager()
-            launcher = Path(__file__).parent / "scripts" / "run_teacher_loop.py"
-            handle = _find_or_create_terminal(mgr, f"teacher-{role}")
-            cmd = (
-                f"cd {shlex.quote(str(teacher.worktree_path))} && "
-                f"PYTHONPATH={shlex.quote(str(Path(__file__).parent))} "
-                f"python3 {shlex.quote(str(launcher))} {shlex.quote(role)}"
+            # Gap D: launch the teacher as a NATIVE Orca automation (Orca owns
+            # the schedule). No while-True pane, no per-boot terminal spray
+            # (the old run_teacher_loop.py anti-pattern that minted a
+            # teacher-*-review terminal every boot). The automation targets
+            # the teacher's persistent worktree and runs run_teacher_review_once
+            # on a trigger; review_cycle() inside does the one-pass judge.
+            # Orca automation names cannot contain '/'; slugify owner/repo slugs.
+            safe = repo.replace("/", "__")
+            name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
+            prompt = (
+                f"Run the {role.upper()} review pass for Agent-School. Each tick: "
+                f"execute `python3 scripts/run_teacher_review_once.py {role}` from "
+                f"the repo root. That runs exactly one pass over un-reviewed "
+                f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
+                f"COO = COMPLETENESS), writes your verdict into "
+                f"~/.hermes/bookbag/<bead>.json, then exits. Do not edit code or "
+                f"open terminals — Orca schedules you; only run the script."
             )
-            mgr._run_orca([
-                "terminal", "send",
-                "--terminal", handle,
-                "--text", cmd,
-                "--enter",
-            ], timeout=10)
-
-            print(f"  \U0001f4e1 teacher-{role}: terminal started")
+            aid = orca_automations_create(
+                name=name,
+                prompt=prompt,
+                trigger="*/5 * * * *",  # every 5 min (Orca cron; "every 5m" is rejected)
+                workspace=f"path:{teacher.worktree_path}",
+            )
+            if aid:
+                print(f"  🧑‍🏫 teacher-{role}: automation up (id={aid})")
+            else:
+                print(f"  ⚠️ teacher-{role}: automation not created — review won't run")
 
         except Exception as e:
-            print(f"  \u274c teacher-{role}: boot failed — {e}")
+            print(f"  ❌ teacher-{role}: boot failed — {e}")
             # Clean up any partial boot
             if role in teachers:
                 try:

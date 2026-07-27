@@ -13,3 +13,23 @@ difficulty_overrides:
 # Override Director domain based on label presence
 domain_overrides:
   security: code-review
+
+# ── Multi-repo dispatch (per-repo teacher pairs + bookbag namespacing) ──
+# When empty, the school runs against a single repo (the `repo` above) and
+# every bookbag/teacher is namespaced under "__global__". When populated, the
+# principal boots a CTO+COO teacher PAIR per listed repo and namespaces each
+# bookbag under its target repo, so verdicts never collide across repos.
+#
+# Each entry:
+#   slug:   "owner/repo" — must match gh's nameWithOwner
+#   checkout: local path where Orca clones/registers the repo (optional;
+#             defaults to ~/.cache/school-core/repos/<owner>__<repo>)
+#   eval_overrides: optional per-repo difficulty/domain overrides (future)
+target_repos:
+  - slug: branben/sound-royale-ny
+  - slug: branben/school-core
+
+# Slug of the repo that hosts the orchestrator + souls (school-core itself).
+# Teacher worktrees for OTHER repos are created against that repo's checkout;
+# the principal's own workspace stays here.
+orchestrator_repo: "branben/school-core"

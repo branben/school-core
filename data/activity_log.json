@@ -1,3 +1,161 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "type": "student_stage",
+      "agent": "student:coder-coder-py",
+      "bead": "coder-python-coding-076524ed",
+      "role": "coder",
+      "stage": "clone",
+      "repo": "",
+      "description": "student:coder-coder-py cloning target repo",
+      "status": "in_progress",
+      "id": 1,
+      "timestamp": "2026-07-24T17:13:32.207146+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:coder-coder-py",
+      "bead": "coder-python-coding-076524ed",
+      "role": "coder",
+      "stage": "boot",
+      "repo": "",
+      "description": "student:coder-coder-py booting worktree",
+      "status": "in_progress",
+      "id": 2,
+      "timestamp": "2026-07-24T17:13:33.822384+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:coder-coder-py",
+      "bead": "coder-python-coding-076524ed",
+      "role": "coder",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/study-coder-076524ed",
+      "description": "student:coder-coder-py thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/study-coder-076524ed)",
+      "status": "in_progress",
+      "id": 3,
+      "timestamp": "2026-07-24T17:13:33.823952+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:coder-coder-py",
+      "bead": "coder-python-coding-076524ed",
+      "role": "coder",
+      "stage": "done",
+      "repo": "",
+      "description": "student:coder-coder-py dispatch complete",
+      "status": "completed",
+      "id": 4,
+      "timestamp": "2026-07-24T17:13:53.202924+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-cto-78031bad",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-cto",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-cto)",
+      "status": "in_progress",
+      "id": 5,
+      "timestamp": "2026-07-25T17:06:00.978020+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-decd3d00",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-coo",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-coo)",
+      "status": "in_progress",
+      "id": 6,
+      "timestamp": "2026-07-25T17:06:05.169152+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-decd3d00",
+      "role": "student",
+      "stage": "done",
+      "repo": "",
+      "description": "student:student-review-c dispatch complete",
+      "status": "completed",
+      "id": 7,
+      "timestamp": "2026-07-25T17:06:30.611981+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-96b0e208",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-coo",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-coo)",
+      "status": "in_progress",
+      "id": 8,
+      "timestamp": "2026-07-25T17:06:35.655897+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-96b0e208",
+      "role": "student",
+      "stage": "done",
+      "repo": "",
+      "description": "student:student-review-c dispatch complete",
+      "status": "completed",
+      "id": 9,
+      "timestamp": "2026-07-25T17:07:06.603709+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-e8dfcd73",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-coo",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-coo)",
+      "status": "in_progress",
+      "id": 10,
+      "timestamp": "2026-07-25T17:07:11.638102+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-e8dfcd73",
+      "role": "student",
+      "stage": "done",
+      "repo": "",
+      "description": "student:student-review-c dispatch complete",
+      "status": "completed",
+      "id": 11,
+      "timestamp": "2026-07-25T17:07:49.644755+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-52ae39f2",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-coo",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-coo)",
+      "status": "in_progress",
+      "id": 12,
+      "timestamp": "2026-07-25T17:07:54.668992+00:00"
+    },
+    {
+      "type": "student_stage",
+      "agent": "student:student-review-c",
+      "bead": "review-coo-323bb1c6",
+      "role": "student",
+      "stage": "hermes_thinking",
+      "repo": "/Users/brandonbennett/orca/workspaces/school-core/teacher-coo",
+      "description": "student:student-review-c thinking (Hermes agent running) (/Users/brandonbennett/orca/workspaces/school-core/teacher-coo)",
+      "status": "in_progress",
+      "id": 13,
+      "timestamp": "2026-07-25T17:09:30.214143+00:00"
+    }
+  ],
+  "last_updated": "2026-07-25T17:09:30.214306+00:00"
 }
