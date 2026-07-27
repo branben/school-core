@@ -191,7 +191,7 @@ Pure-stdlib JSON-RPC over stdio — no external deps. Exposes:
 - `school_list_agents` — list agents with scores and gate levels
 - `school_list_domains` — list known domains and gate counts
 - `school_get_trajectory` — read a saved trajectory by path
-
+- `school_get_leaderboard` — read the agent competency leaderboard
 ## Tests
 
 ```bash
