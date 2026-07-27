@@ -121,12 +121,18 @@ class StudentLeaf:
         store: Optional[ScoreStore] = None,
         handoff_timeout: float = HANDOFF_TIMEOUT,
         repo_path: Optional[Path] = None,
+        repo: Optional[str] = None,
     ):
         self.role = role
         self.domain = domain
         self.difficulty = difficulty
         self.handoff_timeout = handoff_timeout
         self.repo_path = repo_path  # None -> school-core (single-repo mode)
+        # Explicit repo slug (owner/repo) for manual --task --repo dispatch.
+        # When set, it wins over the repo_path-derived slug so a standalone
+        # task lands in the right per-repo bookbag/score namespace even
+        # without a cloned checkout.
+        self._repo_override = repo
 
         # Auto-generate unique identifiers
         rand = uuid.uuid4().hex[:8]
@@ -135,12 +141,24 @@ class StudentLeaf:
         self.worktree_path: Optional[str] = None
 
         # Dependencies
-        self._store = store or ScoreStore()
+        self._store = store or ScoreStore(repo=self._repo_slug())
         self._mgr: Optional[OrcaExecutionManager] = None
         self._booted = False
 
         # Hermes profile name derived from role
         self._hermes_profile = self._profile_for_role(role)
+
+    def _repo_slug(self) -> str:
+        """Derive the bookbag/score namespace for this leaf.
+
+        Explicit ``repo`` override (manual --task --repo) wins; else derive
+        from the cloned checkout basename (serve mode); else ``__global__``.
+        """
+        if self._repo_override:
+            return self._repo_override
+        if self.repo_path is None:
+            return "__global__"
+        return Path(self.repo_path).name
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -270,6 +288,7 @@ class StudentLeaf:
                 difficulty=self.difficulty,
                 task=task_prompt[:200],
                 output=f"[Hermes error: {e}]",
+                repo=self._repo_slug(),
             )
             return {
                 "status": "error",
@@ -308,6 +327,7 @@ class StudentLeaf:
             difficulty=self.difficulty,
             task=task_prompt[:200],
             output=response,
+            repo=self._repo_slug(),
         )
 
         logger.info("[leaf:%s] Hermes completed: %d chars", self.bead[:12], len(response))
@@ -360,6 +380,7 @@ class StudentLeaf:
             force_agent=self.role,
             store=self._store,
             skip_review=skip_review,
+            repo=self._repo_slug(),
         )
         return result
 
@@ -464,6 +485,7 @@ def run_leaf(
     difficulty: str = "easy",
     store: Optional[ScoreStore] = None,
     async_mode: bool = False,
+    repo: Optional[str] = None,
 ) -> dict:
     """Run a task in a disposable leaf worktree.
 
@@ -502,7 +524,7 @@ def run_leaf(
     Raises:
         LeafError: If Orca runtime is unavailable.
     """
-    leaf = StudentLeaf(role=role, domain=domain, difficulty=difficulty, store=store)
+    leaf = StudentLeaf(role=role, domain=domain, difficulty=difficulty, store=store, repo=repo)
 
     try:
         leaf.boot()

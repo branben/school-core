@@ -43,6 +43,11 @@ BOOKBAG_DIR = Path(
 SIGNAL_DIR = Path(os.environ.get("SIGNAL_DIR", os.path.expanduser("~/.hermes/signals")))
 LOCK_DIR = Path(os.environ.get("LOCK_DIR", os.path.expanduser("~/.hermes/locks")))
 
+# Repo namespace used when the school runs against a single repo (no per-repo
+# teacher pairs). Keeps the flat layout backward-compatible: legacy bookbags
+# written before namespacing still resolve under this namespace.
+REPO_GLOBAL = "__global__"
+
 # Default handoff timeout and poll interval (configurable via env vars)
 HANDOFF_TIMEOUT = int(os.environ.get("HANDOFF_TIMEOUT", "120"))
 HANDOFF_POLL_INTERVAL = float(os.environ.get("HANDOFF_POLL_INTERVAL", "5.0"))
@@ -52,20 +57,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def bead_path(bead: str) -> Path:
-    """Resolve the path for a bead's bookbag file."""
-    BOOKBAG_DIR.mkdir(parents=True, exist_ok=True)
-    return BOOKBAG_DIR / f"{bead}.json"
+def _repo_dir(repo: str) -> Path:
+    """Resolve the per-repo bookbag directory (nested under BOOKBAG_DIR)."""
+    safe = repo.replace("/", "__")  # filesystem-safe namespace
+    d = BOOKBAG_DIR / safe
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def exists(bead: str) -> bool:
-    """Check if a bookbag already exists for this bead."""
-    return bead_path(bead).exists()
+def bead_path(bead: str, repo: str = REPO_GLOBAL) -> Path:
+    """Resolve the path for a bead's bookbag file within a repo namespace."""
+    return _repo_dir(repo) / f"{bead}.json"
+
+
+def exists(bead: str, repo: str = REPO_GLOBAL) -> bool:
+    """Check if a bookbag already exists for this bead (within a repo namespace)."""
+    return bead_path(bead, repo).exists()
 
 
 def write_bookbag(
     bead: str,
     *,
+    repo: str = REPO_GLOBAL,
     student: str = "",
     domain: str = "",
     difficulty: str = "",
@@ -89,6 +102,7 @@ def write_bookbag(
     """
     bag = {
         "bead": bead,
+        "repo": repo,
         "task": task,
         "student": student,
         "domain": domain,
@@ -106,14 +120,14 @@ def write_bookbag(
         "accepted": accepted,
         "timestamp": _now_iso(),
     }
-    path = bead_path(bead)
+    path = bead_path(bead, repo)
     path.write_text(json.dumps(bag, indent=2, ensure_ascii=False))
     return bag
 
 
-def read_bookbag(bead: str) -> Optional[dict]:
+def read_bookbag(bead: str, repo: str = REPO_GLOBAL) -> Optional[dict]:
     """Read a bookbag from disk. Returns None if not found or unparseable."""
-    path = bead_path(bead)
+    path = bead_path(bead, repo)
     if not path.exists():
         return None
     try:
@@ -122,23 +136,23 @@ def read_bookbag(bead: str) -> Optional[dict]:
         return None
 
 
-def update_bookbag(bead: str, **kwargs) -> Optional[dict]:
+def update_bookbag(bead: str, repo: str = REPO_GLOBAL, **kwargs) -> Optional[dict]:
     """Read, update, and write a bookbag. Returns updated dict or None."""
-    bag = read_bookbag(bead)
+    bag = read_bookbag(bead, repo)
     if bag is None:
         return None
     bag.update(kwargs)
-    path = bead_path(bead)
+    path = bead_path(bead, repo)
     path.write_text(json.dumps(bag, indent=2, ensure_ascii=False))
     return bag
 
 
-def validate_bookbag(bead: str) -> tuple[bool, list[str]]:
+def validate_bookbag(bead: str, repo: str = REPO_GLOBAL) -> tuple[bool, list[str]]:
     """Validate a bookbag against the expected schema.
 
     Returns (is_valid, list_of_issues).
     """
-    bag = read_bookbag(bead)
+    bag = read_bookbag(bead, repo)
     if bag is None:
         return False, ["bookbag not found"]
 
@@ -170,7 +184,7 @@ def validate_bookbag(bead: str) -> tuple[bool, list[str]]:
 VERDICT_REQUIRED = ["bead", "cto_verdict", "coo_verdict", "accepted", "timestamp"]
 
 
-def validate_verdict_record(bead: str) -> tuple[bool, list[str]]:
+def validate_verdict_record(bead: str, repo: str = REPO_GLOBAL) -> tuple[bool, list[str]]:
     """Validate the verdict-record contract (Gap B).
 
     The bookbag after the refactor holds ONLY the two-judge output:
@@ -178,7 +192,7 @@ def validate_verdict_record(bead: str) -> tuple[bool, list[str]]:
 
     Returns (is_valid, list_of_issues).
     """
-    bag = read_bookbag(bead)
+    bag = read_bookbag(bead, repo)
     if bag is None:
         return False, ["verdict record not found"]
 
@@ -200,14 +214,73 @@ def validate_verdict_record(bead: str) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
-def list_bookbags() -> list[str]:
-    """List all bead IDs with bookbags on disk."""
-    if not BOOKBAG_DIR.exists():
-        return []
-    return sorted(
-        p.stem for p in BOOKBAG_DIR.glob("*.json")
-        if not p.name.startswith(".") and p.stem not in ("board", "index")
-    )
+def list_bookbags_full() -> list[tuple[str, str]]:
+    """List (repo, bead_id) pairs across all namespaces (incl. legacy global).
+
+    Unlike list_bookbags() (which returns bare ids), this preserves the repo
+    namespace so callers can resolve each bookbag with read_bookbag(bead, repo).
+    """
+    pairs: list[tuple[str, str]] = []
+    # Legacy flat (global) namespace.
+    if BOOKBAG_DIR.exists():
+        for p in BOOKBAG_DIR.glob("*.json"):
+            if not p.name.startswith(".") and p.stem not in ("board", "index"):
+                pairs.append((REPO_GLOBAL, p.stem))
+    # Per-repo subdirs.
+    for sub in sorted(BOOKBAG_DIR.iterdir()):
+        if sub.is_dir() and not sub.name.startswith("."):
+            repo = sub.name.replace("__", "/")
+            for p in sub.glob("*.json"):
+                if not p.name.startswith(".") and p.stem not in ("board", "index"):
+                    pairs.append((repo, p.stem))
+    # de-dup (legacy + repo shouldn't collide, but be safe), stable order
+    seen = set()
+    out = []
+    for repo, bead in pairs:
+        key = (repo, bead)
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def list_bookbags(repo: Optional[str] = None) -> list[str]:
+    """List bead IDs with bookbags on disk.
+
+    If ``repo`` is given, list only that namespace. Otherwise list all
+    namespaces (the legacy flat dir under BOOKBAG_DIR plus every per-repo
+    subdir). Bare bead ids are returned; callers must pass the same ``repo``
+    to read_bookbag to resolve them.
+    """
+    if repo is not None:
+        d = _repo_dir(repo)
+        if not d.exists():
+            return []
+        return sorted(
+            p.stem for p in d.glob("*.json")
+            if not p.name.startswith(".") and p.stem not in ("board", "index")
+        )
+    # All repos: legacy flat dir + every per-repo subdir.
+    ids: list[str] = []
+    if BOOKBAG_DIR.exists():
+        ids += sorted(
+            p.stem for p in BOOKBAG_DIR.glob("*.json")
+            if not p.name.startswith(".") and p.stem not in ("board", "index")
+        )
+    for sub in sorted(BOOKBAG_DIR.iterdir()):
+        if sub.is_dir() and not sub.name.startswith("."):
+            ids += sorted(
+                p.stem for p in sub.glob("*.json")
+                if not p.name.startswith(".") and p.stem not in ("board", "index")
+            )
+    # de-dup, keep stable order
+    seen = set()
+    out = []
+    for i in ids:
+        if i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
 
 
 # ── Handoff Protocol (U4a) ───────────────────────────────────────────────────
@@ -221,13 +294,14 @@ class HandoffTimeoutError(TimeoutError):
 # ── File-lock Protocol (prevents write contention between CTO/COO) ──────────
 
 
-def _lock_path(bead: str) -> Path:
-    """Resolve the lock file path for a bead."""
+def _lock_path(bead: str, repo: str = REPO_GLOBAL) -> Path:
+    """Resolve the lock file path for a bead (per-repo namespace)."""
     LOCK_DIR.mkdir(parents=True, exist_ok=True)
-    return LOCK_DIR / f"{bead}.lock"
+    safe = repo.replace("/", "__")
+    return LOCK_DIR / f"{safe}__{bead}.lock"
 
 
-def acquire_lock(bead: str, timeout: float = 10.0) -> bool:
+def acquire_lock(bead: str, repo: str = REPO_GLOBAL, timeout: float = 10.0) -> bool:
     """Acquire a file lock for a bead. Blocks until acquired or timeout.
 
     Uses filesystem atomicity: O_EXCL on the open() call fails if the
@@ -239,12 +313,13 @@ def acquire_lock(bead: str, timeout: float = 10.0) -> bool:
 
     Args:
         bead: Unique task identifier.
+        repo: Repo namespace (default global).
         timeout: Maximum seconds to wait for the lock.
 
     Returns:
         True if lock was acquired. False if timeout expired.
     """
-    lock_file = _lock_path(bead)
+    lock_file = _lock_path(bead, repo)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -273,17 +348,19 @@ def acquire_lock(bead: str, timeout: float = 10.0) -> bool:
     return False
 
 
-def release_lock(bead: str) -> None:
-    """Release a file lock for a bead. Best-effort."""
-    lock_file = _lock_path(bead)
+def release_lock(bead: str, repo: str = REPO_GLOBAL) -> None:
+    """Release a file lock for a bead (per-repo namespace). Best-effort."""
+    lock_file = _lock_path(bead, repo)
     try:
         lock_file.unlink(missing_ok=True)
     except OSError:
         pass
 
 
-def locked_update_bookbag(bead: str, lock_timeout: float = 10.0, **kwargs) -> Optional[dict]:
-    """Update a bookbag with lock protection.
+def locked_update_bookbag(
+    bead: str, repo: str = REPO_GLOBAL, lock_timeout: float = 10.0, **kwargs
+) -> Optional[dict]:
+    """Update a bookbag with lock protection (per-repo namespace).
 
     Acquires a file lock before updating the bookbag, preventing
     concurrent write contention between CTO and COO when they update
@@ -291,6 +368,7 @@ def locked_update_bookbag(bead: str, lock_timeout: float = 10.0, **kwargs) -> Op
 
     Args:
         bead: Unique task identifier.
+        repo: Repo namespace (default global).
         lock_timeout: Maximum seconds to wait for the lock.
         **kwargs: Fields to update in the bookbag.
 
@@ -298,12 +376,12 @@ def locked_update_bookbag(bead: str, lock_timeout: float = 10.0, **kwargs) -> Op
         Updated bookbag dict, or None if lock could not be acquired
         or bookbag doesn't exist.
     """
-    if not acquire_lock(bead, timeout=lock_timeout):
+    if not acquire_lock(bead, repo, timeout=lock_timeout):
         return None
     try:
-        return update_bookbag(bead, **kwargs)
+        return update_bookbag(bead, repo, **kwargs)
     finally:
-        release_lock(bead)
+        release_lock(bead, repo)
 
 
 # ── Signal Protocol (fast flag-based handoff notification) ──────────────────
@@ -328,9 +406,11 @@ class BookbagSignal:
             bookbag = read_bookbag(bead)
     """
 
-    def __init__(self, bead: str):
+    def __init__(self, bead: str, repo: str = REPO_GLOBAL):
         self.bead = bead
-        self._ready_path = SIGNAL_DIR / f"{bead}.ready"
+        self.repo = repo
+        safe = repo.replace("/", "__")
+        self._ready_path = SIGNAL_DIR / f"{safe}__{bead}.ready"
 
     def ready(self) -> None:
         """Signal that this bead's bookbag is ready for review."""
@@ -354,6 +434,7 @@ class BookbagSignal:
 
 def wait_for_bookbag(
     bead: str,
+    repo: str = REPO_GLOBAL,
     required_fields: Optional[list[str]] = None,
     timeout: float = HANDOFF_TIMEOUT,
     interval: float = HANDOFF_POLL_INTERVAL,
@@ -366,6 +447,7 @@ def wait_for_bookbag(
 
     Args:
         bead: Unique task identifier to wait for.
+        repo: Repo namespace (default global).
         required_fields: Fields that must be non-empty (default: both verdicts).
         timeout: Maximum seconds to wait before raising HandoffTimeoutError.
         interval: Seconds between poll attempts.
@@ -380,11 +462,11 @@ def wait_for_bookbag(
         required_fields = ["cto_verdict", "coo_verdict"]
 
     deadline = time.monotonic() + timeout
-    signal = BookbagSignal(bead)
+    signal = BookbagSignal(bead, repo)
 
     while time.monotonic() < deadline:
         # Read the bookbag once per poll cycle
-        bag = read_bookbag(bead)
+        bag = read_bookbag(bead, repo)
         if bag is not None:
             if all(bag.get(f, "") for f in required_fields):
                 return bag
@@ -395,7 +477,7 @@ def wait_for_bookbag(
         time.sleep(interval)
 
     # Timeout — give descriptive error about what was found vs expected
-    bag = read_bookbag(bead)
+    bag = read_bookbag(bead, repo)
     field_states = {}
     if bag:
         for f in required_fields:
@@ -412,6 +494,7 @@ def wait_for_bookbag(
 
 def wait_for_verdicts(
     bead: str,
+    repo: str = REPO_GLOBAL,
     timeout: float = HANDOFF_TIMEOUT,
     interval: float = HANDOFF_POLL_INTERVAL,
 ) -> tuple[str, str]:
@@ -422,6 +505,7 @@ def wait_for_verdicts(
 
     Args:
         bead: Unique task identifier.
+        repo: Repo namespace (default global).
         timeout: Maximum seconds to wait.
         interval: Seconds between poll attempts.
 
@@ -431,5 +515,5 @@ def wait_for_verdicts(
     Raises:
         HandoffTimeoutError: If timeout expires before both verdicts are filled.
     """
-    bag = wait_for_bookbag(bead, timeout=timeout, interval=interval)
+    bag = wait_for_bookbag(bead, repo, timeout=timeout, interval=interval)
     return bag.get("cto_verdict", ""), bag.get("coo_verdict", "")

@@ -286,6 +286,7 @@ class TestRunTask:
             force_agent="coder",
             store=leaf._store,
             skip_review=False,
+            repo=leaf._repo_slug(),
         )
 
     def test_run_task_returns_result(self, mock_mgr, mock_director):

@@ -112,6 +112,7 @@ class TeacherWorktree:
         role: str,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
         session_id: str = DEFAULT_SESSION_ID,
+        repo: str = "__global__",
     ):
         if role not in TEACHER_LENSES:
             raise ValueError(f"Unknown teacher role '{role}'. Must be 'cto' or 'coo'.")
@@ -119,7 +120,8 @@ class TeacherWorktree:
         self.lenses = TEACHER_LENSES[role]
         self.poll_interval = poll_interval
         self.session_id = f"{session_id}-{role}"
-        self.worktree_name = f"teacher-{role}"
+        self.repo = repo
+        self.worktree_name = f"teacher-{role}" if repo == "__global__" else f"teacher-{role}-{repo.replace('/', '__')}"
         self.worktree_path: Optional[str] = None
         self._mgr: Optional[OrcaExecutionManager] = None
         self._review_terminal: Optional[str] = None  # Reusable Hermes terminal
@@ -242,8 +244,8 @@ class TeacherWorktree:
         if not self._booted:
             raise TeacherError("Teacher not booted — call boot() first")
 
-        for bead in list_bookbags():
-            bag = read_bookbag(bead)
+        for bead in list_bookbags(self.repo):
+            bag = read_bookbag(bead, self.repo)
             if bag is None:
                 continue
 
@@ -252,7 +254,7 @@ class TeacherWorktree:
                 continue  # Already reviewed by this teacher
 
             # Found a bookbag that needs this teacher's review
-            logger.info("[teacher:%s] Reviewing bead=%s", self.role, bead)
+            logger.info("[teacher:%s] Reviewing bead=%s repo=%s", self.role, bead, self.repo)
 
             # Build the task dict from the bookbag
             task = {
@@ -277,6 +279,7 @@ class TeacherWorktree:
                 # Update bookbag with lock protection
                 updated = locked_update_bookbag(
                     bead,
+                    self.repo,
                     lock_timeout=10.0,
                     **{verdict_field: verdict,
                        f"{self.role}_findings": findings_dicts,

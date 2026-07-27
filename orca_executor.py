@@ -172,6 +172,33 @@ class CodeExtractor:
 
 # ── Orca Execution Manager ────────────────────────────────────────────────────
 
+def _resolve_repo_path() -> Path:
+    """Resolve the real git repo root, not the file's directory.
+
+    When this module is imported from INSIDE a child worktree (e.g. a
+    teacher/student worktree spawned by Orca), Path(__file__).parent resolves
+    to that worktree, which Orca has NOT registered -> `orca worktree create
+    --repo <worktree>` fails with repo_not_found. `git rev-parse --show-toplevel`
+    walks up to the actual school-core checkout (which IS registered), so
+    teacher boot works no matter which worktree cwd the automation runs from.
+    """
+    here = Path(__file__).parent.expanduser().resolve()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(here), capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip()).resolve()
+    except Exception:
+        pass
+    return here
+
+
+# Module-level so it resolves the true repo root regardless of which worktree
+# (main / teacher / student) imports this module.
+REPO_PATH = _resolve_repo_path()
+
 
 class OrcaExecutionManager:
     """Manages disposable Orca terminal sessions for code execution.
@@ -179,7 +206,13 @@ class OrcaExecutionManager:
     Creates terminals directly in the current Orca project context
     (no worktree creation), executes code extracted from LLM responses,
     and returns structured results with stdout, stderr, and exit codes.
+
+    REPO_PATH is a module-level constant (resolved via _resolve_repo_path so it
+    points at the true git root even when imported from a child worktree). This
+    class alias keeps ``self.REPO_PATH`` / ``mgr.REPO_PATH`` working for callers
+    and the live-Orca test suite, which access it as an instance attribute.
     """
+    REPO_PATH = REPO_PATH  # alias module constant -> class attribute
 
     TEMP_BASE = Path("/tmp/school-exec")
 
@@ -210,7 +243,8 @@ class OrcaExecutionManager:
         self._ensure_orca_ready()
 
     # ── School-core project path for worktree creation ───────────────────────
-    REPO_PATH = Path(__file__).parent.expanduser().resolve()
+    # REPO_PATH is now a module-level constant (see _resolve_repo_path above),
+    # so it resolves the true git root even when imported from a child worktree.
 
     # ── Orca CLI helpers ──────────────────────────────────────────────────────
 
@@ -392,11 +426,11 @@ class OrcaExecutionManager:
         Raises:
             OrcaUnavailableError: If worktree cannot be created.
         """
-        target = repo_path or self.REPO_PATH
+        target = repo_path or REPO_PATH
         # Cross-repo targets (fresh clones) must be registered with Orca before
         # worktree create will accept them. school-core (REPO_PATH) is already
         # registered, so skip the registration round-trip in that case.
-        if repo_path is not None and Path(repo_path).resolve() != Path(self.REPO_PATH).resolve():
+        if repo_path is not None and Path(repo_path).resolve() != Path(REPO_PATH).resolve():
             registered = self._register_repo(Path(repo_path))
             if registered is None:
                 # Registration failure means Orca is down or repo add failed.
