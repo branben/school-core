@@ -16,7 +16,7 @@ from triage_classifier import classify_issue
 from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
 from escalation_log import EscalationLog
-from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path
+from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
 from adversarial_reviewer import AdversarialReviewer, LensType, Verdict, Finding, Severity
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 
@@ -207,6 +207,7 @@ def _run_two_judge_review(
     task: dict,
     codebase_context: str = "",
     role: str = "reviewer",
+    repo: str = REPO_GLOBAL,
 ) -> dict:
     """Run CTO+COO two-judge adversarial review on student output.
 
@@ -327,6 +328,7 @@ def _run_two_judge_review(
         findings=[f.to_dict() for f in all_findings],
         accepted=accepted,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
+        repo=repo,
     )
 
     sys.stderr.write(
@@ -644,7 +646,7 @@ def run_task(
             "new_score": store.get_score(role, domain),
             "task_score": 0.0,  # Will be set after teacher review
             "trajectory": traj_path,
-            "bookbag": str(bead_path(bead)),
+            "bookbag": str(bead_path(bead, repo)),
             "bead": bead,
             "review": {
                 "cto_verdict": "",
@@ -669,6 +671,7 @@ def run_task(
             task={"title": prompt[:100], "body": prompt, "domain": domain, "difficulty": difficulty},
             codebase_context=context_blob or "",
             role="reviewer",
+            repo=repo,
         )
     except OrcaUnavailableError as e:
         # Hard fail: Orca sandbox is required for executable domains.
