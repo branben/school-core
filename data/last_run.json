@@ -1,0 +1,66 @@
+[
+  {
+    "issue": 9,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:45.203310+00:00"
+  },
+  {
+    "issue": 8,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:45.476036+00:00"
+  },
+  {
+    "issue": 7,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:45.747824+00:00"
+  },
+  {
+    "issue": 6,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:46.025579+00:00"
+  },
+  {
+    "issue": 4,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:46.232498+00:00"
+  },
+  {
+    "issue": 3,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:46.510237+00:00"
+  },
+  {
+    "issue": 2,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:46.714714+00:00"
+  },
+  {
+    "issue": 1,
+    "status": "blocked",
+    "agent": "executor",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-07-27T20:45:46.992558+00:00"
+  }
+]
