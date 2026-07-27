@@ -472,7 +472,7 @@ def run_task(
     system_prompt: str = None,
     session_id: Optional[str] = None,
     skip_review: bool = False,
-    repo: str = "__global__",
+    repo: str = REPO_GLOBAL,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.

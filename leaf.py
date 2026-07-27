@@ -409,7 +409,7 @@ class StudentLeaf:
         this is informational (verdicts are already filled synchronously).
         In Phase 2, teachers would poll for this flag.
         """
-        signal = BookbagSignal(self.bead)
+        signal = BookbagSignal(self.bead, repo=self._repo_slug())
         signal.ready()
         logger.info("[leaf:%s] Signaled ready for review", self.bead[:12])
 
@@ -432,6 +432,7 @@ class StudentLeaf:
         """
         return wait_for_verdicts(
             self.bead,
+            repo=self._repo_slug(),
             timeout=timeout if timeout is not None else self.handoff_timeout,
         )
 

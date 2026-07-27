@@ -79,12 +79,14 @@ def main() -> int:
         help="Absolute path to the repo to test worktree creation against.",
     )
     args = parser.parse_args()
+    import shutil
+
     repo_path = Path(args.repo_path).resolve()
 
     print(f"Repo path under test: {repo_path}")
     print(f"orca on PATH: ", end="")
-    which = subprocess.run(["command", "-v", "orca"], shell=True, capture_output=True, text=True)
-    print(which.stdout.strip() or "(NOT FOUND)")
+    which = shutil.which("orca") or "(NOT FOUND)"
+    print(which)
 
     # ── 1. status (verifies framework assumption: result.runtime.state == "ready") ──
     status = run(["status"])

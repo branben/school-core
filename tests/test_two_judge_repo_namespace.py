@@ -27,7 +27,7 @@ from adversarial_reviewer import ReviewResult, Verdict  # noqa: E402
 
 
 class _FakeReviewer:
-    """Returns an unanimoius PASS so the review is accepted."""
+    """Returns an unanimous PASS so the review is accepted."""
 
     def __init__(self, call_model_fn=None):
         self.call_model_fn = call_model_fn
