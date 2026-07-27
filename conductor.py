@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag
+from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag, REPO_GLOBAL
 from school_mail import notify_verdict
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
@@ -431,7 +431,7 @@ def _run_sync_loop(args, store):
     _print_leaderboard(store)
 
 
-def _run_async_loop(args, store, repo: str = "__global__"):
+def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
     """Phase 2 async loop: boot teachers, dispatch all, poll for verdicts.
 
     Pipeline:
@@ -1063,7 +1063,7 @@ def _validate_verdict(bead: str, repo: str = "__global__") -> None:
               f"{'; '.join(issues)}")
 
 
-def _boot_teachers(repo: str = "__global__") -> dict[str, TeacherWorktree]:
+def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
     Creates `teacher-cto` and `teacher-coo` Orca child worktrees (scoped to
@@ -1095,7 +1095,7 @@ def _boot_teachers(repo: str = "__global__") -> dict[str, TeacherWorktree]:
             name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
             prompt = (
                 f"Run the {role.upper()} review pass for Agent-School. Each tick: "
-                f"execute `python3 scripts/run_teacher_review_once.py {role}` from "
+                f"execute `python3 scripts/run_teacher_review_once.py {role} {repo}` from "
                 f"the repo root. That runs exactly one pass over un-reviewed "
                 f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
                 f"COO = COMPLETENESS), writes your verdict into "

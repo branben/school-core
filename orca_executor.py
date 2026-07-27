@@ -360,15 +360,12 @@ class OrcaExecutionManager:
         """Return the path of an existing worktree for a persistent role.
 
         Tolerant match: the canonical name is ``teacher-<role>``
-        (``teacher-cto``), but legacy worktrees may be named differently
-        (e.g. ``cto-lens-2`` from an earlier boot). Match if the worktree
-        basename contains the *role token* (``cto`` / ``coo`` / ``principal``)
-        as a hyphen/word segment, so rediscovery reuses the existing
-        worktree instead of minting a new suffixed clone (the zombie-spray
-        source). Avoids matching unrelated names (e.g. ``protonic``).
+        (``teacher-cto``), and reboot suffixes like ``teacher-cto-4`` or
+        ``teacher-cto-lens-2`` are also matched (so rediscovery reuses the
+        existing worktree instead of minting a new suffixed clone — the
+        zombie-spray source). Unrelated names (``teacher-cto-backup``,
+        ``protonic``) are deliberately NOT matched.
         """
-        # Derive the role token from the prefix: "teacher-cto" -> "cto".
-        role = prefix.split("-")[-1] if "-" in prefix else prefix
         try:
             listing = self._run_orca(["worktree", "list"], timeout=15)
         except Exception:
@@ -385,12 +382,23 @@ class OrcaExecutionManager:
                 # Token match: exact prefix (canonical name), basename == role,
                 # starts with "role-", or contains "-role-" (handles cto-lens-2
                 # / teacher-cto / teacher-cto-4).
-                if (
-                    base == prefix
-                    or base == role
-                    or base.startswith(role + "-")
-                    or f"-{role}-" in base
-                ):
+                # Strict match on the canonical worktree name:
+                #   - exact prefix (teacher-cto), or
+                #   - prefix followed by "-<reboot-suffix>" where the suffix is
+                #     digits (teacher-cto-4) or "lens" (teacher-cto-lens-2).
+                # This deliberately EXCLUDES unrelated names like
+                # teacher-cto-backup or protonic, which the loose
+                # "role token" match would have falsely matched.
+                if base == prefix:
+                    matched = True
+                else:
+                    remainder = base[len(prefix):]
+                    if remainder.startswith("-"):
+                        tail = remainder[1:]
+                        matched = tail.isdigit() or tail.startswith("lens")
+                    else:
+                        matched = False
+                if matched:
                     p = wt.get("path") or ""
                     wt_id = wt.get("id", "")
                     if "::" in wt_id:

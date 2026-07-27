@@ -341,7 +341,9 @@ class TestSignal:
 
         cto, coo = leaf.wait_for_handoff(timeout=60)
 
-        mock_wait_for_verdicts.assert_called_once_with("test-bead-5678", timeout=60)
+        mock_wait_for_verdicts.assert_called_once_with(
+            "test-bead-5678", repo="__global__", timeout=60
+        )
         assert cto == "PASS"
         assert coo == "PASS"
 
@@ -352,7 +354,33 @@ class TestSignal:
 
         leaf.wait_for_handoff()
 
-        mock_wait_for_verdicts.assert_called_once_with("test-bead-9999", timeout=99)
+        mock_wait_for_verdicts.assert_called_once_with(
+            "test-bead-9999", repo="__global__", timeout=99
+        )
+
+    def test_signal_ready_non_global_repo_scopes_signal(self, mock_mgr, mock_bookbag_signal):
+        """signal_ready() must scope the BookbagSignal to a non-global repo."""
+        leaf = StudentLeaf("coder", "python-coding", repo="branben/sound-royale-ny")
+        leaf.boot()
+        leaf.bead = "test-bead-7777"
+
+        leaf.signal_ready()
+
+        mock_bookbag_signal.assert_called_once_with(
+            "test-bead-7777", repo="branben/sound-royale-ny"
+        )
+        mock_bookbag_signal.return_value.ready.assert_called_once()
+
+    def test_wait_for_handoff_passes_repo_slug(self, mock_mgr, mock_wait_for_verdicts):
+        """wait_for_handoff() must poll the leaf's repo namespace, not __global__."""
+        leaf = StudentLeaf("coder", "python-coding", repo="branben/sound-royale-ny")
+        leaf.bead = "test-bead-8888"
+
+        leaf.wait_for_handoff(timeout=42)
+
+        mock_wait_for_verdicts.assert_called_once_with(
+            "test-bead-8888", repo="branben/sound-royale-ny", timeout=42
+        )
 
 
 # ── Dispose Tests ────────────────────────────────────────────────────────────

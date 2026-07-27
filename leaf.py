@@ -432,6 +432,7 @@ class StudentLeaf:
         """
         return wait_for_verdicts(
             self.bead,
+            repo=self._repo_slug(),
             timeout=timeout if timeout is not None else self.handoff_timeout,
         )
 
