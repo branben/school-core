@@ -46,6 +46,8 @@ class ActivityType(str, Enum):
     # Autonomous
     SELF_DIRECTED = "self_directed"
 
+    # Student (disposable leaf) lifecycle — observability for async dispatch
+    STUDENT_STAGE = "student_stage"
 
 # ── Semantic description templates ──
 
@@ -255,6 +257,43 @@ class ActivityLog:
             "domain": domain,
             "description": f"{agent} decided to {action}" + (f" ({domain})" if domain else ""),
             "status": "self_directed",
+        })
+
+    def student_stage(self, bead: str, role: str, stage: str,
+                      detail: str = "", repo: str = "") -> dict:
+        """Emit a plain-English stage of a disposable student's async dispatch.
+
+        Lets a human watch a leaf's lifecycle on the live dashboard
+        (activity_server.py) instead of a silent, headless run.
+
+        Stages: clone | boot | hermes_thinking | bookbag_written |
+        teachers_reviewing | done | error.
+        """
+        STAGE_VERBS = {
+            "clone": "cloning target repo",
+            "boot": "booting worktree",
+            "hermes_thinking": "thinking (Hermes agent running)",
+            "bookbag_written": "wrote output + bookbag",
+            "teachers_reviewing": "COT + COO reviewing bookbag",
+            "done": "dispatch complete",
+            "error": "dispatch hit an error",
+        }
+        verb = STAGE_VERBS.get(stage, stage)
+        label = f"student:{role}-{bead[:8]}"
+        repo_bit = f" ({repo})" if repo else ""
+        desc = f"{label} {verb}{repo_bit}"
+        if detail:
+            desc += f" — {detail}"
+        return self._add({
+            "type": ActivityType.STUDENT_STAGE,
+            "agent": label,
+            "bead": bead,
+            "role": role,
+            "stage": stage,
+            "repo": repo,
+            "description": desc,
+            "status": "error" if stage == "error" else
+                        ("completed" if stage == "done" else "in_progress"),
         })
 
     def enroll(self, agent: str) -> dict:

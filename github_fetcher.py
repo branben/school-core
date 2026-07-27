@@ -49,6 +49,8 @@ def load_config(path: Optional[str] = None) -> dict:
         "labels": ["bug", "enhancement"],
         "difficulty_overrides": {},
         "domain_overrides": {},
+        "target_repos": [],
+        "orchestrator_repo": "",
     }
     if not cfg_path.exists():
         return defaults

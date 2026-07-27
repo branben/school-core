@@ -112,6 +112,7 @@ class TeacherWorktree:
         role: str,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
         session_id: str = DEFAULT_SESSION_ID,
+        repo: str = "__global__",
     ):
         if role not in TEACHER_LENSES:
             raise ValueError(f"Unknown teacher role '{role}'. Must be 'cto' or 'coo'.")
@@ -119,7 +120,8 @@ class TeacherWorktree:
         self.lenses = TEACHER_LENSES[role]
         self.poll_interval = poll_interval
         self.session_id = f"{session_id}-{role}"
-        self.worktree_name = f"teacher-{role}"
+        self.repo = repo
+        self.worktree_name = f"teacher-{role}" if repo == "__global__" else f"teacher-{role}-{repo.replace('/', '__')}"
         self.worktree_path: Optional[str] = None
         self._mgr: Optional[OrcaExecutionManager] = None
         self._review_terminal: Optional[str] = None  # Reusable Hermes terminal
@@ -146,66 +148,23 @@ class TeacherWorktree:
         """
         self._mgr = OrcaExecutionManager()
 
-        # Rediscover first (idempotency): Orca auto-suffixes
-        # `worktree create --name X` when X already exists (X-2, X-3...),
-        # so an unconditionally-create() call spawns a duplicate on every
-        # re-boot. Scan the Orca worktree list for ANY worktree whose
-        # displayName (or path basename) is the canonical name OR a
-        # suffixed variant (teacher-cto / teacher-cto-4), and reuse it.
-        def _wt_name(wt: dict) -> str:
-            # Orca's worktree list returns displayName (live) but some
-            # versions/clients populate `name`; fall back to path basename.
-            # Check all three so rediscovery works regardless of which
-            # field Orca populates (or if path is empty).
-            for key in ("displayName", "name", "path"):
-                val = wt.get(key) or ""
-                if key == "path":
-                    val = Path(val).name if val else ""
-                if val:
-                    return val
-            return ""
-
+        # Single-source-of-truth rediscovery (Lifecycle invariant).
+        # Reuse the persistent worktree if it already exists; never mint a
+        # suffixed clone (teacher-cto-2 / -lens-2) — that suffix spray is the
+        # zombie-worktree pressure. create_worktree_persistent() handles the
+        # scan-and-reuse centrally in orca_executor.
+        #
+        # NOTE: boot() NO LONGER spawns a `teacher-*-review` terminal. The
+        # review loop is owned by an Orca automation (see conductor._boot_teachers
+        # → run_teacher_review_once.py), so Orca owns the schedule and there is
+        # no per-boot terminal spray.
         try:
-            result = self._mgr._run_orca(["worktree", "list"], timeout=15)
-            wts = result.get("worktrees", [])
-            for wt in wts:
-                nm = _wt_name(wt)
-                # Match canonical name OR a digit-suffixed variant
-                # (teacher-cto / teacher-cto-4), but NOT unrelated names
-                # like teacher-cto-backup or teacher-cto-legacy.
-                is_match = (
-                    nm == self.worktree_name
-                    or nm.startswith(self.worktree_name + "-")
-                    and nm[len(self.worktree_name) + 1:].isdigit()
-                )
-                if is_match:
-                    path = wt.get("path") or ""
-                    if not path and "::" in wt.get("id", ""):
-                        path = wt["id"].split("::", 1)[1]
-                    if not path:
-                        continue
-                    self.worktree_path = path
-                    self._review_terminal = self._mgr.create_terminal(
-                        title="teacher-" + self.role + "-review"
-                    )
-                    self._booted = True
-                    logger.info(
-                        "[teacher:%s] Rediscovered worktree at %s",
-                        self.role, self.worktree_path,
-                    )
-                    return self.worktree_path
-        except Exception:
-            pass
-
-        # No existing worktree - create it.
-        try:
-            self.worktree_path = self._mgr.create_worktree(self.worktree_name)
-            self._review_terminal = self._mgr.create_terminal(
-                title="teacher-" + self.role + "-review"
+            self.worktree_path = self._mgr.create_worktree_persistent(
+                self.worktree_name
             )
             self._booted = True
             logger.info(
-                "[teacher:%s] Created worktree at %s",
+                "[teacher:%s] Persistent worktree at %s (rediscover-or-create)",
                 self.role, self.worktree_path,
             )
             return self.worktree_path
@@ -285,8 +244,8 @@ class TeacherWorktree:
         if not self._booted:
             raise TeacherError("Teacher not booted — call boot() first")
 
-        for bead in list_bookbags():
-            bag = read_bookbag(bead)
+        for bead in list_bookbags(self.repo):
+            bag = read_bookbag(bead, self.repo)
             if bag is None:
                 continue
 
@@ -295,7 +254,7 @@ class TeacherWorktree:
                 continue  # Already reviewed by this teacher
 
             # Found a bookbag that needs this teacher's review
-            logger.info("[teacher:%s] Reviewing bead=%s", self.role, bead)
+            logger.info("[teacher:%s] Reviewing bead=%s repo=%s", self.role, bead, self.repo)
 
             # Build the task dict from the bookbag
             task = {
@@ -320,6 +279,7 @@ class TeacherWorktree:
                 # Update bookbag with lock protection
                 updated = locked_update_bookbag(
                     bead,
+                    self.repo,
                     lock_timeout=10.0,
                     **{verdict_field: verdict,
                        f"{self.role}_findings": findings_dicts,

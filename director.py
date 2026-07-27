@@ -16,7 +16,7 @@ from triage_classifier import classify_issue
 from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
 from escalation_log import EscalationLog
-from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path
+from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
 from adversarial_reviewer import AdversarialReviewer, LensType, Verdict, Finding, Severity
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 
@@ -207,6 +207,7 @@ def _run_two_judge_review(
     task: dict,
     codebase_context: str = "",
     role: str = "reviewer",
+    repo: str = REPO_GLOBAL,
 ) -> dict:
     """Run CTO+COO two-judge adversarial review on student output.
 
@@ -327,6 +328,7 @@ def _run_two_judge_review(
         findings=[f.to_dict() for f in all_findings],
         accepted=accepted,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
+        repo=repo,
     )
 
     sys.stderr.write(
@@ -470,6 +472,7 @@ def run_task(
     system_prompt: str = None,
     session_id: Optional[str] = None,
     skip_review: bool = False,
+    repo: str = "__global__",
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -545,8 +548,12 @@ def run_task(
         return {"status": "blocked", "domain": domain, "difficulty": difficulty,
                 "agent": role, "role_score": role_score, "gate_threshold": gate_threshold}
 
-    # Readiness check (skip if only one candidate — readiness prompt is unreliable)
-    if not force_agent and len([role]) > 1:
+    # Readiness check. On low confidence, escalate to the A2A fallback
+    # (openhands) instead of blocking — this is the U8 "I Don't Know"
+    # escalation path. Previously this branch returned 'blocked'; it now
+    # escalates so a low-confidence primary still gets a second attempt.
+    escalated = False
+    if not force_agent:
         confidence = _check_readiness(role, domain, difficulty, prompt)
         if confidence < _get_threshold(domain, difficulty):
             _escalation_log.log(
@@ -554,9 +561,13 @@ def run_task(
                 confidence=confidence, threshold=_get_threshold(domain, difficulty),
                 escalated_to="a2a_fallback",
             )
-            sys.stderr.write(f"[director] {role} not ready for {domain}/{difficulty} (confidence={confidence:.1f})\n")
-            return {"status": "blocked", "domain": domain, "difficulty": difficulty,
-                    "agent": role, "reason": f"readiness check failed (confidence={confidence:.1f})"}
+            sys.stderr.write(f"[director] {role} not ready for {domain}/{difficulty} (confidence={confidence:.1f}) — escalating\n")
+            esc = _try_a2a_fallback(role, prompt, system_prompt)
+            if esc is not None:
+                role, response, error, escalated = esc
+            else:
+                return {"status": "blocked", "domain": domain, "difficulty": difficulty,
+                        "agent": role, "reason": f"readiness check failed (confidence={confidence:.1f}) and A2A fallback unavailable"}
 
     # Execute the task
     old_score = store.get_score(role, domain)
@@ -584,15 +595,10 @@ def run_task(
     )
 
     if error:
-        # Try A2A fallback
-        if "openhands" in COMBO_MAP:
-            sys.stderr.write(f"[director] {role} failed, A2A fallback...\n")
-            try:
-                response = call_model("openhands", prompt, system_prompt=system_prompt)
-                error = None
-                role = "openhands"
-            except Exception as e2:
-                error = str(e2)
+        # Try A2A fallback (reuses the same escalation helper)
+        esc = _try_a2a_fallback(role, prompt, system_prompt)
+        if esc is not None:
+            role, response, error, escalated = esc
 
         if error:
             # Both primary role and A2A failed — NOW penalize the role
@@ -620,6 +626,7 @@ def run_task(
         difficulty=difficulty,
         task=prompt[:200],
         output=response,
+        repo=repo,
     )
 
     if skip_review:
@@ -631,6 +638,7 @@ def run_task(
             "domain": domain,
             "difficulty": difficulty,
             "agent": role,
+            "escalation": escalated,
             "prompt": prompt,
             "response": response,
             "error": None,
@@ -638,7 +646,7 @@ def run_task(
             "new_score": store.get_score(role, domain),
             "task_score": 0.0,  # Will be set after teacher review
             "trajectory": traj_path,
-            "bookbag": str(bead_path(bead)),
+            "bookbag": str(bead_path(bead, repo)),
             "bead": bead,
             "review": {
                 "cto_verdict": "",
@@ -663,6 +671,7 @@ def run_task(
             task={"title": prompt[:100], "body": prompt, "domain": domain, "difficulty": difficulty},
             codebase_context=context_blob or "",
             role="reviewer",
+            repo=repo,
         )
     except OrcaUnavailableError as e:
         # Hard fail: Orca sandbox is required for executable domains.
@@ -689,6 +698,7 @@ def run_task(
         "domain": domain,
         "difficulty": difficulty,
         "agent": role,
+        "escalation": escalated,
         "prompt": prompt,
         "response": response,
         "error": None,
@@ -905,3 +915,20 @@ def staff_list(vault_path: str = None, config_path: str = None) -> list:
         {"name": p.name, "trust": p.trust.value, "health": p.health_check()}
         for p in plugins.values()
     ]
+
+
+def _try_a2a_fallback(primary_role, prompt, system_prompt=None):
+    """Attempt the A2A fallback (openhands) for a low-confidence/primary failure.
+
+    Returns ``(role, response, error, escalated)`` on success, or ``None`` if
+    openhands is not available. ``escalated`` is True so callers can flag the
+    escalation in their result.
+    """
+    if "openhands" not in COMBO_MAP:
+        return None
+    try:
+        response = call_model("openhands", prompt, system_prompt=system_prompt)
+        return ("openhands", response, None, True)
+    except Exception as e:
+        sys.stderr.write(f"[director] A2A fallback failed: {e}\n")
+        return None
