@@ -180,6 +180,26 @@ python conductor.py --list-bookbags     # inspect durable verdicts (per repo)
 #   register in ~/.hermes/config.yaml → mcp_servers.agent-school → mcp_server.py
 ```
 
+## Skill: `agent-school-core`
+
+The framework is started through the **`agent-school-core`** Hermes skill
+(installed with the repo). It is the single canonical orchestration entry
+point — a thin launcher that wraps `school-core` and keeps Orca as the
+runtime. It does NOT inject the framework into Orca (portability-first).
+
+**To use it:**
+
+1. Activate school-core: `cd ~/school-core`
+2. Configure `config/github.yaml` → `target_repos` (empty = single-repo mode)
+3. Run `python3 conductor.py --serve` (the skill's launcher command)
+4. Dispatch issues: `python3 conductor.py --issue owner/repo#N --async`
+
+The skill handles the portable launch pattern; the actual pipeline
+(`conductor.py` → `teacher.py` → `leaf.py`) runs as plain Python inside Orca.
+
+See [the skill file](~/.hermes/skills/agent-school-core/SKILL.md) for the
+full portable launcher contract, multi-repo setup, and self-dogfood verification.
+
 ## MCP surface (`mcp_server.py`)
 
 Pure-stdlib JSON-RPC over stdio — no external deps. Exposes:
@@ -220,8 +240,32 @@ config/anchors.yaml     the anchor registry (methodology/principle/technique)
 school_mail.py          best-effort AgentMail verdict notify
 mcp_server.py           stdio MCP server for Hermes
 github_fetcher.py       target-repo / issue ingestion
+scripts/                orchestration scripts (CE runner, router, student plan, spec gate)
 tests/                  regression + unit suite
 ```
+
+## Layer B — Ranks 1-6 (structured orchestration)
+
+The framework now ships a **six-rank structured orchestration pipeline**
+that turns raw issue dispatch into a full development cycle with disk
+artifacts. Each rank builds on the previous one; all default to
+`False` (backward-compatible) and are verified offline with `pytest`.
+
+| Rank | Name | What it does | Key file |
+|------|------|--------------|----------|
+| **1** | Teacher Diagnose Loop | On FAIL findings, runs a structured diagnose cycle (claim → extract → doubt → reconcile) and records `diagnose_log` in the bookbag. | `teacher.py` — `_diagnose()` |
+| **2** | Compound Engineering (CE) Workflow | Full CE loop (brainstorm → plan → work → simplify → review → compound) with per-phase artifacts in `docs/solutions/<id>/`. | `scripts/ce_runner.py` |
+| **3** | DDD Routing | Principal-level doubt-driven development cycle: claim → extract → doubt → reconcile → stop. Runs before dispatch; `doubt_log` attached to result. | `principal_doubt.py` |
+| **4** | CE Router | Deterministic task-shape → skill dispatch router. Classifies every incoming task (failed gate → R1, new impl → R2, architectural → R3, complex → R5, spec-gap → R6) and logs `chosen_skill` to bookbag. | `scripts/ce_router.py` |
+| **5** | Student Plan Mode | Complex tasks (complexity > threshold) are decomposed into bite-sized sub-tasks in `.hermes/plans/<id>.md`. Each sub-task runs its own CE/TDD loop. | `scripts/student_plan.py` |
+| **6** | Spec DOD Gate | Definition-of-Done gate: spec JSON criteria are evaluated against execution results. Any failing required criterion vetoes `accepted`. | `scripts/spec_gate.py` |
+
+**Verification:**
+```bash
+python3 -m pytest tests/ -q -p no:cacheprovider   # 558 passed, 15 skipped
+```
+
+Each rank is offline-testable (mock LLM/Orca), deterministic, and backward-compatible.
 
 ## License
 
