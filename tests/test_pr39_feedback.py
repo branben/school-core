@@ -97,9 +97,10 @@ def test_run_teacher_review_once_cli_repo(tmp_path, monkeypatch):
     captured = {}
 
     class FakeTeacher:
-        def __init__(self, role, repo="__global__"):
+        def __init__(self, role, repo="__global__", diagnose_on_fail=False):
             captured["role"] = role
             captured["repo"] = repo
+            captured["diagnose_on_fail"] = diagnose_on_fail
 
         def boot(self):
             return "/wt/fake"
@@ -112,6 +113,7 @@ def test_run_teacher_review_once_cli_repo(tmp_path, monkeypatch):
     mod.main()
     assert captured["role"] == "cto"
     assert captured["repo"] == "branben/sound-royale-ny"
+    assert captured["diagnose_on_fail"] is False
 
 
 def test_run_teacher_review_once_env_repo_fallback(tmp_path, monkeypatch):
@@ -121,8 +123,9 @@ def test_run_teacher_review_once_env_repo_fallback(tmp_path, monkeypatch):
     captured = {}
 
     class FakeTeacher:
-        def __init__(self, role, repo="__global__"):
+        def __init__(self, role, repo="__global__", diagnose_on_fail=False):
             captured["repo"] = repo
+            captured["diagnose_on_fail"] = diagnose_on_fail
 
         def boot(self):
             return "/wt/fake"
@@ -135,6 +138,7 @@ def test_run_teacher_review_once_env_repo_fallback(tmp_path, monkeypatch):
     monkeypatch.setenv("SCHOOL_REPO", "owner/repo-b")
     mod.main()
     assert captured["repo"] == "owner/repo-b"
+    assert captured["diagnose_on_fail"] is False
 
 
 def test_run_teacher_review_once_defaults_to_global(tmp_path, monkeypatch):
@@ -144,8 +148,9 @@ def test_run_teacher_review_once_defaults_to_global(tmp_path, monkeypatch):
     captured = {}
 
     class FakeTeacher:
-        def __init__(self, role, repo="__global__"):
+        def __init__(self, role, repo="__global__", diagnose_on_fail=False):
             captured["repo"] = repo
+            captured["diagnose_on_fail"] = diagnose_on_fail
 
         def boot(self):
             return "/wt/fake"
@@ -158,3 +163,4 @@ def test_run_teacher_review_once_defaults_to_global(tmp_path, monkeypatch):
     monkeypatch.delenv("SCHOOL_REPO", raising=False)
     mod.main()
     assert captured["repo"] == "__global__"
+    assert captured["diagnose_on_fail"] is False
