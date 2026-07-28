@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -131,9 +133,75 @@ def _extract_explicit_steps(task_prompt: str) -> List[str]:
     return [s for s in steps if s]
 
 
+def codegraph_search(query: str, repo_root: Optional[Path] = None) -> List[str]:
+    """Return codegraph symbols relevant to ``query`` (Rank 7 semantic search).
+
+    Uses the codegraph CLI (already indexed for this repo — node:sqlite
+    backend). Returns a list of plain symbol names. Falls back to a grep scan
+    when codegraph is unavailable so the student still gets a structural hint
+    without the external tool.
+
+    Offline-safe: never raises; returns ``[]`` on any failure.
+    """
+    import re as _re  # local import to avoid shadowing module-level re
+
+    # codegraph hard-codes ANSI color codes; strip them before parsing.
+    # Use a permissive pattern that does not trigger regex nested-set warnings.
+    _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
+
+    def _clean(line: str) -> str:
+        return _ANSI_RE.sub("", line).strip()
+
+    # Primary: codegraph CLI query (stdout symbol dump).
+    if shutil.which("codegraph"):
+        try:
+            proc = subprocess.run(
+                ["codegraph", "query", query],
+                capture_output=True, text=True, timeout=15,
+                cwd=str(repo_root) if repo_root else None,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                syms: List[str] = []
+                # codegraph declaration lines look like "method   run_task" /
+                # "function  foo" / "class  Bar" — a fixed KIND then the name,
+                # at column 0. Signature/type lines are indented and must be
+                # skipped (their tokens like "str" are also identifiers).
+                _DECL_RE = _re.compile(r"^(method|function|class|interface|field|module|file)\s+([A-Za-z_][\w.]*)\b")
+                for raw in proc.stdout.splitlines():
+                    line = _clean(raw)
+                    if not line or line.startswith("Search Results"):
+                        continue
+                    m = _DECL_RE.match(line)
+                    if m:
+                        syms.append(m.group(2))
+                if syms:
+                    return syms[:10]
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.warning("[student_plan] codegraph query failed: %s", e)
+
+    # Fallback: grep for the query term in the repo (stdlib-only).
+    root = repo_root or Path(__file__).parent.parent
+    try:
+        hit = next(
+            (p for p in root.rglob("*.py")
+             if p.is_file() and query.lower() in p.read_text(errors="ignore").lower()),
+            None,
+        )
+        return [hit.name] if hit else []
+    except OSError:
+        return []
+
+
 def _synthesize_subtasks(task_prompt: str, complexity: int) -> List[str]:
-    """Generate bite-sized sub-tasks from a free-form complex prompt."""
+    """Generate bite-sized sub-tasks from a free-form complex prompt.
+
+    Rank 7: before templating, query codegraph for symbols related to the
+    task so the plan acknowledges existing structure (e.g. the function the
+    student is extending). The search is offline-safe and never blocks.
+    """
+    # Rank 7 semantic search — enrich the plan with existing structure.
     base = task_prompt.strip().rstrip(".") or "the task"
+    relevant = codegraph_search(base)
     n = max(MIN_SUBTASKS, min(complexity, MAX_SUBTASKS))
     # Deterministic decomposition: scaffold → implement → verify → finalize.
     templates = [
@@ -146,7 +214,14 @@ def _synthesize_subtasks(task_prompt: str, complexity: int) -> List[str]:
         f"Add edge-case handling for: {base}",
         f"Verify acceptance criteria for: {base}",
     ]
-    return templates[:n]
+    sub_tasks = templates[:n]
+    # Rank 7: append a "review existing symbols" step only when the plan has
+    # room, so we never exceed MAX_SUBTASKS (tests assert the cap holds).
+    if relevant and len(sub_tasks) < MAX_SUBTASKS:
+        sub_tasks.append(
+            "Review existing related symbols before editing: " + ", ".join(relevant[:5])
+        )
+    return sub_tasks
 
 
 def _pad_subtasks(task_prompt: str, sub_tasks: List[str]) -> List[str]:
