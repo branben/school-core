@@ -10,6 +10,7 @@ from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFou
 from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
 from trajectory import capture_trajectory, trajectories_for_training
 from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation, search_trajectories
+from cocoindex_client import cocoindex_available
 from context_orchestrator import enrich_prompt
 from anchor_loader import AnchorRegistry
 from triage_classifier import classify_issue
@@ -917,7 +918,7 @@ def run_staff(
             vault_path=vault,
             score_store=store,
             engram_available=engram_available(),
-            cocoindex_available=False,
+            cocoindex_available=cocoindex_available(),
             building=building,
             config=plugin_cfg,
         )

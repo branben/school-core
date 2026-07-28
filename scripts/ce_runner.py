@@ -24,6 +24,7 @@ from typing import Optional, List, Dict
 
 from bookbag import write_bookbag, read_bookbag, bead_path
 from adversarial_reviewer import Verdict
+from cocoindex_client import cocoindex_available, retrieve_prior_solutions
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,18 @@ def _run_phase(
     # In live mode, this would call the LLM/Orca worktree
     # For now, we'll mock it to avoid external dependencies
     content = f"# {phase.capitalize()}\n\nTask: {task_prompt}\n\nOutput for phase `{phase}`."
+
+    # Rank 8: enrich the brainstorm phase with structurally-similar prior
+    # solutions retrieved from cocoindex (offline-safe; no-op if unavailable).
+    if phase == "brainstorm" and cocoindex_available():
+        priors = retrieve_prior_solutions(task_prompt, k=3)
+        if priors:
+            block = "\n\n## Prior solutions (reference patterns, not copy targets)\n"
+            for tid, score, snippet in priors:
+                block += f"\n### {tid} (score {score:.2f})\n\n{snippet[:400]}\n"
+            content += block
+            logger.info("[ce_runner] injected %d prior solutions into brainstorm", len(priors))
+
     _write_artifact(task_id, phase, content)
     return {
         "status": "success",
