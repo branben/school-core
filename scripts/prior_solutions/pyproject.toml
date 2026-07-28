@@ -1,0 +1,13 @@
+[project]
+name = "prior-solutions"
+version = "0.1.0"
+description = "CocoIndex app: prior student-solution retrieval (Rank 8)"
+requires-python = ">=3.11"
+dependencies = [
+    "cocoindex>=1.0.7",
+    "sentence-transformers",
+    "lancedb",
+]
+
+[tool.cocoindex]
+db_path = "./cocoindex_store"
