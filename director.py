@@ -9,7 +9,7 @@ from scoring import ScoreStore, GATES
 from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFoundError
 from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
 from trajectory import capture_trajectory, trajectories_for_training
-from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation
+from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation, search_trajectories
 from context_orchestrator import enrich_prompt
 from anchor_loader import AnchorRegistry
 from triage_classifier import classify_issue
@@ -592,6 +592,17 @@ def run_task(
         role=_agent_role(role, role_score),
         prompt_preview=prompt[:80],
     )
+
+    # Rank 4b: retrieve prior similar trajectories from engram to inform
+    # routing. (The save side is wired in evaluate_and_update; this is the
+    # load-before-dispatch side.) Guarded so it's a no-op when engram is down.
+    if engram_available():
+        prior = search_trajectories(query=domain, domain=domain, limit=3)
+        if prior:
+            prior_blob = "\n\n---\n### Prior Approaches (from Engram)\n" + "\n".join(
+                f"- {title}: {body[:240]}" for _id, title, body in prior
+            ) + "\n---"
+            system_prompt = system_prompt + prior_blob
 
     # Rank 5: complex-task decomposition into a bite-sized plan, executed as
     # per-sub-task CE/TDD loops (each sub-task is its own run_leaf call).

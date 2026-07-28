@@ -512,14 +512,14 @@ class TeacherWorktree:
         """Rank 1 systematic-debugging + TDD loop (Matt Pocock method).
 
         Runs only when a gate verdict is FAIL and ``diagnose_on_fail`` is set.
-        Turns a bare FAIL into a learning intervention:
+        Turns a bare FAIL into a learning intervention following Matt Pocock's
+        4-phase diagnosing-bugs method:
 
-            Phase 1  Re-read the failed gate criterion (findings + output)
-            Phase 2  Reproduce the failure (pin it as a self-contained test)
-            Phase 3  Trace data flow (root cause from the top finding)
-            Phase 4  Write a failing regression test to disk
-            Phase 5  Fix the root cause (record the remediation)
-            Phase 6  Verify the regression test runs (offline, deterministic)
+            understand  Re-read the failed gate criterion + trace data flow to
+                        the root cause (from the top finding)
+            reproduce   Pin the failure as a self-contained offline regression test
+            fix         Record the remediation the student must apply
+            verify     Run the regression test (offline, deterministic)
 
         The regression test encodes the deterministic gate rule
         (AdversarialReviewer returns FAIL iff a CRITICAL/HIGH finding exists),
@@ -532,12 +532,12 @@ class TeacherWorktree:
         """
         phases: list[str] = []
 
-        # ── Phase 1: re-read the failed gate criterion ─────────────────────
+        # ── understand: re-read the failed gate criterion ─────────────────
         findings_dicts = [f.to_dict() for f in result.findings]
         output = bag.get("output", "")
-        phases.append("reread_gate")
+        phases.append("understand")
 
-        # ── Phase 3: trace data flow → root cause ──────────────────────────
+        # ── understand (cont.): trace data flow → root cause ───────────────
         # (done before writing the test so the cause can be embedded in it)
         top = result.findings[0] if result.findings else None
         if top is not None:
@@ -551,20 +551,20 @@ class TeacherWorktree:
         else:
             root_cause = "Gate FAILED with no structured findings (empty output or parse failure)."
             fix_applied = "Require the student to produce non-empty, parseable output."
-        phases.append("trace_root_cause")
+        # root-cause tracing is folded into the "understand" phase above
 
-        # ── Phase 2 + 4: reproduce + write the regression test ─────────────
+        # ── reproduce: pin the failure as a self-contained regression test ─
         test_path = self._diagnose_dir() / f"{bead}.py"
         test_body = self._build_regression_test(bead, findings_dicts, output, root_cause)
         test_path.write_text(test_body)
-        phases.append("write_regression_test")
+        phases.append("reproduce")
 
-        # ── Phase 5: fix the root cause (record remediation) ───────────────
+        # ── fix: record the remediation the student must apply ────────────
         # The teacher does not edit the student's output here; it records the
-        # fix the student must apply (Matt Pocock: diagnose → test → fix).
-        phases.append("record_fix")
+        # fix the student must apply (Matt Pocock: understand → reproduce → fix).
+        phases.append("fix")
 
-        # ── Phase 6: verify the regression test runs (offline) ─────────────
+        # ── verify: run the regression test (offline) ──────────────────────
         verified = False
         try:
             proc = subprocess.run(
