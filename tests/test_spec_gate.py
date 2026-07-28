@@ -186,7 +186,8 @@ def test_director_dod_gate_passes_with_success(tmp_path: Path):
     store.get_score.return_value = 100  # exceeds "hard" gate threshold
 
     with patch("director._load_spec") as mock_load, \
-         patch("director.check_dod") as mock_check:
+         patch("director.check_dod") as mock_check, \
+         patch("director.call_model", return_value="Mocked response") as mock_model:
         mock_load.return_value = spec_content
         mock_check.return_value = {"passed": True, "failures": [], "spec_path": str(spec_file)}
         out = director.run_task(
@@ -214,7 +215,8 @@ def test_director_dod_gate_fails_on_criterion_miss(tmp_path: Path):
     store.get_score.return_value = 100  # exceeds "hard" gate threshold
 
     with patch("director._load_spec") as mock_load, \
-         patch("director.check_dod") as mock_check:
+         patch("director.check_dod") as mock_check, \
+         patch("director.call_model", return_value="Mocked response") as mock_model:
         mock_load.return_value = spec_content
         mock_check.return_value = {
             "passed": False,
