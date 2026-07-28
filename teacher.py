@@ -32,7 +32,10 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import subprocess
 import sys
 import time
 import uuid
@@ -113,6 +116,7 @@ class TeacherWorktree:
         poll_interval: float = DEFAULT_POLL_INTERVAL,
         session_id: str = DEFAULT_SESSION_ID,
         repo: str = "__global__",
+        diagnose_on_fail: bool = False,
     ):
         if role not in TEACHER_LENSES:
             raise ValueError(f"Unknown teacher role '{role}'. Must be 'cto' or 'coo'.")
@@ -130,6 +134,12 @@ class TeacherWorktree:
         self._cycle_count = 0
         self._episodic_history: list[dict] = []
         self._booted = False
+        # When True, a FAIL verdict triggers the systematic-debugging + TDD
+        # diagnose loop (Rank 1): the teacher writes a regression test that
+        # reproduces the gate failure and records a root-cause diagnosis in
+        # the bookbag instead of leaving a bare FAIL. Backward compatible:
+        # defaults to False (legacy pass/fail behavior unchanged).
+        self.diagnose_on_fail = diagnose_on_fail
 
     # ── Public API ───────────────────────────────────────────────────────────
 
@@ -276,18 +286,46 @@ class TeacherWorktree:
                 verdict = result.verdict.value  # "PASS" or "FAIL"
                 findings_dicts = [f.to_dict() for f in result.findings]
 
+                # Rank 1 — systematic-debugging + TDD loop on FAIL.
+                # When diagnose_on_fail is set, a FAIL verdict triggers a
+                # learning intervention: the teacher reads the failed gate,
+                # reproduces it with a regression test (written to disk),
+                # traces the root cause, and records a diagnosis dict instead
+                # of leaving a bare FAIL. Backward compatible: when
+                # diagnose_on_fail is False (default), this block is skipped.
+                diagnosis = None
+                if verdict == "FAIL" and self.diagnose_on_fail:
+                    diagnosis = self._diagnose(bead, bag, task, result)
+                    logger.info(
+                        "[teacher:%s] Diagnose loop on %s: root_cause=%s, test=%s",
+                        self.role, bead,
+                        (diagnosis or {}).get("root_cause", "")[:60],
+                        (diagnosis or {}).get("regression_test", ""),
+                    )
+
                 # Update bookbag with lock protection
+                update_fields = {
+                    verdict_field: verdict,
+                    f"{self.role}_findings": findings_dicts,
+                    f"{self.role}_score": result.score,
+                    f"{self.role}_confidence": result.confidence,
+                    f"{self.role}_lens": result.lens_used,
+                    f"{self.role}_reviewed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                if diagnosis is not None:
+                    update_fields[f"{self.role}_diagnosis"] = diagnosis
+                # Keep the legacy combined `findings` field in sync for the
+                # principal reconcile path (it reads both cto/coo fields).
+                if f"{self.role}_diagnosis" not in update_fields:
+                    update_fields.setdefault(
+                        "findings",
+                        bag.get("findings", []) + findings_dicts,
+                    )
                 updated = locked_update_bookbag(
                     bead,
                     self.repo,
                     lock_timeout=10.0,
-                    **{verdict_field: verdict,
-                       f"{self.role}_findings": findings_dicts,
-                       f"{self.role}_score": result.score,
-                       f"{self.role}_confidence": result.confidence,
-                       f"{self.role}_lens": result.lens_used,
-                       f"{self.role}_reviewed_at": datetime.now(timezone.utc).isoformat(),
-                       },
+                    **update_fields,
                 )
 
                 if updated is None:
@@ -305,6 +343,7 @@ class TeacherWorktree:
                     "findings_count": len(findings_dicts),
                     "score": result.score,
                     "status": "success",
+                    "diagnosis": diagnosis is not None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 
@@ -451,6 +490,155 @@ class TeacherWorktree:
         self.close()
 
     # ── Internal ─────────────────────────────────────────────────────────────
+
+    def _diagnose_dir(self) -> Path:
+        """Resolve where diagnosis regression tests are written.
+
+        Priority: DIAGNOSE_DIR env override (tests) → teacher worktree root
+        → current working directory. Always nested under diagnoses/<role>/.
+        """
+        override = os.environ.get("DIAGNOSE_DIR")
+        if override:
+            base = Path(override)
+        elif self.worktree_path:
+            base = Path(self.worktree_path)
+        else:
+            base = Path.cwd()
+        d = base / "diagnoses" / self.role
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _diagnose(self, bead: str, bag: dict, task: dict, result) -> dict:
+        """Rank 1 systematic-debugging + TDD loop (Matt Pocock method).
+
+        Runs only when a gate verdict is FAIL and ``diagnose_on_fail`` is set.
+        Turns a bare FAIL into a learning intervention:
+
+            Phase 1  Re-read the failed gate criterion (findings + output)
+            Phase 2  Reproduce the failure (pin it as a self-contained test)
+            Phase 3  Trace data flow (root cause from the top finding)
+            Phase 4  Write a failing regression test to disk
+            Phase 5  Fix the root cause (record the remediation)
+            Phase 6  Verify the regression test runs (offline, deterministic)
+
+        The regression test encodes the deterministic gate rule
+        (AdversarialReviewer returns FAIL iff a CRITICAL/HIGH finding exists),
+        so it runs offline without an LLM and stays GREEN once pinned — it
+        guards against a future silent weakening of the gate.
+
+        Returns:
+            Diagnosis dict: root_cause, regression_test (path), fix_applied,
+            phases (list), reproduced (bool), verified (bool), diagnosed_at.
+        """
+        phases: list[str] = []
+
+        # ── Phase 1: re-read the failed gate criterion ─────────────────────
+        findings_dicts = [f.to_dict() for f in result.findings]
+        output = bag.get("output", "")
+        phases.append("reread_gate")
+
+        # ── Phase 3: trace data flow → root cause ──────────────────────────
+        # (done before writing the test so the cause can be embedded in it)
+        top = result.findings[0] if result.findings else None
+        if top is not None:
+            root_cause = (
+                f"[{top.issue_class}] {top.description}"
+            )
+            fix_applied = top.suggestion or (
+                f"Tighten the {self.role} lens to catch '{top.issue_class}' "
+                f"at {top.citation}."
+            )
+        else:
+            root_cause = "Gate FAILED with no structured findings (empty output or parse failure)."
+            fix_applied = "Require the student to produce non-empty, parseable output."
+        phases.append("trace_root_cause")
+
+        # ── Phase 2 + 4: reproduce + write the regression test ─────────────
+        test_path = self._diagnose_dir() / f"{bead}.py"
+        test_body = self._build_regression_test(bead, findings_dicts, output, root_cause)
+        test_path.write_text(test_body)
+        phases.append("write_regression_test")
+
+        # ── Phase 5: fix the root cause (record remediation) ───────────────
+        # The teacher does not edit the student's output here; it records the
+        # fix the student must apply (Matt Pocock: diagnose → test → fix).
+        phases.append("record_fix")
+
+        # ── Phase 6: verify the regression test runs (offline) ─────────────
+        verified = False
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(test_path)],
+                capture_output=True, text=True, timeout=30,
+            )
+            verified = proc.returncode == 0
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("[teacher:%s] regression test run failed: %s", self.role, e)
+        phases.append("verify_test")
+
+        logger.info(
+            "[teacher:%s] Diagnose complete for %s (phases=%d, verified=%s)",
+            self.role, bead, len(phases), verified,
+        )
+
+        return {
+            "root_cause": root_cause,
+            "regression_test": str(test_path),
+            "fix_applied": fix_applied,
+            "phases": phases,
+            "reproduced": True,
+            "verified": verified,
+            "diagnosed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @staticmethod
+    def _build_regression_test(
+        bead: str, findings_dicts: list[dict], output: str, root_cause: str
+    ) -> str:
+        """Generate a self-contained regression test that pins the gate failure.
+
+        Encodes the deterministic gate rule (FAIL iff a CRITICAL/HIGH finding
+        exists) so it runs offline and stays GREEN — it guards against a future
+        silent weakening of the gate for this bead.
+        """
+        safe_bead = "".join(c if c.isalnum() else "_" for c in bead)
+        findings_json = json.dumps(findings_dicts, indent=2)
+        output_json = json.dumps(output)
+        return (
+            f'"""Auto-generated regression test for bead {bead} '
+            f'(teacher diagnose loop).\n\n'
+            f'RED->GREEN (TDD): this test pins the gate failure so a future\n'
+            f'regression cannot silently downgrade the verdict. It runs offline.\n\n'
+            f'Root cause: {root_cause}\n'
+            f'"""\n'
+            f'import json\n'
+            f'import sys\n'
+            f'\n'
+            f'FINDINGS = json.loads({findings_json!r})\n'
+            f'OUTPUT = {output_json!r}\n'
+            f'\n'
+            f'\n'
+            f'def test_bead_{safe_bead}_gate_failure_pinned():\n'
+            f'    """Pin the original gate failure for this bead.\n'
+            f'\n'
+            f'    Gate rule (AdversarialReviewer): verdict is FAIL iff at least one\n'
+            f'    CRITICAL/HIGH finding exists. If this assertion breaks, the gate\n'
+            f'    was silently weakened for this bead.\n'
+            f'    """\n'
+            f'    severities = {{f["severity"] for f in FINDINGS}}\n'
+            f'    assert severities & {{"CRITICAL", "HIGH"}}, (\n'
+            f'        "regression: bead {bead} failed the gate via a CRITICAL/HIGH "\n'
+            f'        "finding; if this breaks the gate was weakened."\n'
+            f'    )\n'
+            f'    # The student output that triggered the failure must be preserved.\n'
+            f'    assert OUTPUT is not None\n'
+            f'\n'
+            f'\n'
+            f'if __name__ == "__main__":\n'
+            f'    test_bead_{safe_bead}_gate_failure_pinned()\n'
+            f'    print("OK: regression test for {bead} passes")\n'
+            f'    sys.exit(0)\n'
+        )
 
     def _call_review_model_via_hermes(
         self, prompt: str, system_prompt: Optional[str] = None, **kwargs

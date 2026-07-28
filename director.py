@@ -19,6 +19,7 @@ from escalation_log import EscalationLog
 from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
 from adversarial_reviewer import AdversarialReviewer, LensType, Verdict, Finding, Severity
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
+from scripts.spec_gate import check_dod, _load_spec
 
 SYSTEM_PROMPTS = {
     "python-testing": (
@@ -473,6 +474,9 @@ def run_task(
     session_id: Optional[str] = None,
     skip_review: bool = False,
     repo: str = REPO_GLOBAL,
+    ce_enabled: bool = False,
+    complex_task: bool = False,
+    dod_gate: bool = False,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -483,6 +487,14 @@ def run_task(
                      where teachers review bookbags in their own worktree terminals.
                      The caller is responsible for waiting for teacher verdicts
                      via ``wait_for_verdicts()`` and scoring via ``evaluate_and_update()``.
+        ce_enabled: If True, route execution through the Compound Engineering (CE) loop.
+                     Produces artifacts in `docs/solutions/<task-id>/` and returns `ce_phases`.
+        complex_task: If True (Rank 5), decompose the task into a bite-sized plan
+                     (`.hermes/plans/<id>.md`) and execute each sub-task as its own
+                     CE/TDD loop. Returns a `plan` field with sub-task results.
+        dod_gate: If True (Rank 6), evaluate the spec-gate Definition-of-Done criteria
+                  against the execution result. Fails the run if any required criterion
+                  is unmet.
     """
     if store is None:
         store = ScoreStore()
@@ -573,6 +585,7 @@ def run_task(
     old_score = store.get_score(role, domain)
     error = None
     response = ""
+    ce_phases = []
 
     get_log().start_task(
         agent=role, domain=domain, difficulty=difficulty,
@@ -580,11 +593,46 @@ def run_task(
         prompt_preview=prompt[:80],
     )
 
-    try:
-        response = call_model(role, prompt, system_prompt=system_prompt)
-    except Exception as e:
-        error = str(e)
-        # Don't penalize yet — A2A fallback may still succeed
+    # Rank 5: complex-task decomposition into a bite-sized plan, executed as
+    # per-sub-task CE/TDD loops (each sub-task is its own run_leaf call).
+    plan_result = None
+    if complex_task:
+        from scripts.student_plan import generate_plan, execute_plan
+        plan = generate_plan(task_prompt=prompt)
+        plan_result = execute_plan(
+            plan,
+            role=role, domain=domain, difficulty=difficulty,
+            store=store, repo=repo,
+        )
+        # The "response" becomes a summary of the plan execution.
+        response = (
+            f"Plan {plan['task_id']} executed: "
+            f"{len(plan_result['sub_task_results'])} sub-task(s), "
+            f"all_passed={plan_result['all_passed']}"
+        )
+        ce_phases = [f"plan:{plan['task_id']}"]
+
+    # CE-enabled execution
+    elif ce_enabled:
+        from scripts.ce_runner import run_ce_loop
+        ce_result = run_ce_loop(
+            task_prompt=prompt,
+            domain=domain,
+            role=role,
+            difficulty=difficulty,
+            repo=repo,
+        )
+        if ce_result["status"] != "success":
+            error = ce_result.get("error", "CE loop failed")
+        else:
+            response = f"CE execution completed. Artifacts written to docs/solutions/{ce_result['task_id']}/"
+            ce_phases = ce_result["ce_phases"]
+    else:
+        # Original execution path
+        try:
+            response = call_model(role, prompt, system_prompt=system_prompt)
+        except Exception as e:
+            error = str(e)
 
     traj_path = capture_trajectory(
         domain=domain, difficulty=difficulty, agent=role,
@@ -658,6 +706,9 @@ def run_task(
             },
             "async": True,
         }
+        # Rank 2: include ce_phases ONLY when the CE loop ran (see note above).
+        if ce_enabled:
+            result["ce_phases"] = ce_phases
         sys.stderr.write(
             f"[director] Async dispatch: bead={bead} role={role} "
             f"→ awaiting teacher review\n"
@@ -693,7 +744,7 @@ def run_task(
     else:
         task_score = min(40, review["combined_score"])
 
-    return {
+    result = {
         "status": "success",
         "domain": domain,
         "difficulty": difficulty,
@@ -710,6 +761,33 @@ def run_task(
         "bead": bead,
         "review": review,
     }
+    # Rank 2: include ce_phases ONLY when the CE loop ran. When ce_enabled is
+    # False the key is intentionally absent (backward compat — callers and the
+    # test_ce_disabled_behavior test assert `"ce_phases" not in result`).
+    if ce_enabled:
+        result["ce_phases"] = ce_phases
+    # Rank 5: include plan ONLY when a complex-task plan was executed.
+    if plan_result is not None:
+        result["plan"] = {
+            "task_id": plan_result["task_id"],
+            "sub_task_count": len(plan_result["sub_task_results"]),
+            "all_passed": plan_result["all_passed"],
+        }
+
+    # Rank 6: spec-gate (DOD checker). When a spec file exists for this
+    # task/bead, evaluate every DOD criterion against the execution result.
+    # The result carries a falsy "accepted" if any criterion fails, so the
+    # existing review/scoring pipeline treats a spec-gate failure like a
+    # normal CTO+COO rejection without extra plumbing.
+    if dod_gate:
+        spec = _load_spec(bead, repo)
+        if spec is not None:
+            gate_result = check_dod(bead, result, repo=repo)
+            result["dod_gate"] = gate_result
+            if not gate_result["passed"]:
+                result["accepted"] = False
+
+    return result
 
 
 def evaluate_and_update(

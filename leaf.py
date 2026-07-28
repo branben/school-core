@@ -352,7 +352,7 @@ class StudentLeaf:
             "async": True,
         }
 
-    def run_task(self, task_prompt: str, skip_review: bool = False) -> dict:
+    def run_task(self, task_prompt: str, skip_review: bool = False, ce_enabled: bool = False, complex_task: bool = False, dod_gate: bool = False) -> dict:
         """Execute the task via ``director.run_task()``.
 
         In Phase 1 (synchronous), the LLM call and CTO/COO review happen
@@ -381,6 +381,9 @@ class StudentLeaf:
             store=self._store,
             skip_review=skip_review,
             repo=self._repo_slug(),
+            ce_enabled=ce_enabled,
+            complex_task=complex_task,
+            dod_gate=dod_gate,
         )
         return result
 
@@ -487,6 +490,9 @@ def run_leaf(
     store: Optional[ScoreStore] = None,
     async_mode: bool = False,
     repo: Optional[str] = None,
+    ce_enabled: bool = False,
+    complex_task: bool = False,
+    dod_gate: bool = False,
 ) -> dict:
     """Run a task in a disposable leaf worktree.
 
@@ -530,7 +536,7 @@ def run_leaf(
     try:
         leaf.boot()
         leaf.write_brief(task_prompt)
-        result = leaf.run_task(task_prompt, skip_review=async_mode)
+        result = leaf.run_task(task_prompt, skip_review=async_mode, ce_enabled=ce_enabled, complex_task=complex_task, dod_gate=dod_gate)
 
         if result.get("status") == "success":
             # Write output for audit trail
