@@ -20,11 +20,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import sys
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from teacher import TeacherWorktree, TeacherError, TEACHER_LENSES, DEFAULT_SESSION_ID
-from adversarial_reviewer import LensType, Verdict, ReviewResult
+from adversarial_reviewer import LensType, Verdict, ReviewResult, Finding, Severity
 from orca_executor import OrcaUnavailableError
 import sleep_state  # Direct module import for patching SESSIONS_DIR / CONSOLIDATION_DIR
 
@@ -669,3 +670,151 @@ class TestTeacherLenses:
     def test_only_known_roles(self):
         """Only 'cto' and 'coo' should be valid roles."""
         assert set(TEACHER_LENSES.keys()) == {"cto", "coo"}
+
+
+# ── Rank 1: Diagnose Loop (systematic-debugging + TDD on FAIL) ─────────────
+
+
+class TestDiagnoseLoop:
+    """Teacher diagnose loop turns a FAIL verdict into a learning intervention.
+
+    Backward compat: with diagnose_on_fail=False (default) a FAIL verdict
+    records no diagnosis dict. With diagnose_on_fail=True, a FAIL verdict
+    writes a regression test to disk and records a `{role}_diagnosis` dict.
+    """
+
+    def _make_teacher(self, tmp_path, monkeypatch):
+        """Booted CTO teacher writing diagnoses under tmp_path."""
+        mgr = MagicMock()
+        mgr.create_worktree_persistent.return_value = str(tmp_path / "wt")
+        with patch("teacher.OrcaExecutionManager", return_value=mgr):
+            t = TeacherWorktree("cto", repo="__global__", diagnose_on_fail=True)
+            t.worktree_path = str(tmp_path / "wt")
+            t._booted = True
+        # Regression tests go under tmp_path/diagnoses
+        monkeypatch.setenv("DIAGNOSE_DIR", str(tmp_path))
+        return t
+
+    def _fail_result(self):
+        """A FAIL ReviewResult with one CRITICAL finding (gate-failing)."""
+        return ReviewResult(
+            verdict=Verdict.FAIL,
+            findings=[Finding(
+                section="output",
+                issue_class="logic_error",
+                severity=Severity.CRITICAL,
+                citation="line 3",
+                description="Off-by-one in loop bound",
+                suggestion="Use range(n) instead of range(n-1).",
+            )],
+            lens_used="correctness",
+            confidence=0.9,
+        )
+
+    def test_diagnose_writes_regression_test_and_dict(
+        self, tmp_path, monkeypatch, mock_bookbags
+    ):
+        """On FAIL + diagnose_on_fail, teacher writes a test file and diagnosis dict."""
+        mock_list, mock_read, mock_update = mock_bookbags
+        bead = "bead-fail-diagnose"
+        mock_list.return_value = [bead]
+        mock_read.return_value = {
+            "bead": bead,
+            "cto_verdict": "",
+            "output": "for i in range(n-1): ...",
+            "domain": "python-coding",
+            "task": "sum list",
+        }
+        mock_update.return_value = {"bead": bead}
+
+        t = self._make_teacher(tmp_path, monkeypatch)
+        t._reviewer.review = lambda **kw: self._fail_result()
+
+        count = t.review_cycle()
+        assert count == 1
+
+        # Diagnosis dict recorded in the bookbag update.
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["cto_verdict"] == "FAIL"
+        assert "cto_diagnosis" in kwargs
+        dx = kwargs["cto_diagnosis"]
+        assert dx["root_cause"].startswith("[logic_error]")
+        assert dx["fix_applied"]
+        assert dx["phases"]
+        assert dx["reproduced"] is True
+        assert dx["verified"] is True  # the offline regression test ran GREEN
+
+        # Regression test written to disk and it really passes.
+        test_path = Path(dx["regression_test"])
+        assert test_path.exists()
+        proc = subprocess.run(
+            [sys.executable, str(test_path)], capture_output=True, text=True
+        )
+        assert proc.returncode == 0, proc.stderr
+
+    def test_no_diagnose_when_flag_off(
+        self, tmp_path, monkeypatch, mock_bookbags
+    ):
+        """With diagnose_on_fail=False (default) a FAIL records no diagnosis dict."""
+        mock_list, mock_read, mock_update = mock_bookbags
+        bead = "bead-fail-nodiag"
+        mock_list.return_value = [bead]
+        mock_read.return_value = {
+            "bead": bead, "cto_verdict": "", "output": "x", "domain": "general",
+        }
+        mock_update.return_value = {"bead": bead}
+
+        mgr = MagicMock()
+        mgr.create_worktree_persistent.return_value = str(tmp_path / "wt")
+        with patch("teacher.OrcaExecutionManager", return_value=mgr):
+            t = TeacherWorktree("cto", repo="__global__", diagnose_on_fail=False)
+            t.worktree_path = str(tmp_path / "wt")
+            t._booted = True
+        t._reviewer.review = lambda **kw: self._fail_result()
+
+        count = t.review_cycle()
+        assert count == 1
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["cto_verdict"] == "FAIL"
+        assert "cto_diagnosis" not in kwargs
+
+    def test_no_diagnose_on_pass(
+        self, tmp_path, monkeypatch, mock_bookbags, mock_reviewer
+    ):
+        """On PASS, even with diagnose_on_fail, no diagnosis is recorded."""
+        mock_list, mock_read, mock_update = mock_bookbags
+        bead = "bead-pass"
+        mock_list.return_value = [bead]
+        mock_read.return_value = {
+            "bead": bead, "cto_verdict": "", "output": "ok",
+            "domain": "general", "task": "t",
+        }
+        mock_update.return_value = {"bead": bead}
+        mock_reviewer.verdict = Verdict.PASS
+        mock_reviewer.findings = []
+
+        t = self._make_teacher(tmp_path, monkeypatch)
+        count = t.review_cycle()
+        assert count == 1
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["cto_verdict"] == "PASS"
+        assert "cto_diagnosis" not in kwargs
+
+    def test_diagnose_build_regression_test_helper(self, tmp_path):
+        """_build_regression_test produces a runnable, GREEN regression test."""
+        findings = [{
+            "section": "output", "issue_class": "logic_error",
+            "severity": "CRITICAL", "citation": "line 3",
+            "description": "off by one", "suggestion": "fix",
+        }]
+        body = TeacherWorktree._build_regression_test(
+            "bead-xyz", findings, "for i in range(n-1): ...", "root"
+        )
+        out = tmp_path / "gen.py"
+        out.write_text(body)
+        proc = subprocess.run([sys.executable, str(out)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+
+if __name__ == "__main__":
+    pass

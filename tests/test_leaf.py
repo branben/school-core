@@ -287,6 +287,9 @@ class TestRunTask:
             store=leaf._store,
             skip_review=False,
             repo=leaf._repo_slug(),
+            ce_enabled=False,
+            complex_task=False,
+            dod_gate=False,
         )
 
     def test_run_task_returns_result(self, mock_mgr, mock_director):
