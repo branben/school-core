@@ -26,8 +26,11 @@ import argparse
 import sys
 import re
 import shlex
+import logging
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -37,6 +40,10 @@ from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_ve
 from school_mail import notify_verdict
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
+from principal_doubt import run_doubt_cycle
+from scripts.ce_router import route_decision
+from scripts.spec_gate import check_dod, _load_spec
+from scripts.student_plan import generate_plan, execute_plan, is_complex, COMPLEXITY_THRESHOLD
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
 from github_fetcher import fetch_single_issue, load_config
 from activity_log import ActivityLog
@@ -331,6 +338,11 @@ def main():
                              "files instead of __global__. Defaults to __global__.")
     parser.add_argument("--resume", action="store_true",
                         help="Resume after crash: scan bookbags for partial verdicts, rediscover teachers, complete handoffs")
+    parser.add_argument("--doubt", action="store_true", dest="doubt_enabled",
+                        help="Rank 3: run a Doubt-Driven Development cycle on each "
+                             "routing decision before dispatch (adversarial review "
+                             "of gate/role/model selection). Off by default for "
+                             "backward compat.")
 
     args = parser.parse_args()
 
@@ -406,6 +418,98 @@ def main():
         _run_single_task(args, store)
 
 
+def _principal_dispatch(
+    task: str,
+    role: str,
+    domain: str,
+    difficulty: str,
+    store,
+    repo: str,
+    doubt_enabled: bool = False,
+    doubt_fn=None,
+    override_reason: Optional[str] = None,
+    task_shape: Optional[dict] = None,
+) -> dict:
+    """Rank 3 + Rank 4 — Principal dispatch with DDD doubt cycle and CE router.
+
+    Runs the DDD doubt cycle on the routing decision (gate/role/model) BEFORE
+    committing to dispatch. If doubt is enabled and finds an issue, the chosen
+    gate is down-shifted (reconcile) and the dispatch uses the reconciled gate.
+    The ``doubt_log`` is attached to the returned result dict for traceability.
+
+    Rank 4: the CE router maps the task shape to a Layer B skill (rank) and
+    logs ``chosen_skill`` to the bookbag for traceability. The router is
+    deterministic and offline — it never blocks dispatch.
+
+    When ``doubt_enabled`` is False (default) the doubt cycle is skipped (no
+    ``doubt_log`` key). The router always runs (it is cheap) unless a
+    ``task_shape`` is provided that maps to a skill, in which case its choice
+    is recorded regardless.
+    """
+    gate = difficulty
+    if doubt_enabled:
+        claim = (
+            f"Routing task to {role} ({domain}) via gate {gate} "
+            f"through OmniRoute / Orca student leaf."
+        )
+        extract = {
+            "task": task,
+            "role": role,
+            "domain": domain,
+            "gate": gate,
+            "model": "omni-route/default",
+            "lens": "principal",
+        }
+        doubt_log = run_doubt_cycle(
+            claim=claim,
+            extract=extract,
+            doubt_fn=doubt_fn,
+            max_cycles=1,
+            override_reason=override_reason,
+        )
+        # RECONCILE: if doubt down-shifted the gate, dispatch with the softer gate.
+        reconciled_gate = doubt_log["extract"].get("gate", gate)
+    else:
+        doubt_log = None
+        reconciled_gate = gate
+
+    # Rank 4: choose the Layer B skill from the task shape. Default a fresh
+    # student task to "new implementation" when the caller doesn't supply one.
+    if task_shape is None:
+        task_shape = {
+            "has_failed_gate": False,
+            "is_new_implementation": True,
+            "requires_architectural_routing": False,
+            "complexity": 1,
+            "is_spec_gap": False,
+        }
+    routing = route_decision(task_shape, bead=None, repo=repo)
+
+    result = run_leaf(
+        task_prompt=task, role=role, domain=domain,
+        difficulty=reconciled_gate, store=store, repo=repo,
+        ce_enabled=True,
+        complex_task=(routing["chosen_skill"] == "rank5_student_plan"),
+    )
+
+    result["chosen_skill"] = routing["chosen_skill"]
+    if doubt_log is not None:
+        result["doubt_log"] = doubt_log
+    # Log the routing choice to the bookbag for traceability (best-effort;
+    # never breaks dispatch). Need the bead from the dispatch result.
+    bead = result.get("bead")
+    if bead:
+        try:
+            locked_update_bookbag(
+                bead, repo,
+                chosen_skill=routing["chosen_skill"],
+                chosen_skill_label=routing["label"],
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ce_router: bookbag log skipped: %s", e)
+    return result
+
+
 def _run_sync_loop(args, store):
     """Phase 1 synchronous loop: dispatch one at a time with inline review."""
     print(f"🔄 Principal loop mode — {args.rounds} rounds (synchronous)\n")
@@ -420,9 +524,10 @@ def _run_sync_loop(args, store):
 
         print(f"--- Round {round_num}/{args.rounds} [{role} / {domain}] ---")
 
-        result = run_leaf(
-            task_prompt=task, role=role, domain=domain,
+        result = _principal_dispatch(
+            task=task, role=role, domain=domain,
             difficulty=args.difficulty, store=store, repo=args.repo,
+            doubt_enabled=args.doubt_enabled,
         )
 
         _score_and_print_round(result, store)
@@ -502,7 +607,27 @@ def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
         print(f"  {idx+1}/{len(leaves)} [{role}/{domain}] LLM call...")
 
         try:
+            # Rank 3: Doubt-Driven Development on the routing decision. In async
+            # mode the leaf is already booted with its gate, so we record the
+            # doubt_log for traceability and apply re-routing on the synchronous
+            # (run_leaf) paths where re-booting with a reconciled gate is safe.
+            if getattr(args, "doubt_enabled", False):
+                claim = (
+                    f"Routing task to {role} ({domain}) via gate {args.difficulty} "
+                    f"through OmniRoute / Orca student leaf (async)."
+                )
+                extract = {
+                    "task": task, "role": role, "domain": domain,
+                    "gate": args.difficulty, "model": "omni-route/default",
+                    "lens": "principal",
+                }
+                doubt_log = run_doubt_cycle(claim=claim, extract=extract, max_cycles=1)
+            else:
+                doubt_log = None
+
             result = leaf.run_via_hermes(task)  # Hermes in Orca terminal
+            if doubt_log is not None:
+                result["doubt_log"] = doubt_log
 
             if result.get("status") == "success":
                 leaf.signal_ready()
@@ -591,9 +716,10 @@ def _run_single_task(args, store):
     print(f"   Task: {args.task[:100]}")
     print()
 
-    result = run_leaf(
-        task_prompt=args.task, role=role, domain=args.domain,
+    result = _principal_dispatch(
+        task=args.task, role=role, domain=args.domain,
         difficulty=args.difficulty, store=store, repo=args.repo,
+        doubt_enabled=args.doubt_enabled,
     )
 
     task_score = result.get("task_score", 0)
@@ -1052,11 +1178,23 @@ def _validate_verdict(bead: str, repo: str = "__global__") -> None:
     The bookbag after the refactor holds ONLY the two-judge output. This is a
     guard, not a task blocker: a malformed record is logged (so the human sees
     it on the dashboard) but the dispatch still completes.
+
+    Rank 1: when a teacher ran the diagnose loop (--diagnose), surface the
+    recorded `{role}_diagnosis` in the bookbag so the principal note is
+    traceable and visible on the dashboard.
     """
     try:
-        from bookbag import validate_verdict_record
+        from bookbag import validate_verdict_record, read_bookbag
     except Exception:
         return
+    bag = read_bookbag(bead, repo)
+    if bag:
+        cto_dx = bag.get("cto_diagnosis")
+        coo_dx = bag.get("coo_diagnosis")
+        if cto_dx:
+            print(f"  🔬 CTO diagnose: {cto_dx.get('root_cause', '')[:80]}")
+        if coo_dx:
+            print(f"  🔬 COO diagnose: {coo_dx.get('root_cause', '')[:80]}")
     ok, issues = validate_verdict_record(bead, repo)
     if not ok:
         print(f"  ⚠️ verdict-record contract violation for {bead}: "
@@ -1095,12 +1233,17 @@ def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
             name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
             prompt = (
                 f"Run the {role.upper()} review pass for Agent-School. Each tick: "
-                f"execute `python3 scripts/run_teacher_review_once.py {role} {repo}` from "
+                f"execute `python3 scripts/run_teacher_review_once.py {role} {repo} --diagnose` from "
                 f"the repo root. That runs exactly one pass over un-reviewed "
                 f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
                 f"COO = COMPLETENESS), writes your verdict into "
                 f"~/.hermes/bookbag/<bead>.json, then exits. Do not edit code or "
-                f"open terminals — Orca schedules you; only run the script."
+                f"open terminals — Orca schedules you; only run the script.\\n\\n"
+                f"When a gate verdict is FAIL, the --diagnose flag makes the teacher "
+                f"run the systematic-debugging + TDD loop: it reproduces the failure "
+                f"as a regression test under diagnoses/{role}/<bead>.py and records a "
+                f"`{role}_diagnosis` dict (root_cause, regression_test, fix_applied) "
+                f"in the bookbag. Do not skip the diagnose step on FAIL."
             )
             aid = orca_automations_create(
                 name=name,
