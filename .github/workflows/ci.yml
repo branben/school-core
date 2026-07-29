@@ -27,7 +27,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Syntax check (compile all modules)
-        run: python -m compileall -q school_mail.py orca_executor.py leaf.py director.py scoring.py bookbag.py teacher.py conductor.py github_fetcher.py
+        run: python -m compileall -q .
 
       - name: Run tests
         # Live-Orca tests are gated by ORCA_LIVE_TESTS=1 and skipped by default,
