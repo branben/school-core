@@ -35,10 +35,12 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     pollute the live dashboard data.
     """
     import activity_log
+    import bookbag
     import decision_log
     import escalation_log
     import scoring
     import sleep_state
+    import trajectory
 
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -47,6 +49,14 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "decision_log.json")
     monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "escalation_log.json")
     monkeypatch.setattr(sleep_state, "SCORES_PATH", data_dir / "scores.json")
+
+    # Redirect trajectory and bookbag writes to temp so tests that
+    # exercise real director.run_task() paths don't leak persistent
+    # artifacts into the repo or the developer's home directory.
+    traj_dir = tmp_path / "trajectories"
+    traj_dir.mkdir(exist_ok=True)
+    monkeypatch.setattr(trajectory, "TRAJECTORY_DIR", traj_dir)
+    monkeypatch.setattr(bookbag, "BOOKBAG_DIR", Path(tmp_path / "bookbag"))
 
     # Reset cached singletons so they pick up the redirected paths.
     activity_log._default_log = None
