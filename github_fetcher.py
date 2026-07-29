@@ -18,7 +18,32 @@ from typing import Optional
 
 from triage_classifier import classify_issue
 
+from repo_default import default_repo
+
 CONFIG_PATH = Path(__file__).parent / "config" / "github.yaml"
+
+# The reserved value "__self__" means "the repo this checkout was cloned from"
+# (resolved via repo_default.default_repo). Expanded here so every consumer gets
+# a concrete owner/name slug without special-casing the sentinel downstream.
+_SELF = "__self__"
+
+
+def _expand_self(value, resolver):
+    """Replace a single "__self__" sentinel with the resolved repo slug."""
+    return resolver() if value == _SELF else value
+
+
+def _normalize_config(data: dict) -> dict:
+    """Resolve all "__self__" sentinels in a loaded config dict in place."""
+    resolver = default_repo
+    if data.get("repo") == _SELF:
+        data["repo"] = resolver()
+    if data.get("orchestrator_repo") == _SELF:
+        data["orchestrator_repo"] = resolver()
+    for entry in data.get("target_repos", []) or []:
+        if isinstance(entry, dict) and entry.get("slug") == _SELF:
+            entry["slug"] = resolver()
+    return data
 
 # Category → Director domain mapping
 DOMAIN_MAP = {
@@ -60,7 +85,7 @@ def load_config(path: Optional[str] = None) -> dict:
             data = yaml.safe_load(f) or {}
         for k in defaults:
             data.setdefault(k, defaults[k])
-        return data
+        return _normalize_config(data)
     except ImportError:
         sys.stderr.write("[github_fetcher] PyYAML not installed — using defaults\n")
         return defaults

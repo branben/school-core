@@ -18,7 +18,14 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional
-CACHE_DIR = Path.home() / ".cache" / "school-core" / "repos"
+
+from repo_default import default_repo
+
+# Cache root is repo-agnostic: derived from the self-configured default repo slug
+# (owner__name) so a clone of sound-royale-ny caches under ~/.cache/<slug>/repos.
+# Override with AGENT_SCHOOL_CACHE_DIR if you need an explicit location.
+_CACHE_SLUG = os.environ.get("AGENT_SCHOOL_CACHE_DIR") or default_repo().replace("/", "__")
+CACHE_DIR = Path.home() / ".cache" / _CACHE_SLUG / "repos"
 MAX_FILE_CHARS = 2000
 MAX_FILES = 5
 MAX_TOTAL_CHARS = 10000

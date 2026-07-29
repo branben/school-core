@@ -16,6 +16,7 @@ Query (from the client):
 from __future__ import annotations
 
 import asyncio
+import os
 import pathlib
 import sys
 from dataclasses import dataclass
@@ -30,7 +31,10 @@ from cocoindex.resources.chunk import Chunk
 from cocoindex.resources.file import FileLike, PatternFilePathMatcher
 from cocoindex.resources.id import IdGenerator
 
-SOLUTIONS_DIR = pathlib.Path(__file__).parent.parent.parent / "docs" / "solutions"
+SOLUTIONS_DIR = pathlib.Path(
+    os.environ.get("COCOINDEX_CORPUS_DIR")
+    or str(pathlib.Path(__file__).parent.parent.parent / "docs" / "solutions")
+)
 LANCEDB_URI = str(pathlib.Path(__file__).parent / "lancedb_data")
 TABLE_NAME = "prior_solutions"
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"

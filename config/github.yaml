@@ -1,7 +1,12 @@
 # GitHub Issue Fetcher Configuration
 # Point the Agent School at a repo to autonomously triage and solve issues.
+#
+# The reserved value `__self__` means "the repo this checkout was cloned from"
+# (resolved at runtime from `git remote get-url origin`, overridable via
+# AGENT_SCHOOL_REPO / SCHOOL_REPO). This keeps the framework portable — a clone
+# of sound-royale-ny self-configures to branben/sound-royale-ny with no edits.
 
-repo: "branben/school-core"        # owner/repo format, e.g. "user/my-project"
+repo: "__self__"        # owner/repo format, or "__self__" for the current checkout
 poll_interval_seconds: 300        # How often to poll for new issues (seconds)
 labels: ["bug", "enhancement"]    # Issue labels to fetch
 
@@ -21,15 +26,16 @@ domain_overrides:
 # bookbag under its target repo, so verdicts never collide across repos.
 #
 # Each entry:
-#   slug:   "owner/repo" — must match gh's nameWithOwner
+#   slug:   "owner/repo" — must match gh's nameWithOwner (or "__self__")
 #   checkout: local path where Orca clones/registers the repo (optional;
-#             defaults to ~/.cache/school-core/repos/<owner>__<repo>)
+#             defaults to ~/.cache/<slug>/repos/<owner>__<repo>)
 #   eval_overrides: optional per-repo difficulty/domain overrides (future)
 target_repos:
   - slug: branben/sound-royale-ny
-  - slug: branben/school-core
+  - slug: "__self__"
 
 # Slug of the repo that hosts the orchestrator + souls (school-core itself).
 # Teacher worktrees for OTHER repos are created against that repo's checkout;
-# the principal's own workspace stays here.
-orchestrator_repo: "branben/school-core"
+# the principal's own workspace stays here. Use "__self__" for the current
+# checkout (the framework's own repo).
+orchestrator_repo: "__self__"
