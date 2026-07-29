@@ -12,7 +12,10 @@ Usage::
     python populate_board_cache.py [repo]
 
 If *repo* is omitted it is read from the ``SCHOOL_REPO`` environment variable.
-If neither is provided the default ``branben/school-core`` is used.
+If neither is provided, :func:`repo_default.default_repo` resolves it — which
+self-configures from the current checkout's ``origin`` remote (so a clone of
+school-core defaults to ``branben/school-core``), overridable via
+``AGENT_SCHOOL_REPO``.
 
 The output is a JSON list of dicts, each with keys ``issue_number``, ``title``,
 ``domain``, ``difficulty``, ``state`` — the minimum shape required by
@@ -24,17 +27,22 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
+
+from repo_default import default_repo
 
 CACHE_PATH = Path("data") / "issues_cache.json"
 
 
-def populate_cache(repo: str = "branben/school-core") -> list[dict]:
+def populate_cache(repo: Optional[str] = None) -> list[dict]:
     """Fetch open issues via ``gh issue list`` and write them to *CACHE_PATH*.
 
     Parameters
     ----------
-    repo : str
-        GitHub repository in ``owner/name`` format.
+    repo : str, optional
+        GitHub repository in ``owner/name`` format. Defaults to
+        :func:`repo_default.default_repo` (self-configuring from the current
+        checkout's ``origin`` remote, overridable via ``AGENT_SCHOOL_REPO``).
 
     Returns
     -------
@@ -48,6 +56,8 @@ def populate_cache(repo: str = "branben/school-core") -> list[dict]:
     - If ``gh`` is unavailable or the command fails, writes an empty list.
     - Writes atomically (temp file + ``os.replace``).
     """
+    if repo is None:
+        repo = default_repo()
     issues: list[dict] = []
 
     try:
@@ -123,9 +133,5 @@ def populate_cache(repo: str = "branben/school-core") -> list[dict]:
 
 
 if __name__ == "__main__":
-    repo = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.environ.get("SCHOOL_REPO", "branben/school-core")
-    )
+    repo = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SCHOOL_REPO")
     populate_cache(repo)

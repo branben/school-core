@@ -37,6 +37,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import shutil
@@ -47,6 +48,7 @@ from pathlib import Path
 from typing import Optional
 
 from activity_log import ActivityLog, get_log
+from repo_default import default_repo
 
 # Shared activity log — used to emit student dispatch stages so a human
 # can watch async runs on the live dashboard (activity_server.py).
@@ -214,7 +216,13 @@ class OrcaExecutionManager:
     """
     REPO_PATH = REPO_PATH  # alias module constant -> class attribute
 
-    TEMP_BASE = Path("/tmp/school-exec")
+    # Temp space is repo-agnostic: derived from the self-configured default repo
+    # slug so a clone of sound-royale-ny writes under /tmp/<slug>-exec. Override
+    # with AGENT_SCHOOL_TEMP_DIR if you need an explicit location.
+    TEMP_BASE = Path(
+        os.environ.get("AGENT_SCHOOL_TEMP_DIR")
+        or f"/tmp/{default_repo().replace('/', '__')}-exec"
+    )
 
     EXECUTABLE_DOMAINS = frozenset({
         "python-coding",

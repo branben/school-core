@@ -48,6 +48,23 @@ class TestLoadConfig:
         assert cfg["poll_interval_seconds"] == 300  # default
         assert cfg["labels"] == ["bug", "enhancement"]  # default
 
+    def test_resolves_self_sentinel(self, tmp_path, monkeypatch):
+        """The reserved '__self__' value resolves to the checkout's default repo."""
+        monkeypatch.setenv("AGENT_SCHOOL_REPO", "owner/resolved-repo")
+        cfg_file = tmp_path / "github.yaml"
+        cfg_file.write_text(
+            "repo: __self__\n"
+            "orchestrator_repo: __self__\n"
+            "target_repos:\n"
+            "  - slug: branben/sound-royale-ny\n"
+            "  - slug: __self__\n"
+        )
+        cfg = load_config(str(cfg_file))
+        assert cfg["repo"] == "owner/resolved-repo"
+        assert cfg["orchestrator_repo"] == "owner/resolved-repo"
+        slugs = [t.get("slug") for t in cfg["target_repos"]]
+        assert slugs == ["branben/sound-royale-ny", "owner/resolved-repo"]
+
 
 # ── Domain Mapping Tests ──────────────────────────────────────────────────
 
