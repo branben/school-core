@@ -688,6 +688,15 @@ def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
                 mark = "\u2705" if accepted else "\u274c"
                 print(f"  {idx+1}/{len(dispatched)} {label} "
                       f"CTO={cto_v} COO={coo_v} {mark}")
+                # Notify the human operator via AgentMail (best-effort; never crashes).
+                try:
+                    notify_verdict(
+                        bead, accepted, cto_v, coo_v,
+                        repo=repo,
+                        summary=(findings or []) and f"{len(findings)} findings",
+                    )
+                except Exception as e:  # noqa: BLE001
+                    print(f"  ⚠ AgentMail notify failed: {e}")
 
             except Exception as e:
                 print(f"  {idx+1}/{len(dispatched)} {label} \u274c Timeout: {e}")
