@@ -21,7 +21,11 @@ permissions:
   issues: read
 
 env:
-  SCHOOL_REPO: branben/school-core
+  # SCHOOL_REPO: override with owner/repo if this workflow runs from
+  # a fork or a different repo.  The default "" lets the runner
+  # self-configure — populate_board_cache.py and the bridge both
+  # resolve the origin remote when SCHOOL_REPO is unset or empty.
+  SCHOOL_REPO: ""
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
