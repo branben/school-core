@@ -481,12 +481,18 @@ def bridge_issues(
 def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optional[List[str]] = None, force_agent: Optional[str] = None) -> None:
     """Polling loop: fetch and bridge issues every `interval` seconds.
 
-    Reads repo from config/github.yaml if not provided.
+    Reads repo from config/github.yaml if not provided. Falls back to
+    :func:`repo_default.default_repo` (self-configuring from the current
+    checkout's origin remote, overridable via AGENT_SCHOOL_REPO) when
+    neither arg nor config yields a value.
     """
     cfg = load_config()
     repo = repo or cfg.get("repo", "")
     if not repo:
-        sys.stderr.write("[issue_bridge] No repo configured. Set repo in config/github.yaml or pass --repo\n")
+        from repo_default import default_repo
+        repo = default_repo()
+    if not repo:
+        sys.stderr.write("[issue_bridge] No repo configured. Set repo in config/github.yaml, use __self__ in target_repos, or pass --repo\n")
         return
 
     labels = labels or cfg.get("labels")
