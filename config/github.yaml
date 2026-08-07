@@ -30,9 +30,12 @@ domain_overrides:
 #   checkout: local path where Orca clones/registers the repo (optional;
 #             defaults to ~/.cache/<slug>/repos/<owner>__<repo>)
 #   eval_overrides: optional per-repo difficulty/domain overrides (future)
-target_repos:
-  - slug: branben/sound-royale-ny
-  - slug: "__self__"
+# Single-repo mode (default): leave target_repos empty so --serve boots
+# exactly ONE principal automation + a CTO/COO teacher pair (2 teachers),
+# all namespaced under __global__. Re-enable multi-repo only when you
+# deliberately want a CTO+COO pair PER target repo (which multiplies
+# teacher worktrees and was the source of the worktree spray).
+target_repos: []
 
 # Slug of the repo that hosts the orchestrator + souls (school-core itself).
 # Teacher worktrees for OTHER repos are created against that repo's checkout;

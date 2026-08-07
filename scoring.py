@@ -12,7 +12,7 @@ SEED_AGENTS = {
     "gemini-3-flash-preview": {"_default": 30},
     "gemma-4-31b-it:free": {"_default": 30},
     "owl-alpha": {"_default": 25, "agentic-coding": 30},
-    "gemini-2.0-flash": {"_default": 25},
+    "agy/gemini-3.5-flash-high": {"_default": 30},
     "kimi-k2.6:free": {"_default": 20},
     "always-on-max": {"_default": 35},
     "always-on-free": {"_default": 20},
@@ -241,3 +241,88 @@ class ScoreStore:
 
     def _queue_for_confirmation(self, rec: ScoreRecommendation):
         pass
+
+
+@dataclass
+class EFCScore:
+    """Decomposed EFC (Informative \u00d7 Valid \u00d7 Retained) trajectory score.
+
+    Each trajectory gets scored on three factors:
+    - informative (I): task_score relative to max (0-1)
+    - valid (V): binary — was the task completed? (0 or 1)
+    - retained (R): response length relative to 5000-char reference (0-1)
+    - composite: I \u00d7 V \u00d7 R, scaled to 0-100
+    """
+    informative: float
+    valid: float
+    retained: float
+    composite: float
+
+
+class EFCScorer:
+    """Score a trajectory using the EFC formula.
+
+    EFC = Informative \u00d7 Valid \u00d7 Retained, scaled to 0-100.
+
+    - I = min(task_score / 100, 1.0) \u2014 informativeness relative to max
+    - V = 1.0 if task_score > 0 else 0.0 \u2014 validity: binary pass/fail gate
+    - R = min(len(response) / 3000, 1.0) \u2014 retention: longer responses retain better.
+      Reference length 3000 chars: concise code solutions (~500-1500 chars) get
+      moderate R (0.17-0.5), full explanations get max R.
+
+    A zero task_score (failed task) produces V=0, which zeroes the composite
+    regardless of I or R. Empty responses produce R=0, also zeroing the composite.
+    """
+
+    @staticmethod
+    def score(task_score: float, response: str) -> EFCScore:
+        i_factor = min(task_score / 100.0, 1.0)
+        v_factor = 1.0 if task_score > 0 else 0.0
+        r_factor = min(len(response) / 3000.0, 1.0)
+        composite = round(i_factor * v_factor * r_factor * 100.0, 2)
+        return EFCScore(
+            informative=round(i_factor, 4),
+            valid=v_factor,
+            retained=round(r_factor, 4),
+            composite=composite,
+        )
+
+
+# ── Cost tiers for cost-aware routing (U2) ──────────────────────────────────
+# Lower tier = cheaper to run. Used by routing.py to prefer cheaper models
+# for easy/medium tasks where quality difference is marginal.
+
+COST_TIERS: dict[str, int] = {
+    # Free / very small local models (tier 0)
+    "foundry-smollm3-3b": 0,
+    "foundry-phi4": 0,
+    "foundry-coder-0.5b": 0,
+    # Small local models (tier 1)
+    "foundry-coder-1.5b": 1,
+    # Mid-size local models (tier 2)
+    "foundry-coder-7b": 2,
+    # Auto-routed / best-free (tier 3) — OmniRoute picks cheapest capable
+    "auto/best-free": 3,
+    # Cloud models (tier 4) — most expensive
+    "gemini-3-flash-preview": 4,
+    "gemma-4-31b-it:free": 4,
+    "owl-alpha": 4,
+    "agy/gemini-3.5-flash-high": 4,
+    "kimi-k2.6:free": 4,
+    "always-on-max": 4,
+    "always-on-free": 4,
+    "north-coding": 4,
+    "mistral/mistral-small-latest": 4,
+    "agy/claude-sonnet-4-6": 4,
+    "a2a/antigravity": 4,
+}
+
+# Cost penalty per difficulty level.
+# Higher penalty = stronger preference for cheaper models.
+# Hard and blocker tasks get no penalty (quality over cost).
+COST_PENALTY_BY_DIFFICULTY: dict[str, int] = {
+    "easy": 10,
+    "medium": 5,
+    "hard": 0,
+    "blocker": 0,
+}

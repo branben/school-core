@@ -147,16 +147,86 @@ class CodeExtractor:
         return response.strip()
 
     @staticmethod
-    def language_for_domain(domain: str) -> Optional[str]:
-        """Map a task domain to the expected code language."""
+    def detect_language(repo_path: Optional[Path] = None) -> Optional[str]:
+        """Detect a repo's programming language from project config files.
+
+        Checks for well-known config files in the repo root and returns
+        a language identifier compatible with Orca execution (python,
+        typescript, javascript, go, rust, etc.). Returns None when no
+        config is found or ``repo_path`` is not provided.
+
+        The caller is responsible for knowing the repo path — this method
+        is purely a file-system probe, not a network or git-remote call.
+        """
+        if repo_path is None:
+            return None
+        rp = Path(repo_path).resolve()
+        if not rp.is_dir():
+            return None
+
+        # Ordered by specificity: more specific markers checked first.
+        markers: list[tuple[list[str], str]] = [
+            (["Cargo.toml"], "rust"),
+            (["go.mod"], "go"),
+            (["Gemfile"], "ruby"),
+            (["composer.json"], "php"),
+            (["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"], "python"),
+        ]
+        for files, lang in markers:
+            if any((rp / f).exists() for f in files):
+                return lang
+
+        # JavaScript/TypeScript: check package.json + additional markers.
+        pkg = rp / "package.json"
+        if pkg.exists():
+            try:
+                data = json.loads(pkg.read_text())
+                all_deps = {}
+                all_deps.update(data.get("dependencies", {}))
+                all_deps.update(data.get("devDependencies", {}))
+                has_typescript = any(
+                    "typescript" in k.lower() for k in all_deps
+                ) or (rp / "tsconfig.json").exists()
+                return "typescript" if has_typescript else "javascript"
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        return None
+
+    @staticmethod
+    def language_for_domain(
+        domain: str,
+        repo_path: Optional[Path] = None,
+    ) -> Optional[str]:
+        """Map a task domain to the expected code language.
+
+        When ``repo_path`` is provided, ``code-implementation`` uses the
+        repo's detected language instead of the hardcoded ``"python"``
+        default. This enables cross-repo dispatch: a TypeScript project
+        gets ``"typescript"`` while a Python project keeps ``"python"``.
+
+        Other domains (``python-testing``, ``terminal``, etc.) always
+        return their fixed mapping regardless of the repo.
+        """
+        # Domain-specific mappings always win.
         domain_lang = {
             "python-coding": "python",
             "python-testing": "python",
-            "code-implementation": "python",
             "terminal": "bash",
             "git-operations": "bash",
         }
-        return domain_lang.get(domain)
+        lang = domain_lang.get(domain)
+        if lang is not None:
+            return lang
+
+        # For code-implementation, detect from repo when available.
+        if domain == "code-implementation":
+            detected = CodeExtractor.detect_language(repo_path)
+            if detected is not None:
+                return detected
+            return "python"  # fallback when no repo context
+
+        return None
 
     @staticmethod
     def _strip_fences(text: str, language: Optional[str] = None) -> Optional[str]:
@@ -362,6 +432,18 @@ class OrcaExecutionManager:
         existing = self._find_worktree_by_prefix(name)
         if existing:
             return existing
+        # PRUNE stale admin entries before creating. If a prior serve
+        # closed/removed the worktree dir but its `<repo>/.git/worktrees/<name>`
+        # admin entry lingered, Orca's `worktree create --name <name>` sees the
+        # still-registered name and auto-suffixes to `<name>-2` (the
+        # teacher-cto-2 spray on re-serve). `git worktree prune` drops admin
+        # entries whose worktree dir no longer exists, so the next create
+        # reuses the canonical name. Suffix spray is the source of
+        # zombie-worktree pressure — prune first.
+        try:
+            self._run_orca(["worktree", "prune"], timeout=15)
+        except Exception:
+            pass
         return self.create_worktree(name, repo_path=repo_path)
 
     def _find_worktree_by_prefix(self, prefix: str) -> Optional[str]:
@@ -449,18 +531,24 @@ class OrcaExecutionManager:
             OrcaUnavailableError: If worktree cannot be created.
         """
         target = repo_path or REPO_PATH
-        # Cross-repo targets (fresh clones) must be registered with Orca before
-        # worktree create will accept them. school-core (REPO_PATH) is already
-        # registered, so skip the registration round-trip in that case.
-        if repo_path is not None and Path(repo_path).resolve() != Path(REPO_PATH).resolve():
-            registered = self._register_repo(Path(repo_path))
-            if registered is None:
-                # Registration failure means Orca is down or repo add failed.
-                # Surface a clear error rather than failing opaquely at
-                # worktree create with a repo_not_found.
-                raise OrcaUnavailableError(
-                    f"Failed to register target repo with Orca: {repo_path}"
-                )
+        # Always ensure the target repo is registered with Orca before
+        # worktree create. For cross-repo dispatch (explicit repo_path that
+        # differs from REPO_PATH) this is mandatory; for the school-core
+        # default case (repo_path is None → target == REPO_PATH) it is ALSO
+        # required, because a fresh Orca instance has not pre-registered
+        # school-core and `worktree create --repo <path>` would return
+        # repo_not_found. _register_repo is idempotent (reuses the existing
+        # id if already listed), so calling it unconditionally is safe and
+        # removes the silent "already registered" assumption that broke
+        # teacher boot on a clean Orca runtime.
+        registered = self._register_repo(Path(target))
+        if registered is None:
+            # Registration failure means Orca is down or repo add failed.
+            # Surface a clear error rather than failing opaquely at
+            # worktree create with a repo_not_found.
+            raise OrcaUnavailableError(
+                f"Failed to register target repo with Orca: {target}"
+            )
         result = self._run_orca([
             "worktree", "create",
             "--name", name,

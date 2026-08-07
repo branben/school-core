@@ -36,7 +36,7 @@ AGENT_NAMES = {
     "gemini-3-flash-preview": "Gemini",
     "gemma-4-31b-it:free": "Gemma",
     "owl-alpha": "Owl",
-    "gemini-2.0-flash": "Flash",
+    "agy/gemini-3.5-flash-high": "Flash3.5",
     "kimi-k2.6:free": "Kimi",
     "always-on-max": "Max",
     "always-on-free": "Free",

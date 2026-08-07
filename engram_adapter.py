@@ -161,7 +161,12 @@ def _parse_search_output(stdout: str) -> list:
 
         m_body = re.match(r"\s{4}(.*)", line)
         if m_body and current_id:
-            current_body_lines.append(m_body.group(1))
+            body_line = m_body.group(1)
+            # Skip the timestamp/metadata line
+            # (e.g. "2026-07-28 21:36:39 | project: agent-school | scope: project")
+            if re.match(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\|", body_line):
+                continue
+            current_body_lines.append(body_line)
         elif current_id and line.strip() and not line.startswith("Found"):
             pass
 

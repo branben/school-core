@@ -5,20 +5,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from scoring import ScoreStore, GATES
+from scoring import ScoreStore, GATES, EFCScorer
+from routing import route_task
 from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFoundError
 from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
-from trajectory import capture_trajectory, trajectories_for_training
-from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation, search_trajectories
+from trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
+from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation
+from training.lora_pipeline import has_adapter
 from cocoindex_client import cocoindex_available
-from context_orchestrator import enrich_prompt
+from context_orchestrator import DEFAULT_VAULT, enrich_prompt
+from repo_reader import CACHE_DIR as _REPO_CACHE_DIR
 from anchor_loader import AnchorRegistry
 from triage_classifier import classify_issue
 from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
 from escalation_log import EscalationLog
 from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
-from adversarial_reviewer import AdversarialReviewer, LensType, Verdict, Finding, Severity
+from adversarial_reviewer import (
+    AdversarialReviewer, LensType, Verdict, Finding, Severity,
+    VerificationCoevolution, CoevolutionReport,
+)
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec
 
@@ -39,6 +45,17 @@ SYSTEM_PROMPTS = {
     ),
 }
 
+# Shared preamble for the "BEFORE responding, reason step-by-step" verification
+# block used across multiple roles. Each role appends its own role-specific
+# examples. The {ROLE_TERM} placeholder is replaced per role.
+_VERIFICATION_PREAMBLE = (
+    "\n"
+    "BEFORE responding, reason step-by-step about whether your "
+    "{ROLE_TERM} ACTUALLY SOLVES the problem \u2014 stop and think, do not rush.\n"
+    "Verify that your approach is the RIGHT tool for the problem, "
+    "not just A tool that works. For example:\n"
+)
+
 # Role-specific system prompts — each specialized role gets a tailored prompt.
 ROLE_SYSTEM_PROMPTS = {
     "searcher": (
@@ -49,39 +66,27 @@ ROLE_SYSTEM_PROMPTS = {
         "Find relevant code, trace call paths, identify all references. "
         "Be exhaustive. Report file paths and line numbers. "
         "Apply [Five Whys] to trace root causes through the codebase.\n"
-        "\n"
-        "BEFORE responding, reason step-by-step about whether your "
-        "answer ACTUALLY SOLVES the problem \u2014 stop and think, do not rush.\n"
-        "Verify that your approach is the RIGHT tool for the problem, "
-        "not just A tool that works. For example:\n"
+    ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "answer") + (
         "- If the task asks for \'a grep command to find TODO comments\', verify:\n"
         "  Does this command actually find ONLY comments? Or does it also match "
         "strings, variable names, and other non-comment occurrences?\n"
         "- If the task asks for \'the CSS selector for buttons inside a form\', verify:\n"
         "  Does this selector actually work? What edge cases might break it?\n"
         "- If the task asks for \'a bash one-liner to count lines\', verify:\n"
-        "  Is it correct for filenames with spaces? Edge cases? Unicode?\n"
-        "\n"
-        "Respect [OneCommand], [NoExplanation], [OneWord], [NoExtras] when specified in the task description."
+        "  Is it correct for filenames with spaces? Edge cases? Unicode?"
     ),
     "executor": (
         "You are an Executor \u2014 a specialized terminal operations agent. "
         "Your tools: shell commands, git operations, build systems, package managers. "
         "Provide exact, copy-pasteable commands. Verify exit codes. "
         "Apply [KISS] \u2014 prefer simple, composable commands over complex scripts.\n"
-        "\n"
-        "BEFORE responding, reason step-by-step about whether your "
-        "command ACTUALLY SOLVES the problem \u2014 stop and think, do not rush.\n"
-        "Verify that your approach is the RIGHT tool for the problem, "
-        "not just A tool that works. For example:\n"
+    ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "command") + (
         "- If asked for a git command to undo a commit, verify:\n"
         "  Does this command preserve history? What if the commit was already pushed?\n"
         "- If asked to find files modified today, verify:\n"
         "  Does the command handle filenames with spaces? Symlinks?\n"
         "- If asked to kill a process by name, verify:\n"
-        "  Does this match only the intended process? What about multiple matches?\n"
-        "\n"
-        "Respect [OneCommand], [NoExplanation], [OneWord], [NoExtras] when specified in the task description."
+        "  Does this match only the intended process? What about multiple matches?"
     ),
     "reviewer": (
         "You are a Reviewer \u2014 a specialized code review agent. "
@@ -95,19 +100,13 @@ ROLE_SYSTEM_PROMPTS = {
         "Your tools: page navigation, form interaction, data extraction, screenshot capture. "
         "Navigate websites, fill forms, extract structured data. "
         "Report what you see \u2014 URLs, page titles, form states, extracted values.\n"
-        "\n"
-        "BEFORE responding, reason step-by-step about whether your "
-        "answer ACTUALLY SOLVES the problem \u2014 stop and think, do not rush.\n"
-        "Verify that your approach is the RIGHT tool for the problem, "
-        "not just A tool that works. For example:\n"
+    ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "answer") + (
         "- If asked for a CSS selector, verify:\n"
         "  Does it actually match the intended elements? What if the DOM structure changes?\n"
         "- If asked to extract data from a page, verify:\n"
         "  Does the approach handle dynamic content? Pagination? Missing elements?\n"
         "- If asked to fill a form, verify:\n"
-        "  Does the selector work for all form states? What about validation errors?\n"
-        "\n"
-        "Respect [OneCommand], [NoExplanation], [OneWord], [NoExtras] when specified in the task description."
+        "  Does the selector work for all form states? What about validation errors?"
     ),
     "coder": (
         "You are a Coder \u2014 a specialized code generation agent. "
@@ -116,18 +115,25 @@ ROLE_SYSTEM_PROMPTS = {
         "Apply [TDD] \u2014 test first, then implement. "
         "Your output is used for [Distillation] into smaller models.\n"
         "\n"
-        "BEFORE responding, reason step-by-step about whether your "
-        "CODE ACTUALLY SOLVES the problem \u2014 stop and think, do not rush.\n"
-        "Verify that your approach is the RIGHT tool for the problem, "
-        "not just A tool that works. For example:\n"
+        "[OUTPUT FORMAT — CRITICAL]\n"
+        "Output ONLY the code changes. Place EVERY code change inside a"
+        " ```python ... ``` code block (one block per file change). "
+        "Do NOT include any planning, reasoning, step-by-step analysis, "
+        "markdown headings, or explanatory text outside the code blocks.\n"
+        "If the task has multiple files, output a separate code block for each.\n"
+        "Never reject a task as underspecified. If the task is ambiguous, "
+        "make a reasonable assumption and implement it.\n"
+        "\n"
+        "Correct example (no preamble, just code blocks):\n"
+        "```python\n# backend/file.py\nclass Foo:\n    BAR = 42\n```\n"
+        "```python\n# tests/test_file.py\ndef test_bar():\n    assert Foo.BAR == 42\n```\n"
+    ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "OUTPUT") + (
         "- If writing a function to chunk a list, verify:\n"
         "  Does it handle empty lists? Edge cases like n > len(lst)? n <= 0?\n"
         "- If implementing an algorithm, verify:\n"
         "  Is this the right algorithm for the constraints? What is the time complexity?\n"
         "- If writing a test, verify:\n"
-        "  Does the test actually test the behavior? What edge cases are missing?\n"
-        "\n"
-        "Respect [OneCommand], [NoExplanation], [OneWord], [NoExtras] when specified in the task description."
+        "  Does the test actually test the behavior? What edge cases are missing?"
     ),
 }
 
@@ -149,6 +155,23 @@ SLEEP_CONTEXT_PRESSURE_THRESHOLD = 0.70  # 70% of context window
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _record_acrouter_outcome(agent: str, success: bool, quality: float = 1.0) -> None:
+    """Feed the routing outcome back into the ACRouter bandit.
+
+    Wraps executor.record_routing_outcome so failures (e.g. the executor
+    module not importable, or a missing combo) never crash run_task — routing
+    feedback is best-effort and must not affect task correctness.
+    """
+    try:
+        from executor import record_routing_outcome
+
+        record_routing_outcome(agent, success=success, quality=quality)
+    except Exception:
+        # Routing feedback is non-critical; swallow everything so a
+        # persistence/IO hiccup never breaks the actual task pipeline.
+        pass
 
 
 def _agent_role(agent: str, score: float) -> str:
@@ -229,55 +252,82 @@ def _run_two_judge_review(
 
     # ── Orca Execution ──
     # Execute student code in an Orca terminal sandbox before CTO review.
-    # Exit code 0 → PASS signal. Runtime errors → CRITICAL findings with traceback.
-    # OrcaUnavailableError is a hard failure — the pipeline cannot verify code
-    # without a sandbox, so the exception propagates up to run_task().
+    # Exit code 0 → PASS signal. Runtime errors → HIGH findings (advisory, not
+    # veto-level — extracted code may be context-dependent and can't run
+    # standalone). OrcaUnavailableError is a hard failure — the pipeline cannot
+    # verify code without a sandbox, so the exception propagates up to run_task().
+    #
+    # Language detection: for code-implementation tasks, resolve the repo path
+    # and detect the project language. Orca only supports Python execution, so
+    # non-Python repos (TypeScript, Rust, Go, etc.) skip the sandbox and rely
+    # on CTO/COO code review instead.
     execution_findings: list = []
-    executable_domains = {"python-coding", "python-testing", "code-implementation", "git-operations", "terminal"}
+    executable_domains = {"python-coding", "python-testing", "code-implementation"}
     if task.get("domain") in executable_domains:
         orca = OrcaExecutionManager()  # Raises OrcaUnavailableError if Orca is down
         try:
-            lang = CodeExtractor.language_for_domain(task.get("domain", ""))
-            code = CodeExtractor.extract(output, language=lang)
-            if code.strip():
-                result = orca.execute(code=code, bead=bead, timeout_ms=30000)
+            # Resolve repo path for language detection (cross-repo dispatch)
+            orca_repo_path = _resolve_repo_path(repo)
+            lang = CodeExtractor.language_for_domain(
+                task.get("domain", ""),
+                repo_path=orca_repo_path,
+            )
+            # Skip Orca execution for non-Python languages (sandbox only
+            # supports python3). The CTO/COO judges handle correctness.
+            if lang is not None and lang != "python":
+                execution_findings.append(Finding(
+                    section="execution",
+                    issue_class="language_not_supported",
+                    severity=Severity.LOW,
+                    citation=f"detected_language={lang}",
+                    description=f"Orca sandbox only supports Python; skipping execution for {lang} project",
+                    suggestion="",
+                ))
+            else:
+                code = CodeExtractor.extract(output, language=lang)
+                if code.strip():
+                    result = orca.execute(code=code, bead=bead, timeout_ms=30000)
 
-                if result.timed_out:
-                    execution_findings.append(Finding(
-                        section="execution",
-                        issue_class="timeout",
-                        severity=Severity.HIGH,
-                        citation="timed out after 30s",
-                        description="Code execution timed out — possible infinite loop or blocking call",
-                        suggestion="Ensure the code terminates in reasonable time",
-                    ))
-                elif result.exit_code != 0:
-                    execution_findings.append(Finding(
-                        section="execution",
-                        issue_class="runtime_failure",
-                        severity=Severity.CRITICAL,
-                        citation=f"exit_code={result.exit_code}",
-                        description=(result.stderr or "Unknown execution error")[:300],
-                        suggestion="Fix the runtime errors above",
-                    ))
+                    if result.timed_out:
+                        execution_findings.append(Finding(
+                            section="execution",
+                            issue_class="timeout",
+                            severity=Severity.HIGH,
+                            citation="timed out after 30s",
+                            description="Code execution timed out — possible infinite loop or blocking call",
+                            suggestion="Ensure the code terminates in reasonable time",
+                        ))
+                    elif result.exit_code != 0:
+                        # HIGH, not CRITICAL: extracted code may be a context-dependent
+                        # snippet (e.g. TypeScript refactoring in a JS project) that
+                        # can't run standalone in Orca.  The CTO/COO judges assess
+                        # correctness; this finding is advisory only.
+                        execution_findings.append(Finding(
+                            section="execution",
+                            issue_class="runtime_failure",
+                            severity=Severity.HIGH,
+                            citation=f"exit_code={result.exit_code}",
+                            description=(result.stderr or "Unknown execution error")[:300],
+                            suggestion="Fix the runtime errors above",
+                        ))
+                    else:
+                        execution_findings.append(Finding(
+                            section="execution",
+                            issue_class="execution_passed",
+                            severity=Severity.LOW,
+                            citation="exit_code=0",
+                            description=f"Code executed successfully in {result.duration_ms}ms",
+                            suggestion="",
+                        ))
                 else:
                     execution_findings.append(Finding(
                         section="execution",
-                        issue_class="execution_passed",
+                        issue_class="no_code_found",
                         severity=Severity.LOW,
-                        citation="exit_code=0",
-                        description=f"Code executed successfully in {result.duration_ms}ms",
+                        citation="code extraction returned empty",
+                        description="No runnable code could be extracted from the student's output",
                         suggestion="",
                     ))
-            else:
-                execution_findings.append(Finding(
-                    section="execution",
-                    issue_class="no_code_found",
-                    severity=Severity.LOW,
-                    citation="code extraction returned empty",
-                    description="No runnable code could be extracted from the student's output",
-                    suggestion="",
-                ))
         except Exception as e:
             execution_findings.append(Finding(
                 section="execution",
@@ -308,8 +358,8 @@ def _run_two_judge_review(
     coo_verdict = coo_result.verdict.value
     all_findings = execution_findings + cto_result.findings + coo_result.findings
     # Acceptance requires both judges PASS at score >= 50. A CRITICAL finding
-    # (from CTO review or execution/sandbox) is an automatic veto — broken or
-    # unsafe output cannot be accepted even if both judges happen to say PASS.
+    # (from lens findings) is an automatic veto — broken or unsafe output cannot
+    # be accepted even if both judges happen to say PASS.
     has_critical = any(
         getattr(f, "severity", None) == Severity.CRITICAL for f in all_findings
     )
@@ -321,6 +371,36 @@ def _run_two_judge_review(
         and not has_critical
     )
     combined_score = (cto_result.score + coo_result.score) / 2.0
+
+    # ── Verification-co-evolution pass (P2.2) ──
+    # As the agent/harness improves, *fixed* acceptance checks stop measuring real
+    # quality and become a reward to game. After review we record the capability
+    # now demonstrated and, if it rose on a dimension no acceptance check covers,
+    # we flag it as a coverage gap and propose hardening the check set (so the next
+    # evaluation verifies the gain instead of rewarding it blindly). The report is
+    # attached to the result and persisted to the bookbag for human review — the
+    # loop never silently mutates the active check set.
+    #
+    # We reuse the CTO+COO sub-results (already traced per-lens) rather than
+    # re-running the models, so the co-evolution pass adds ZERO extra LLM calls.
+    coevolution_report: Optional["CoevolutionReport"] = None
+    try:
+        _coevo_checks = _acceptance_checks_from_spec(task, repo)
+        _coevo = VerificationCoevolution(call_model_fn=_call_model)
+        _merged = ReviewResult(
+            verdict=cto_result.verdict if cto_result.verdict == coo_result.verdict
+            else Verdict.FAIL,
+            findings=cto_result.findings + coo_result.findings,
+            lens_used=cto_result.lens_used,
+            confidence=max(cto_result.confidence, coo_result.confidence),
+            difficulty=task.get("difficulty", "medium"),
+        )
+        _trace: dict = dict(getattr(cto_result, "_lens_trace", {}))
+        _trace.update(getattr(coo_result, "_lens_trace", {}))
+        _merged._lens_trace = _trace  # type: ignore[attr-defined]
+        coevolution_report = _coevo.analyze(_merged, task, _coevo_checks)
+    except Exception as e:  # co-evolution is advisory; never break the acceptance verdict
+        sys.stderr.write(f"[director] coevolution pass skipped: {e}\n")
 
     # Update bookbag with review results
     update_bookbag(
@@ -347,7 +427,34 @@ def _run_two_judge_review(
         "combined_score": combined_score,
         "findings": [f.to_dict() for f in all_findings],
         "accepted": accepted,
+        "coevolution": coevolution_report.to_dict() if coevolution_report else None,
     }
+
+
+def _acceptance_checks_from_spec(task: dict, repo: str = REPO_GLOBAL) -> list[dict]:
+    """Derive the current acceptance-check surface from the task's DoD spec.
+
+    Each DoD criterion ``id`` names a capability dimension the acceptance surface
+    already covers, so the co-evolution loop can tell a *covered* improvement from
+    an *uncovered* one. Returns [] when no spec is present (most tasks) — in that
+    case any capability gain is treated as uncovered, which is the correct default
+    (no checks => every gain is a potential reward-hack surface).
+    """
+    spec = None
+    try:
+        spec = _load_spec(task.get("task_id") or task.get("id"))
+    except Exception:
+        spec = None
+    if not spec:
+        return []
+    checks: list[dict] = []
+    for crit in spec.get("criteria", []):
+        checks.append({
+            "covers": [crit.get("id", "unknown")],
+            "status": "active",
+            "kind": "dod_criterion",
+        })
+    return checks
 
 
 def triage_issue(title: str, labels: list, body: str = "") -> dict:
@@ -478,6 +585,10 @@ def run_task(
     ce_enabled: bool = False,
     complex_task: bool = False,
     dod_gate: bool = False,
+    isolated_phases: bool = False,
+    phase_students: Optional[list] = None,
+    phase_drop_rate: float = 0.5,
+    phase_seeds: Optional[list] = None,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -496,15 +607,94 @@ def run_task(
         dod_gate: If True (Rank 6), evaluate the spec-gate Definition-of-Done criteria
                   against the execution result. Fails the run if any required criterion
                   is unmet.
+        isolated_phases: If True, run the task through isolated reasoning phases
+                  (Diversity Collapse fix, arXiv:2604.18005) — each candidate role
+                  reasons from a DECOUPLED per-student context instead of the shared
+                  enriched context, then the Vendi Score measures effective output
+                  diversity. Promotes the medoid (most representative) output. This
+                  keeps the reasoning decoupled so students do not collapse to
+                  identical outputs. When True, ``phase_students`` lists the roles
+                  to run; the returned ``response`` is the medoid and ``vendi_score``
+                  / ``collapsed`` are included.
+        phase_students: Roles to run in isolated phases (default: the role mapped
+                  from ``domain`` plus the other available COMBO_MAP roles).
+        phase_drop_rate: Fraction of shared context blocks dropped per phase.
+        phase_seeds: Optional per-student seeds for reproducible isolation.
     """
     if store is None:
         store = ScoreStore()
+
+    # ── Isolated reasoning phases (Diversity Collapse fix, arXiv:2604.18005) ──
+    # When enabled, run the task through N role "students", each in its own
+    # reasoning phase with a DECOUPLED context (not the single shared enriched
+    # context that drives every role to the same output). The Vendi Score then
+    # measures how diverse the outputs actually are. The medoid (output closest
+    # to all others) is promoted as ``response``. Skips the bookbag/two-judge
+    # path so it composes with the caller's own review stage.
+    if isolated_phases:
+        from isolated_reasoning import run_isolated_phases
+
+        if force_agent:
+            base_role = force_agent
+        else:
+            base_role = get_role_for_domain(domain)
+        students = list(phase_students or [base_role])
+
+        # Resolve each role's base context block independently — running
+        # enrich_prompt per role so the "shared context" each phase is
+        # decoupled FROM is the role-appropriate one, then isolated_reasoning
+        # derives per-student subsets from it.
+        def _phase_reason_fn(student_id, prompt, seed):
+            return call_model(student_id, prompt, system_prompt=system_prompt)
+
+        iso = run_isolated_phases(
+            task_prompt=prompt,
+            students=students,
+            base_blocks={"role": base_role, "domain": domain, "difficulty": difficulty},
+            reason_fn=_phase_reason_fn,
+            seeds=phase_seeds,
+            drop_rate=phase_drop_rate,
+        )
+        get_decision_log().log(
+            DecisionType.CONTEXT_RETRIEVED,
+            agent="isolated-phases",
+            context={"domain": domain, "students": students},
+            choice={
+                "isolated_phases": True,
+                "vendi_score": round(iso.vendi_score, 4),
+                "collapsed": iso.collapsed,
+            },
+            expected="Decoupled context should raise output diversity",
+        )
+        return {
+            "status": "success",
+            "domain": domain,
+            "difficulty": difficulty,
+            "agent": "isolated-phases",
+            "students": students,
+            "isolated_phases": True,
+            "vendi_score": iso.vendi_score,
+            "collapsed": iso.collapsed,
+            "selected_student": iso.selected_student,
+            "response": iso.selected_response,
+            "phase_responses": [p.response for p in iso.phases],
+            "error": None,
+            "old_score": store.get_score(base_role, domain),
+            "new_score": store.get_score(base_role, domain),
+        }
 
     # Determine the role: force_agent overrides domain mapping
     if force_agent:
         role = force_agent
     else:
         role = get_role_for_domain(domain)
+        # Prefer LoRA-tuned role if a trained adapter exists for this domain
+        if has_adapter(domain):
+            lora_role = f"lora-{domain}"
+            # Seed LoRA agent score from base role so first run doesn't start at 0
+            if store.get_score(lora_role, domain) == 0.0:
+                store.set_score(lora_role, domain, store.get_score(role, domain))
+            role = lora_role
 
     if role not in COMBO_MAP:
         return {"status": "error", "domain": domain, "difficulty": difficulty,
@@ -517,8 +707,10 @@ def run_task(
         else:
             system_prompt = SYSTEM_PROMPTS.get(domain, DEFAULT_SYSTEM_PROMPT)
 
-    # Inject vault context (includes past bookbag feedback for this role)
-    context_blob = enrich_prompt(domain, prompt)
+    # Inject vault context (includes past bookbag feedback for this role).
+    # Resolve repo_path for Serena LSP symbol enrichment when available.
+    repo_path = _resolve_repo_path(repo)
+    context_blob = enrich_prompt(domain, prompt, vault_path=DEFAULT_VAULT, repo_path=repo_path)
     if context_blob:
         system_prompt = system_prompt + context_blob
         get_decision_log().log(
@@ -550,23 +742,36 @@ def run_task(
             store=store,
         )
 
-    # Gate check: is this role qualified for this difficulty?
+    # Gate check: use route_task to find if ANY agent qualifies — scores
+    # live under model names (e.g. foundry-coder-1.5b), not role names
+    # (e.g. coder).  route_task searches all agents, so a Foundry-era
+    # score in code-implementation still gates correctly.
     if difficulty not in GATES:
         raise ValueError(f"Invalid difficulty '{difficulty}'")
 
-    role_score = store.get_score(role, domain)
-    gate_threshold = GATES.get(difficulty, 0)
-
-    if role_score < gate_threshold and not force_agent:
-        return {"status": "blocked", "domain": domain, "difficulty": difficulty,
-                "agent": role, "role_score": role_score, "gate_threshold": gate_threshold}
+    if force_agent:
+        role_score = store.get_score(role, domain)
+    else:
+        route = route_task(store, domain, difficulty)
+        if route.blocked:
+            return {"status": "blocked", "domain": domain, "difficulty": difficulty,
+                    "agent": role, "role_score": route.score or 0.0,
+                    "gate_threshold": GATES.get(difficulty, 0)}
+        role_score = route.score or 0.0
 
     # Readiness check. On low confidence, escalate to the A2A fallback
     # (openhands) instead of blocking — this is the U8 "I Don't Know"
     # escalation path. Previously this branch returned 'blocked'; it now
     # escalates so a low-confidence primary still gets a second attempt.
+    #
+    # When route_task already found a qualified agent (score >= gate), skip
+    # the readiness check — it's redundant (the agent's stats already prove
+    # capability) and was causing false escalations from auto/best-free
+    # timeouts. The check still runs for force_agent with underqualified
+    # agents (score < gate).
     escalated = False
-    if not force_agent:
+    role_qualifies = role_score >= GATES.get(difficulty, 0)
+    if not role_qualifies:
         confidence = _check_readiness(role, domain, difficulty, prompt)
         if confidence < _get_threshold(domain, difficulty):
             _escalation_log.log(
@@ -594,16 +799,22 @@ def run_task(
         prompt_preview=prompt[:80],
     )
 
-    # Rank 4b: retrieve prior similar trajectories from engram to inform
-    # routing. (The save side is wired in evaluate_and_update; this is the
-    # load-before-dispatch side.) Guarded so it's a no-op when engram is down.
-    if engram_available():
-        prior = search_trajectories(query=domain, domain=domain, limit=3)
-        if prior:
-            prior_blob = "\n\n---\n### Prior Approaches (from Engram)\n" + "\n".join(
-                f"- {title}: {body[:240]}" for _id, title, body in prior
-            ) + "\n---"
-            system_prompt = system_prompt + prior_blob
+    # Rank 4b: retrieve prior similar trajectories from filesystem to inform
+    # routing. Prefer scored trajectories, then fall back by recency.
+    # (The save side is wired in evaluate_and_update — writes to Engram intact.)
+    prior = _list_trajectories(domain=domain, limit=6)
+    if prior:
+        # Sort: scored (desc) first, then unscored, then by recency
+        scored = [t for t in prior if t.get('task_score') is not None and t['task_score'] > 0]
+        unscored = [t for t in prior if t.get('task_score') is None or t['task_score'] == 0]
+        scored.sort(key=lambda t: t['task_score'], reverse=True)
+        selected = (scored + unscored)[:3]
+        prior_blob = "\n\n---\n### Prior Approaches\n" + "\n".join(
+            f"- [{t.get('timestamp','?')[:10]}] **{t.get('agent','?') or '?'}** "
+            f"(score={t.get('task_score') or 0:.1f}): {t.get('response','')[:240]}"
+            for t in selected
+        ) + "\n---"
+        system_prompt = system_prompt + prior_blob
 
     # Rank 5: complex-task decomposition into a bite-sized plan, executed as
     # per-sub-task CE/TDD loops (each sub-task is its own run_leaf call).
@@ -664,6 +875,9 @@ def run_task(
             # Both primary role and A2A failed — NOW penalize the role
             store.update_score(role, domain, 0.0)
             get_log().task_error(agent=role, domain=domain, error=error)
+            # ACRouter feedback: a hard routing failure is a strong negative
+            # outcome for the combo that was selected.
+            _record_acrouter_outcome(role, success=False, quality=0.0)
             return {"status": "error", "domain": domain, "difficulty": difficulty,
                     "agent": role, "error": error, "old_score": old_score,
                     "new_score": store.get_score(role, domain), "trajectory": traj_path}
@@ -723,7 +937,7 @@ def run_task(
             result["ce_phases"] = ce_phases
         sys.stderr.write(
             f"[director] Async dispatch: bead={bead} role={role} "
-            f"→ awaiting teacher review\n"
+            f"\u2192 awaiting teacher review\n"
         )
         return result
 
@@ -755,6 +969,14 @@ def run_task(
         task_score = max(60, review["combined_score"])
     else:
         task_score = min(40, review["combined_score"])
+
+    # ── ACRouter outcome feedback ──
+    # Record the routing outcome for the combo the executor actually used.
+    # Success = review accepted; quality = normalized combined review score
+    # (in [0, 1]). This is the experience signal the router learns from so
+    # it can bias future combo selection toward combos that actually work
+    # for this role/domain (arXiv:2606.22902 — Agent as Router).
+    _record_acrouter_outcome(role, success=review["accepted"], quality=task_score / 100.0)
 
     result = {
         "status": "success",
@@ -820,16 +1042,31 @@ def evaluate_and_update(
     if result.get("status") == "error":
         task_score = 0.0
 
+    # ── EFC Scoring (U1) ──
+    # Decompose task_score into Informative × Valid × Retained factors.
+    # The composite score replaces raw task_score for the agent update,
+    # so failed tasks (V=0) or empty responses (R=0) correctly produce 0.
+    response = result.get("response", "") or ""
+    efc = EFCScorer.score(task_score, response)
+    effective_score = efc.composite
+
     old = store.get_score(agent, domain)
-    new = store.update_score(agent, domain, task_score)
+    new = store.update_score(agent, domain, effective_score)
     old_gate = store.gate_for_score(old)
     new_gate = store.gate_for_score(new)
 
     crossed = None
-    from scoring import GATES
     for gname, gthr in sorted(GATES.items(), key=lambda x: x[1]):
         if old < gthr <= new:
             crossed = gname
+
+    # ── Compliance Tracking (U4) ──
+    had_error = result.get("status") == "error" or result.get("error") is not None
+    routed = True
+    attempted = len(response.strip()) > 0
+    completed = not had_error
+    scored = task_score > 0
+    compliance_score = round(sum(1 for d in [routed, attempted, completed, scored] if d) / 4.0 * 100, 2)
 
     trajectory_path = result.get("trajectory")
     if trajectory_path:
@@ -837,6 +1074,19 @@ def evaluate_and_update(
         with open(trajectory_path) as f:
             traj = json.load(f)
         traj["task_score"] = task_score
+        traj["efc"] = {
+            "informative": efc.informative,
+            "valid": efc.valid,
+            "retained": efc.retained,
+            "composite": efc.composite,
+        }
+        traj["compliance"] = {
+            "routed": routed,
+            "attempted": attempted,
+            "completed": completed,
+            "scored": scored,
+            "score": compliance_score,
+        }
         traj["old_score"] = old
         traj["new_score"] = new
         traj["evaluation"] = evaluation
@@ -857,6 +1107,16 @@ def evaluate_and_update(
     result["new_score"] = new
     result["gate_crossed"] = crossed
     result["task_score"] = task_score
+    result["efc_score"] = efc.composite
+    result["compliance"] = {
+        "score": compliance_score,
+        "dimensions": {
+            "routed": routed,
+            "attempted": attempted,
+            "completed": completed,
+            "scored": scored,
+        },
+    }
     # Log activity
     if crossed:
         get_log().gate_cross(
@@ -1005,6 +1265,34 @@ def staff_list(vault_path: str = None, config_path: str = None) -> list:
         {"name": p.name, "trust": p.trust.value, "health": p.health_check()}
         for p in plugins.values()
     ]
+
+
+def _resolve_repo_path(repo: str) -> Optional[Path]:
+    """Resolve a repo slug to a cached clone path for Serena LSP context.
+
+    Checks the repo_reader cache first; falls back to the current
+    checkout's root when the slug matches the framework's own repo.
+    Returns ``None`` if no clone exists (Serena gracefully skips).
+
+    Does NOT trigger a clone — this is read-only path resolution.
+    """
+    if not repo or repo == REPO_GLOBAL:
+        return None
+
+    # Check the repo_reader cache.
+    cached = _REPO_CACHE_DIR / repo.replace("/", "__")
+    if cached.exists() and (cached / ".git").exists():
+        return cached
+
+    # Fallback: if the slug matches the current checkout, use its root.
+    try:
+        from repo_default import default_repo
+        if repo == default_repo():
+            return Path(__file__).resolve().parent
+    except Exception:
+        pass
+
+    return None
 
 
 def _try_a2a_fallback(primary_role, prompt, system_prompt=None):

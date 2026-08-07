@@ -816,5 +816,190 @@ class TestDiagnoseLoop:
         assert proc.returncode == 0, proc.stderr
 
 
+# ── Close Registry Cleanup Tests ──────────────────────────────────────────────
+
+
+class TestCloseRegistryCleanup:
+    """Regression tests for the ``teacher-cto-N`` suffix-spray fix.
+
+    ``close()`` must invoke three independent registry-cleanup layers so a
+    re-serve after ``close()`` lands on the canonical ``teacher-<role>``
+    name (no ``-2`` / ``-3`` / ``-lens-2`` suffix). Each layer is best-effort;
+    ``close()`` is fully idempotent and never raises.
+
+    Layer 1: ``close_worktree(path)`` — primary path-based removal.
+    Layer 2: ``orca worktree rm --worktree name:<canon> --force`` —
+        belt-and-suspenders by canonical name. (The legacy ``--name`` flag
+        is REJECTED by the orca CLI; the correct shape is ``--worktree
+        name:<displayName>`` per ``orca worktree rm --help``.)
+    Layer 3: ``git worktree prune`` — drops any stale
+        ``<repo>/.git/worktrees/<name>`` admin entry. This is the actual
+        source of the ``-N`` suffix spray on re-serve.
+    """
+
+    def test_close_calls_close_worktree_with_path(self, mock_mgr, teacher_cto):
+        """Layer 1: close_worktree is invoked with the worktree path."""
+        teacher_cto._mgr = mock_mgr
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        assert mock_mgr.close_worktree.call_count == 1
+        assert mock_mgr.close_worktree.call_args.args[0] == "/tmp/wt/teacher-cto"
+
+    def test_close_calls_orca_worktree_rm_by_canonical_name(self, mock_mgr, teacher_cto):
+        """Layer 2: belt-and-suspenders by canonical name with the corrected
+        ``--worktree name:<displayName>`` selector (NOT the rejected
+        ``--name`` flag)."""
+        teacher_cto._mgr = mock_mgr
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        rm_calls = [
+            c.args[0] for c in mock_mgr._run_orca.call_args_list
+            if isinstance(c.args, tuple) and len(c.args) > 0
+            and isinstance(c.args[0], list)
+            and "remove" in c.args[0]
+        ]
+        assert rm_calls, "Expected at least one orca worktree remove call"
+        cmd = rm_calls[0]
+        assert "worktree" in cmd
+        assert "remove" in cmd
+        # Correct shape: ``--worktree name:<displayName> --force``.
+        # The legacy ``--name`` flag is rejected by the orca CLI.
+        assert "--worktree" in cmd, (
+            f"legacy --name flag is wrong (orca cli rejects it); got cmd: {cmd}"
+        )
+        assert "name:teacher-cto" in cmd, (
+            f"expected canonical-name selector; got cmd: {cmd}"
+        )
+        assert "--force" in cmd
+
+    def test_close_calls_git_worktree_prune_when_repo_path_is_str(
+        self, mock_mgr, teacher_cto, monkeypatch
+    ):
+        """Layer 3: git worktree prune runs when REPO_PATH is a str."""
+        teacher_cto._mgr = mock_mgr
+        mock_mgr.REPO_PATH = "/fake/repo"
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        prune = [c for c in captured if "prune" in c]
+        assert len(prune) == 1, f"expected exactly one prune call; got {captured}"
+        assert prune[0][0] == "git"
+        assert "-C" in prune[0]
+        assert "/fake/repo" in prune[0]
+
+    def test_close_calls_git_worktree_prune_when_repo_path_is_path(
+        self, mock_mgr, teacher_cto, monkeypatch
+    ):
+        """Layer 3: git worktree prune runs when REPO_PATH is a Path (the
+        production shape — ``REPO_PATH = _resolve_repo_path()``)."""
+        teacher_cto._mgr = mock_mgr
+        mock_mgr.REPO_PATH = Path("/fake/repo")
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        prune = [c for c in captured if "prune" in c]
+        assert len(prune) == 1
+
+    def test_close_skips_git_prune_when_repo_path_is_magicmock(
+        self, mock_mgr, teacher_cto, monkeypatch
+    ):
+        """Layer 3: skipped gracefully when REPO_PATH is a MagicMock
+        (the default fixture leaves it as such). The ``isinstance(rp,
+        (str, Path))`` guard makes this a natural no-op."""
+        teacher_cto._mgr = mock_mgr
+        # mock_mgr.REPO_PATH is auto-mocked — leave it as a MagicMock.
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        assert captured == [], f"unexpected subprocess.run call: {captured}"
+
+    def test_close_does_not_call_prune_when_mgr_is_none(
+        self, teacher_cto, monkeypatch
+    ):
+        """close() with ``_mgr=None`` must not raise; no subprocess either."""
+        teacher_cto._mgr = None
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.close()  # must not raise
+        assert captured == []
+
+    def test_close_idempotent_when_called_twice(self, mock_mgr, teacher_cto):
+        """Calling close() twice does not double-fire any layer."""
+        teacher_cto._mgr = mock_mgr
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()
+        teacher_cto.close()
+        # Layer 1: exactly one close_worktree call.
+        assert mock_mgr.close_worktree.call_count == 1
+        # Layer 2: exactly one orca worktree rm call (worktree_path=None on
+        # the 2nd close, so inner block is skipped — state-nil guards it).
+        rm_calls = [
+            c for c in mock_mgr._run_orca.call_args_list
+            if isinstance(c.args, tuple) and len(c.args) > 0
+            and isinstance(c.args[0], list)
+            and "remove" in c.args[0]
+        ]
+        assert len(rm_calls) == 1, f"expected one rm call; got {len(rm_calls)}"
+
+    def test_close_swallows_close_worktree_exception(
+        self, mock_mgr, teacher_cto, monkeypatch
+    ):
+        """Layer 1 failure must not skip layers 2 and 3 (regression-critical)."""
+        teacher_cto._mgr = mock_mgr
+        mock_mgr.close_worktree.side_effect = Exception("orca boom")
+        mock_mgr.REPO_PATH = "/fake/repo"
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()  # must not raise
+        # Layer 2 still ran.
+        rm_calls = [c for c in mock_mgr._run_orca.call_args_list if "remove" in c.args[0]]
+        assert rm_calls, "Layer 2 (orca rm by name) should have run"
+        # Layer 3 still ran.
+        assert any("prune" in c for c in captured), (
+            f"Layer 3 (git prune) should have run; captured: {captured}"
+        )
+
+    def test_close_swallows_orca_worktree_rm_exception(
+        self, mock_mgr, teacher_cto, monkeypatch
+    ):
+        """Layer 2 failure must NOT skip layer 3 — that's the regression fix."""
+        teacher_cto._mgr = mock_mgr
+        def fail_for_remove(args, timeout=15):
+            if "remove" in args:
+                raise Exception("orca reject")
+            return None
+        mock_mgr._run_orca.side_effect = fail_for_remove
+        mock_mgr.REPO_PATH = "/fake/repo"
+        captured = []
+        def fake_run(*args, **kwargs):
+            captured.append(args[0])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+        monkeypatch.setattr("subprocess.run", fake_run)
+        teacher_cto.worktree_path = "/tmp/wt/teacher-cto"
+        teacher_cto.close()  # must not raise
+        # Layer 3 ran.
+        assert any("prune" in c for c in captured)
+
+
 if __name__ == "__main__":
     pass

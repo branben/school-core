@@ -465,7 +465,32 @@ class TeacherWorktree:
         return pruned
 
     def close(self) -> None:
-        """Close the teacher's worktree and terminal. Idempotent."""
+        """Close the teacher's worktree, terminal, and any stale admin entries.
+
+        Idempotent: safe to call multiple times, on a partial boot, or when
+        ``self._mgr`` is unset. Never raises — each step has its own
+        try/except so a failure in one does not skip the others.
+
+        Three layers of registry cleanup so a re-serve after ``close()`` lands
+        on the canonical ``teacher-<role>`` name (no ``-2`` / ``-3``
+        suffix-spray):
+
+        1. ``close_worktree(path)`` — primary path-based removal: covers the
+           on-disk directory and the orca-side registration.
+        2. ``orca worktree rm --worktree name:<canon> --force`` —
+           belt-and-suspenders for the case where the path-based remove
+           missed a stale registry entry (e.g. directory removed
+           out-of-band). Note: the orca CLI flag is ``--worktree <selector>``
+           (the legacy ``--name`` form is rejected); the selector accepts
+           ``name:<displayName>`` for canonical-name targeting.
+        3. ``git worktree prune`` — drops any lingering
+           ``<repo>/.git/worktrees/<name>`` admin entry, the source of the
+           ``teacher-cto-N`` suffix spray on re-serve (see ``Lifecycle``
+           invariant in docs/school-core-architecture.md).
+
+        The terminal close runs first; only then the worktree cleanup. State
+        is nilled unconditionally.
+        """
         if self._mgr:
             if self._review_terminal:
                 try:
@@ -473,12 +498,49 @@ class TeacherWorktree:
                 except Exception:
                     pass
                 self._review_terminal = None
-            if self.worktree_path:
+            # Layers 1+2+3: combined worktree cleanup. Each step is
+            # independently best-effort so the union actually happens even
+            # when one of them raises (e.g. orca rejects the by-name form
+            # because the entry was already gone).
+            if self.worktree_path or self.worktree_name:
+                # Layer 1: path-based removal (covers dir + orca registration).
+                if self.worktree_path:
+                    try:
+                        self._mgr.close_worktree(self.worktree_path)
+                    except Exception:
+                        pass
+                # Layer 2: belt-and-suspenders by canonical name. Catches
+                # the case where path-based remove left a stale registry.
+                if self.worktree_name:
+                    try:
+                        self._mgr._run_orca(
+                            ["worktree", "remove", "--worktree",
+                             f"name:{self.worktree_name}", "--force"],
+                            timeout=15,
+                        )
+                    except Exception:
+                        pass
+                # Layer 3: drop any leftover git admin entry. Tested with
+                # an isinstance guard so mocked ``REPO_PATH`` (a MagicMock)
+                # is naturally skipped in unit tests.
                 try:
-                    self._mgr.close_worktree(self.worktree_path)
+                    rp = getattr(self._mgr, "REPO_PATH", None)
+                    if isinstance(rp, (str, Path)):
+                        subprocess.run(
+                            ["git", "-C", str(rp), "worktree", "prune"],
+                            capture_output=True, timeout=10,
+                        )
                 except Exception:
                     pass
+                # Nil both worktree_path AND worktree_name so that calling
+                # ``close()`` a second time is a true no-op for the
+                # cleanup block. ``worktree_name`` is otherwise a role
+                # canonical invariant; nil-ing it after close() is safe
+                # because the teacher is considered ``unbound`` post-close
+                # and any future close()/boot() will reconstruct it from
+                # ``role`` + ``repo``.
                 self.worktree_path = None
+                self.worktree_name = None
             self._booted = False
 
     def __enter__(self):

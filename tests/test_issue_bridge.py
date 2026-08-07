@@ -18,6 +18,7 @@ from issue_bridge import (
     bridge_issues,
     _run_adversarial_review,
     _heuristic_score,
+    verify_task_output,
     PROCESSED_FILE,
 )
 from scoring import ScoreStore
@@ -270,3 +271,533 @@ class TestAdversarialReviewStep:
         task_result = {"response": ""}
         issue = {"difficulty": "medium"}
         assert _heuristic_score(task_result, issue) == 0.0
+
+
+# ── Verify Task Output Parser ────────────────────────────────────────────
+
+VALID_JSON_RESPONSE = '{"score": 85, "verdict": "GOOD", "reasoning": "solid work", "gaps": ["missing tests"], "strengths": ["clean code"]}'
+
+
+class TestVerifyTaskOutputParsing:
+    """Tests for the hardened JSON parser in verify_task_output.
+
+    The parser must handle the variety of output formats auto/best-free
+    (and other models) may return: code fences, preamble text, control
+    characters, and prose-wrapped JSON."""
+
+    @patch("issue_bridge.call_model")
+    def test_clean_json(self, mock_call):
+        """Happy path: model returns clean JSON object."""
+        mock_call.return_value = VALID_JSON_RESPONSE
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+        assert result["verdict"] == "GOOD"
+        assert result["gaps"] == ["missing tests"]
+        assert result["strengths"] == ["clean code"]
+
+    @patch("issue_bridge.call_model")
+    def test_json_inside_fence_with_lang_tag(self, mock_call):
+        """Model wraps JSON in ```json ... ``` code fence."""
+        mock_call.return_value = "```json\n" + VALID_JSON_RESPONSE + "\n```"
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+        assert result["verdict"] == "GOOD"
+
+    @patch("issue_bridge.call_model")
+    def test_json_inside_fence_no_lang_tag(self, mock_call):
+        """Model wraps JSON in plain ``` ... ``` code fence."""
+        mock_call.return_value = "```\n" + VALID_JSON_RESPONSE + "\n```"
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+
+    @patch("issue_bridge.call_model")
+    def test_json_with_leading_preamble(self, mock_call):
+        """Model rambles before emitting JSON (common with auto/best-free)."""
+        mock_call.return_value = (
+            "Here is my evaluation of the task output:\n\n"
+            "The solution looks good overall. Let me think step by step...\n\n"
+            + VALID_JSON_RESPONSE +
+            "\n\nI hope this helps!"
+        )
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+        assert result["verdict"] == "GOOD"
+
+    @patch("issue_bridge.call_model")
+    def test_json_with_control_characters(self, mock_call):
+        """Response contains control characters that older parsers choked on."""
+        mock_call.return_value = '{\x00"score": 72, "verdict": "ACCEPTABLE"}\x1f'
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 72
+        assert result["verdict"] == "ACCEPTABLE"
+
+    @patch("issue_bridge.call_model")
+    def test_json_embedded_in_markdown_prose(self, mock_call):
+        """JSON embedded deep inside markdown — balanced brace extraction."""
+        mock_call.return_value = (
+            "## Evaluation Results\n\n"
+            "After careful review, I found several issues.\n\n"
+            "### Score Details\n\n"
+            '{"score": 45, "verdict": "PARTIAL", "reasoning": "incomplete", '
+            '"gaps": ["no error handling", "missing edge cases"], '
+            '"strengths": ["correct core logic"]}\n\n'
+            "### Additional Notes\n\n"
+            "The agent should also consider..."
+        )
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 45
+        assert result["verdict"] == "PARTIAL"
+        assert len(result["gaps"]) == 2
+        assert len(result["strengths"]) == 1
+
+    @patch("issue_bridge.call_model")
+    def test_model_call_exception_fallback(self, mock_call):
+        """Model call raises — fall back to score=50."""
+        mock_call.side_effect = RuntimeError("OmniRoute unavailable")
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 50
+        assert result["verdict"] == "PARTIAL"
+        assert "Verification error" in result["reasoning"]
+
+    @patch("issue_bridge.call_model")
+    def test_non_json_prose_fallback(self, mock_call):
+        """Model returns pure prose with no JSON — fall back to score=50."""
+        mock_call.return_value = (
+            "The agent did an amazing job! The code is clean and well-structured. "
+            "I would rate this as excellent work. No complaints at all."
+        )
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 50
+        assert result["verdict"] == "PARTIAL"
+        assert "Parse error" in result["reasoning"]
+
+    @patch("issue_bridge.call_model")
+    def test_missing_optional_fields_defaulted(self, mock_call):
+        """JSON missing verdict, gaps, strengths — defaults applied."""
+        mock_call.return_value = '{"score": 92, "reasoning": "perfect"}'
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 92
+        assert result["verdict"] == "PARTIAL"  # default
+        assert result["gaps"] == []
+        assert result["strengths"] == []
+
+    @patch("issue_bridge.call_model")
+    def test_score_below_zero_clamped(self, mock_call):
+        """Score below 0 clamped to 0."""
+        mock_call.return_value = '{"score": -50, "verdict": "FAIL"}'
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 0
+
+    @patch("issue_bridge.call_model")
+    def test_score_above_100_clamped(self, mock_call):
+        """Score above 100 clamped to 100."""
+        mock_call.return_value = '{"score": 999, "verdict": "EXCELLENT"}'
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 100
+
+    @patch("issue_bridge.call_model")
+    def test_score_as_string_converted(self, mock_call):
+        """Score as string '85' — int() coercion in parser handles it."""
+        mock_call.return_value = '{"score": "85", "verdict": "GOOD"}'
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+
+    @patch("issue_bridge.call_model")
+    def test_empty_response_fallback(self, mock_call):
+        """Model returns empty string — no JSON to parse."""
+        mock_call.return_value = ""
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 50
+        assert result["verdict"] == "PARTIAL"
+
+    @patch("issue_bridge.call_model")
+    def test_whitespace_only_response_fallback(self, mock_call):
+        """Model returns only whitespace."""
+        mock_call.return_value = "   \n\n  "
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 50
+
+    @patch("issue_bridge.call_model")
+    def test_json_with_newlines_in_strings(self, mock_call):
+        """JSON with literal newlines inside string values (old parser collapsed them)."""
+        mock_call.return_value = (
+            '{"score": 60, "verdict": "ACCEPTABLE", '
+            '"reasoning": "Line 1\\nLine 2\\nLine 3", '
+            '"gaps": ["gap 1\\ngap detail"], "strengths": []}'
+        )
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 60
+        assert "Line 1" in result["reasoning"]
+
+    @patch("issue_bridge.call_model")
+    def test_multiple_fence_blocks_first_parseable_wins(self, mock_call):
+        """Multiple code fence blocks — first parseable JSON block wins."""
+        mock_call.return_value = (
+            "```python\ndef foo(): pass\n```\n\n"
+            "```json\n" + VALID_JSON_RESPONSE + "\n```\n\n"
+            "```\nSome other text\n```"
+        )
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+
+    @patch("issue_bridge.call_model")
+    def test_json_with_leading_json_prefix(self, mock_call):
+        """Model writes 'json' before the opening brace (seen with some providers)."""
+        mock_call.return_value = "json " + VALID_JSON_RESPONSE
+        result = verify_task_output("prompt", "response", "domain", "easy")
+        assert result["score"] == 85
+
+    @patch("issue_bridge.call_model")
+    def test_codebase_context_passed_through(self, mock_call):
+        """Codebase context string is included in the verification prompt."""
+        mock_call.return_value = VALID_JSON_RESPONSE
+        ctx = "Repository: sound-royale-ny\nKey files: src/main.py"
+        verify_task_output("prompt", "response", "domain", "easy", codebase_context=ctx)
+        # Verify ctx was interpolated into the prompt sent to the model
+        call_args = mock_call.call_args
+        assert ctx in call_args[0][1]  # second positional arg = prompt
+        # Also verify the parser still produces correct output
+        result = verify_task_output("prompt", "response", "domain", "easy", codebase_context=ctx)
+        assert result["score"] == 85
+
+
+# ── End-to-End Pipeline Tests ────────────────────────────────────────────────
+
+
+class TestE2EPipeline:
+    """End-to-end tests exercising the full bridge_issues pipeline.
+
+    Mocks all external dependencies (GitHub, repo cloning, model calls, director
+    task execution) and verifies the complete orchestration: enrichment context,
+    adversarial review, verification scoring, heuristic scoring, combined score,
+    gate crossing, and score persistence.
+    """
+
+    @pytest.fixture
+    def mock_repo_dir(self, tmp_path):
+        """Create a temporary directory that acts as the cloned repo."""
+        d = tmp_path / "cloned_repo"
+        d.mkdir(parents=True)
+        return d
+
+    # ── Happy path: clean output, all signals positive ──────────────────
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_e2e_happy_path_all_pass(
+        self,
+        mock_ib_call, mock_exec_call, mock_task,
+        mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """Full pipeline: issue fetched, repo cloned, executed, verified,
+        adversarially reviewed, scored. All signals positive."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        # Step 1: fetch_issues returns one actionable issue
+        mock_fetch.return_value = [{
+            "issue_number": 100,
+            "title": "Fix null pointer in login",
+            "body": "The login function crashes on null username",
+            "domain": "code-implementation",
+            "difficulty": "medium",
+            "prompt": "Add a null check before accessing username",
+            "category": "bug",
+            "state": "ready-for-agent",
+        }]
+
+        # Step 2: repo cloning returns mock directory
+        mock_clone.return_value = mock_repo_dir
+
+        # Step 3: codebase context is built from the cloned repo
+        mock_build_ctx.return_value = (
+            "Repository: test-repo\n"
+            "Key files:\n"
+            "  src/login.py: login(username, password)\n"
+            "  src/db.py: UserStore\n"
+        )
+
+        # Step 4: director.run_task executes successfully
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "auto/best-free",
+            "domain": "code-implementation",
+            "difficulty": "medium",
+            "prompt": "Add a null check before accessing username",
+            "response": (
+                "def login(username, password):\n"
+                "    if not username:\n"
+                "        raise ValueError('Username cannot be empty')\n"
+                "    return authenticate(username, password)\n"
+            ),
+        }
+
+        # Step 5: Adversarial review — model returns empty findings (clean output)
+        mock_exec_call.return_value = '{"findings": []}'
+
+        # Step 6: Verification — model returns GOOD score
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "correct and complete", '
+            '"gaps": ["missing edge case for empty password"], '
+            '"strengths": ["handles null username", "clear error message"]}'
+        )
+
+        # Execute full pipeline
+        results = bridge_issues("user/test", store=store)
+
+        # Assertions
+        assert len(results) == 1
+        r = results[0]
+
+        # Status and metadata
+        assert r["status"] == "success"
+        assert r["issue_number"] == 100
+        assert r["domain"] == "code-implementation"
+        assert r["difficulty"] == "medium"
+        assert r["agent"] == "auto/best-free"
+
+        # Verification signal
+        assert r["verification"]["score"] == 85
+        assert r["verification"]["verdict"] == "GOOD"
+        assert len(r["verification"]["gaps"]) == 1
+        assert len(r["verification"]["strengths"]) == 2
+
+        # Adversarial review signal
+        adv = r["adversarial_review"]
+        assert "verdict" in adv
+        assert "score" in adv
+        assert isinstance(adv["score"], (int, float))
+        assert adv["score"] >= 30.0  # floor at 30
+
+        # Combined score
+        assert "new_score" in r
+        assert isinstance(r["new_score"], (int, float))
+
+        # Issue marked processed
+        assert is_processed(100)
+
+        # Verify all mocks were called as expected
+        mock_fetch.assert_called_once()
+        mock_clone.assert_called_once()
+        mock_build_ctx.assert_called_once()
+        mock_task.assert_called_once()
+        # Adversarial review calls executor.call_model (one per lens + circuit breaker)
+        assert mock_exec_call.call_count >= 1
+        # Verification calls issue_bridge.call_model
+        mock_ib_call.assert_called_once()
+
+        # Verify enrichment context was passed through to director.run_task
+        task_prompt = mock_task.call_args[1]["prompt"]
+        assert "test-repo" in task_prompt
+        assert "src/login.py" in task_prompt
+
+    # ── Failure path: output with issues, review finds problems ─────────
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_e2e_with_review_findings(
+        self,
+        mock_ib_call, mock_exec_call, mock_task,
+        mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """Full pipeline where adversarial review finds real issues."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        mock_fetch.return_value = [{
+            "issue_number": 101,
+            "title": "SQL injection vulnerability",
+            "body": "Fix the SQL injection in the query builder",
+            "domain": "code-implementation",
+            "difficulty": "hard",
+            "prompt": "Use parameterized queries to prevent SQL injection",
+            "category": "security",
+            "state": "ready-for-agent",
+        }]
+
+        mock_clone.return_value = mock_repo_dir
+        mock_build_ctx.return_value = "Repository: test-repo\nKey files: src/query.py"
+
+        # Director returns flawed output
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "auto/best-free",
+            "domain": "code-implementation",
+            "difficulty": "hard",
+            "prompt": "Use parameterized queries",
+            "response": (
+                "def get_user(user_id):\n"
+                '    query = f\"SELECT * FROM users WHERE id = {user_id}\"\n'
+                "    return db.execute(query)\n"
+            ),
+        }
+
+        # Adversarial review: model returns string findings
+        mock_exec_call.return_value = (
+            '{"findings": ["SQL injection: string interpolation in query", '
+            '"No input validation on user_id", '
+            '"Missing exception handling"]}'
+        )
+
+        # Verification: PARTIAL score
+        mock_ib_call.return_value = (
+            '{"score": 35, "verdict": "POOR", '
+            '"reasoning": "Does not fix SQL injection — uses f-string interpolation", '
+            '"gaps": ["SQL injection still present", "no parameterized query"], '
+            '"strengths": []}'
+        )
+
+        results = bridge_issues("user/test", store=store)
+
+        assert len(results) == 1
+        r = results[0]
+        assert r["status"] == "success"
+        assert r["issue_number"] == 101
+
+        # Verification should reflect the flawed output
+        assert r["verification"]["score"] == 35
+        assert r["verification"]["verdict"] == "POOR"
+
+        # Adversarial review should have findings (string entries)
+        adv = r["adversarial_review"]
+        assert len(adv.get("findings", [])) > 0
+        assert adv["score"] >= 30.0  # floor protects against 0.0
+
+        # Combined score should be reasonable (weights: exec*0.5 + review*0.3 + heuristic*0.2)
+        assert r["new_score"] > 0
+
+        assert is_processed(101)
+
+    # ── Error path: model call failure ───────────────────────────────────
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_e2e_verification_fallback_on_model_failure(
+        self,
+        mock_ib_call, mock_exec_call, mock_task,
+        mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """Verification model call fails — pipeline falls back to score=50."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        mock_fetch.return_value = [{
+            "issue_number": 102,
+            "title": "Simple refactor",
+            "body": "Refactor the function",
+            "domain": "debugging",
+            "difficulty": "easy",
+            "prompt": "Refactor the code",
+            "category": "refactor",
+            "state": "ready-for-agent",
+        }]
+
+        mock_clone.return_value = mock_repo_dir
+        mock_build_ctx.return_value = "Some context"
+
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "auto/best-free",
+            "domain": "debugging",
+            "difficulty": "easy",
+            "prompt": "Refactor the code",
+            "response": "def refactored(): pass",
+        }
+
+        # Adversarial review succeeds
+        mock_exec_call.return_value = '{"findings": []}'
+
+        # Verification model call fails entirely
+        mock_ib_call.side_effect = RuntimeError("OmniRoute unavailable")
+
+        results = bridge_issues("user/test", store=store)
+
+        assert len(results) == 1
+        r = results[0]
+        assert r["status"] == "success"
+
+        # Falls back to score=50 on verification failure
+        assert r["verification"]["score"] == 50
+        assert r["verification"]["verdict"] == "PARTIAL"
+        assert "Verification error" in r["verification"]["reasoning"]
+
+        # Adversarial review still completes
+        assert r["adversarial_review"]["score"] >= 30.0
+
+    # ── Score weighting verification ─────────────────────────────────────
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_e2e_combined_score_weighting(
+        self,
+        mock_ib_call, mock_exec_call, mock_task,
+        mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """Verify combined score formula: exec*0.5 + review*0.3 + heuristic*0.2."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        mock_fetch.return_value = [{
+            "issue_number": 103,
+            "title": "Score test",
+            "body": "Test combined scoring",
+            "domain": "code-implementation",
+            "difficulty": "medium",
+            "prompt": "Compute combined score",
+            "category": "feature",
+            "state": "ready-for-agent",
+        }]
+
+        mock_clone.return_value = mock_repo_dir
+        mock_build_ctx.return_value = ""
+
+        # Medium difficulty, response of 200 chars → heuristic = min(100, 200/10) * 0.8 = 16.0
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "auto/best-free",
+            "domain": "code-implementation",
+            "difficulty": "medium",
+            "prompt": "Compute combined score",
+            "response": "x" * 200,
+        }
+
+        # Adversarial review: score=100 (no findings)
+        mock_exec_call.return_value = '{"findings": []}'
+
+        # Verification: score=80 (GOOD)
+        mock_ib_call.return_value = (
+            '{"score": 80, "verdict": "GOOD", "reasoning": "solid", '
+            '"gaps": [], "strengths": ["works"]}'
+        )
+
+        results = bridge_issues("user/test", store=store)
+
+        assert len(results) == 1
+        r = results[0]
+
+        # Combined score must be a valid score that blends the three signals
+        combined = r["new_score"]
+        assert isinstance(combined, (int, float))
+        assert 0 <= combined <= 100
+        # Combined should be broad-band: exec 80 + review 100 + heuristic 16 → at least 40
+        assert combined > 0

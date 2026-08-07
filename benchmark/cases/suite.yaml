@@ -1,0 +1,167 @@
+# benchmark/cases/suite.yaml — HAL Benchmark test cases
+#
+# Each case defines a deterministic prompt with expected output patterns.
+# The runner auto-grades by checking pattern presence in the model response.
+#
+# Fields:
+#   id          — unique case identifier
+#   domain      — task domain (code-implementation, python-testing, etc.)
+#   prompt      — the exact prompt sent to the model
+#   expects     — list of regex patterns that MUST appear in the response
+#   forbids     — list of regex patterns that must NOT appear
+#   min_chars   — minimum response length (catches empty/timeout responses)
+#   code_block  — if true, response must contain at least one ``` fence
+
+cases:
+  # ── code-implementation ────────────────────────────────────────────────
+
+  - id: "extract-constant-max-spectators"
+    domain: "code-implementation"
+    prompt: |
+      In a Python codebase, extract the MAX_SPECTATORS constant from the
+      Room model class. The constant is defined as MAX_SPECTATORS = 10 in
+      backend/game_engine/models.py. Find all references to this constant
+      across the codebase and update them if the value changes.
+      Output ONLY the code changes inside code blocks, one block per file.
+    expects:
+      - "MAX_SPECTATORS"
+      - "=\\s*10"
+    forbids:
+      - "I cannot"
+      - "I don't know"
+      - "Let me analyze"
+    min_chars: 100
+    code_block: true
+
+  - id: "extract-constant-min-rounds"
+    domain: "code-implementation"
+    prompt: |
+      Extract the MIN_ROUNDS constant (value=3) from a Python game engine's
+      settings. The constant is used in game configuration and round management.
+      Output ONLY the code changes inside code blocks.
+    expects:
+      - "MIN_ROUNDS"
+      - "=\\s*3"
+    forbids:
+      - "I cannot"
+      - "Let me analyze"
+    min_chars: 80
+    code_block: true
+
+  - id: "write-chunk-function"
+    domain: "code-implementation"
+    prompt: |
+      Write a Python function `chunk(lst, n)` that splits a list into chunks
+      of size n. The last chunk may be smaller than n. Handle edge cases:
+      empty list, n larger than list length, n <= 0 (raise ValueError).
+      Output ONLY the code inside a code block.
+    expects:
+      - "def chunk"
+      - "ValueError"
+      - "\\[.*:.*\\]"   # slicing pattern
+      - "for|while"
+    forbids:
+      - "I cannot"
+      - "Here's how"
+    min_chars: 50
+    code_block: true
+
+  - id: "write-flatten-function"
+    domain: "code-implementation"
+    prompt: |
+      Write a Python function `flatten(nested)` that flattens a list of
+      arbitrarily nested lists into a single flat list. Use recursion.
+      Example: flatten([1, [2, [3, 4]], 5]) → [1, 2, 3, 4, 5].
+      Output ONLY the code inside a code block.
+    expects:
+      - "def flatten"
+      - "isinstance"
+      - "recurs|extend|yield"
+    forbids:
+      - "I cannot"
+    min_chars: 100
+    code_block: true
+
+  - id: "fix-division-by-zero"
+    domain: "code-implementation"
+    prompt: |
+      Fix this buggy Python function. The function `calculate_average(numbers)`
+      raises ZeroDivisionError when the list is empty. Add proper error
+      handling or a guard clause.
+      Output ONLY the fixed code inside a code block.
+    expects:
+      - "def calculate_average"
+      - "ZeroDivisionError|if not|if len|raise ValueError|return 0"
+    forbids:
+      - "I cannot"
+    min_chars: 100
+    code_block: true
+
+  - id: "add-error-handling-file-reader"
+    domain: "code-implementation"
+    prompt: |
+      Add error handling to this Python function. `read_config(path)` reads
+      a JSON file but crashes with FileNotFoundError or JSONDecodeError.
+      Return an empty dict on any error.
+      Output ONLY the fixed code inside a code block.
+    expects:
+      - "def read_config"
+      - "try"
+      - "except"
+      - "json\\.load|json\\.loads"
+    forbids:
+      - "I cannot"
+    min_chars: 120
+    code_block: true
+
+  # ── python-testing ─────────────────────────────────────────────────────
+
+  - id: "test-user-class"
+    domain: "python-testing"
+    prompt: |
+      Write pytest tests for a User class with the following interface:
+        class User:
+            def __init__(self, name: str, email: str):
+                if not name: raise ValueError("name required")
+                if "@" not in email: raise ValueError("invalid email")
+      Test: valid creation, empty name raises, invalid email raises.
+      Output ONLY the test code inside a code block.
+    expects:
+      - "def test_"
+      - "User\\("
+      - "ValueError"
+      - "pytest\\.raises|with.*raises"
+    forbids:
+      - "I cannot"
+    min_chars: 200
+    code_block: true
+
+  - id: "test-chunk-edge-cases"
+    domain: "python-testing"
+    prompt: |
+      Write pytest tests for this `chunk(lst, n)` function, covering all
+      edge cases: empty list, n=1, n larger than list, uneven split, n<=0
+      raises ValueError.
+        def chunk(lst, n):
+            if n <= 0: raise ValueError("n must be positive")
+            return [lst[i:i+n] for i in range(0, len(lst), n)]
+      Output ONLY the test code inside a code block.
+    expects:
+      - "def test_"
+      - "chunk\\("
+      - "ValueError"
+      - "\\[\\]"   # empty list case
+      - "raises|pytest\\.raises"
+    forbids:
+      - "I cannot"
+    min_chars: 250
+    code_block: true
+
+# ── Default models to benchmark ───────────────────────────────────────────
+#
+# These are the models compared by `benchmark/runner.py --compare`.
+# Override with `--models coder,auto/best-free,agy/gemini-3.5-flash-high`
+
+default_models:
+  - coder
+  - auto/best-free

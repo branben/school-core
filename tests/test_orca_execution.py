@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -162,6 +163,51 @@ def merge_sorted(a, b):
         assert CodeExtractor.language_for_domain("git-operations") == "bash"
         assert CodeExtractor.language_for_domain("code-review") is None
         assert CodeExtractor.language_for_domain("web-automation") is None
+
+    def test_detect_language_returns_none_when_no_repo(self):
+        """detect_language returns None when repo_path is None."""
+        assert CodeExtractor.detect_language(None) is None
+
+    def test_detect_language_python_project(self, tmp_path):
+        """A repo with pyproject.toml is detected as Python."""
+        (tmp_path / "pyproject.toml").write_text("[build-system]\n")
+        assert CodeExtractor.detect_language(tmp_path) == "python"
+
+    def test_detect_language_rust_project(self, tmp_path):
+        """A repo with Cargo.toml is detected as Rust."""
+        (tmp_path / "Cargo.toml").write_text("[package]\n")
+        assert CodeExtractor.detect_language(tmp_path) == "rust"
+
+    def test_detect_language_typescript_project(self, tmp_path):
+        """A repo with package.json + tsconfig.json is detected as TypeScript."""
+        (tmp_path / "package.json").write_text('{"name": "test", "devDependencies": {"typescript": "^5.0"}}')
+        assert CodeExtractor.detect_language(tmp_path) == "typescript"
+
+    def test_detect_language_javascript_project(self, tmp_path):
+        """A repo with package.json but no TypeScript is detected as JavaScript."""
+        (tmp_path / "package.json").write_text('{"name": "test", "dependencies": {"react": "^18.0"}}')
+        assert CodeExtractor.detect_language(tmp_path) == "javascript"
+
+    def test_detect_language_unknown_project(self, tmp_path):
+        """A repo with no config files returns None."""
+        (tmp_path / "README.md").write_text("# My Project")
+        assert CodeExtractor.detect_language(tmp_path) is None
+
+    def test_detect_language_takes_rust_over_package_json(self, tmp_path):
+        """Cargo.toml takes priority over package.json (Rust projects can have both)."""
+        (tmp_path / "Cargo.toml").write_text("[package]\n")
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        assert CodeExtractor.detect_language(tmp_path) == "rust"
+
+    def test_language_for_domain_code_impl_with_repo_path(self, tmp_path):
+        """code-implementation uses detected language when repo_path is given."""
+        (tmp_path / "Cargo.toml").write_text("[package]\n")
+        assert CodeExtractor.language_for_domain("code-implementation", repo_path=tmp_path) == "rust"
+
+    def test_language_for_domain_python_testing_ignores_repo_path(self, tmp_path):
+        """python-testing always returns 'python' regardless of repo_path."""
+        (tmp_path / "Cargo.toml").write_text("[package]\n")
+        assert CodeExtractor.language_for_domain("python-testing", repo_path=tmp_path) == "python"
 
     def test_language_specific_fence_preferred(self):
         """When language is specified, only matching fences are extracted."""
@@ -663,3 +709,148 @@ class TestCreateWorktreeRepoPath:
 
         idx = calls[0].index("--repo")
         assert calls[0][idx + 1] == str(mgr.REPO_PATH), "default --repo is REPO_PATH"
+
+
+# ── TeacherWorktree.close() Admin Entry Cleanup (Regression for cto-N Sufox Spray) ──
+
+
+class TestTeacherCloseAdminEntryCleanup:
+    """Regression: the ``teacher-cto-N`` suffix-spray origin.
+
+    When the worktree directory is removed externally but the orca-side
+    registry + ``<repo>/.git/worktrees/<name>`` admin entry linger, the next
+    ``orca worktree create --name <name>`` auto-suffixes to ``<name>-2``
+    because git still considers ``<name>`` registered. ``TeacherWorktree.close()``
+    runs ``git worktree prune`` to drop the stale admin entry.
+
+    This is a pure-git test (does NOT require Orca running). It builds a real
+    git repo at ``tmp_path``, mints a stale admin entry, calls ``close()``
+    on a teacher whose ``mgr.REPO_PATH`` points at the tmp repo — so the
+    prune step runs against real git — and asserts the entry is gone
+    afterwards.
+    """
+
+    def test_close_prunes_stale_admin_entry(self, tmp_path):
+        """The actual regression scenario.
+
+        1. Boot TWO tmp git repos (main_repo + sentinel_repo), each with
+           a worktree that we later remove externally to make the admin
+           entry stale.
+        2. Construct a ``TeacherWorktree`` with ``_mgr.REPO_PATH=main_repo``
+           so ``close()`` exercises ``git worktree prune`` against real git
+           for the main_repo only.
+        3. Call ``close()``.
+        4. Assert ``git -C main_repo worktree list --porcelain`` no longer
+           contains the stale entry (the cto-N suffix spray is fixed).
+        5. Assert ``git -C sentinel_repo worktree list --porcelain`` STILL
+           contains its stale entry — proves the prune targeted the right
+           repo (REPO_PATH was honored), not just pruned everywhere.
+        """
+        from unittest.mock import MagicMock
+        from teacher import TeacherWorktree
+
+        main_repo = tmp_path / "main"
+        sentinel_repo = tmp_path / "sentinel"
+        wt_dir_main = tmp_path / "leaked-cto"
+        wt_dir_sentinel = tmp_path / "sentinel-leak"
+        main_repo.mkdir()
+        sentinel_repo.mkdir()
+        wt_dir_main.mkdir()
+        wt_dir_sentinel.mkdir()
+
+        self._init_git_repo(main_repo)
+        self._init_git_repo(sentinel_repo)
+
+        # Add STALE-EQUIVALENT worktrees to BOTH repos. prune() will only
+        # touch main_repo.
+        subprocess.run(
+            ["git", "worktree", "add", str(wt_dir_main), "HEAD"],
+            cwd=str(main_repo), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "worktree", "add", str(wt_dir_sentinel), "HEAD"],
+            cwd=str(sentinel_repo), check=True, capture_output=True,
+        )
+
+        # Make both admin entries stale (simulate orphaned dirs). prune()
+        # will only target the main repo via REPO_PATH.
+        import shutil
+        shutil.rmtree(str(wt_dir_main))
+        shutil.rmtree(str(wt_dir_sentinel))
+
+        # Sanity: both repos consider their entries registered.
+        for label, repo, expected in (
+            ("main", main_repo, "leaked-cto"),
+            ("sentinel", sentinel_repo, "sentinel-leak"),
+        ):
+            porcelain = subprocess.check_output(
+                ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+                text=True,
+            )
+            assert expected in porcelain, (
+                f"{label} setup failed; expected {expected!r} in porcelain.\n"
+                f"porcelain:\n{porcelain}"
+            )
+
+        # Build a TeacherWorktree and stub _mgr so REPO_PATH points at
+        # main_repo. Layers 1 + 2 are mocked; Layer 3 runs real git prune.
+        teacher = TeacherWorktree("cto")
+        teacher._mgr = MagicMock()
+        teacher._mgr.REPO_PATH = main_repo  # THE PRUNE TARGET
+        teacher._mgr.close_worktree = MagicMock(return_value=True)
+        teacher._mgr._run_orca = MagicMock(return_value=None)
+        teacher._mgr.close_terminal = MagicMock()
+        teacher.worktree_path = str(wt_dir_main)
+        teacher._review_terminal = "fake-handle"
+        teacher._booted = True
+
+        teacher.close()
+
+        # Layer 1 invoked with the worktree path.
+        teacher._mgr.close_worktree.assert_called_once_with(str(wt_dir_main))
+
+        # Layer 2 invoked with the canonical-name selector (corrected flag).
+        rm_calls = [
+            c.args[0] for c in teacher._mgr._run_orca.call_args_list
+            if isinstance(c.args, tuple) and len(c.args) > 0
+            and isinstance(c.args[0], list)
+            and "remove" in c.args[0]
+        ]
+        assert rm_calls, "Expected belt-and-suspenders orca worktree rm call"
+        assert "--worktree" in rm_calls[0]
+        assert "name:teacher-cto" in rm_calls[0]
+        assert "--force" in rm_calls[0]
+
+        # REGRESSION: Layer 3 (real git prune) cleared the main_repo's stale
+        # entry.
+        after_main = subprocess.check_output(
+            ["git", "-C", str(main_repo), "worktree", "list", "--porcelain"],
+            text=True,
+        )
+        assert "leaked-cto" not in after_main, (
+            f"close() did not prune the stale admin entry in the target "
+            f"repo — the cto-N suffix spray will recur on next --serve.\n"
+            f"main_repo porcelain after close():\n{after_main}"
+        )
+
+        # TARGETED-PROOF: the sentinel repo's entry survived. This proves
+        # the prune ran in REPO_PATH, not "git worktree prune" with no
+        # scoping that could touch the wrong repo anywhere.
+        after_sentinel = subprocess.check_output(
+            ["git", "-C", str(sentinel_repo), "worktree", "list", "--porcelain"],
+            text=True,
+        )
+        assert "sentinel-leak" in after_sentinel, (
+            f"close() pruned the WRONG repo — the sentinel repo's stale "
+            f"entry should still be present (it wasn't REPO_PATH).\n"
+            f"sentinel_repo porcelain after close():\n{after_sentinel}"
+        )
+
+    def _init_git_repo(self, repo_path):
+        """Helper: init a tmp_path repo with a single commit on main."""
+        subprocess.run(["git", "init"], cwd=str(repo_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(repo_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=str(repo_path), check=True, capture_output=True)
+        (repo_path / "README.md").write_text("init\n")
+        subprocess.run(["git", "add", "README.md"], cwd=str(repo_path), check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_path), check=True, capture_output=True)

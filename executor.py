@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import uuid
+from pathlib import Path
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -16,13 +17,95 @@ COMBO_MAP = {
     # score determines whether the role is qualified for the task difficulty.
     "searcher": "auto/best-free",
     "executor": "auto/best-free",
-    "reviewer": "mistral/mistral-small-latest",
+    "reviewer": "auto/best-free",
     "browser": "auto/best-free",
-    "coder": "auto/best-free",
+    "agy/gemini-3.5-flash-high": "agy/gemini-3.5-flash-high",
+    "agy/claude-sonnet-4-6": "agy/claude-sonnet-4-6",
+    "mistral/mistral-small-latest": "mistral/mistral-small-latest",
+    "auto/best-free": "auto/best-free",
+    "coder": "oc/deepseek-v4-flash-free",
     # A2A fallback (agent-to-agent protocol)
     "openhands": "a2a/antigravity",
     "a2a-agent": "a2a/antigravity",
 }
+
+# LoRA adapter keys are dynamically resolved at call_model time.
+# When agent_name starts with "lora-", the suffix is the domain
+# (e.g. "lora-python-testing"), and call_model prepends an adapter
+# activation prefix to the system prompt. The actual model used
+# for inference is the base model (COMBO_MAP["coder"]).
+_LORA_PREFIX = "lora-"
+
+# ── ACRouter: outcome-feedback routing (arXiv:2606.22902) ──────────────────
+# Combo selection is treated as an experience-gathering agent. Instead of a
+# fixed COMBO_MAP lookup, call_model consults a persistent epsilon-greedy
+# bandit (RouterExperience) that learns which combo actually works per role.
+# The director records each routing outcome (success + review quality) from
+# run_task via record_routing_outcome(); the router uses that to bias future
+# selections while still exploring. Until a role has any experience, the
+# static COMBO_MAP remains the cold-start default.
+import os as _os
+
+_ROUTER_PATH = _os.environ.get("ROUTER_EXPERIENCE_PATH")
+if _ROUTER_PATH == "":
+    _ROUTER_PATH = None  # in-memory only (used by tests)
+elif _ROUTER_PATH is None:
+    _ROUTER_PATH = str(Path(__file__).parent / "data" / "router_experience.json")
+
+_ROUTER = None
+_LAST_SELECTED_COMBO: dict = {}  # agent_name -> combo actually used (per call)
+
+
+def _get_router():
+    """Lazily construct the shared ACRouter singleton (module-level)."""
+    global _ROUTER
+    if _ROUTER is None:
+        from router_experience import RouterExperience, combo_candidates_from
+
+        _ROUTER = RouterExperience(
+            candidates=combo_candidates_from(COMBO_MAP),
+            default_resolver=lambda agent: COMBO_MAP.get(agent),
+            file_path=_ROUTER_PATH,
+            exploration_rate=float(_os.environ.get("ROUTER_EXPLORATION_RATE", "0.15")),
+        )
+    return _ROUTER
+
+
+def select_combo(agent_name: str) -> str:
+    """ACRouter entry point: pick the combo for *agent_name*.
+
+    Falls back to the static COMBO_MAP when there is no experience for the
+    role yet. Remembers the chosen combo so the outcome can be recorded
+    against the exact combo that was used.
+    """
+    combo = _get_router().select_combo(agent_name)
+    _LAST_SELECTED_COMBO[agent_name] = combo
+    return combo
+
+
+def record_routing_outcome(
+    agent_name: str, success: bool, quality: float = 1.0
+) -> None:
+    """Record the outcome of routing *agent_name* (used by the director).
+
+    Records against the combo that select_combo() last chose for this agent.
+    Quality is in [0, 1] (e.g. normalized review score).
+    """
+    combo = _LAST_SELECTED_COMBO.get(agent_name) or COMBO_MAP.get(agent_name)
+    if combo is None:
+        return
+    _get_router().record_outcome(agent_name, combo, success=success, quality=quality)
+
+
+def _resolve_lora_adapter(agent_name: str) -> Optional[str]:
+    """If *agent_name* starts with ``lora-``, extract the domain.
+
+    Returns the domain name (e.g. ``"python-testing"``) or ``None``
+    if the name is not a LoRA adapter key.
+    """
+    if agent_name.startswith(_LORA_PREFIX):
+        return agent_name[len(_LORA_PREFIX):]
+    return None
 
 # Domain → Role mapping. When a task comes in with a given domain,
 # the director routes it to the specialized role that handles that domain.
@@ -247,7 +330,26 @@ def call_model(
     system_prompt: Optional[str] = None,
     timeout: Optional[int] = None,
 ) -> str:
-    combo = COMBO_MAP.get(agent_name)
+    # Resolve LoRA adapter: if agent_name is "lora-{domain}", prepend
+    # an adapter activation prefix to the system prompt and call the
+    # base model (coder) instead of an unmapped key.
+    lora_domain = _resolve_lora_adapter(agent_name)
+    if lora_domain:
+        adapter_prefix = (
+            f"[ACTIVATE ADAPTER: {lora_domain}]\n"
+            f"You are a domain-tuned model for {lora_domain}. "
+            f"Apply the learned patterns.\n\n"
+        )
+        if system_prompt:
+            system_prompt = adapter_prefix + system_prompt
+        else:
+            system_prompt = adapter_prefix
+        agent_name = "coder"  # Use base model for actual inference
+
+    # ACRouter: pick the combo through the outcome-feedback router (falls
+    # back to the static COMBO_MAP on cold start). The chosen combo is
+    # remembered so the director can record the outcome later.
+    combo = select_combo(agent_name)
     if not combo:
         raise ExecutorError(f"Unknown agent '{agent_name}' — no combo mapped")
 

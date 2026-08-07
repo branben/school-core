@@ -4,7 +4,6 @@ Writes high-value observations from Layer 2 (Engram/episodic) to
 Layer 3 (YAML archival) during sleep/wake consolidation.
 """
 
-import json
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -12,8 +11,6 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-
-from engram_adapter import engram_available, search_trajectories
 
 CONSOLIDATION_DIR = Path(__file__).parent / "data" / "sessions" / "consolidation"
 
@@ -43,7 +40,7 @@ def write_consolidation(
         Path to the written YAML file, or None on failure (non-blocking).
     """
     if not observations:
-        observations = _fetch_from_engram(domain)
+        observations = _fetch_trajectories(domain)
         if not observations:
             return None
 
@@ -108,18 +105,11 @@ def load_all_consolidation(session_id: str) -> list[dict]:
     return results
 
 
-def _fetch_from_engram(domain: str) -> list[dict]:
-    """Fetch recent episodic observations from Engram for a domain."""
+def _fetch_trajectories(domain: str) -> list[dict]:
+    """Fetch recent trajectory files for a domain (file-based RAG)."""
+    from trajectory import list_trajectories as _list_trajectories
     try:
-        results = search_trajectories(domain=domain, limit=20)
-        observations = []
-        for obs_id, title, body_json in results:
-            try:
-                traj = json.loads(body_json)
-                observations.append(traj)
-            except json.JSONDecodeError:
-                continue
-        return observations
+        return _list_trajectories(domain=domain, limit=20)
     except Exception:
         return []
 

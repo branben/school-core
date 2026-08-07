@@ -1,4 +1,3 @@
-import json
 import re
 import subprocess
 import sys
@@ -11,12 +10,19 @@ from typing import Optional
 import os
 
 _REPO_ROOT = Path(__file__).resolve().parent
-DEFAULT_VAULT = Path(os.environ.get("AGENT_SCHOOL_VAULT", _REPO_ROOT / "data" / "vault"))
+# Default vault = repo root, where `ccc init` creates the .cocoindex_code/
+# search index. ccc scopes results by cwd, so vault MUST be the directory
+# containing .cocoindex_code/.  Override via AGENT_SCHOOL_VAULT env var.
+DEFAULT_VAULT = Path(os.environ.get("AGENT_SCHOOL_VAULT", str(_REPO_ROOT)))
 
 # Approximate char budget for Layer 3 archival context.
 # Total context budget is ~10K chars; Layer 0 + Layer 1 can use ~2K,
 # leaving ~8K. We cap Layer 3 at 4K to leave headroom.
 LAYER_3_CHAR_BUDGET = 4000
+
+# Char budget for Serena LSP symbol results. Layer 0 + Layer 1 share
+# ~2K chars total, so we cap symbol locations at 600 chars.
+SERENA_CHAR_BUDGET = 600
 
 
 def enrich_prompt(
@@ -25,10 +31,17 @@ def enrich_prompt(
     vault_path: Optional[Path] = None,
     top_k: int = 3,
     session_id: Optional[str] = None,
+    repo_path: Optional[Path] = None,
 ) -> str:
     """Gather context from vault (CocoIndex) + past trajectories (Engram)
-    + archival consolidation (Layer 3) and return a string to append
-    to the agent's system prompt.
+    + Serena (LSP symbol search) + archival consolidation (Layer 3) and
+    return a string to append to the agent's system prompt.
+
+    Args:
+        repo_path: Optional path to the target repo for Serena symbol
+                   lookups. Pass the repo clone path for code-heavy
+                   domains to get exact symbol locations.
+
     Returns empty string on any failure (non-blocking by design)."""
     vault = vault_path or DEFAULT_VAULT
     parts = []
@@ -41,6 +54,16 @@ def enrich_prompt(
                 parts.append(ctx)
         except Exception as e:
             sys.stderr.write(f"[context] cocoindex failed: {e}\n")
+
+    # 1b. Exact symbol context via Serena LSP (code-heavy domains)
+    if domain in ("code-implementation", "python-coding", "python-testing",
+                  "code-review", "debugging", "_default"):
+        try:
+            ctx = _serena_context(prompt, repo_path, top_k)
+            if ctx:
+                parts.append(ctx)
+        except Exception as e:
+            sys.stderr.write(f"[context] serena failed: {e}\n")
 
     # 2. Temporal context from Engram (all domains) — similar past trajectories
     if domain in ("_default", "code-review", "python-testing", "git-operations"):
@@ -105,24 +128,26 @@ def _cocoindex_context(prompt: str, vault: Path, top_k: int) -> Optional[str]:
 
 
 def _engram_context(domain: str, prompt: str, top_k: int) -> Optional[str]:
-    """Search past trajectories in Engram for similar tasks."""
-    from engram_adapter import search_trajectories as engram_search
+    """Search past trajectory files for similar tasks (file-based RAG).
 
-    # Extract key terms from the prompt for search
-    search_terms = _extract_key_terms(prompt)
-    if not search_terms:
+    Reads trajectory JSON files from ``data/trajectories/`` sorted by
+    recency then filtered by score. Prefer scored trajectories first.
+    """
+    from trajectory import list_trajectories as _list_trajectories
+
+    # Fetch recent trajectories for this domain
+    trajs = _list_trajectories(domain=domain, limit=top_k * 3)
+    if not trajs:
         return None
 
-    results = engram_search(search_terms, limit=top_k)
-    if not results:
-        return None
+    # Sort: scored (desc) first, then unscored
+    scored = [t for t in trajs if t.get('task_score') is not None and t['task_score'] > 0]
+    unscored = [t for t in trajs if t.get('task_score') is None or t['task_score'] == 0]
+    scored.sort(key=lambda t: t['task_score'], reverse=True)
+    ordered = (scored + unscored)[:top_k]
 
     lines = ["**Past similar trajectories:**"]
-    for obs_id, title, body_json in results:
-        try:
-            traj = json.loads(body_json)
-        except json.JSONDecodeError:
-            continue
+    for traj in ordered:
         ts = traj.get("timestamp", "?")[:19]
         agent = traj.get("agent", "?")
         score = traj.get("task_score", "?")
@@ -212,32 +237,106 @@ def _archival_context(domain: str, session_id: str) -> Optional[str]:
         return None
 
 
-def _extract_key_terms(prompt: str) -> str:
-    """Extract meaningful search terms from a prompt, max ~5 words."""
-    cleaned = re.sub(r'[^\w\s]', ' ', prompt)
-    words = cleaned.split()
-    # Filter out very common words
-    stopwords = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been",
-        "has", "have", "had", "do", "does", "did", "will", "would",
-        "could", "should", "may", "might", "can", "shall", "to", "of",
-        "in", "for", "on", "with", "at", "by", "from", "as", "into",
-        "through", "during", "before", "after", "above", "below",
-        "between", "out", "off", "over", "under", "again", "further",
-        "then", "once", "here", "there", "when", "where", "why",
-        "how", "all", "each", "every", "both", "few", "more", "most",
-        "other", "some", "such", "no", "nor", "not", "only", "own",
-        "same", "so", "than", "too", "very", "just", "because",
-        "and", "but", "or", "if", "while", "that", "this", "these",
-        "those", "it", "its", "reply", "exactly", "please", "check",
-        "review", "write", "fix", "add", "remove", "update", "change",
-    }
-    terms = [w.lower() for w in words if w.lower() not in stopwords and len(w) > 2]
-    # Prefer unique terms, limit to 5
+def _serena_context(
+    prompt: str,
+    repo_path: Optional[Path] = None,
+    top_k: int = 3,
+) -> Optional[str]:
+    """Layer 1 structural context via Serena's LSP symbol search.
+
+    Extracts symbol-like identifiers from the prompt and resolves each
+    to its exact file/line location. Complements CocoIndex's semantic
+    search with precise symbol-level resolution.
+
+    Non-blocking: returns ``None`` if Serena is unavailable or no
+    symbols are found.
+    """
+    from serena_adapter import serena_available, find_symbol
+
+    if not serena_available():
+        return None
+
+    # Extract potential symbol names from the prompt (CamelCase,
+    # snake_case identifiers).
+    candidates = _extract_symbol_names(prompt)
+    if not candidates:
+        return None
+
+    resolved = []
+    for name in candidates[:top_k]:
+        try:
+            result = find_symbol(name, project_path=repo_path)
+        except Exception:
+            continue
+        if result is None:
+            continue
+        # Normalise: result may be a single dict or a list.
+        # Filter out error wrappers (raw key = tool error message).
+        items = result if isinstance(result, list) else [result]
+        for item in items:
+            if isinstance(item, dict) and "raw" not in item:
+                resolved.append(item)
+
+    if not resolved:
+        return None
+
+    lines = ["**Exact symbol locations (Serena LSP):**"]
+    total_chars = len(lines[0])
+    for r in resolved[:top_k]:
+        # Normalise across Serena's native field names and generic formats.
+        name = r.get("name_path") or r.get("name", "?")
+        kind = r.get("kind", "")
+        file_ = r.get("relative_path") or r.get("file", "?")
+        body = r.get("body_location", {})
+        line = body.get("start_line") if isinstance(body, dict) else r.get("line", r.get("start_line", "?"))
+        kind_str = f" ({kind})" if kind else ""
+        entry = f"- `{name}`{kind_str} → `{file_}:{line}`"
+        if total_chars + len(entry) > SERENA_CHAR_BUDGET:
+            lines.append("  ... (truncated)")
+            break
+        lines.append(entry)
+        total_chars += len(entry)
+
+    return "\n".join(lines)
+
+
+def _extract_symbol_names(prompt: str) -> list[str]:
+    """Extract CamelCase and snake_case identifiers from a prompt.
+
+    Returns up to 5 unique identifier-like tokens, excluding common
+    stopwords and very short tokens.
+    """
+    # Match CamelCase (both UpperCamelCase and lowerCamelCase),
+    # snake_case, ALL_CAPS, and backtick-quoted identifiers.
+    candidates = re.findall(
+        r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)"  # UpperCamelCase
+        r"|\b([a-z]+(?:[A-Z][a-z]+)+)"         # lowerCamelCase
+        r"|\b([a-z]+(?:_[a-z]+){1,})"           # snake_case
+        r"|\b([A-Z]{2,})"                        # ALL_CAPS
+        ,
+        prompt,
+    )
+    # Also capture backtick-quoted identifiers: `foo_bar`
+    backticked = re.findall(r"`([a-zA-Z_][a-zA-Z0-9_]*)`", prompt)
+    candidates.extend(backticked)
+
+    # re.findall with multiple groups returns tuples; flatten to single values.
+    flat: list[str] = []
+    for t in candidates:
+        if isinstance(t, tuple):
+            flat.append("".join(t))
+        else:
+            flat.append(t)
+
     seen = set()
     unique = []
-    for t in terms:
-        if t not in seen:
-            seen.add(t)
-            unique.append(t)
-    return " ".join(unique[:5])
+    for c in flat:
+        c_lower = c.lower()
+        if c_lower in seen or len(c) < 3:
+            continue
+        seen.add(c_lower)
+        unique.append(c)
+
+    return unique[:5]
+
+

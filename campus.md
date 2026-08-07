@@ -81,12 +81,15 @@ the verify-gate addition:
 |------------|--------|-------|
 | **Students (Hermes)** | ✅ Wired | `orca` terminal dispatch; `--yolo --accept-hooks`. |
 | **Principal verify gate (execute code)** | ✅ Wired | `verify_gate.py` + `flake.nix#verifyShell` (Determinate Nix). Runs typecheck/test hermetically before review. |
-| **Serena (symbol pre-read)** | ✅ Wired | Used for symbol grounding in practice. |
-| **Adversarial review (text)** | ✅ Wired | `adversarial_reviewer.py` — judges student *prose*. |
-| **Layer 0 — CocoIndex vault** | ⚠️ Aspirational | `context_orchestrator._cocoindex_context` calls `ccc`; requires CocoIndex install + a vault. Not needed for the verify-gate. |
-| **Layer 2 — Engram trajectories** | ⚠️ Aspirational | `engram_adapter` required; not wired in the run that produced this note. |
+| **Layer 1 — Serena LSP symbols** | ✅ Wired | `context_orchestrator._serena_context` resolves prompt identifiers to exact `file:line` locations via `serena_adapter.find_symbol`. Requires `serena` CLI; degrades silently if absent. Verified e2e (symbol extraction, field-name normalisation, `name_path_pattern` fix). Wired through both `director.run_task(repo_path=…)` and `mcp_server._handle_school_execute(repo_path=DEFAULT_VAULT)`. |
+| **Adversarial review (text)** | ✅ Wired | `adversarial_reviewer.py` — judges student *prose* via `agy/gemini-3.5-flash-high`. Handles string-only findings (first=HIGH, rest=MEDIUM, capped at 5 entries). Score floor at 30. Multi-lens short-circuit (first lens that finds issues skips remaining). |
+| **Layer 0 — CocoIndex vault** | ✅ Wired | `context_orchestrator._cocoindex_context` calls `ccc search` from `DEFAULT_VAULT` (repo root, where `.cocoindex_code/` lives — was `data/vault`, fixed 2026-07-29). Requires `ccc` CLI (`cocoindex-code[full]`) + indexed vault. Degrades silently if absent. Verified e2e. Wired through both `director.run_task(vault_path=DEFAULT_VAULT)` and `mcp_server._handle_school_execute(vault_path=DEFAULT_VAULT)`. |
+| **Layer 2 — Engram trajectories** | ✅ Wired | `context_orchestrator._engram_context` calls `engram_adapter.search_trajectories`; requires `engram` CLI. Degrades silently if absent. Metadata-line parsing fixed (date-prefixed `project:`/`scope:` lines no longer corrupt JSON bodies). Verified e2e (seed → search → context formatting). |
+| **Verification scoring** | ✅ Wired | `verify_task_output` in `issue_bridge.py` — scores execution correctness via `agy/gemini-3.5-flash-high`. Hardened JSON parser: multi-candidate fence extraction, balanced brace depth, control char stripping, `strict=False`. 18 unit tests covering all edge cases. |
+| **Verify gate (execute code)** | ⚠️ Partial | `verify_gate.py` exists and runs when Nix + `flake.nix#verifyShell` are available. Discovery failures (no commands found) no longer override adversarial review score (`ran > 0` guard added 2026-07-29). |
 | **AgentMail bus (2-judge)** | ⚠️ Aspirational | The two-judge (CTO+COO) dispatch via AgentMail is designed but was run as a single reviewer in practice. |
 | **Bookbag-as-contract** | ⚠️ Partial | Students should write `~/.hermes/bookbag/<bead>.json`; PTY tail-drop can prevent it — verify on disk, don't trust the report. |
+| **Verification-co-evolution loop** | ✅ Wired | `adversarial_reviewer.py` (`VerificationCoevolution`, `CoevolutionReport`, `review_with_coevolution`) + `director._run_two_judge_review`. Records per-axis capability after each review; when the agent/harness improves on a dimension no acceptance check covers, it flags a coverage gap and proposes hardening/regenerating the check set (prevents reward hacking at the Verification Horizon). Zero extra LLM calls (reuses CTO+COO traces). Default hardening is human-gated (`status: "proposed"`), never silently mutates the active check set. 15 unit tests. |
 
 **The principle that matters most:** *the compiler runs before the critic
 speaks.* For a long time the pipeline only ran the critic on prose. The
@@ -101,7 +104,7 @@ Four layers, each with a distinct lifetime and retrieval pattern:
 | Layer | Name | What | Source |
 |-------|------|------|--------|
 | 0 | Ambient | Domain glossary, project conventions, role definitions | CocoIndex vault search |
-| 1 | Structural | File tree, symbol index, import graphs | CocoIndex + repo_reader |
+| 1 | Structural | File tree, symbol index, import graphs | Serena LSP |
 | 2 | Episodic | Trajectories, decisions, recent observations | Engram |
 | 3 | Archival | Sleep/wake consolidation, handoff anchors | Obsidian + Engram REM cycles |
 

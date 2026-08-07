@@ -135,7 +135,8 @@ class TestDispatchHappyPath:
 
 class TestDispatchEscalation:
     def test_low_confidence_skips_to_next(self, tmp_scores):
-        # coder declines (readiness 4 < 7) -> escalate to A2A fallback (openhands)
+        # coder (score=55) below diploma gate (75) + force_agent bypasses
+        # route_task → readiness runs and coder declines (4 < 7) → escalates
         def mock_call_model(agent, prompt, system_prompt=None, timeout=None):
             if "confident" in prompt.lower():
                 if agent == "coder":
@@ -147,14 +148,16 @@ class TestDispatchEscalation:
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
-                difficulty="hard",
+                difficulty="diploma",
                 store=tmp_scores,
+                force_agent="coder",
             )
         assert result["status"] == "success"
         assert result["agent"] == "openhands"
         assert result["escalation"] is True
 
     def test_all_decline_falls_to_a2a(self, tmp_scores):
+        # coder (score=55) below diploma gate (75) → readiness runs → escalation
         def mock_call_model(agent, prompt, system_prompt=None, timeout=None):
             if agent == "openhands":
                 return "a2a response"
@@ -166,12 +169,35 @@ class TestDispatchEscalation:
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
-                difficulty="hard",
+                difficulty="diploma",
                 store=tmp_scores,
+                force_agent="coder",
             )
         assert result["status"] == "success"
         assert result["agent"] == "openhands"
         assert result["escalation"] is True
+
+    def test_qualified_agent_skips_readiness_check(self, tmp_scores):
+        """When the agent qualifies for the difficulty gate (score >= gate),
+        the readiness check is skipped — no escalation even if mock would
+        return low confidence."""
+        def mock_call_model(agent, prompt, system_prompt=None, timeout=None):
+            if "confident" in prompt.lower():
+                return "1"  # would fail if checked
+            return "task response"
+
+        with patch("director.call_model", side_effect=mock_call_model):
+            result = run_task(
+                prompt="Write a function",
+                domain="_default",
+                difficulty="hard",
+                store=tmp_scores,
+            )
+        assert result["status"] == "success"
+        # coder (score=55) qualifies for hard (gate=50), so readiness is
+        # skipped — the low readiness mock value is never called.
+        assert result["agent"] == "coder"
+        assert result["escalation"] is False
 
 
 class TestEscalationLogUnit:

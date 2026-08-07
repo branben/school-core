@@ -98,8 +98,8 @@ class TestWriteConsolidation:
         assert isinstance(data["error_recurrence"], dict)
 
     def test_empty_observations_no_engram_returns_none(self, tmp_consolidation_dir):
-        """Empty observations + Engram down = nothing to consolidate, returns None."""
-        with patch("consolidation_writer.engram_available", return_value=False):
+        """Empty observations + no trajectory files = nothing to consolidate, returns None."""
+        with patch("trajectory.list_trajectories", return_value=[]):
             result = write_consolidation(
                 session_id="ses_empty_001",
                 domain="python-testing",
@@ -108,25 +108,24 @@ class TestWriteConsolidation:
         assert result is None
 
     def test_empty_observations_with_engram_fetches(self, tmp_consolidation_dir):
-        """Empty observations but Engram available: fetches from Engram."""
+        """Empty observations but trajectory files exist: fetches from filesystem."""
         mock_results = [
-            ("123", "trajectory", '{"domain": "python-testing", "status": "success"}')
+            {"domain": "python-testing", "status": "success", "task_score": 75.0},
         ]
-        with patch("consolidation_writer.engram_available", return_value=True):
-            with patch("consolidation_writer.search_trajectories", return_value=mock_results):
-                result = write_consolidation(
-                    session_id="ses_fetch_001",
-                    domain="python-testing",
-                    observations=[],
-                )
+        with patch("trajectory.list_trajectories", return_value=mock_results):
+            result = write_consolidation(
+                session_id="ses_fetch_001",
+                domain="python-testing",
+                observations=[],
+            )
         assert result is not None
         with open(result) as f:
             data = yaml.safe_load(f)
         assert data["domain"] == "python-testing"
 
     def test_no_engram_no_observations_returns_none(self, tmp_consolidation_dir):
-        """When Engram is unavailable and no observations, returns None."""
-        with patch("consolidation_writer.engram_available", return_value=False):
+        """When no trajectory files exist and no observations, returns None."""
+        with patch("trajectory.list_trajectories", return_value=[]):
             result = write_consolidation(
                 session_id="ses_none_001",
                 domain="python-testing",

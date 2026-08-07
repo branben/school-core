@@ -34,6 +34,8 @@
           pkgs.ripgrep
           pkgs.fd
           pkgs.jq
+          pkgs.gitFull
+          pkgs.gh
         ];
         # Network is intentionally NOT enabled here. verify_gate mounts a
         # pre-cached clone; if a test needs network it must opt in explicitly.

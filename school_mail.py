@@ -26,6 +26,12 @@ import urllib.error
 BASE = "https://api.agentmail.to"
 API_PREFIX = "/v0"
 
+# Agent-School human-in-the-loop control-plane inbox. Verdict notifications are
+# sent here so the human can reply with /approve /reject /fix and the inbound
+# poller (scripts/school_inbound.py) — which watches this same inbox — can act.
+# Keep this in sync with SCHOOL_INBOX in scripts/school_inbound.py.
+SCHOOL_INBOX = "REDACTED@REDACTED.invalid"
+
 
 def _headers() -> dict:
     key = os.environ.get("AGENTMAIL_API_KEY")
@@ -59,6 +65,40 @@ def _default_inbox() -> str:
     return inboxes[0]["inbox_id"]
 
 
+def _resolve_dest_inbox() -> str:
+    """Destination inbox for verdict notifications.
+
+    Prefer the Agent-School control-plane inbox (SCHOOL_INBOX) so the human's
+    replies land where the inbound poller (scripts/school_inbound.py) watches.
+    Falls back to AGENTMAIL_INBOX env, then the first available inbox.
+    """
+    inbox = os.environ.get("AGENTMAIL_INBOX")
+    if inbox:
+        return inbox
+    res = _req("GET", "/inboxes")
+    inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
+    if not inboxes:
+        raise RuntimeError("no AgentMail inboxes available")
+    for ib in inboxes:
+        if ib.get("inbox_id") == SCHOOL_INBOX:
+            return ib["inbox_id"]
+    return inboxes[0]["inbox_id"]
+
+
+def _format_findings_table(findings: list[dict]) -> str:
+    """Render qodo pre-merge findings + review findings as a compact table."""
+    if not findings:
+        return "  (none)"
+    lines = ["  file:line                  sev  message"]
+    for f in findings:
+        file = f.get("file", "?")
+        line = f.get("line", "?")
+        sev = f.get("severity", f.get("level", "?"))
+        msg = f.get("message", f.get("description", ""))[:60]
+        lines.append(f"  {file}:{line:<20} {sev:<4} {msg}")
+    return "\n".join(lines)
+
+
 def notify_verdict(
     bead: str,
     accepted: bool,
@@ -66,6 +106,10 @@ def notify_verdict(
     coo_verdict: str,
     summary: str = "",
     repo: str = "__global__",
+    qodo_findings: list[dict] | None = None,
+    qodo_status: str | None = None,
+    cto_findings: list | None = None,
+    coo_findings: list | None = None,
 ) -> bool:
     """Send a two-judge verdict notification to the human operator.
 
@@ -73,24 +117,50 @@ def notify_verdict(
     network error, etc.) — never raises, so the Principal's reconcile loop
     stays resilient.
 
-    Sends a FRESH thread per verdict (reply-on-thread is 400 on the
-    user-scoped key). The body carries /approve /reject /fix command hints.
+    Sends a rubber-stamp card: the human reads the verdict + qodo output
+    and replies with /approve /reject /fix. The AgentMail inbound poller
+    (school_mail_poller.py) processes the reply and triggers merge/dispose.
     """
     try:
-        inbox = _default_inbox()
+        inbox = _resolve_dest_inbox()
     except Exception as e:
         sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
         return False
 
-    mark = "ACCEPTED ✅" if accepted else "REJECTED ❌"
-    text = (
-        f"Agent-School verdict [{repo}]\n"
-        f"Bead: {bead}\n"
-        f"Result: {mark}\n"
-        f"CTO: {cto_verdict}  COO: {coo_verdict}\n"
-        f"{summary}\n\n"
-        f"Commands: /approve  /reject  /fix"
-    )
+    mark = "✅ ACCEPTED" if accepted else "❌ REJECTED"
+
+    # Build the rubber-stamp card body
+    parts = [
+        f"[Agent-School] {bead} — {mark}",
+        "",
+        f"Repo: {repo}",
+        f"CTO: {cto_verdict}  |  COO: {coo_verdict}",
+    ]
+
+    if qodo_status:
+        parts.append("")
+        parts.append(f"Qodo pre-merge: {qodo_status}")
+        if qodo_findings:
+            parts.append("  Findings (real bugs only):")
+            parts.append(_format_findings_table(qodo_findings))
+
+    if cto_findings or coo_findings:
+        parts.append("")
+        parts.append("Review findings:")
+        if cto_findings:
+            parts.append(f"  CTO: {_format_findings_table(cto_findings)}")
+        if coo_findings:
+            parts.append(f"  COO: {_format_findings_table(coo_findings)}")
+
+    if summary:
+        parts.append("")
+        parts.append(summary)
+
+    parts.append("")
+    parts.append("Commands: /approve  /reject  /fix <note>")
+
+    text = "\n".join(parts)
+
     try:
         _req(
             "POST",

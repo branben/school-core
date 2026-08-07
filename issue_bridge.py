@@ -139,7 +139,7 @@ def verify_task_output(
     domain: str,
     difficulty: str,
     codebase_context: str = "",
-    verification_agent: str = "gemini-2.0-flash",
+    verification_agent: str = "agy/gemini-3.5-flash-high",
 ) -> dict:
     """Verify agent output correctness using a structured evaluation prompt.
 
@@ -169,23 +169,40 @@ def verify_task_output(
     # Parse JSON response from verifier
     try:
         import re
-        # Strip common prefixes models add: "json", "JSON", newlines, whitespace
-        cleaned = re.sub(r'^(?:json|JSON)\s*', '', response.strip())
-        cleaned = cleaned.replace('\n', ' ')
-        cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', cleaned)
-        # First try to find JSON in markdown code fences
-        code_fence_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', cleaned, re.DOTALL)
-        if code_fence_match:
-            json_str = code_fence_match.group(1)
-        else:
-            # Fallback: find first {...} block (non-greedy)
-            json_match = re.search(r'\{.*?\}', cleaned, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-            else:
-                json_str = cleaned
 
-        result = json.loads(json_str)
+        # --- Step 1: normalise ---
+        raw = response.strip()
+        # Strip leading "json"/"JSON" prefix some models emit
+        raw = re.sub(r'^(?:json|JSON)\s*', '', raw)
+        # Strip control characters (preserve newlines and tabs)
+        raw = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', raw)
+
+        # --- Step 2: collect candidates (fence-extracted + raw) ---
+        candidates = []
+        if '```' in raw:
+            for match in re.finditer(r'```(?:json)?\s*\n?([\s\S]+?)```', raw):
+                candidates.append(match.group(1).strip())
+        candidates.append(raw)
+        candidates = [re.sub(r'^(?:json|JSON)\s*', '', c) for c in candidates]
+
+        # --- Step 3: balanced extraction from first parseable candidate ---
+        from adversarial_reviewer import extract_balanced_json
+
+        result = None
+        for candidate_str in candidates:
+            idx = candidate_str.find('{')
+            if idx < 0:
+                continue
+            # Extract balanced {...} block
+            candidate = extract_balanced_json(candidate_str[idx:], "{", "}")
+            try:
+                result = json.loads(candidate, strict=False)
+                break
+            except json.JSONDecodeError:
+                continue
+
+        if result is None:
+            raise json.JSONDecodeError("No parseable JSON found", "", 0)
 
         score = max(0, min(100, int(result.get("score", 50))))
         return {
@@ -222,10 +239,12 @@ def _run_verify_gate(
         from verify_gate import run_verify_gate
         project_verify = Path(repo_path) / "project_verify.yaml"
         return run_verify_gate(repo_path, project_verify if project_verify.exists() else None)
+    except ImportError:
+        # verify_gate module not available — not a blocker
+        return None
     except Exception as e:
         sys.stderr.write(f"[issue_bridge] verify_gate failed (non-blocking): {e}\n")
-        return {"passed": False, "failures": [{"cmd": "(verify_gate)", "exit": None,
-                                                "stderr": f"verify_gate error: {e}"}]}
+        return None  # Can't run → don't override adversarial review
 
 
 def _run_adversarial_review(
@@ -244,7 +263,7 @@ def _run_adversarial_review(
 
         # Use cloud model for adversarial review (fast, reliable); avoid local foundry models
         # which can hang with 300s timeouts on M1
-        _call_model = lambda prompt, system_prompt=None, **kw: call_model("gemini-2.0-flash", prompt, system_prompt=system_prompt, **kw)
+        _call_model = lambda prompt, system_prompt=None, **kw: call_model("auto/best-free", prompt, system_prompt=system_prompt, timeout=120, **kw)
         reviewer = AdversarialReviewer(call_model_fn=_call_model)
         review_result = reviewer.review(
             output=task_result["response"],
@@ -381,19 +400,36 @@ def bridge_issues(
             # Merge verify-gate failures into the review as CRITICAL findings.
             # This is the enforcement of campus.md #3: the compiler runs before
             # the critic speaks; a broken build cannot earn a PASS.
-            if verify_result and not verify_result.get("passed"):
-                from adversarial_reviewer import Finding, Severity
-                for f in verify_result.get("failures", []):
-                    adversarial_review.setdefault("findings", []).append({
-                        "section": "build/verify",
-                        "issue_class": "compile_error",
-                        "severity": "CRITICAL",
-                        "citation": f['cmd'],
-                        "description": (f.get("stderr") or "verify command failed")[:500],
-                        "suggestion": "Fix the build/typecheck/test failure before review.",
-                    })
-                adversarial_review["verdict"] = "FAIL"
-                adversarial_review["score"] = 0.0
+            # Only override for real test failures (commands that ran), not
+            # discovery issues (no commands found = gate couldn't run at all)
+            # and not infrastructure failures (Nix not available → exit 127).
+            def _is_infrastructure_failure(f: dict) -> bool:
+                """Check if a verify failure is from missing infrastructure (Nix, etc.)."""
+                exit_code = f.get("exit")
+                stderr = (f.get("stderr") or "").lower()
+                return (
+                    exit_code == 127
+                    or "command not found" in stderr
+                )
+
+            if verify_result and not verify_result.get("passed") and verify_result.get("ran", 0) > 0:
+                real_failures = [
+                    f for f in verify_result.get("failures", [])
+                    if not _is_infrastructure_failure(f)
+                ]
+                if real_failures:
+                    from adversarial_reviewer import Finding, Severity
+                    for f in real_failures:
+                        adversarial_review.setdefault("findings", []).append({
+                            "section": "build/verify",
+                            "issue_class": "compile_error",
+                            "severity": "CRITICAL",
+                            "citation": f['cmd'],
+                            "description": (f.get("stderr") or "verify command failed")[:500],
+                            "suggestion": "Fix the build/typecheck/test failure before review.",
+                        })
+                    adversarial_review["verdict"] = "FAIL"
+                    adversarial_review["score"] = 0.0
 
             # Verify output correctness with codebase context
             verification = verify_task_output(

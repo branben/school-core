@@ -48,7 +48,7 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from director import run_task, evaluate_and_update
+    from director import _resolve_repo_path, run_task, evaluate_and_update
 except ImportError as e:
     sys.stderr.write(f"[mcp_server] FATAL: cannot import director — {e}\n")
     sys.exit(1)
@@ -60,9 +60,10 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from context_orchestrator import enrich_prompt
+    from context_orchestrator import DEFAULT_VAULT, enrich_prompt
 except ImportError:
     enrich_prompt = None  # degraded — no vault context injection
+    DEFAULT_VAULT = None
 
 try:
     from trajectory import capture_trajectory
@@ -147,6 +148,10 @@ TOOL_DEFINITIONS = [
                 "timeout": {
                     "type": "number",
                     "description": "Optional timeout in seconds. Defaults to model-appropriate value.",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Optional owner/repo slug (e.g. 'branben/school-core') for Serena LSP symbol enrichment. Uses cached clone.",
                 },
             },
             "required": ["agent", "prompt"],
@@ -312,9 +317,11 @@ def _handle_school_execute(args: dict) -> dict:
     if system_prompt is None:
         system_prompt = SYSTEM_PROMPTS.get(domain, DEFAULT_SYSTEM_PROMPT)
 
-    # Context injection from vault + trajectories
+    # Context injection from vault + trajectories + Serena LSP symbols.
+    # Resolve repo_path for Serena symbol enrichment when available.
     if enrich_prompt is not None:
-        context_blob = enrich_prompt(domain, prompt)
+        repo_path = _resolve_repo_path_for_mcp(args)
+        context_blob = enrich_prompt(domain, prompt, vault_path=DEFAULT_VAULT, repo_path=repo_path)
         if context_blob:
             system_prompt = system_prompt + context_blob
 
@@ -530,6 +537,18 @@ def _handle_school_get_leaderboard(args: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _resolve_repo_path_for_mcp(args: dict) -> Optional[Path]:
+    """Resolve a repo path from MCP tool arguments for Serena enrichment.
+
+    Checks ``repo`` arg (owner/repo slug) via ``director._resolve_repo_path``.
+    Returns ``None`` if no clone exists (Serena gracefully skips).
+    """
+    repo = args.get("repo", "")
+    if not repo:
+        return None
+    return _resolve_repo_path(repo)
 
 
 def _backend_for_agent(agent_name: str) -> str:

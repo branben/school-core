@@ -1,0 +1,453 @@
+{
+  "suite": "suite",
+  "elapsed_total_ms": 224580,
+  "models": [
+    "coder",
+    "auto/best-free"
+  ],
+  "case_count": 8,
+  "results": [
+    {
+      "case_id": "extract-constant-max-spectators",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "MAX_SPECTATORS": true,
+          "=\\s*10": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "I don't know": false,
+          "Let me analyze": false
+        },
+        "min_chars": {
+          "actual": 680,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 680,
+      "elapsed_ms": 28553,
+      "error": null
+    },
+    {
+      "case_id": "extract-constant-min-rounds",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "MIN_ROUNDS": true,
+          "=\\s*3": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "Let me analyze": false
+        },
+        "min_chars": {
+          "actual": 261,
+          "min": 80,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 261,
+      "elapsed_ms": 31120,
+      "error": null
+    },
+    {
+      "case_id": "write-chunk-function",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def chunk": true,
+          "ValueError": true,
+          "\\[.*:.*\\]": true,
+          "for|while": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "Here's how": false
+        },
+        "min_chars": {
+          "actual": 151,
+          "min": 150,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 151,
+      "elapsed_ms": 2842,
+      "error": null
+    },
+    {
+      "case_id": "write-flatten-function",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def flatten": true,
+          "isinstance": true,
+          "recurs|extend|yield": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 226,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 226,
+      "elapsed_ms": 2212,
+      "error": null
+    },
+    {
+      "case_id": "fix-division-by-zero",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def calculate_average": true,
+          "ZeroDivisionError|if not|if len|raise ValueError|return 0": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 176,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 176,
+      "elapsed_ms": 7017,
+      "error": null
+    },
+    {
+      "case_id": "add-error-handling-file-reader",
+      "domain": "code-implementation",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def read_config": true,
+          "try": true,
+          "except": true,
+          "json\\.load|json\\.loads": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 192,
+          "min": 120,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 192,
+      "elapsed_ms": 3674,
+      "error": null
+    },
+    {
+      "case_id": "test-user-class",
+      "domain": "python-testing",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def test_": true,
+          "User\\(": true,
+          "ValueError": true,
+          "pytest\\.raises|with.*raises": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 528,
+          "min": 200,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 528,
+      "elapsed_ms": 4774,
+      "error": null
+    },
+    {
+      "case_id": "test-chunk-edge-cases",
+      "domain": "python-testing",
+      "model": "coder",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def test_": true,
+          "chunk\\(": true,
+          "ValueError": true,
+          "\\[\\]": true,
+          "raises|pytest\\.raises": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 688,
+          "min": 250,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 688,
+      "elapsed_ms": 9433,
+      "error": null
+    },
+    {
+      "case_id": "extract-constant-max-spectators",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "MAX_SPECTATORS": true,
+          "=\\s*10": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "I don't know": false,
+          "Let me analyze": false
+        },
+        "min_chars": {
+          "actual": 1943,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 1943,
+      "elapsed_ms": 32843,
+      "error": null
+    },
+    {
+      "case_id": "extract-constant-min-rounds",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "MIN_ROUNDS": true,
+          "=\\s*3": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "Let me analyze": false
+        },
+        "min_chars": {
+          "actual": 287,
+          "min": 80,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 287,
+      "elapsed_ms": 15291,
+      "error": null
+    },
+    {
+      "case_id": "write-chunk-function",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": false,
+      "checks": {
+        "expects": {
+          "def chunk": true,
+          "ValueError": true,
+          "\\[.*:.*\\]": true,
+          "for|while": true
+        },
+        "forbids": {
+          "I cannot": false,
+          "Here's how": false
+        },
+        "min_chars": {
+          "actual": 149,
+          "min": 150,
+          "ok": false
+        },
+        "code_block": true,
+        "_failed": [
+          "min_chars"
+        ]
+      },
+      "response_length": 149,
+      "elapsed_ms": 8149,
+      "error": null
+    },
+    {
+      "case_id": "write-flatten-function",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def flatten": true,
+          "isinstance": true,
+          "recurs|extend|yield": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 214,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 214,
+      "elapsed_ms": 9861,
+      "error": null
+    },
+    {
+      "case_id": "fix-division-by-zero",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def calculate_average": true,
+          "ZeroDivisionError|if not|if len|raise ValueError|return 0": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 121,
+          "min": 100,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 121,
+      "elapsed_ms": 18498,
+      "error": null
+    },
+    {
+      "case_id": "add-error-handling-file-reader",
+      "domain": "code-implementation",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def read_config": true,
+          "try": true,
+          "except": true,
+          "json\\.load|json\\.loads": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 155,
+          "min": 120,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 155,
+      "elapsed_ms": 15490,
+      "error": null
+    },
+    {
+      "case_id": "test-user-class",
+      "domain": "python-testing",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def test_": true,
+          "User\\(": true,
+          "ValueError": true,
+          "pytest\\.raises|with.*raises": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 457,
+          "min": 200,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 457,
+      "elapsed_ms": 12013,
+      "error": null
+    },
+    {
+      "case_id": "test-chunk-edge-cases",
+      "domain": "python-testing",
+      "model": "auto/best-free",
+      "passed": true,
+      "checks": {
+        "expects": {
+          "def test_": true,
+          "chunk\\(": true,
+          "ValueError": true,
+          "\\[\\]": true,
+          "raises|pytest\\.raises": true
+        },
+        "forbids": {
+          "I cannot": false
+        },
+        "min_chars": {
+          "actual": 851,
+          "min": 250,
+          "ok": true
+        },
+        "code_block": true,
+        "_failed": []
+      },
+      "response_length": 851,
+      "elapsed_ms": 22766,
+      "error": null
+    }
+  ],
+  "summary": {
+    "coder": {
+      "passed": 8,
+      "total": 8,
+      "pct": 100.0
+    },
+    "auto/best-free": {
+      "passed": 7,
+      "total": 8,
+      "pct": 87.5
+    }
+  }
+}
