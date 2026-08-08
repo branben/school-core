@@ -277,6 +277,7 @@ class StudentLeaf:
                 bead=self.bead,
                 task=full_prompt,
                 role=self.role,
+                difficulty=self.difficulty,
             )
         except OrcaUnavailableError as e:
             logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)

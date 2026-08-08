@@ -8,8 +8,10 @@ Three main capabilities:
    captured inline via `echo "XEXITCODE:$?"` marker.
 
 2. **Hermes agent execution**: Runs Hermes AI agent inside an Orca terminal
-   with one-shot mode (`hermes chat -q --yolo --quiet --max-turns 1`).
-   Output is captured via file redirect + XEXITCODE polling.
+   with multi-turn mode (`hermes chat -q --yolo --quiet --max-turns N`).
+   The turn count is difficulty-aware (easy=1, medium=3, hard=5) so complex
+   tasks get enough iterations to produce actual code, not just reconnaissance.
+   Output is captured via file redirect + sentinel polling.
 
 3. **Worktree lifecycle**: Creates proper Orca child worktrees (visible in
    Orca's UI sidebar) for per-round student isolation. Each worktree gets
@@ -924,6 +926,7 @@ class OrcaExecutionManager:
         timeout_ms: int = HERMES_TIMEOUT_MS,
         handle: Optional[str] = None,
         role: str = "student",
+        difficulty: str = "easy",
     ) -> str:
         """Run Hermes agent inside the worktree's Orca terminal and capture output.
 
@@ -948,6 +951,11 @@ class OrcaExecutionManager:
             handle: Optional existing terminal handle. If provided, the terminal
                     is reused instead of creating a new one, and the caller is
                     responsible for closing it.
+            role: The student role (used for profile resolution).
+            difficulty: Task difficulty — controls --max-turns:
+                        easy=1, medium=3, hard=5, diploma=8.
+                        Medium/hard tasks need multiple turns to write code
+                        (not just reconnaissance).
 
         Returns:
             The captured Hermes response text.
@@ -976,11 +984,15 @@ class OrcaExecutionManager:
         # Launcher script: run hermes, capture output, touch DONE sentinel.
         # The $(cat task_file) keeps the multi-line task out of the terminal
         # command line, avoiding the quote-mangling trap entirely.
+        # Difficulty-aware turn cap: medium tasks need multiple iterations
+        # to write code (not just reconnaissance)
+        _TURNS = {"easy": 1, "medium": 5, "hard": 8, "diploma": 10}
+        max_turns = _TURNS.get(difficulty, 1)
         launcher.write_text(
             "#!/usr/bin/env bash\n"
             f'cd {shlex.quote(str(wp))}\n'
             f'hermes chat -q "$(cat {shlex.quote(str(task_file))})" '
-            f"--yolo --quiet --max-turns 1 "
+            f"--yolo --quiet --max-turns {max_turns} "
             f"> {shlex.quote(str(response_file))} 2>&1\n"
             f'touch {shlex.quote(str(done_file))}\n',
             encoding="utf-8",

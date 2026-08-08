@@ -73,6 +73,71 @@ DOMAIN_ROLE = {
 }
 
 
+# Model aliases that map to roles in COMBO_MAP. When --agent passes a model
+# name (e.g. "foundry-coder-7b"), resolve to the role (e.g. "coder") so the
+# score-store gate check and role dispatch work correctly. Without this, the
+# conductor treats the model name as a role and rejects it as "Unknown role".
+# Populated lazily from executor.COMBO_MAP to avoid import cycles at module
+# load time (executor imports conductor for callback hooks).
+AGENT_TO_ROLE_CACHE: Optional[dict] = None
+
+
+def _agent_to_role(agent: str) -> Optional[str]:
+    """Resolve a --agent value to a valid role name.
+
+    Accepts both role names (coder, searcher, etc.) and model aliases
+    (foundry-coder-7b, north-coding, auto/best-free). Returns None if the
+    agent is not recognized.
+    """
+    global AGENT_TO_ROLE_CACHE
+    if AGENT_TO_ROLE_CACHE is None:
+        AGENT_TO_ROLE_CACHE = {}
+        try:
+            from executor import COMBO_MAP
+            for role, entry in COMBO_MAP.items():
+                # COMBO_MAP values are dicts with "default" model or lists
+                if isinstance(entry, dict):
+                    model = entry.get("default") or entry.get("_default")
+                    if model:
+                        AGENT_TO_ROLE_CACHE[model] = role
+                elif isinstance(entry, str):
+                    AGENT_TO_ROLE_CACHE[entry] = role
+                elif isinstance(entry, list):
+                    for m in entry:
+                        if isinstance(m, str):
+                            AGENT_TO_ROLE_CACHE[m] = role
+        except Exception:
+            pass
+    return AGENT_TO_ROLE_CACHE.get(agent)
+
+
+def _resolve_agent(args) -> str:
+    """Resolve args.agent to a dispatchable role.
+
+    Priority: explicit role match → model alias → domain default.
+    """
+    if args.agent:
+        # Direct role match (coder, searcher, executor, reviewer, browser)
+        try:
+            from executor import COMBO_MAP
+            if args.agent in COMBO_MAP:
+                return args.agent
+        except Exception:
+            pass
+        # Model alias resolution (foundry-coder-7b → coder)
+        resolved = _agent_to_role(args.agent)
+        if resolved is not None:
+            return resolved
+        # If it looks like a model name but isn't in COMBO_MAP, treat as
+        # the domain's default role and let the executor route the model.
+        logger.warning(
+            "Agent %r not found in COMBO_MAP — treating as model name "
+            "for the %s role", args.agent, DOMAIN_ROLE.get(args.domain, "coder")
+        )
+        return DOMAIN_ROLE.get(args.domain, "coder")
+    return DOMAIN_ROLE.get(args.domain, "student")
+
+
 # Persistence file for the daemon-mode serve state. Stores:
 #   - principal_terminal_handle: handle of the principal Python-loop terminal
 #   - teacher_both_terminal_handle: handle of the CTO+COO daemon terminal
@@ -194,7 +259,7 @@ def _run_issue(args, store):
 
     domain = issue["domain"]
     difficulty = issue["difficulty"]
-    role = args.agent or DOMAIN_ROLE.get(domain, "student")
+    role = _resolve_agent(args)
     print(f"   Title : {issue['title']}")
     print(f"   Domain: {domain}  Difficulty: {difficulty}  Role: {role}")
     if issue.get("state") != "ready-for-agent":
