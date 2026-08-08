@@ -922,7 +922,7 @@ def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
 
 def _run_single_task(args, store):
     """Run a single task (synchronous, Phase 1)."""
-    role = args.agent or DOMAIN_ROLE.get(args.domain, "student")
+    role = _resolve_agent(args)
 
     print(f"🎓 PRINCIPAL — dispatching {role} / {args.domain}")
     print(f"   Persona: {load_principal_soul()[:80].splitlines()[0]}\n")
