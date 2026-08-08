@@ -2082,7 +2082,7 @@ def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
             aid = orca_automations_create(
                 name=name,
                 prompt=prompt,
-                trigger="*/5 * * * *",  # every 5 min (Orca cron; "every 5m" is rejected)
+                trigger="* * * * *",  # every minute — fast enough for single-issue async handoff
                 workspace=f"path:{teacher.worktree_path}",
             )
             if aid:
