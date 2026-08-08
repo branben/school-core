@@ -284,13 +284,13 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
             qodo_status = qodo_result.get("status", "skipped")
             qodo_findings = qodo_result.get("findings", [])
             if qodo_status == "fail":
-                print(f"  ⚠ Qodo pre-merge: {len(qodo_findings)} real issue(s) found")
+                print(f"  ⚠ Entire review: {len(qodo_findings)} real issue(s) found")
             elif qodo_status == "skipped":
-                print(f"  ⊘ Qodo pre-merge: skipped (QODO_API_KEY not set)")
+                print(f"  ⊘ Entire review: skipped (entire CLI not found)")
             else:
-                print(f"  ✅ Qodo pre-merge: {qodo_status} — no issues")
+                print(f"  ✅ Entire review: {qodo_status} — no issues")
         except Exception as e:
-            print(f"  ⚠ Qodo pre-merge failed: {e}")
+            print(f"  ⚠ Entire review failed: {e}")
             qodo_status = "error"
             qodo_findings = []
         # ──────────────────────────────────────────────────────────────────────
