@@ -2072,17 +2072,21 @@ def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
                 f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
                 f"COO = COMPLETENESS), writes your verdict into "
                 f"~/.hermes/bookbag/<bead>.json, then exits. Do not edit code or "
-                f"open terminals — Orca schedules you; only run the script.\\n\\n"
+                f"open terminals — Orca schedules you; only run the script.\n\n"
                 f"When a gate verdict is FAIL, the --diagnose flag makes the teacher "
                 f"run the systematic-debugging + TDD loop: it reproduces the failure "
                 f"as a regression test under diagnoses/{role}/<bead>.py and records a "
                 f"`{role}_diagnosis` dict (root_cause, regression_test, fix_applied) "
-                f"in the bookbag. Do not skip the diagnose step on FAIL."
+                f"in the bookbag. Do not skip the diagnose step on FAIL.\n\n"
+                f"IMPORTANT: After the script completes (or after 90 seconds if it "
+                f"hangs), you MUST exit your session with the /exit command so Orca "
+                f"can reuse this persistent worktree on the next tick. Do NOT leave "
+                f"an interactive session open."
             )
             aid = orca_automations_create(
                 name=name,
                 prompt=prompt,
-                trigger="* * * * *",  # every minute — fast enough for single-issue async handoff
+                trigger="*/5 * * * *",  # every 5 min — sufficient for review polling; avoids per-minute session spray
                 workspace=f"path:{teacher.worktree_path}",
             )
             if aid:
