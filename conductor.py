@@ -605,6 +605,7 @@ def _principal_dispatch(
     doubt_fn=None,
     override_reason: Optional[str] = None,
     task_shape: Optional[dict] = None,
+    skip_readiness: bool = False,
 ) -> dict:
     """Rank 3 + Rank 4 — Principal dispatch with DDD doubt cycle and CE router.
 
@@ -669,6 +670,7 @@ def _principal_dispatch(
         # not markdown artifacts in docs/solutions/.
         ce_enabled=routing["chosen_skill"] == "rank5_student_plan",
         complex_task=(routing["chosen_skill"] == "rank5_student_plan"),
+        skip_readiness=skip_readiness,
     )
 
     result["chosen_skill"] = routing["chosen_skill"]
@@ -936,6 +938,7 @@ def _run_single_task(args, store):
         task=args.task, role=role, domain=args.domain,
         difficulty=args.difficulty, store=store, repo=args.repo,
         doubt_enabled=args.doubt_enabled,
+        skip_readiness=bool(args.agent),
     )
 
     task_score = result.get("task_score", 0)

@@ -585,6 +585,7 @@ def run_task(
     ce_enabled: bool = False,
     complex_task: bool = False,
     dod_gate: bool = False,
+    skip_readiness: bool = False,
     isolated_phases: bool = False,
     phase_students: Optional[list] = None,
     phase_drop_rate: float = 0.5,
@@ -771,7 +772,7 @@ def run_task(
     # agents (score < gate).
     escalated = False
     role_qualifies = role_score >= GATES.get(difficulty, 0)
-    if not role_qualifies:
+    if not role_qualifies and not skip_readiness:
         confidence = _check_readiness(role, domain, difficulty, prompt)
         if confidence < _get_threshold(domain, difficulty):
             _escalation_log.log(
