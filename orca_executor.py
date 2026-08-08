@@ -555,7 +555,7 @@ class OrcaExecutionManager:
             "worktree", "create",
             "--name", name,
             "--repo", str(target),
-        ], timeout=30)
+        ], timeout=45)  # 45s — worktree create includes git checkout + hooks
 
         # Response format: {"worktree": {"id": "<uuid>::<path>", ...}}
         wt_info = result.get("worktree", result)
