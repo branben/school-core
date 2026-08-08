@@ -933,6 +933,7 @@ class OrcaExecutionManager:
         handle: Optional[str] = None,
         role: str = "student",
         difficulty: str = "easy",
+        toolsets: Optional[str] = None,
     ) -> str:
         """Run Hermes agent inside the worktree's Orca terminal and capture output.
 
@@ -999,12 +1000,14 @@ class OrcaExecutionManager:
         # Without this, a 5-turn medium task gets killed at 120s before turn 2.
         if timeout_ms is None:
             timeout_ms = max_turns * self.HERMES_TIMEOUT_PER_TURN_MS
+        toolset_flag = f"-t {toolsets} " if toolsets else ""
         launcher.write_text(
             "#!/usr/bin/env bash\n"
             f'cd {shlex.quote(str(wp))}\n'
-            f'hermes chat -q "$(cat {shlex.quote(str(task_file))})" '
-            f"--yolo --quiet --max-turns {max_turns} "
-            f"> {shlex.quote(str(response_file))} 2>&1\n"
+            f'hermes chat -q "$(cat {shlex.quote(str(task_file))})"'
+            f' --yolo --quiet --max-turns {max_turns} '
+            f"{toolset_flag}"
+            f'> {shlex.quote(str(response_file))} 2>&1\n'
             f'touch {shlex.quote(str(done_file))}\n',
             encoding="utf-8",
         )

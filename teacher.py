@@ -709,7 +709,7 @@ class TeacherWorktree:
 
         Reads the teacher's SOUL.md from ``~/.hermes/profiles/teacher-{role}/SOUL.md``,
         composes a full review prompt with lens instructions + task + student output,
-        and runs ``hermes chat --yolo --quiet --max-turns 1`` in a disposable
+        and runs ``hermes chat --yolo --quiet --max-turns 1 -t hermes-cli,file`` in a disposable
         Orca terminal within the teacher's worktree.
 
         The ``AdversarialReviewer`` handles JSON parsing, circuit breaker logic,
@@ -750,6 +750,7 @@ class TeacherWorktree:
                 task=full_prompt,
                 timeout_ms=timeout_ms,
                 handle=self._review_terminal,
+                toolsets="hermes-cli,file",
             )
             return response
         except OrcaUnavailableError as e:
