@@ -757,7 +757,25 @@ class TeacherWorktree:
             logger.error(
                 "[teacher:%s] Hermes review failed: %s", self.role, e
             )
-            raise  # Let AdversarialReviewer handle the error
+        except Exception as e:
+            logger.error(
+                "[teacher:%s] Hermes review failed: %s", self.role, e
+            )
+        # ── Fallback: direct OmniRoute call (faster, no terminal overhead) ──
+        # The Hermes terminal path can time out on slow free-tier models.
+        # Fall back to direct call_model which routes through OmniRoute's
+        # combo-selection (reviewer role → auto/best-free or better).
+        logger.info(
+            "[teacher:%s] Falling back to direct OmniRoute for review",
+            self.role,
+        )
+        from executor import call_model
+        return call_model(
+            role="reviewer",
+            model="auto/best-free",
+            prompt=full_prompt,
+            system_prompt=system_prompt,
+        )
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────
