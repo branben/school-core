@@ -38,6 +38,11 @@ from pathlib import Path
 BASE = "https://api.agentmail.to"
 API_PREFIX = "/v0"
 
+# Agent-School human-in-the-loop control-plane inbox. Verdict notifications
+# (school_mail.notify_verdict) and human /approve /reject /fix replies live
+# here. Keep in sync with SCHOOL_INBOX in school_mail.py / scripts/school_inbound.py.
+SCHOOL_INBOX = "REDACTED@REDACTED.invalid"
+
 
 def _resolve_key() -> str:
     """Return the AgentMail API key from env, or fall back to Hermes config.yaml.
@@ -82,6 +87,14 @@ def _req(method: str, path: str, body=None):
 
 
 def _default_inbox() -> str:
+    """Resolve the principal poller's inbox.
+
+    Prefer the Agent-School control-plane inbox (SCHOOL_INBOX) so the poller
+    watches the same mailbox that notify_verdict sends to and that human
+    replies land in. Falls back to AGENTMAIL_INBOX env, then the first
+    available inbox — mirroring school_mail._resolve_dest_inbox /
+    school_inbound._resolve_inboxes so the poller and notifier stay aligned.
+    """
     inbox = os.environ.get("AGENTMAIL_INBOX")
     if inbox:
         return inbox
@@ -89,6 +102,9 @@ def _default_inbox() -> str:
     inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
     if not inboxes:
         raise RuntimeError("no AgentMail inboxes available")
+    for ib in inboxes:
+        if ib.get("inbox_id") == SCHOOL_INBOX:
+            return ib["inbox_id"]
     return inboxes[0]["inbox_id"]
 
 
