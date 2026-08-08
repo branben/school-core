@@ -428,8 +428,8 @@ def main():
     parser.add_argument("--rounds", type=int, default=5, help="Number of rounds in loop mode")
     parser.add_argument("--async", action="store_true", dest="async_mode",
                         help="Async dispatch: boot teachers, dispatch all leaves, poll for verdicts")
-    parser.add_argument("--handoff-timeout", type=int, default=300,
-                        help="Seconds to wait for teacher verdicts in async mode (default 300)")
+    parser.add_argument("--handoff-timeout", type=int, default=600,
+                        help="Seconds to wait for teacher verdicts in async mode (default 600)")
     parser.add_argument("--list-bookbags", action="store_true", help="List all bookbags on disk")
     parser.add_argument("--clean-worktrees", action="store_true",
                         help="Remove all study-* worktrees created by previous runs")

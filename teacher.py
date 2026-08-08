@@ -78,7 +78,7 @@ TEACHER_LENSES = {
 
 DEFAULT_SESSION_ID = "teacher-default"
 DEFAULT_POLL_INTERVAL = 5.0  # seconds between bookbag polls
-DEFAULT_REVIEW_TIMEOUT = 90  # seconds for LLM review call
+DEFAULT_REVIEW_TIMEOUT = 300  # seconds for LLM review call
 MAX_SESSION_CYCLES = 10  # auto-prune sessions older than this many cycles
 
 # ── Exceptions ───────────────────────────────────────────────────────────────
