@@ -1093,8 +1093,10 @@ def _map_domain_from_issue_type(issue_type: str, title: str, description: str) -
     everything else (chore, task, unknown) → ``_default`` so the universal
     ``coder`` role handles it via DOMAIN_ROLE["_default"].
     """
-    if issue_type == "bug" or issue_type == "enhancement" or issue_type == "feature":
-        return "code-search"
+    if issue_type == "bug":
+        return "debugging"
+    if issue_type == "enhancement" or issue_type == "feature":
+        return "code-implementation"
     return "_default"
 
 
