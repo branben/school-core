@@ -305,7 +305,13 @@ class OrcaExecutionManager:
     })
 
     DEFAULT_TIMEOUT_MS = 30000
-    HERMES_TIMEOUT_MS = 120000  # 2 min for one-shot Hermes calls
+    HERMES_TIMEOUT_MS = 120000  # 2 min per turn for Hermes calls
+    # Per-turn timeout budget: each turn may involve an LLM API call (30-60s).
+    # Total timeout = max_turns * HERMES_TIMEOUT_PER_TURN_MS, so a 5-turn
+    # medium task gets 5 * 120s = 600s instead of the old flat 120s that
+    # killed multi-turn students mid-generation.
+    HERMES_TIMEOUT_PER_TURN_MS = 120000
+    _TURNS = {"easy": 1, "medium": 5, "hard": 8, "diploma": 10}
     POLL_INTERVAL = 0.5  # seconds between output checks
 
     # Shell prompt pattern: user@hostname path %
@@ -923,7 +929,7 @@ class OrcaExecutionManager:
         worktree_path: str,
         bead: str,
         task: str,
-        timeout_ms: int = HERMES_TIMEOUT_MS,
+        timeout_ms: Optional[int] = None,
         handle: Optional[str] = None,
         role: str = "student",
         difficulty: str = "easy",
@@ -947,7 +953,9 @@ class OrcaExecutionManager:
             worktree_path: Path to the leaf worktree.
             bead: Unique task identifier.
             task: The full task prompt (system prompt + task).
-            timeout_ms: Max wait time in milliseconds (default 120s).
+            timeout_ms: Max wait time in milliseconds. If None (default),
+                        scales with difficulty: max_turns * HERMES_TIMEOUT_PER_TURN_MS
+                        (e.g. medium=5 turns → 600s, hard=8 turns → 960s).
             handle: Optional existing terminal handle. If provided, the terminal
                     is reused instead of creating a new one, and the caller is
                     responsible for closing it.
@@ -986,8 +994,11 @@ class OrcaExecutionManager:
         # command line, avoiding the quote-mangling trap entirely.
         # Difficulty-aware turn cap: medium tasks need multiple iterations
         # to write code (not just reconnaissance)
-        _TURNS = {"easy": 1, "medium": 5, "hard": 8, "diploma": 10}
-        max_turns = _TURNS.get(difficulty, 1)
+        max_turns = self._TURNS.get(difficulty, 1)
+        # Scale total timeout: each turn needs ~per-turn budget for LLM API calls.
+        # Without this, a 5-turn medium task gets killed at 120s before turn 2.
+        if timeout_ms is None:
+            timeout_ms = max_turns * self.HERMES_TIMEOUT_PER_TURN_MS
         launcher.write_text(
             "#!/usr/bin/env bash\n"
             f'cd {shlex.quote(str(wp))}\n'
