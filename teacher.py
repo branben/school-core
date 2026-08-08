@@ -771,10 +771,10 @@ class TeacherWorktree:
         )
         from executor import call_model
         return call_model(
-            role="reviewer",
-            model="auto/best-free",
-            prompt=full_prompt,
+            "reviewer",
+            full_prompt,
             system_prompt=system_prompt,
+            timeout=180,
         )
 
 
