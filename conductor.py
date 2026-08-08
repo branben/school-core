@@ -292,7 +292,7 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
     repo_slug = target_repo or "__global__"
     store = ScoreStore(repo=repo_slug)
 
-    teachers = _boot_teachers()
+    teachers = _boot_teachers(repo=repo_slug)
     if len(teachers) < 2:
         print("  \u26a0\ufe0f Could not boot both teachers — falling back to sync review")
         if teachers:
