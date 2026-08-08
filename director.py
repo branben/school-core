@@ -23,7 +23,7 @@ from escalation_log import EscalationLog
 from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
 from adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
-    VerificationCoevolution, CoevolutionReport,
+    VerificationCoevolution, CoevolutionReport, ReviewResult,
 )
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec

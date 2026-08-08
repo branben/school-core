@@ -664,7 +664,10 @@ def _principal_dispatch(
     result = run_leaf(
         task_prompt=task, role=role, domain=domain,
         difficulty=reconciled_gate, store=store, repo=repo,
-        ce_enabled=True,
+        # CE mode is for complex spec-gated tasks only — direct code-
+        # implementation tasks need the student to write actual code,
+        # not markdown artifacts in docs/solutions/.
+        ce_enabled=routing["chosen_skill"] == "rank5_student_plan",
         complex_task=(routing["chosen_skill"] == "rank5_student_plan"),
     )
 
