@@ -428,8 +428,8 @@ def main():
     parser.add_argument("--rounds", type=int, default=5, help="Number of rounds in loop mode")
     parser.add_argument("--async", action="store_true", dest="async_mode",
                         help="Async dispatch: boot teachers, dispatch all leaves, poll for verdicts")
-    parser.add_argument("--handoff-timeout", type=int, default=600,
-                        help="Seconds to wait for teacher verdicts in async mode (default 600)")
+    parser.add_argument("--handoff-timeout", type=int, default=900,
+                        help="Seconds to wait for teacher verdicts in async mode (default 900)")
     parser.add_argument("--list-bookbags", action="store_true", help="List all bookbags on disk")
     parser.add_argument("--clean-worktrees", action="store_true",
                         help="Remove all study-* worktrees created by previous runs")
@@ -2086,7 +2086,7 @@ def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
             aid = orca_automations_create(
                 name=name,
                 prompt=prompt,
-                trigger="*/5 * * * *",  # every 5 min — sufficient for review polling; avoids per-minute session spray
+                trigger="* * * * *",  # every 1 min — ensures teachers fire shortly after student completes
                 workspace=f"path:{teacher.worktree_path}",
             )
             if aid:
