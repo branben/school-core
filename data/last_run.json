@@ -97,5 +97,16 @@
     "score": null,
     "trajectory": null,
     "timestamp": "2026-08-10T22:37:09.262123+00:00"
+  },
+  {
+    "issue": 45,
+    "status": "success",
+    "agent": "coder",
+    "score": 81.088,
+    "trajectory": "data/trajectories/20260810_223856_823007--python-testing--coder.json",
+    "title": "test: pytest smoke test verifying live retry-once drill",
+    "domain": "python-testing",
+    "difficulty": "medium",
+    "timestamp": "2026-08-10T22:39:24.216561+00:00"
   }
 ]
