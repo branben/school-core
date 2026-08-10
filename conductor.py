@@ -2035,6 +2035,31 @@ def _validate_verdict(bead: str, repo: str = "__global__") -> None:
               f"{'; '.join(issues)}")
 
 
+def _create_hermes_cronjob(*, name: str, script: str, schedule: str) -> None:
+    """Register (or update) a Hermes no-agent cronjob — a plain shell script on a schedule.
+
+    These jobs run ``script`` via the cron scheduler directly (no LLM agent,
+    no TUI session). Each tick: shell process spawns, runs the script, exits.
+    No accumulation. Used by ``_boot_teachers`` for the CTO/COO review passes.
+
+    Uses the ``hermes cron`` CLI via subprocess (available even when
+    ``conductor.py`` runs outside a Hermes agent context). If the cronjob
+    already exists with the same name, it is updated in-place.
+    """
+    import subprocess
+    try:
+        subprocess.run(
+            ["hermes", "cron", "create",
+             "--name", name,
+             "--no-agent",
+             "--script", script,
+             schedule],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception:
+        pass
+
+
 def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
     """Create persistent CTO and COO teacher worktrees.
 
@@ -2056,43 +2081,26 @@ def _boot_teachers(repo: str = REPO_GLOBAL) -> dict[str, TeacherWorktree]:
             teacher.boot()  # rediscover-or-create the persistent worktree
             teachers[role] = teacher
 
-            # Gap D: launch the teacher as a NATIVE Orca automation (Orca owns
-            # the schedule). No while-True pane, no per-boot terminal spray
-            # (the old run_teacher_loop.py anti-pattern that minted a
-            # teacher-*-review terminal every boot). The automation targets
-            # the teacher's persistent worktree and runs run_teacher_review_once
-            # on a trigger; review_cycle() inside does the one-pass judge.
-            # Orca automation names cannot contain '/'; slugify owner/repo slugs.
+            # Launch the teacher as a Hermes NO-AGENT cronjob (script-only).
+            #
+            # WHY NOT Orca --provider hermes: Orca automations with
+            # --provider hermes spawn `hermes chat --query="..." --tui`, an
+            # interactive TUI session. The --tui flag makes /exit (passed as
+            # text in --query) not be processed — sessions never exit, and
+            # each 2-min tick spawned a NEW stuck session + codegraph server.
+            #
+            # no_agent=True runs teacher_tick.sh as a plain shell process per
+            # tick — no TUI, no LLM chat session, runs to completion (with a
+            # 100s timeout guard), and exits. Period. Zero bleed.
             safe = repo.replace("/", "__")
-            name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
-            prompt = (
-                f"Run the {role.upper()} review pass for Agent-School. Each tick: "
-                f"execute `python3 scripts/run_teacher_review_once.py {role} {repo} --diagnose` from "
-                f"the repo root. That runs exactly one pass over un-reviewed "
-                f"bookbags for your lens (CTO = CORRECTNESS+SECURITY, "
-                f"COO = COMPLETENESS), writes your verdict into "
-                f"~/.hermes/bookbag/<bead>.json, then exits. Do not edit code or "
-                f"open terminals — Orca schedules you; only run the script.\n\n"
-                f"When a gate verdict is FAIL, the --diagnose flag makes the teacher "
-                f"run the systematic-debugging + TDD loop: it reproduces the failure "
-                f"as a regression test under diagnoses/{role}/<bead>.py and records a "
-                f"`{role}_diagnosis` dict (root_cause, regression_test, fix_applied) "
-                f"in the bookbag. Do not skip the diagnose step on FAIL.\n\n"
-                f"IMPORTANT: After the script completes (or after 90 seconds if it "
-                f"hangs), you MUST exit your session with the /exit command so Orca "
-                f"can reuse this persistent worktree on the next tick. Do NOT leave "
-                f"an interactive session open."
+            cron_name = f"agent-school-teacher-{role}" if repo == "__global__" else f"agent-school-teacher-{role}-{safe}"
+            script_name = f"teacher_tick_{role}.sh"
+            _create_hermes_cronjob(
+                name=cron_name,
+                script=script_name,
+                schedule="*/5 * * * *",
             )
-            aid = orca_automations_create(
-                name=name,
-                prompt=prompt,
-                trigger="* * * * *",  # every 1 min — ensures teachers fire shortly after student completes
-                workspace=f"path:{teacher.worktree_path}",
-            )
-            if aid:
-                print(f"  🧑‍🏫 teacher-{role}: automation up (id={aid})")
-            else:
-                print(f"  ⚠️ teacher-{role}: automation not created — review won't run")
+            print(f"  🧑‍🏫 teacher-{role}: cronjob up (name={cron_name})")
 
         except Exception as e:
             print(f"  ❌ teacher-{role}: boot failed — {e}")

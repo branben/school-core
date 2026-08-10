@@ -311,7 +311,7 @@ class OrcaExecutionManager:
     # medium task gets 5 * 120s = 600s instead of the old flat 120s that
     # killed multi-turn students mid-generation.
     HERMES_TIMEOUT_PER_TURN_MS = 120000
-    _TURNS = {"easy": 1, "medium": 12, "hard": 12, "diploma": 15}
+    _TURNS = {"easy": 1, "medium": 16, "hard": 16, "diploma": 20}
     POLL_INTERVAL = 0.5  # seconds between output checks
 
     # Shell prompt pattern: user@hostname path %
