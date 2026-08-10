@@ -95,4 +95,4 @@ jobs:
         run: |
           python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git push)
+          git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git pull --rebase --autostash && git push)
