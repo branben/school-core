@@ -33,3 +33,43 @@ jobs:
         # Live-Orca tests are gated by ORCA_LIVE_TESTS=1 and skipped by default,
         # so this runs the full suite without requiring a running Orca daemon.
         run: python -m pytest -q
+
+  integration:
+    # Live-Orca + OmniRoute integration tests. These need a real Orca daemon
+    # and the local OmniRoute gateway (localhost:20128), which only exist on
+    # the self-hosted runner (school-core-mac, label: omniroute). They do NOT
+    # run on GitHub's hosted runners.
+    #
+    # Runs on push only: running arbitrary PR code on a self-hosted runner is
+    # a supply-chain risk, and fork PRs can't reach this machine's gateway.
+    name: integration (live Orca + OmniRoute)
+    runs-on: [self-hosted, omniroute]
+    if: github.event_name == 'push'
+    env:
+      ORCA_LIVE_TESTS: "1"
+      OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
+      # /usr/local/bin, so re-expose it (plus common Homebrew paths).
+      PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify Orca + OmniRoute gateway reachable
+        run: |
+          orca status --json | head -c 200
+          echo
+          curl -sf -H "Authorization: Bearer ${OMNIROUTE_API_KEY}" \
+            http://localhost:20128/v1/models >/dev/null && echo "gateway OK"
+
+      - name: Run live-Orca + OmniRoute integration tests
+        run: python -m pytest tests/test_orca_execution.py -v
