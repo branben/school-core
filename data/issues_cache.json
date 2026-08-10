@@ -1,5 +1,12 @@
 [
   {
+    "issue_number": 42,
+    "title": "test: add pytest smoke test verifying pipeline flow",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 27,
     "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",

@@ -62,5 +62,13 @@
     "score": null,
     "trajectory": null,
     "timestamp": "2026-08-10T21:06:15.611683+00:00"
+  },
+  {
+    "issue": 42,
+    "status": "success",
+    "agent": "coder",
+    "score": 80.992,
+    "trajectory": "data/trajectories/20260810_215146_748255--python-testing--coder.json",
+    "timestamp": "2026-08-10T21:52:24.611568+00:00"
   }
 ]
