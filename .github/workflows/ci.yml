@@ -127,3 +127,51 @@ jobs:
 
       - name: Run live-Orca + OmniRoute integration tests
         run: .venv/bin/python -m pytest tests/test_orca_execution.py -v
+
+  notify:
+    # One AgentMail alert per failed push-to-main run — the school's human
+    # operator gets pinged when CI goes red. PR failures are normal dev
+    # feedback (never alerted); a sleeping Mac already skips integration
+    # cleanly (no false alarm). When the live-Orca integration job is the
+    # failure, the message flags it as possibly infra (gateway/Orca down on
+    # the Mac) rather than a code regression.
+    name: alert on main-branch failure
+    runs-on: ubuntu-latest
+    needs: [test, integration-gate, integration]
+    if: always() && failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: true
+    env:
+      AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+      TEST_RESULT: ${{ needs.test.result }}
+      GATE_RESULT: ${{ needs.integration-gate.result }}
+      INTEGRATION_RESULT: ${{ needs.integration.result }}
+      COMMIT_SHA: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send AgentMail CI-failure alert
+        run: |
+          python - <<'PY'
+          import os
+          from school_mail import notify_build_failure
+
+          failed = []
+          if os.environ.get("TEST_RESULT") == "failure":
+              failed.append("pytest (py3.9/3.11/3.12)")
+          if os.environ.get("GATE_RESULT") == "failure":
+              failed.append("integration gate (runner check)")
+          if os.environ.get("INTEGRATION_RESULT") == "failure":
+              failed.append("integration (live Orca + OmniRoute)")
+
+          ok = notify_build_failure(
+              workflow="CI",
+              run_url=os.environ.get("RUN_URL", ""),
+              commit_sha=os.environ.get("COMMIT_SHA", ""),
+              branch=os.environ.get("BRANCH", ""),
+              failed_jobs=failed,
+              repo=os.environ.get("GITHUB_REPOSITORY", "__global__"),
+          )
+          print(f"notify_build_failure -> {ok}")
+          PY

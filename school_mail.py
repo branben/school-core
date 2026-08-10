@@ -248,6 +248,68 @@ def notify_issue_alert(
     return False
 
 
+def notify_build_failure(
+    workflow: str,
+    run_url: str,
+    commit_sha: str,
+    branch: str,
+    failed_jobs: list[str],
+    repo: str = "__global__",
+) -> bool:
+    """Alert the human operator when CI fails on the default branch.
+
+    Fired once per failed push-to-main run (the CI workflow's notify job
+    guards on ``failure() && event == push && ref == main``). ``failed_jobs``
+    is the list of job names that went red — the message adds an infra hint
+    when the live-Orca integration job is among them (that failure usually
+    means the gateway/Orca on the Mac needs attention, not just code).
+
+    Best-effort: never raises. Same AgentMail channel as
+    :func:`notify_verdict` / :func:`notify_issue_alert`.
+    """
+    try:
+        inbox = _resolve_dest_inbox()
+    except Exception as e:
+        sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
+        return False
+
+    jobs = ", ".join(failed_jobs) if failed_jobs else "unknown job(s)"
+    subject = f"[school] CI FAILED on {branch} — {jobs}"[:120]
+
+    parts = [
+        f"[Agent-School] CI FAILED — {workflow}",
+        "",
+        f"Branch: {branch}",
+        f"Commit: {commit_sha[:12]}",
+        f"Repo: {repo}",
+        "",
+        "Failed jobs:",
+        *(f"  - {j}" for j in (failed_jobs or ["(unknown)"])),
+    ]
+    if any("integration" in j.lower() for j in failed_jobs):
+        parts += [
+            "",
+            "Note: the live integration job failed — check the OmniRoute",
+            "gateway (localhost:20128) and Orca on the Mac runner; it may be",
+            "an infrastructure issue rather than a code regression.",
+        ]
+    parts += ["", f"Run: {run_url}"]
+    text = "\n".join(parts)
+
+    try:
+        _req(
+            "POST",
+            f"/inboxes/{inbox}/messages/send",
+            {"to": [inbox], "subject": subject, "text": text},
+        )
+        return True
+    except urllib.error.URLError as e:
+        sys.stderr.write(f"[school_mail] send failed (network): {e}\n")
+    except Exception as e:  # noqa: BLE001 — degrade, never crash the caller
+        sys.stderr.write(f"[school_mail] send failed: {e}\n")
+    return False
+
+
 if __name__ == "__main__":
     ok = notify_verdict(
         "demo-bead", False, "PASS", "FAIL", "teacher-coo found incomplete acceptance criteria"
