@@ -52,7 +52,11 @@ jobs:
       - name: Check school-core-mac runner liveness
         id: check
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The runners API needs repo-admin scope; the default GITHUB_TOKEN
+          # gets 403. RUNNER_ADMIN_TOKEN holds the repo owner's gh token.
+          # Hardening: replace with a fine-grained PAT limited to this repo,
+          # "Administration: Read" only.
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
         run: |
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
             --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length')
