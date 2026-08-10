@@ -78,5 +78,16 @@
     "score": 81.248,
     "trajectory": "data/trajectories/20260810_215652_957804--python-testing--coder.json",
     "timestamp": "2026-08-10T21:57:38.255448+00:00"
+  },
+  {
+    "issue": 44,
+    "status": "success",
+    "agent": "coder",
+    "score": 81.552,
+    "trajectory": "data/trajectories/20260810_220938_095680--python-testing--coder.json",
+    "title": "test: pytest smoke test verifying issue close + label sync",
+    "domain": "python-testing",
+    "difficulty": "medium",
+    "timestamp": "2026-08-10T22:10:04.386020+00:00"
   }
 ]
