@@ -51,6 +51,8 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
     monkeypatch.setattr("issue_bridge._LABELS_ENSURED", False)
     # Hermetic retry counter — never touch the real data/retry_issues.json.
     monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retry_issues.json")
+    # Never send real AgentMail alerts from tests.
+    monkeypatch.setattr("issue_bridge.notify_issue_alert", lambda *a, **k: True)
 
 
 # ── Processed Issue Tracking ──────────────────────────────────────────────
@@ -1068,8 +1070,9 @@ class TestRetryOnce:
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._mark_github_issue")
+    @patch("issue_bridge.notify_issue_alert")
     def test_success_clears_retry_state(
-        self, mock_mark, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        self, mock_notify, mock_mark, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
         tmp_path, monkeypatch, store,
     ):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
@@ -1089,3 +1092,67 @@ class TestRetryOnce:
         assert _load_retries() == {}   # retry state cleared on success
         mock_mark.assert_called_once()
         assert mock_mark.call_args[0][2] == "success"
+        mock_notify.assert_not_called()  # no alert on success
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    @patch("issue_bridge.notify_issue_alert")
+    def test_first_failure_notifies_retry_pending(
+        self, mock_notify, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(73)
+        mock_task.return_value = {"status": "error", "error": "gateway hiccup"}
+        bridge_issues("user/test", store=store)
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == 73                       # issue number
+        assert args[1] == "T73"                   # title
+        assert args[2] == "retry"                 # status
+        assert kwargs.get("attempt") == 1
+        assert kwargs.get("repo") == "user/test"
+        assert "gateway hiccup" in str(kwargs.get("error", ""))
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    @patch("issue_bridge.notify_issue_alert")
+    def test_final_failure_notifies_school_failed(
+        self, mock_notify, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(74)
+        mock_task.return_value = {"status": "error", "error": "still down"}
+        bridge_issues("user/test", store=store)   # attempt 1 → retry alert
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == "retry"
+        bridge_issues("user/test", store=store)   # attempt 2 → school-failed alert
+        assert mock_notify.call_count == 2
+        final_args = mock_notify.call_args
+        assert final_args[0][2] == "school-failed"
+        assert final_args[1].get("attempt") == 2
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    @patch("issue_bridge.notify_issue_alert")
+    def test_exception_path_notifies_retry_then_school_failed(
+        self, mock_notify, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """The run_task exception path alerts on both transitions too."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(75)
+        mock_task.side_effect = RuntimeError("connection refused")
+        bridge_issues("user/test", store=store)   # attempt 1 → retry alert
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == "retry"
+        assert mock_notify.call_args[1].get("attempt") == 1
+        bridge_issues("user/test", store=store)   # attempt 2 → school-failed alert
+        assert mock_notify.call_count == 2
+        assert mock_notify.call_args[0][2] == "school-failed"
+        assert mock_notify.call_args[1].get("attempt") == 2
+        assert "connection refused" in mock_notify.call_args[1].get("error", "")

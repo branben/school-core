@@ -27,6 +27,7 @@ from typing import List, Optional
 from github_fetcher import fetch_issues, load_config, _gh_command
 from executor import call_model, COMBO_MAP, ExecutorError
 from scoring import ScoreStore
+from school_mail import notify_issue_alert
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
@@ -502,6 +503,12 @@ def bridge_issues(
                     )
                 except Exception as e_rec:
                     sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                try:
+                    notify_issue_alert(num, issue["title"], "retry", error=err,
+                                       repo=repo, attempt=attempts,
+                                       retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
                 continue
             retries.pop(num, None)
             results.append({
@@ -520,6 +527,12 @@ def bridge_issues(
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
             _mark_github_issue(repo, num, "error")
+            try:
+                notify_issue_alert(num, issue["title"], "school-failed", error=err,
+                                   repo=repo, attempt=attempts,
+                                   retry_limit=RETRY_LIMIT)
+            except Exception as e_notify:
+                sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
             processed.add(num)
             continue
 
@@ -660,6 +673,12 @@ def bridge_issues(
                     )
                 except Exception as e_rec:
                     sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                try:
+                    notify_issue_alert(num, issue["title"], "retry", error=err,
+                                       repo=repo, attempt=attempts,
+                                       retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
             else:
                 # Retry budget exhausted — final failure: school-failed + processed.
                 retries.pop(num, None)
@@ -685,6 +704,12 @@ def bridge_issues(
                 except Exception as e_rec:
                     sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
                 _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed", error=err,
+                                       repo=repo, attempt=attempts,
+                                       retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
                 processed.add(num)
 
     _save_retries(retries)

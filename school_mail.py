@@ -175,6 +175,79 @@ def notify_verdict(
     return False
 
 
+def notify_issue_alert(
+    issue_number: int,
+    title: str,
+    status: str,          # "retry" | "school-failed"
+    error: str = "",
+    repo: str = "__global__",
+    attempt: int = 1,
+    retry_limit: int = 2,
+) -> bool:
+    """Alert the human operator when the Agent-School hits a problem issue.
+
+    - ``status == "retry"`` — transient failure (gateway/Orca hiccup); the issue
+      will be retried automatically on the next cycle (attempt N of retry_limit).
+    - ``status == "school-failed"`` — retry budget exhausted; the issue is
+      labeled school-failed and needs human review.
+
+    Fired exactly once per issue per transition (the bridge retries at most
+    once), so it never spams. Best-effort: missing key, network errors, etc.
+    degrade to stderr + False — never raises, so the bridge stays resilient.
+    Uses the same AgentMail channel + control-plane inbox as
+    :func:`notify_verdict`.
+    """
+    try:
+        inbox = _resolve_dest_inbox()
+    except Exception as e:
+        sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
+        return False
+
+    if status == "school-failed":
+        mark = "❌ SCHOOL-FAILED"
+        subject = f"[school] #{issue_number} — SCHOOL-FAILED"
+        parts = [
+            f"[Agent-School] Issue #{issue_number} — {mark}",
+            "",
+            f"Repo: {repo}",
+            f"Title: {title}",
+            "",
+            f"Retry budget exhausted ({attempt}/{retry_limit}) — the school could",
+            "not complete this issue. Needs human review.",
+        ]
+    else:  # "retry"
+        mark = "🔄 RETRY PENDING"
+        subject = f"[school] #{issue_number} — RETRY ({attempt}/{retry_limit})"
+        parts = [
+            f"[Agent-School] Issue #{issue_number} — {mark}",
+            "",
+            f"Repo: {repo}",
+            f"Title: {title}",
+            "",
+            f"Transient failure on attempt {attempt}/{retry_limit} — will be",
+            "retried automatically on the next cycle.",
+        ]
+
+    if error:
+        parts += ["", f"Error: {str(error)[:500]}"]
+
+    parts += ["", f"Issue: https://github.com/{repo}/issues/{issue_number}"]
+    text = "\n".join(parts)
+
+    try:
+        _req(
+            "POST",
+            f"/inboxes/{inbox}/messages/send",
+            {"to": [inbox], "subject": subject, "text": text},
+        )
+        return True
+    except urllib.error.URLError as e:
+        sys.stderr.write(f"[school_mail] send failed (network): {e}\n")
+    except Exception as e:  # noqa: BLE001 — degrade, never crash the bridge
+        sys.stderr.write(f"[school_mail] send failed: {e}\n")
+    return False
+
+
 if __name__ == "__main__":
     ok = notify_verdict(
         "demo-bead", False, "PASS", "FAIL", "teacher-coo found incomplete acceptance criteria"

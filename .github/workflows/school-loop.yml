@@ -93,6 +93,9 @@ jobs:
       # The secret that unlocks model calls — REQUIRED (execution fails loudly
       # without it). Same wiring as CI's integration job.
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # AgentMail key for school-failed / retry-pending alerts. The bridge
+      # degrades gracefully (no crash, no alert) when unset.
+      AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
       # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
       # /usr/local/bin, so re-expose it (plus common Homebrew paths).
       PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
