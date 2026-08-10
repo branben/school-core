@@ -1,12 +1,5 @@
 [
   {
-    "issue_number": 44,
-    "title": "test: pytest smoke test verifying issue close + label sync",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
     "issue_number": 27,
     "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",
