@@ -120,6 +120,29 @@ jobs:
       - name: Register checkout with Orca
         run: orca repo add --path "$PWD" --json
 
+      # FirstMate crew preflight: diagnose a broken crew setup (missing
+      # persistent clone, Orca daemon down, FM_HOME backend drift, hermes
+      # wrapper/auth) with a clear PASS/FAIL report instead of a cryptic
+      # mid-spawn error. INFRA FAILURES ARE FATAL: missing clone / Orca down /
+      # wrapper gone fail the execute job (exit 1) so the breakage is loud;
+      # the `loop` job still publishes the board from committed state (its
+      # guard is the gate, not execute), and the bridge's retry-once
+      # semantics carry any unprocessed issue to the next cycle. AUTH IS
+      # NON-FATAL by design (FM_DOCTOR_WARN_AUTH=1): the bridge executes
+      # through Orca directly today, so a missing provider token must not
+      # block issue processing — the doctor still prints the WARN so the
+      # token gap stays visible.
+      - name: FirstMate crew preflight (fm_doctor)
+        env:
+          # Auth is a WARN here: a missing provider token must not block issue
+          # execution (the bridge logs the failure and retry-once carries it),
+          # but infra problems (missing clone, Orca down, wrapper gone) stay
+          # fatal and fail the job with the doctor's clear report.
+          FM_DOCTOR_WARN_AUTH: "1"
+        run: |
+          scripts/fm_doctor.sh
+          echo "fm_doctor: crew setup OK — proceeding with issue execution"
+
       - name: Populate issue cache from GitHub
         run: .venv/bin/python populate_board_cache.py
 

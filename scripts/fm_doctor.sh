@@ -22,6 +22,12 @@
 #
 # All telemetry goes to STDOUT in plain "PASS/FAIL/INFO" lines (stderr reserved
 # for fatal invocation errors).
+#
+# Env switches:
+#   FM_DOCTOR_WARN_AUTH=1 — downgrade the model-auth check from FAIL to WARN.
+#   Use in the school-loop workflow where a missing provider token must not
+#   block issue execution (the bridge logs it and the retry counter carries it),
+#   while infra problems (missing clone, Orca down, wrapper gone) stay fatal.
 
 set -uo pipefail
 
@@ -159,9 +165,13 @@ PY
     n="${auth_state##*:}"
     if [ -n "$provider" ] && [ "$n" -ge 1 ]; then
       pass "active provider '$provider' has $n credential(s)"
+  else
+    if [ "${FM_DOCTOR_WARN_AUTH:-0}" = "1" ]; then
+      warn "active provider '$provider' has NO credential — crew spawns will die with 'No access token found' (fix: hermes model)"
     else
       fail "active provider '$provider' has NO credential — spawns launch but the agent dies with 'No access token found' (fix: hermes model)"
     fi
+  fi
   fi
 else
   fail "auth.json missing ($HERMES_HOME/auth.json) — run 'hermes model' to configure a provider"
