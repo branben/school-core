@@ -130,12 +130,13 @@ jobs:
         # self-healing against overlapping runs.
         run: |
           # scores.json carries the school's cross-cycle memory (agent leaderboard
-          # used for selection + gate progression) — commit it sanitized so the
-          # fresh checkout on the next cycle picks up the previous scores.
-          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json
+          # used for selection + gate progression); retry_issues.json carries the
+          # retry-once counter for transiently failed issues. Both must survive
+          # the fresh checkout each cycle — commit them sanitized.
+          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json 2>/dev/null || true
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "checkpoint: no state changes to commit"
           else

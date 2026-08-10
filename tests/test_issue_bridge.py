@@ -21,19 +21,24 @@ from issue_bridge import (
     verify_task_output,
     _mark_github_issue,
     _ensure_school_labels,
+    _load_retries,
+    _save_retries,
     SCHOOL_DONE_LABEL,
     SCHOOL_FAILED_LABEL,
     PROCESSED_FILE,
+    RETRY_FILE,
+    RETRY_LIMIT,
 )
 from scoring import ScoreStore
 
 
 @pytest.fixture(autouse=True)
-def _no_real_gh_writes(monkeypatch):
+def _no_real_gh_writes(monkeypatch, tmp_path):
     """Keep every bridge test hermetic.
 
-    The bridge now syncs processed issues back to GitHub (close + label). Without
-    this fixture, bridge tests would hit the real GitHub API. Fake _gh_command:
+    The bridge now syncs processed issues back to GitHub (close + label) and
+    persists a retry counter. Without this fixture, bridge tests would hit the
+    real GitHub API and write the real data/retry_issues.json. Fake _gh_command:
     label list reports no labels (so label creation is also exercised as a no-op),
     everything else returns None (success, no output).
     """
@@ -44,6 +49,8 @@ def _no_real_gh_writes(monkeypatch):
     monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
     # Reset the per-process label memoization so each test starts fresh.
     monkeypatch.setattr("issue_bridge._LABELS_ENSURED", False)
+    # Hermetic retry counter — never touch the real data/retry_issues.json.
+    monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retry_issues.json")
 
 
 # ── Processed Issue Tracking ──────────────────────────────────────────────
@@ -138,7 +145,7 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_task_failure_still_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    def test_task_failure_retries_once_then_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 20, "title": "Flaky issue", "body": "",
@@ -146,6 +153,13 @@ class TestBridgeIssues:
              "category": "bug", "state": "ready-for-agent"},
         ]
         mock_task.return_value = {"status": "error", "error": "model unavailable"}
+        # Attempt 1 → retry scheduled (transient), NOT processed yet
+        results = bridge_issues("user/test", store=store)
+        assert len(results) == 1
+        assert results[0]["status"] == "retry"
+        assert results[0]["retry_attempt"] == 1
+        assert not is_processed(20)
+        # Attempt 2 (retry budget exhausted) → final error + processed
         results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
@@ -153,7 +167,7 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
-    def test_handles_run_task_exception(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    def test_handles_run_task_exception_retries_once(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
             {"issue_number": 30, "title": "Boom", "body": "",
@@ -161,10 +175,17 @@ class TestBridgeIssues:
              "category": "bug", "state": "ready-for-agent"},
         ]
         mock_task.side_effect = RuntimeError("unexpected error")
+        # Attempt 1 → retry scheduled
+        results = bridge_issues("user/test", store=store)
+        assert len(results) == 1
+        assert results[0]["status"] == "retry"
+        assert not is_processed(30)
+        # Attempt 2 → final error + processed
         results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert "unexpected error" in results[0]["error"]
+        assert is_processed(30)
 
 
 # ── Adversarial Review Integration ─────────────────────────────────────────
@@ -930,7 +951,7 @@ class TestBridgeGithubSync:
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("issue_bridge._mark_github_issue")
-    def test_failure_syncs_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    def test_failure_syncs_github_only_after_retry(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [{
             "issue_number": 61, "title": "Sync failure", "body": "",
@@ -938,6 +959,10 @@ class TestBridgeGithubSync:
             "category": "bug", "state": "ready-for-agent",
         }]
         mock_task.return_value = {"status": "error", "error": "model unavailable"}
+        # Attempt 1 → retry scheduled: no GitHub sync yet (no school-failed)
+        bridge_issues("user/test", store=store)
+        mock_mark.assert_not_called()
+        # Attempt 2 → final failure: school-failed sync
         bridge_issues("user/test", store=store)
         mock_mark.assert_called_once()
         assert mock_mark.call_args[0][1] == 61
@@ -946,7 +971,7 @@ class TestBridgeGithubSync:
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("issue_bridge._mark_github_issue")
-    def test_run_task_exception_syncs_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    def test_run_task_exception_syncs_github_only_after_retry(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [{
             "issue_number": 62, "title": "Boom sync", "body": "",
@@ -954,7 +979,9 @@ class TestBridgeGithubSync:
             "category": "bug", "state": "ready-for-agent",
         }]
         mock_task.side_effect = RuntimeError("unexpected")
-        bridge_issues("user/test", store=store)
+        bridge_issues("user/test", store=store)  # attempt 1 → retry, no sync
+        mock_mark.assert_not_called()
+        bridge_issues("user/test", store=store)  # attempt 2 → final + sync
         mock_mark.assert_called_once()
         assert mock_mark.call_args[0][1] == 62
         assert mock_mark.call_args[0][2] == "error"
@@ -971,3 +998,94 @@ class TestBridgeGithubSync:
         }]
         bridge_issues("user/test", dry_run=True, store=store)
         mock_mark.assert_not_called()
+
+
+# ── Retry-once semantics ───────────────────────────────────────────────────
+
+
+class TestRetryOnce:
+    """Transient failures get one retry on the next cycle before school-failed."""
+
+    @staticmethod
+    def _issue(num):
+        return [{"issue_number": num, "title": f"T{num}", "body": "",
+                 "domain": "debugging", "difficulty": "easy", "prompt": "p",
+                 "category": "bug", "state": "ready-for-agent"}]
+
+    def test_load_save_roundtrip(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        _save_retries({5: 1, 7: 2})
+        assert _load_retries() == {5: 1, 7: 2}
+
+    def test_load_missing_and_bad_json(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "missing.json")
+        assert _load_retries() == {}
+        (tmp_path / "bad.json").write_text("not json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "bad.json")
+        assert _load_retries() == {}
+
+    def test_retry_limit_is_two(self):
+        assert RETRY_LIMIT == 2  # attempt 1 = trial, attempt 2 = final
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_first_failure_schedules_retry_no_github_sync(
+        self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(70)
+        mock_task.return_value = {"status": "error", "error": "gateway hiccup"}
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "retry"
+        assert results[0]["retry_attempt"] == 1
+        assert not is_processed(70)
+        assert _load_retries() == {70: 1}
+        mock_mark.assert_not_called()  # no school-failed on the first failure
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_second_failure_is_final_and_syncs(
+        self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(71)
+        mock_task.return_value = {"status": "error", "error": "still down"}
+        bridge_issues("user/test", store=store)          # attempt 1 → retry
+        results = bridge_issues("user/test", store=store)  # attempt 2 → final
+        assert results[0]["status"] == "error"
+        assert is_processed(71)
+        assert _load_retries() == {}   # retry state cleared after final
+        mock_mark.assert_called_once()
+        assert mock_mark.call_args[0][1] == 71
+        assert mock_mark.call_args[0][2] == "error"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._mark_github_issue")
+    def test_success_clears_retry_state(
+        self, mock_mark, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        _save_retries({72: 1})  # previously failed once
+        mock_fetch.return_value = self._issue(72)
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        assert is_processed(72)
+        assert _load_retries() == {}   # retry state cleared on success
+        mock_mark.assert_called_once()
+        assert mock_mark.call_args[0][2] == "success"

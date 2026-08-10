@@ -9,6 +9,7 @@ Poll flow:
   4. Convert remaining issues into Director tasks via run_task()
   5. Verify output correctness (replaces hardcoded score)
   5. Track completed issue numbers to avoid re-processing
+  6. Retry-once: transient failures get one retry next cycle before school-failed
 
 Usage:
     from issue_bridge import bridge_issues, mark_processed, is_processed
@@ -114,6 +115,40 @@ def mark_processed(issue_number: int) -> None:
 def is_processed(issue_number: int) -> bool:
     """Check if an issue has already been processed."""
     return issue_number in _load_processed()
+
+
+RETRY_FILE = Path(__file__).parent / "data" / "retry_issues.json"
+# Retry-once: a failed issue gets one retry on the next cycle before it is
+# marked processed + school-failed. attempt 1 → schedule retry; attempt 2 → final.
+RETRY_LIMIT = 2
+
+
+def _load_retries() -> dict[int, int]:
+    """Load ``{issue_number: attempt_count}`` for issues awaiting a retry.
+
+    Durable across school-loop cycles (each cycle does a fresh checkout), so
+    the counter lives in a committed data file alongside the other state.
+    """
+    if not RETRY_FILE.exists():
+        return {}
+    try:
+        raw = RETRY_FILE.read_text().strip()
+        if not raw:
+            return {}
+        data = json.loads(raw)
+        return {int(k): int(v) for k, v in data.items()}
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        sys.stderr.write(f"[issue_bridge] Failed to load retry issues: {e}\n")
+        return {}
+
+
+def _save_retries(retries: dict[int, int]) -> None:
+    """Persist retry attempt counts to disk."""
+    RETRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        RETRY_FILE.write_text(json.dumps({str(k): v for k, v in retries.items()}, indent=2))
+    except OSError as e:
+        sys.stderr.write(f"[issue_bridge] Failed to save retry issues: {e}\n")
 
 
 _LABELS_ENSURED = False
@@ -388,6 +423,7 @@ def bridge_issues(
         repo = default_repo()
     issues = fetch_issues(repo, labels)
     processed = _load_processed()
+    retries = _load_retries()
     results = []
 
     if not issues:
@@ -444,11 +480,37 @@ def bridge_issues(
             )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
+            err = str(e)
+            attempts = retries.get(num, 0) + 1
+            if attempts < RETRY_LIMIT:
+                # Transient failure (gateway hiccup, Orca unavailable, …):
+                # schedule a retry on the next cycle. Not processed, not labeled.
+                retries[num] = attempts
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "retry",
+                    "retry_attempt": attempts,
+                    "error": err,
+                })
+                try:
+                    record_run(
+                        PROCESSED_FILE.parent / "last_run.json",
+                        {"issue": num, "status": "retry", "agent": None, "score": None, "trajectory": None},
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                continue
+            retries.pop(num, None)
             results.append({
                 "issue_number": num,
                 "title": issue["title"],
+                "domain": issue["domain"],
+                "difficulty": issue["difficulty"],
                 "status": "error",
-                "error": str(e),
+                "error": err,
             })
             try:
                 record_run(
@@ -458,6 +520,7 @@ def bridge_issues(
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
             _mark_github_issue(repo, num, "error")
+            processed.add(num)
             continue
 
         if task_result["status"] == "success":
@@ -567,33 +630,64 @@ def bridge_issues(
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
             _mark_github_issue(repo, num, "success", score=combined_score)
+            retries.pop(num, None)
+            processed.add(num)
         else:
-            results.append({
-                "issue_number": num,
-                "title": issue["title"],
-                "domain": issue["domain"],
-                "difficulty": issue["difficulty"],
-                "status": task_result.get("status", "error"),
-                "error": task_result.get("error"),
-            })
-            try:
-                record_run(
-                    PROCESSED_FILE.parent / "last_run.json",
-                    {
-                        "issue": num,
-                        "status": task_result.get("status", "error"),
-                        "agent": task_result.get("agent"),
-                        "score": None,
-                        "trajectory": None,
-                    },
-                )
-            except Exception as e_rec:
-                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
-            _mark_github_issue(repo, num, "error")
+            err = task_result.get("error")
+            attempts = retries.get(num, 0) + 1
+            if attempts < RETRY_LIMIT:
+                # Transient failure — schedule a retry on the next cycle.
+                retries[num] = attempts
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "retry",
+                    "retry_attempt": attempts,
+                    "error": err,
+                })
+                try:
+                    record_run(
+                        PROCESSED_FILE.parent / "last_run.json",
+                        {
+                            "issue": num,
+                            "status": "retry",
+                            "agent": task_result.get("agent"),
+                            "score": None,
+                            "trajectory": None,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+            else:
+                # Retry budget exhausted — final failure: school-failed + processed.
+                retries.pop(num, None)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": task_result.get("status", "error"),
+                    "error": err,
+                })
+                try:
+                    record_run(
+                        PROCESSED_FILE.parent / "last_run.json",
+                        {
+                            "issue": num,
+                            "status": task_result.get("status", "error"),
+                            "agent": task_result.get("agent"),
+                            "score": None,
+                            "trajectory": None,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                processed.add(num)
 
-        # Mark processed regardless of outcome (don't retry failed issues)
-        processed.add(num)
-
+    _save_retries(retries)
     _save_processed(processed)
     return results
 
@@ -624,9 +718,10 @@ def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optiona
             results = bridge_issues(repo, labels, force_agent=force_agent)
             if results:
                 ok = sum(1 for r in results if r["status"] == "success")
-                fail = sum(1 for r in results if r["status"] != "success" and r["status"] != "dry_run")
+                retried = sum(1 for r in results if r["status"] == "retry")
+                fail = sum(1 for r in results if r["status"] not in ("success", "retry", "dry_run"))
                 print(f"[issue_bridge] Round complete: {len(results)} issues "
-                      f"({ok} ok, {fail} failed)")
+                      f"({ok} ok, {retried} retried, {fail} failed)")
             time.sleep(interval)
     except KeyboardInterrupt:
         print("\n[issue_bridge] Stopped.")
