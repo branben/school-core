@@ -70,5 +70,13 @@
     "score": 80.992,
     "trajectory": "data/trajectories/20260810_215146_748255--python-testing--coder.json",
     "timestamp": "2026-08-10T21:52:24.611568+00:00"
+  },
+  {
+    "issue": 43,
+    "status": "success",
+    "agent": "coder",
+    "score": 81.248,
+    "trajectory": "data/trajectories/20260810_215652_957804--python-testing--coder.json",
+    "timestamp": "2026-08-10T21:57:38.255448+00:00"
   }
 ]

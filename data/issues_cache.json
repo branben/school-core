@@ -1,7 +1,7 @@
 [
   {
-    "issue_number": 42,
-    "title": "test: add pytest smoke test verifying pipeline flow",
+    "issue_number": 43,
+    "title": "test: pytest smoke test verifying leaderboard memory persistence",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
