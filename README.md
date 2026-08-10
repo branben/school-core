@@ -17,6 +17,25 @@ practice, feedback, challenge, and rest — not prompt-chaining.
 - **Growth over performance** — difficulty-adjusted EMA scoring
 - **Memory that compounds** — Library/Engram consolidation
 
+## FirstMate dispatch (crew spawning)
+
+FirstMate spawns ephemeral Hermes crewmates into Orca worktrees (see
+`campus.md` → Operational Reality for the full note). It lives in a
+**persistent** location so it survives reboots:
+
+```bash
+# One-time install (NOT /tmp — that gets wiped on reboot)
+git clone --depth 1 https://github.com/kunchenguid/firstmate.git ~/.local/share/firstmate
+
+# Spawn a crewmate (FM_HOME carries the orca backend config)
+FM_HOME=~/.hermes/school-core-fm-config \
+  ~/.local/share/firstmate/bin/fm-spawn.sh <task-id> <project-dir> \
+  --backend orca --mode no-mistakes --yolo on \
+  --harness '/Users/brandonbennett/.local/bin/hermes-fm-wrapper "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
+```
+
+Working skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md`.
+
 ## Quick Start
 
 ```bash

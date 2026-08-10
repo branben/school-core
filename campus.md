@@ -228,7 +228,15 @@ real risk.
 | AgentMail bus (2-judge) | ⚠️ Partial | Two-judge via AgentMail + rubber-stamp poller; sync mode inline, async Phase 2 future |
 | Bookbag-as-contract | ⚠️ Partial | `~/.hermes/bookbag/<bead>.json`; verify on disk |
 | Verification-co-evolution loop | ✅ Wired | `adversarial_reviewer.py` + `director._run_two_judge_review`. 15 unit tests |
-| FirstMate dispatch | ✅ Wired | Fan-out orchestration + result synthesis |
+| FirstMate dispatch | ✅ Wired | Fan-out orchestration + result synthesis. Clone: `~/.local/share/firstmate` (persistent; was `/tmp` and wiped on reboot). Spawn verified live 2026-08-10. Agent start blocked by missing Nous Portal token (see Ops note below). |
+
+**Ops note — FirstMate install & spawn (verified 2026-08-10):**
+
+- Repo: `git clone --depth 1 https://github.com/kunchenguid/firstmate.git ~/.local/share/firstmate` (do NOT clone to /tmp — wiped on reboot).
+- Skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md` owns the spawn invocation + wrapper + teardown.
+- FM_HOME: `~/.hermes/school-core-fm-config` (`backend=orca`).
+- Spawn is proven end-to-end (backend gate → worktree/terminal → harness launch → meta/data written).
+- **Blocker:** hermes model provider is `nous` (`tencent/hy3:free`); "No access token found for Nous Portal login" stops the agent before it answers — re-auth via `hermes model`. `--max-runtime` was removed from firstmate (f74d9e4); bound tasks by brief, not flag.
 
 **The principle that matters most:** *the compiler runs before the critic
 speaks.* For a long time the pipeline only ran the critic on prose. The
