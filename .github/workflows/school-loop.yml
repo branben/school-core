@@ -5,9 +5,10 @@
 # survives disk death.
 #
 # Axes (durability core):
-#   1. STATE IN GIT — data/* committed + pushed
-#   2. EXECUTION IN CI — this workflow, not the laptop
-#   3. VIEW HOSTED — board.html published to ht-ml.app (Task 6)
+#   1. EXECUTION IN CI — this workflow, not the laptop
+#   2. VIEW HOSTED — board.html published to ht-ml.app (Task 6)
+#   (STATE IN GIT was retired 2026-08-10: data/* contained local home paths
+#   /Users/... and is no longer committed — see the commit step below.)
 
 name: School Loop
 
@@ -52,21 +53,19 @@ jobs:
       - name: Run bridge loop
         run: python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
-      - name: Commit and push state changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Force-add durability-critical state (these are un-ignored in .gitignore,
-          # but -f guards against any future ignore regression). Missing files are skipped.
-          git add -f data/issues_cache.json data/processed_issues.json 2>/dev/null || true
-          if [ -f data/last_run.json ]; then git add -f data/last_run.json 2>/dev/null || true; fi
-          git diff --cached --quiet || (git commit -m "chore: update board state [skip ci]" && git push)
+      # NOTE (2026-08-10, security): data/* is deliberately NOT committed anymore.
+      # last_run.json carried full local home paths (/Users/...) — PII that was
+      # being force-pushed to the public repo every 5 minutes. The files still
+      # regenerate on the runner and the board publish step below reads them
+      # locally, but board state is no longer durable in git (was the old
+      # "STATE IN GIT" durability axis). board-url.txt is still committed so
+      # the current board link stays discoverable.
 
       - name: Publish board to ht-ml.app
-        # Regenerate board.html from the just-committed data/, re-share, and record
-        # the (rotating) URL in board-url.txt so it stays discoverable. ht-ml.app has
-        # no in-place update flag, so each share yields a new URL — board-url.txt is
-        # the source of truth for "current board".
+        # Regenerate board.html from the just-generated local data/, re-share, and
+        # record the (rotating) URL in board-url.txt so it stays discoverable.
+        # ht-ml.app has no in-place update flag, so each share yields a new URL —
+        # board-url.txt is the source of truth for "current board".
         run: |
           python -c "
           import json
