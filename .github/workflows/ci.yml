@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual catch-up: if a push landed while the self-hosted runner (and thus
+  # the Mac) was offline, the integration job skips and that commit is never
+  # covered. Run this workflow manually (Actions → CI → Run workflow) whenever
+  # you want the live-Orca suite re-run on the current main.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -45,7 +50,7 @@ jobs:
     # hard-fail as usual.
     name: integration gate (runner check)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
       runner_online: ${{ steps.check.outputs.runner_online }}
     steps:
@@ -53,9 +58,11 @@ jobs:
         id: check
         env:
           # The runners API needs repo-admin scope; the default GITHUB_TOKEN
-          # gets 403. RUNNER_ADMIN_TOKEN holds the repo owner's gh token.
-          # Hardening: replace with a fine-grained PAT limited to this repo,
-          # "Administration: Read" only.
+          # gets 403. RUNNER_ADMIN_TOKEN currently holds the repo owner's gh
+          # token. HARDENING REQUIRED: replace it with a dedicated fine-grained
+          # PAT scoped to this repo with ONLY "Administration: Read" — a full
+          # personal token in CI secrets on a public repo is over-scoped, and
+          # rotating the gh token would silently break this gate. See README.
           GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
         run: |
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
