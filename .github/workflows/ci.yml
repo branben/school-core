@@ -34,6 +34,36 @@ jobs:
         # so this runs the full suite without requiring a running Orca daemon.
         run: python -m pytest -q
 
+  integration-gate:
+    # Hosted-runner pre-flight check for the live-Orca integration job. The
+    # self-hosted runner lives on the Mac that hosts Orca + the OmniRoute
+    # gateway — if that Mac is asleep/offline, the runner can't pick up the
+    # job and it would sit in the queue (or worse, block on a hung job). This
+    # gate checks runner liveness from a hosted runner so a sleeping Mac is a
+    # clean "skipped" instead of a stuck or red run. Real breakage still
+    # fails: when the runner IS online the integration job runs and its tests
+    # hard-fail as usual.
+    name: integration gate (runner check)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    outputs:
+      runner_online: ${{ steps.check.outputs.runner_online }}
+    steps:
+      - name: Check school-core-mac runner liveness
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
+            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length')
+          if [ "$ONLINE" -ge 1 ]; then
+            echo "runner_online=true" >> "$GITHUB_OUTPUT"
+            echo "school-core-mac online — integration job will run"
+          else
+            echo "runner_online=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::school-core-mac is offline — skipping live-Orca integration tests this run"
+          fi
+
   integration:
     # Live-Orca + OmniRoute integration tests. These need a real Orca daemon
     # and the local OmniRoute gateway (localhost:20128), which only exist on
@@ -42,9 +72,16 @@ jobs:
     #
     # Runs on push only: running arbitrary PR code on a self-hosted runner is
     # a supply-chain risk, and fork PRs can't reach this machine's gateway.
+    #
+    # Gated on integration-gate: skips cleanly when the Mac (and thus the
+    # runner) is offline, instead of queueing or hanging. always() is required
+    # so the if-expression is evaluated even when the gate itself is skipped
+    # (non-push events) or when GitHub's "needs" short-circuit applies.
     name: integration (live Orca + OmniRoute)
+    needs: integration-gate
     runs-on: [self-hosted, omniroute]
-    if: github.event_name == 'push'
+    if: always() && needs.integration-gate.result == 'success' && needs.integration-gate.outputs.runner_online == 'true'
+    timeout-minutes: 30
     env:
       ORCA_LIVE_TESTS: "1"
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
