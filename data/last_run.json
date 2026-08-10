@@ -89,5 +89,13 @@
     "domain": "python-testing",
     "difficulty": "medium",
     "timestamp": "2026-08-10T22:10:04.386020+00:00"
+  },
+  {
+    "issue": 45,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T22:37:09.262123+00:00"
   }
 ]
