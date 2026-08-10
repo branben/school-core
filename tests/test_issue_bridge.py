@@ -19,9 +19,31 @@ from issue_bridge import (
     _run_adversarial_review,
     _heuristic_score,
     verify_task_output,
+    _mark_github_issue,
+    _ensure_school_labels,
+    SCHOOL_DONE_LABEL,
+    SCHOOL_FAILED_LABEL,
     PROCESSED_FILE,
 )
 from scoring import ScoreStore
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gh_writes(monkeypatch):
+    """Keep every bridge test hermetic.
+
+    The bridge now syncs processed issues back to GitHub (close + label). Without
+    this fixture, bridge tests would hit the real GitHub API. Fake _gh_command:
+    label list reports no labels (so label creation is also exercised as a no-op),
+    everything else returns None (success, no output).
+    """
+    def fake_gh(args, timeout=30):
+        if args[:2] == ["label", "list"]:
+            return "[]"
+        return None
+    monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+    # Reset the per-process label memoization so each test starts fresh.
+    monkeypatch.setattr("issue_bridge._LABELS_ENSURED", False)
 
 
 # ── Processed Issue Tracking ──────────────────────────────────────────────
@@ -801,3 +823,151 @@ class TestE2EPipeline:
         assert 0 <= combined <= 100
         # Combined should be broad-band: exec 80 + review 100 + heuristic 16 → at least 40
         assert combined > 0
+
+
+# ── GitHub Issue Sync (close + lifecycle labels) ──────────────────────────
+
+
+class TestGithubIssueSync:
+    """Unit tests for _ensure_school_labels / _mark_github_issue."""
+
+    def _record_calls(self, monkeypatch, label_list_out="[]"):
+        calls = []
+        def fake_gh(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["label", "list"]:
+                return label_list_out
+            return None
+        monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+        return calls
+
+    def test_success_closes_and_labels(self, monkeypatch):
+        calls = self._record_calls(monkeypatch)
+        _mark_github_issue("acme/test", 7, "success", score=81.25)
+        flat = [" ".join(c) for c in calls]
+        # Labels ensured (created since list was empty)
+        assert any("label create school-done" in c for c in flat)
+        assert any("label create school-failed" in c for c in flat)
+        # school-done added, then issue closed with the score in the comment
+        assert any("issue edit" in c and "--add-label" in c and SCHOOL_DONE_LABEL in c for c in flat)
+        close = next(c for c in flat if c.startswith("issue close"))
+        assert "81.2" in close  # score in close comment
+        assert not any(SCHOOL_FAILED_LABEL in c and "edit" in c for c in flat)
+
+    def test_error_labels_but_does_not_close(self, monkeypatch):
+        calls = self._record_calls(monkeypatch, label_list_out='[{"name": "school-done"}, {"name": "school-failed"}]')
+        _mark_github_issue("acme/test", 8, "error")
+        flat = [" ".join(c) for c in calls]
+        assert any("issue edit" in c and SCHOOL_FAILED_LABEL in c for c in flat)
+        assert not any(c.startswith("issue close") for c in flat)
+        assert not any(c.startswith("label create") for c in flat)  # labels already exist
+
+    def test_labels_created_when_missing(self, monkeypatch):
+        calls = self._record_calls(monkeypatch, label_list_out="[]")
+        _mark_github_issue("acme/test", 9, "error")
+        flat = [" ".join(c) for c in calls]
+        assert any("label create school-done" in c for c in flat)
+        assert any("label create school-failed" in c for c in flat)
+
+    def test_unknown_status_is_noop(self, monkeypatch):
+        calls = self._record_calls(monkeypatch)
+        _mark_github_issue("acme/test", 10, "dry_run")
+        assert calls == []
+
+    def test_gh_failure_is_non_fatal(self, monkeypatch):
+        def boom(args, timeout=30):
+            raise RuntimeError("gh exploded")
+        monkeypatch.setattr("issue_bridge._gh_command", boom)
+        _mark_github_issue("acme/test", 11, "success", score=50)  # must not raise
+
+    def test_ensure_labels_handles_bad_json(self, monkeypatch):
+        calls = []
+        def fake_gh(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["label", "list"]:
+                return "not json"
+            return None
+        monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+        _ensure_school_labels("acme/test")
+        # Treated as "no labels exist" → create both
+        assert any("label create school-done" in " ".join(c) for c in calls)
+        assert any("label create school-failed" in " ".join(c) for c in calls)
+
+
+class TestBridgeGithubSync:
+    """The bridge must call _mark_github_issue with the right status per path."""
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._mark_github_issue")
+    def test_success_syncs_github(
+        self, mock_mark, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [{
+            "issue_number": 60, "title": "Sync success", "body": "",
+            "domain": "debugging", "difficulty": "medium", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "medium",
+            "prompt": "fix", "response": "ok",
+        }
+        bridge_issues("user/test", store=store)
+        mock_mark.assert_called_once()
+        args, kwargs = mock_mark.call_args
+        assert args[0] == "user/test"
+        assert args[1] == 60
+        assert args[2] == "success"
+        assert kwargs.get("score") is not None
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_failure_syncs_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [{
+            "issue_number": 61, "title": "Sync failure", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.return_value = {"status": "error", "error": "model unavailable"}
+        bridge_issues("user/test", store=store)
+        mock_mark.assert_called_once()
+        assert mock_mark.call_args[0][1] == 61
+        assert mock_mark.call_args[0][2] == "error"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_run_task_exception_syncs_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [{
+            "issue_number": 62, "title": "Boom sync", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "boom",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.side_effect = RuntimeError("unexpected")
+        bridge_issues("user/test", store=store)
+        mock_mark.assert_called_once()
+        assert mock_mark.call_args[0][1] == 62
+        assert mock_mark.call_args[0][2] == "error"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_dry_run_does_not_sync_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [{
+            "issue_number": 63, "title": "Dry sync", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "x",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        bridge_issues("user/test", dry_run=True, store=store)
+        mock_mark.assert_not_called()

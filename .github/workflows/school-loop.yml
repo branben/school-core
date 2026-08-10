@@ -30,7 +30,9 @@ on:
 
 permissions:
   contents: write
-  issues: read
+  # issues: write — the execute job's bridge closes + labels processed issues
+  # (school-done / school-failed) so the repo list reflects the school's work.
+  issues: write
 
 env:
   # SCHOOL_REPO: override with owner/repo if this workflow runs from
@@ -191,6 +193,23 @@ jobs:
           cache = load('data/issues_cache.json')
           proc = load('data/processed_issues.json')
           lr = load('data/last_run.json')
+          # The bridge now closes processed issues, so they drop out of the
+          # open-issues cache. Merge them back from last_run (which records
+          # title/domain/difficulty on success) so Done cards keep their
+          # history on the board.
+          cache_nums = {c.get('issue_number') for c in cache}
+          for e in lr:
+              n = e.get('issue')
+              if n in cache_nums or n not in set(proc) or e.get('status') != 'success':
+                  continue
+              cache.append({
+                  'issue_number': n,
+                  'title': e.get('title') or ('Issue #%s' % n),
+                  'domain': e.get('domain', ''),
+                  'difficulty': e.get('difficulty', ''),
+                  'state': 'done',
+              })
+              cache_nums.add(n)
           Path('board.html').write_text(build_board_html(cache, proc, lr))
           print('regenerated board.html')
           "

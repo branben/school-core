@@ -23,11 +23,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from github_fetcher import fetch_issues, load_config
+from github_fetcher import fetch_issues, load_config, _gh_command
 from executor import call_model, COMBO_MAP, ExecutorError
 from scoring import ScoreStore
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
+
+# GitHub lifecycle labels so the repo's issue list reflects the school's work.
+# Success → closed + school-done (queryable "the school finished this").
+# Failure → school-failed, left open for human retriage.
+SCHOOL_DONE_LABEL = "school-done"
+SCHOOL_FAILED_LABEL = "school-failed"
+_SCHOOL_LABELS = (
+    (SCHOOL_DONE_LABEL, "0E8A16", "Processed successfully by Agent School"),
+    (SCHOOL_FAILED_LABEL, "D93F0B", "Agent School attempted this issue but it failed"),
+)
 
 # Verification prompt template — uses semantic anchors for structured evaluation
 VERIFICATION_PROMPT_TEMPLATE = """You are a verification evaluator. Your job: determine if the AGENT RESPONSE correctly and completely addresses the ORIGINAL TASK.
@@ -104,6 +114,66 @@ def mark_processed(issue_number: int) -> None:
 def is_processed(issue_number: int) -> bool:
     """Check if an issue has already been processed."""
     return issue_number in _load_processed()
+
+
+_LABELS_ENSURED = False
+
+
+def _ensure_school_labels(repo: str) -> None:
+    """Create the Agent School lifecycle labels if they don't exist yet.
+
+    Memoized per process (labels are repo-wide; checking once per bridge run
+    avoids a ``label list`` round trip for every issue). Non-fatal: label-API
+    failures must never crash the bridge. ``gh`` resolves the repo from the
+    current checkout when ``repo`` is empty.
+    """
+    global _LABELS_ENSURED
+    if _LABELS_ENSURED:
+        return
+    try:
+        existing: set[str] = set()
+        out = _gh_command(["label", "list", "--repo", repo, "--json", "name"])
+        if out:
+            try:
+                existing = {lbl.get("name") for lbl in json.loads(out)}
+            except json.JSONDecodeError:
+                existing = set()
+        for name, color, desc in _SCHOOL_LABELS:
+            if name not in existing:
+                _gh_command([
+                    "label", "create", name, "--repo", repo,
+                    "--color", color, "--description", desc,
+                ])
+        _LABELS_ENSURED = True
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] Failed to ensure school labels: {e}\n")
+
+
+def _mark_github_issue(repo: str, issue_number: int, status: str,
+                       score: Optional[float] = None) -> None:
+    """Reflect a processed issue on GitHub so the repo list shows the school's work.
+
+    - ``status == "success"`` → add the ``school-done`` label and close the
+      issue, with the combined score in the close comment.
+    - ``status == "error"`` → add the ``school-failed`` label and leave the
+      issue open for human retriage.
+
+    Never raises — gh write failures are logged and ignored so a GitHub API
+    hiccup can't take down the pipeline.
+    """
+    if status not in ("success", "error"):
+        return
+    try:
+        _ensure_school_labels(repo)
+        label = SCHOOL_DONE_LABEL if status == "success" else SCHOOL_FAILED_LABEL
+        _gh_command(["issue", "edit", str(issue_number), "--repo", repo, "--add-label", label])
+        if status == "success":
+            comment = "✅ Processed by Agent School — status: success"
+            if score is not None:
+                comment += f" — score: {score:.1f}"
+            _gh_command(["issue", "close", str(issue_number), "--repo", repo, "--comment", comment])
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] Failed to update GitHub issue #{issue_number}: {e}\n")
 
 
 def record_run(path: Path, entry: dict) -> None:
@@ -311,6 +381,11 @@ def bridge_issues(
 
     if store is None:
         store = ScoreStore()
+    if not repo:
+        # school-loop passes --repo "$SCHOOL_REPO" (usually empty) → resolve the
+        # repo from the current checkout's origin remote, same as bridge_poll.
+        from repo_default import default_repo
+        repo = default_repo()
     issues = fetch_issues(repo, labels)
     processed = _load_processed()
     results = []
@@ -382,6 +457,7 @@ def bridge_issues(
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+            _mark_github_issue(repo, num, "error")
             continue
 
         if task_result["status"] == "success":
@@ -480,10 +556,17 @@ def bridge_issues(
                         "agent": task_result.get("agent"),
                         "score": combined_score,
                         "trajectory": task_result.get("trajectory"),
+                        # title/domain/difficulty let the board re-render the
+                        # card after the issue is auto-closed (it leaves the
+                        # open-issues cache once closed).
+                        "title": issue["title"],
+                        "domain": issue["domain"],
+                        "difficulty": issue["difficulty"],
                     },
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+            _mark_github_issue(repo, num, "success", score=combined_score)
         else:
             results.append({
                 "issue_number": num,
@@ -506,6 +589,7 @@ def bridge_issues(
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+            _mark_github_issue(repo, num, "error")
 
         # Mark processed regardless of outcome (don't retry failed issues)
         processed.add(num)
