@@ -119,10 +119,13 @@ jobs:
         # never reaches the public repo. pull --rebase makes the push
         # self-healing against overlapping runs.
         run: |
-          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json
+          # scores.json carries the school's cross-cycle memory (agent leaderboard
+          # used for selection + gate progression) — commit it sanitized so the
+          # fresh checkout on the next cycle picks up the previous scores.
+          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json 2>/dev/null || true
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json 2>/dev/null || true
           git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git pull --rebase --autostash && git push)
 
   loop:
