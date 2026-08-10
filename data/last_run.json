@@ -1,0 +1,66 @@
+[
+  {
+    "issue": 9,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.589137+00:00"
+  },
+  {
+    "issue": 8,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.591971+00:00"
+  },
+  {
+    "issue": 7,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.595215+00:00"
+  },
+  {
+    "issue": 6,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.598374+00:00"
+  },
+  {
+    "issue": 4,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.602018+00:00"
+  },
+  {
+    "issue": 3,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.604649+00:00"
+  },
+  {
+    "issue": 2,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.608341+00:00"
+  },
+  {
+    "issue": 1,
+    "status": "error",
+    "agent": "executor",
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-10T21:06:15.611683+00:00"
+  }
+]
