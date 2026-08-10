@@ -702,13 +702,21 @@ class TestCreateWorktreeRepoPath:
 
         def mock_run_orca(args, timeout=30):
             calls.append(list(args))
-            return {"worktree": {"id": "uuid::/some/orca/workspace/study-coder-r1"}}
+            if args[:2] == ["repo", "list"]:
+                # target not yet registered
+                return {"repos": []}
+            if args[:2] == ["repo", "add"]:
+                return {"id": "repo-id-123"}
+            if args[:2] == ["worktree", "create"]:
+                return {"worktree": {"id": "uuid::/some/orca/workspace/study-coder-r1"}}
+            return {"id": "repo-id-123"}
 
         monkeypatch.setattr(mgr, "_run_orca", mock_run_orca)
         mgr.create_worktree("study-coder-r1")
 
-        idx = calls[0].index("--repo")
-        assert calls[0][idx + 1] == str(mgr.REPO_PATH), "default --repo is REPO_PATH"
+        wt = next(c for c in calls if c[:2] == ["worktree", "create"])
+        idx = wt.index("--repo")
+        assert wt[idx + 1] == str(mgr.REPO_PATH), "default --repo is REPO_PATH"
 
 
 # ── TeacherWorktree.close() Admin Entry Cleanup (Regression for cto-N Sufox Spray) ──

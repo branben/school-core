@@ -64,6 +64,12 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
+      # The checkout lives under ~/actions-runner/_work/... — a path Orca has
+      # never seen. `orca terminal create` (no selector) resolves the CURRENT
+      # worktree from cwd, so register the checkout with Orca first. Idempotent.
+      - name: Register checkout with Orca
+        run: orca repo add --path "$PWD" --json
+
       - name: Verify Orca + OmniRoute gateway reachable
         run: |
           orca status --json | head -c 200
