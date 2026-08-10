@@ -7,8 +7,9 @@
 # Axes (durability core):
 #   1. EXECUTION IN CI — this workflow, not the laptop
 #   2. VIEW HOSTED — board.html published to ht-ml.app (Task 6)
-#   (STATE IN GIT was retired 2026-08-10: data/* contained local home paths
-#   /Users/... and is no longer committed — see the commit step below.)
+#   (STATE IN GIT restored 2026-08-10: data/* is committed again, but only
+#   AFTER scripts/sanitize_data.py scrubs /Users/... home paths to ~ so the
+#   public repo never sees local PII.)
 
 name: School Loop
 
@@ -53,13 +54,12 @@ jobs:
       - name: Run bridge loop
         run: python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
-      # NOTE (2026-08-10, security): data/* is deliberately NOT committed anymore.
-      # last_run.json carried full local home paths (/Users/...) — PII that was
-      # being force-pushed to the public repo every 5 minutes. The files still
-      # regenerate on the runner and the board publish step below reads them
-      # locally, but board state is no longer durable in git (was the old
-      # "STATE IN GIT" durability axis). board-url.txt is still committed so
-      # the current board link stays discoverable.
+      # NOTE (2026-08-10, security): data/* is committed again after a sanitize
+      # pass — scripts/sanitize_data.py rewrites /Users/<username>/... absolute
+      # paths to ~ before staging, so board state is durable in git without
+      # pushing PII. The board renderer only uses trajectory basenames, so the
+      # scrubbed paths serve identically. board-url.txt is committed too so the
+      # current board link stays discoverable.
 
       - name: Publish board to ht-ml.app
         # Regenerate board.html from the just-generated local data/, re-share, and
@@ -87,3 +87,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f board-url.txt 2>/dev/null || true
           git diff --cached --quiet || (git commit -m "chore: publish board [skip ci]" && git push)
+
+      - name: Sanitize + commit board state (durable, PII-free)
+        # Restores the "STATE IN GIT" durability axis safely: scrub home paths
+        # out of the runtime JSON, then commit data/* so board state survives
+        # disk death. PII never reaches the public repo.
+        run: |
+          python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git push)
