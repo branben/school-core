@@ -6,6 +6,18 @@
 - CONTRIBUTING.md with contributing guidelines and development workflow.
 - CODE_OF_CONDUCT.md (Contributor Covenant 2.1).
 - OSS-readiness audit (`docs/solutions/oss-readiness-audit-2026-07-28.md`).
+- Regression tests for `executor._resolve_api_key()` (env-only credential).
+
+### Fixed
+- **Security:** removed a hardcoded live OmniRoute API key from `executor.py` and
+  `.scratch/diag_omniroute.py` — credentials are now env-only
+  (`OMNIROUTE_API_KEY`) and fail loudly when unset.
+- CI: `tests/test_leaf.py::test_run_task_delegates_to_director` mock expectation
+  drifted when `skip_readiness` was added to `run_task()` — updated, suite green
+  (942 passed).
+- `scripts/terminal_drift_check.sh` — repo root now derived from the script
+  location instead of a hardcoded user path.
+- `.scratch/` untracked and gitignored (local diagnostic files only).
 
 ## [0.1.0] — 2026-07-27
 

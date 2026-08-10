@@ -9,7 +9,10 @@ from typing import Optional
 
 OMNIROUTE_BASE = "http://localhost:20128/v1"
 A2A_BASE = "http://localhost:20128/a2a"
-API_KEY = os.environ.get("OMNIROUTE_API_KEY", "***REMOVED***")
+# Env-only credential. There is deliberately NO baked-in fallback: a default
+# key in source would leak to anyone with the repository (one shipped here
+# before and had to be rotated). Fail loudly at use time when unset.
+API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
 
 COMBO_MAP = {
     # Specialized roles — each role has a specific tool domain and model assignment.
@@ -133,6 +136,20 @@ class ExecutorError(Exception):
     pass
 
 
+def _resolve_api_key() -> str:
+    """Return the configured OmniRoute API key, failing if it is unset.
+
+    Raises ExecutorError when OMNIROUTE_API_KEY is missing so callers never
+    silently send an empty Authorization header.
+    """
+    if not API_KEY:
+        raise ExecutorError(
+            "OMNIROUTE_API_KEY is not set. Set it in your environment "
+            "(see .env.example) before calling model endpoints."
+        )
+    return API_KEY
+
+
 A2A = "a2a"
 
 
@@ -149,7 +166,7 @@ def _omniroute_call(combo: str, messages: list, timeout: int) -> dict:
         data=json.dumps(body).encode(),
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {_resolve_api_key()}",
             "User-Agent": "OpenCode/1.0",
         },
         method="POST",
@@ -201,7 +218,7 @@ def _a2a_call(
         data=json.dumps(body).encode(),
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
+            "Authorization": f"Bearer {_resolve_api_key()}",
             "User-Agent": "OpenCode/1.0",
         },
         method="POST",
@@ -266,7 +283,7 @@ def _a2a_poll(task_id: str, timeout: int = 120) -> str:
             data=json.dumps(body).encode(),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {API_KEY}",
+                "Authorization": f"Bearer {_resolve_api_key()}",
             },
             method="POST",
         )
@@ -313,7 +330,7 @@ def cloud_available() -> bool:
         req = urllib.request.Request(
             f"{OMNIROUTE_BASE}/models",
             headers={
-                "Authorization": f"Bearer {API_KEY}",
+                "Authorization": f"Bearer {_resolve_api_key()}",
                 "User-Agent": "OpenCode/1.0",
             },
             method="GET",

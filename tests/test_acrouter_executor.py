@@ -9,6 +9,8 @@ These verify two things:
 
 from pathlib import Path
 
+import pytest
+
 import executor
 from router_experience import RouterExperience, combo_candidates_from
 
@@ -55,3 +57,16 @@ def test_unknown_agent_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(executor, "_ROUTER", None)
     monkeypatch.setattr(executor, "_ROUTER_PATH", str(tmp_path / "exp.json"))
     assert executor.select_combo("not-a-real-role") is None
+
+
+def test_resolve_api_key_fails_when_unset(monkeypatch):
+    """Env-only credential: no OMNIROUTE_API_KEY → ExecutorError, never an empty Bearer."""
+    monkeypatch.setattr(executor, "API_KEY", "")
+    with pytest.raises(executor.ExecutorError, match="OMNIROUTE_API_KEY"):
+        executor._resolve_api_key()
+
+
+def test_resolve_api_key_returns_configured_value(monkeypatch):
+    """With a key configured, _resolve_api_key returns it for the Authorization header."""
+    monkeypatch.setattr(executor, "API_KEY", "test-key")
+    assert executor._resolve_api_key() == "test-key"

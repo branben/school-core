@@ -24,7 +24,9 @@
 
 set -euo pipefail
 
-REPO_ROOT="${REPO_ROOT:-~/school-core}"
+# Repo root defaults to this script's own checkout (portable across machines/clones).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 DRIFT_EMPTY_THRESHOLD="${DRIFT_EMPTY_THRESHOLD:-5}"
 DRIFT_ALERT_COOLDOWN_SEC="${DRIFT_ALERT_COOLDOWN_SEC:-3600}"
 DRIFT_NOTIFY_URL="${DRIFT_NOTIFY_URL:-}"

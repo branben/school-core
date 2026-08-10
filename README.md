@@ -27,7 +27,7 @@ nix develop github:branben/school-core
 orca dispatch --profile student-coder "implement feature X"
 
 # Review + rubber-stamp via AgentMail
-python -m school_core review <bead-id>
+python3 scripts/run_teacher_review_once.py teacher-cto
 # → AgentMail card lands in inbox: [/approve] [/reject] [/fix]
 ```
 
@@ -65,15 +65,18 @@ school-core/
 ├── config/
 │   ├── anchors.yaml           # Semantic anchors (TDD, YAGNI, Fagan…)
 │   └── profiles/*/SOUL.md     # Persona definitions
+├── conductor.py               # 🎓 Principal — routes work + review
+├── director.py                # EFC-gated task pipeline + two-judge review
+├── leaf.py                    # 🍃 Student leaves — disposable worktrees
+├── teacher.py                 # 🧑‍🏫 Teacher lifecycle — sleep/wake/review
+├── bookbag.py                 # 🎒 Bookbag state + file-lock protocol
+├── executor.py                # Model routing (ACRouter) + OmniRoute transport
 ├── src/
-│   ├── conductor.py           # Principal — routes work + review
-│   ├── leaf.py                # Student leaves — disposable worktrees
-│   ├── teacher.py             # Teacher lifecycle — sleep/wake/review
-│   ├── bookbag.py             # Bookbag state + file-lock protocol
 │   ├── qodo_pre_merge.py      # ✨ Entire review shim (pre-merge)
 │   └── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
-├── tests/                     # 910-test suite (TDD)
-├── campus.md                  # Identity & behavioral core
+├── scripts/
+│   └── run_teacher_review_once.py  # One-shot teacher review pass
+├── tests/                     # 942-test suite (TDD)
 └── flake.nix                  # Reproducible dev env (Nix)
 ```
 
@@ -81,7 +84,7 @@ school-core/
 
 | Component | Status |
 |-----------|--------|
-| Test suite | ✅ 910 tests passing |
+| Test suite | ✅ 942 tests passing, 15 skipped |
 | Qodo pre-merge | ⚠️ Discontinued → Entire CLI |
 | AgentMail loop | ✅ Cron every 2 min |
 | Beads kanban | ✅ 0 blocked, 0 open |
