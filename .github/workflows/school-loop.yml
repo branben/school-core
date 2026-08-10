@@ -1,15 +1,25 @@
 # School Loop — Durable Cloud Board runner
 #
-# Runs the bridge loop on GitHub's servers every 5 minutes so execution
-# survives laptop death.  Commits updated state back to the repo so data
-# survives disk death.
+# Runs every 5 minutes so the board stays published and state stays durable.
 #
-# Axes (durability core):
-#   1. EXECUTION IN CI — this workflow, not the laptop
-#   2. VIEW HOSTED — board.html published to ht-ml.app (Task 6)
-#   (STATE IN GIT restored 2026-08-10: data/* is committed again, but only
-#   AFTER scripts/sanitize_data.py scrubs /Users/... home paths to ~ so the
-#   public repo never sees local PII.)
+# Architecture (hybrid, 2026-08-10):
+#   1. EXECUTION ON THE MAC — `execute` job runs on the self-hosted runner
+#      (school-core-mac, label omniroute) because real task execution needs
+#      the OmniRoute gateway (localhost:20128) + the Orca macOS sandbox,
+#      which only exist on the Mac. Gated on runner liveness so a sleeping
+#      Mac is a clean "skipped", never a hung/red run.
+#   2. VIEW HOSTED — `loop` job runs on ubuntu-latest and always publishes
+#      the board (ht-ml.app), so the board stays up even when the Mac sleeps.
+#   3. STATE IN GIT — data/* is committed after scripts/sanitize_data.py
+#      scrubs /Users/... and /home/runner/... paths, so board state survives
+#      disk death without leaking PII. board-url.txt keeps the board link
+#      discoverable.
+#
+# NOTE (2026-08-10): the pre-hybrid workflow ran the bridge on ubuntu-latest,
+# where OMNIROUTE_API_KEY was unset, localhost:20128 does not exist, and Orca
+# cannot run — every issue errored with "A2A fallback failed: OMNIROUTE_API_KEY
+# is not set". Execution is Mac-bound by its dependencies; the loop cannot
+# survive laptop death for the EXECUTION step, only for the board + state.
 
 name: School Loop
 
@@ -31,9 +41,99 @@ env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  loop:
+  gate:
+    # Hosted-runner pre-flight check for the `execute` job. The self-hosted
+    # runner lives on the Mac that hosts Orca + the OmniRoute gateway — if
+    # that Mac is asleep/offline, the runner can't pick up the job and it
+    # would sit in the queue. Same pattern as CI's integration-gate.
+    name: execute gate (runner check)
     runs-on: ubuntu-latest
+    outputs:
+      runner_online: ${{ steps.check.outputs.runner_online }}
+    steps:
+      - name: Check school-core-mac runner liveness
+        id: check
+        env:
+          # The runners API needs repo-admin scope; the default GITHUB_TOKEN
+          # gets 403. RUNNER_ADMIN_TOKEN holds the repo owner's gh token.
+          # HARDENING REQUIRED: replace with a fine-grained PAT scoped to
+          # this repo with ONLY "Administration: Read".
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
+            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length')
+          if [ "$ONLINE" -ge 1 ]; then
+            echo "runner_online=true" >> "$GITHUB_OUTPUT"
+            echo "school-core-mac online — execution job will run"
+          else
+            echo "runner_online=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::school-core-mac is offline — skipping issue execution this cycle"
+          fi
 
+  execute:
+    # Real issue execution — runs ONLY on the Mac (gateway + Orca live there).
+    # Skips cleanly when the Mac is asleep. Commits sanitized board state back
+    # so the ubuntu `loop` job can publish it and state survives disk death.
+    name: execute issues (live Orca + OmniRoute)
+    needs: gate
+    runs-on: [self-hosted, omniroute]
+    if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'true'
+    timeout-minutes: 30
+    env:
+      # The secret that unlocks model calls — REQUIRED (execution fails loudly
+      # without it). Same wiring as CI's integration job.
+      OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
+      # /usr/local/bin, so re-expose it (plus common Homebrew paths).
+      PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      # No actions/setup-python here: on this self-hosted runner the action's
+      # tool-cache defaults to /Users/runner (a GitHub-hosted path) and fails
+      # with EACCES. Use the machine's system Python + a workspace-local venv.
+      - name: Set up Python (venv)
+        run: |
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      # The checkout lives under ~/actions-runner/_work/... — a path Orca has
+      # never seen. `orca terminal create` (no selector) resolves the CURRENT
+      # worktree from cwd, so register the checkout with Orca first. Idempotent.
+      - name: Register checkout with Orca
+        run: orca repo add --path "$PWD" --json
+
+      - name: Populate issue cache from GitHub
+        run: .venv/bin/python populate_board_cache.py
+
+      - name: Run bridge loop (executes issues)
+        run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
+
+      - name: Sanitize + commit board state (durable, PII-free)
+        # "STATE IN GIT" durability axis: scrub home paths out of the runtime
+        # JSON, then commit data/* so board state survives disk death. PII
+        # never reaches the public repo. pull --rebase makes the push
+        # self-healing against overlapping runs.
+        run: |
+          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json 2>/dev/null || true
+          git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git pull --rebase --autostash && git push)
+
+  loop:
+    # Board publishing — always runs (even when the Mac sleeps, even if
+    # execute failed), from the latest committed state. Serialized after
+    # `execute` (needs) so the two jobs never race their git pushes; the
+    # pull below picks up the sanitized data/* that execute just committed.
+    name: publish board (hosted)
+    needs: [gate, execute]
+    runs-on: ubuntu-latest
+    if: always() && needs.gate.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,24 +148,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Pull latest committed board state
+        # The `execute` job (Mac) may have committed fresh data/* in the same
+        # cycle — pull it so the board reflects the newest execution results.
+        run: git pull --rebase --autostash origin main
+
       - name: Populate issue cache from GitHub
         run: python populate_board_cache.py
 
-      - name: Run bridge loop
-        run: python -m issue_bridge --repo "$SCHOOL_REPO" --once
-
-      # NOTE (2026-08-10, security): data/* is committed again after a sanitize
-      # pass — scripts/sanitize_data.py rewrites /Users/<username>/... absolute
-      # paths to ~ before staging, so board state is durable in git without
-      # pushing PII. The board renderer only uses trajectory basenames, so the
-      # scrubbed paths serve identically. board-url.txt is committed too so the
-      # current board link stays discoverable.
-
       - name: Publish board to ht-ml.app
-        # Regenerate board.html from the just-generated local data/, re-share, and
-        # record the (rotating) URL in board-url.txt so it stays discoverable.
-        # ht-ml.app has no in-place update flag, so each share yields a new URL —
-        # board-url.txt is the source of truth for "current board".
+        # Regenerate board.html from the just-generated local data/, re-share,
+        # and record the (rotating) URL in board-url.txt so it stays
+        # discoverable. ht-ml.app has no in-place update flag, so each share
+        # yields a new URL — board-url.txt is the source of truth.
         run: |
           python -c "
           import json
@@ -86,13 +181,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f board-url.txt 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "chore: publish board [skip ci]" && git push)
-
-      - name: Sanitize + commit board state (durable, PII-free)
-        # Restores the "STATE IN GIT" durability axis safely: scrub home paths
-        # out of the runtime JSON, then commit data/* so board state survives
-        # disk death. PII never reaches the public repo.
-        run: |
-          python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "chore: checkpoint board state (sanitized) [skip ci]" && git pull --rebase --autostash && git push)
+          git diff --cached --quiet || (git commit -m "chore: publish board [skip ci]" && git pull --rebase --autostash && git push)
