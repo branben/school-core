@@ -28,8 +28,8 @@
       devShells.${system}.verifyShell = pkgs.mkShell {
         name = "school-core-verify";
         packages = [
-          pkgs.nodejs_20
-          pkgs.nodePackages.pnpm
+          pkgs.nodejs_22  # nodejs_20 is EOL/insecure in nixpkgs 26.05
+          pkgs.pnpm  # nodePackages was removed in nixpkgs 26.05; pnpm now lives at top level
           pkgs.python312
           pkgs.ripgrep
           pkgs.fd
