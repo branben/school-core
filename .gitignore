@@ -63,3 +63,6 @@ scripts/prior_solutions/lancedb_data/
 scripts/prior_solutions/cocoindex_store/
 # CocoIndex runtime cache
 .cocoindex_code/
+
+# Entire session tracking (logs can carry prompt content — never commit)
+.entire/
