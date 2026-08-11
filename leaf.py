@@ -492,6 +492,8 @@ def run_leaf(
     store: Optional[ScoreStore] = None,
     async_mode: bool = False,
     repo: Optional[str] = None,
+    repo_path: Optional[Path] = None,
+    signal_ready: bool = True,
     ce_enabled: bool = False,
     complex_task: bool = False,
     dod_gate: bool = False,
@@ -534,7 +536,14 @@ def run_leaf(
     Raises:
         LeafError: If Orca runtime is unavailable.
     """
-    leaf = StudentLeaf(role=role, domain=domain, difficulty=difficulty, store=store, repo=repo)
+    leaf = StudentLeaf(
+        role=role,
+        domain=domain,
+        difficulty=difficulty,
+        store=store,
+        repo_path=repo_path,
+        repo=repo,
+    )
 
     try:
         leaf.boot()
@@ -565,7 +574,8 @@ def run_leaf(
                 },
             }
             leaf.write_output(output_data)
-            leaf.signal_ready()
+            if signal_ready:
+                leaf.signal_ready()
 
             if not async_mode:
                 # Phase 2 (future): uncomment for async teacher handoff

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import re
@@ -40,12 +41,20 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from scoring import ScoreStore
 from director import evaluate_and_update
-from bookbag import read_bookbag, list_bookbags, list_bookbags_full, wait_for_verdicts, locked_update_bookbag, REPO_GLOBAL
-from school_mail import notify_verdict
+from bookbag import (
+    BookbagSignal,
+    read_bookbag,
+    list_bookbags,
+    list_bookbags_full,
+    wait_for_verdicts,
+    locked_update_bookbag,
+    REPO_GLOBAL,
+)
+from school_mail import notify_verdict, notify_issue_alert
 from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from principal_doubt import run_doubt_cycle
-from scripts.ce_router import route_decision
+from scripts.ce_router import classify_task, route_decision
 from scripts.spec_gate import check_dod, _load_spec
 from scripts.student_plan import generate_plan, execute_plan, is_complex, COMPLEXITY_THRESHOLD
 from src.entire_review import run_entire_review
@@ -238,6 +247,141 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str, repo: str = "__global
     return accepted
 
 
+def _issue_task_shape(issue: dict) -> dict:
+    """Build the conservative CE shape for a fetched GitHub issue.
+
+    The single-issue async path historically bypassed the Principal router.
+    Until GitHub triage exposes richer policy flags, every fetched issue is
+    treated as a new implementation; this preserves the existing dispatch
+    behavior while making the route contract explicit and durable.
+    """
+    return classify_task(
+        is_new_implementation=True,
+        complexity=1,
+    )
+
+
+def _persist_issue_route(
+    bead: str,
+    repo: str,
+    task_shape: dict,
+    strict: bool = True,
+) -> dict:
+    """Persist and return the CE route for a real issue bookbag.
+
+    A ready signal without a durable route is an invalid handoff: teachers
+    could review a bookbag that cannot explain how it was dispatched. Make the
+    write result part of the handoff contract instead of treating it as a
+    best-effort telemetry update.
+    """
+    routing = route_decision(
+        task_shape,
+        bead=bead,
+        repo=repo,
+        bookbag_writer=locked_update_bookbag,
+    )
+    if not routing.get("logged") and strict:
+        raise RuntimeError(
+            f"CE route could not be persisted for bead {bead!r}; "
+            "ready signal withheld"
+        )
+    return routing
+
+
+def _record_issue_dispatch_failure(
+    bead: Optional[str],
+    repo: str,
+    error: str,
+    issue_number: Optional[int] = None,
+    issue_title: str = "",
+) -> None:
+    """Persist a terminal pre-review failure and alert direct issue callers.
+
+    A direct async issue dispatch has no bridge cycle around it to record the
+    failure. Store the state in the bead's bookbag so teacher/resume tooling
+    can distinguish a failed dispatch from an unstarted pending handoff.
+    Alerting is only enabled when GitHub issue identity is supplied; generic
+    async loop callers retain their existing best-effort behavior.
+    """
+    failed_at = datetime.now(timezone.utc).isoformat()
+    fields = {
+        "dispatch_status": "school-failed",
+        "dispatch_error": str(error)[:1000],
+        "dispatch_failed_at": failed_at,
+    }
+    if bead:
+        try:
+            written = locked_update_bookbag(bead, repo, **fields)
+            if written is None:
+                print(f"  ⚠️ dispatch failure status for {bead} was not persisted")
+        except Exception as persist_error:  # noqa: BLE001
+            print(f"  ⚠️ could not persist dispatch failure for {bead}: {persist_error}")
+    elif issue_number is not None:
+        # Clone/teacher-boot failures happen before a student bead exists.
+        # Keep a durable cycle record so a fresh checkout still explains why
+        # the issue did not enter the teacher handoff protocol. Reuse the
+        # bridge's atomic append helper so concurrent cycles cannot clobber it.
+        path = Path(__file__).parent / "data" / "last_run.json"
+        try:
+            from issue_bridge import record_run
+            record_run(
+                path,
+                {
+                    "issue": issue_number,
+                    "repo": repo,
+                    "status": "school-failed",
+                    "error": str(error)[:1000],
+                },
+            )
+        except Exception as persist_error:  # noqa: BLE001
+            print(f"  ⚠️ could not persist pre-dispatch failure: {persist_error}")
+
+    if issue_number is not None:
+        try:
+            notify_issue_alert(
+                issue_number,
+                issue_title or f"Issue #{issue_number}",
+                "school-failed",
+                error=str(error),
+                repo=repo,
+                attempt=1,
+            )
+        except Exception as notify_error:  # noqa: BLE001
+            print(f"  ⚠️ issue failure alert failed: {notify_error}")
+
+
+def _prepare_issue_context(target_repo: str, task: str) -> tuple[Optional[Path], str]:
+    """Clone a fresh issue target and build grounded context when possible.
+
+    Clone failure is a hard boundary: running the issue in school-core would
+    silently modify/review the wrong repository. Context extraction is softer:
+    once the correct clone exists, a reader error may degrade to an empty
+    context without changing the target path.
+    """
+    from repo_reader import clone_repo, build_codebase_context
+
+    try:
+        target_path = clone_repo(target_repo, force_fresh=True)
+    except Exception as e:
+        raise RuntimeError(f"could not clone target repo {target_repo}: {e}") from e
+    if not target_path:
+        raise RuntimeError(f"could not clone target repo {target_repo}")
+
+    try:
+        context = build_codebase_context(target_path, task)
+    except Exception as e:
+        print(f"  ⚠ codebase context unavailable for {target_repo}: {e}")
+        context = ""
+    return target_path, context
+
+
+def _enrich_issue_task(task: str, codebase_context: str) -> str:
+    """Prefix a task with grounded target-repo context when available."""
+    if not codebase_context:
+        return task
+    return f"{codebase_context}\n\n## Issue\n{task}"
+
+
 def _run_issue(args, store):
     """Fetch a single GitHub issue and dispatch it through the Principal pipeline."""
     try:
@@ -270,13 +414,72 @@ def _run_issue(args, store):
     args.task = issue["prompt"]
     args.domain = domain
     args.difficulty = difficulty
+    # Both issue modes must share the target-repo namespace. Without this,
+    # the synchronous path writes its route to __global__ while its ScoreStore
+    # and student artifact belong to owner/repo.
+    args.repo = f"{owner}/{repo}"
+    args.task_shape = _issue_task_shape(issue)
+    args.issue_number = number
+    args.issue_title = issue["title"]
     if args.async_mode:
-        _run_issue_async(args, store, role, target_repo=f"{owner}/{repo}")
+        _run_issue_async(
+            args,
+            store,
+            role,
+            target_repo=f"{owner}/{repo}",
+            task_shape=args.task_shape,
+            issue_number=number,
+            issue_title=issue["title"],
+        )
     else:
-        _run_single_task(args, store)
+        # Sync issue dispatch also receives the fresh target context. This
+        # keeps `--issue` behavior consistent across sync and async modes.
+        try:
+            target_path, codebase_context = _prepare_issue_context(args.repo, args.task)
+        except RuntimeError as e:
+            print(f"  ❌ Issue dispatch aborted: {e}")
+            _record_issue_dispatch_failure(
+                None,
+                args.repo,
+                e,
+                issue_number=number,
+                issue_title=issue["title"],
+            )
+            return
+        args.task = _enrich_issue_task(args.task, codebase_context)
+        args.repo_path = target_path
+        args.codebase_context_chars = len(codebase_context)
+        try:
+            result = _run_single_task(args, store)
+            if isinstance(result, dict) and result.get("status") != "success":
+                error = result.get("error", result.get("status", "issue dispatch failed"))
+                _record_issue_dispatch_failure(
+                    None,
+                    args.repo,
+                    error,
+                    issue_number=number,
+                    issue_title=issue["title"],
+                )
+        except Exception as e:
+            print(f"  ❌ Issue dispatch failed: {e}")
+            _record_issue_dispatch_failure(
+                None,
+                args.repo,
+                e,
+                issue_number=number,
+                issue_title=issue["title"],
+            )
 
 
-def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
+def _run_issue_async(
+    args,
+    store,
+    role,
+    target_repo: Optional[str] = None,
+    task_shape: Optional[dict] = None,
+    issue_number: Optional[int] = None,
+    issue_title: str = "",
+):
     """Single-issue async path: boot teachers, run one leaf, poll verdicts.
 
     Mirrors _run_async_loop's topology for one issue — the CTO/COO teacher
@@ -292,11 +495,33 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
     repo_slug = target_repo or "__global__"
     store = ScoreStore(repo=repo_slug)
 
-    teachers = _boot_teachers(repo=repo_slug)
+    try:
+        teachers = _boot_teachers(repo=repo_slug)
+    except Exception as e:
+        if issue_number is not None:
+            print(f"  ❌ Direct issue teacher boot failed: {e}")
+            _record_issue_dispatch_failure(
+                None,
+                repo_slug,
+                e,
+                issue_number=issue_number,
+                issue_title=issue_title,
+            )
+            return
+        raise
     if len(teachers) < 2:
         print("  \u26a0\ufe0f Could not boot both teachers — falling back to sync review")
         if teachers:
             _shutdown_teachers(teachers)
+        if issue_number is not None:
+            _record_issue_dispatch_failure(
+                None,
+                repo_slug,
+                "could not boot both teachers",
+                issue_number=issue_number,
+                issue_title=issue_title,
+            )
+            return
         _run_single_task(args, store)
         return
 
@@ -306,34 +531,91 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
     print(f"  \u2705 COO worktree: {coo.worktree_name}\n")
 
     leaf = None
+    handoff_signaled = False
     target_path = None
+    codebase_context = ""
     if target_repo:
         # Cross-repo dispatch: clone a FRESH copy of the target repo so the
         # student never starts from a contaminated/stale base tree.
         try:
-            from repo_reader import clone_repo
-            target_path = clone_repo(target_repo, force_fresh=True)
-        except Exception as e:
-            print(f"  ⚠ Could not clone target repo {target_repo}: {e} — falling back to school-core")
-            target_path = None
+            target_path, codebase_context = _prepare_issue_context(target_repo, args.task)
+        except RuntimeError as e:
+            print(f"  ❌ Async issue dispatch aborted: {e}")
+            _record_issue_dispatch_failure(
+                None,
+                repo_slug,
+                e,
+                issue_number=issue_number,
+                issue_title=issue_title,
+            )
+            _shutdown_teachers(teachers)
+            return
     try:
-        leaf = StudentLeaf(role=role, domain=args.domain,
-                           difficulty=args.difficulty, store=store,
-                           repo_path=target_path)
+        leaf = StudentLeaf(
+            role=role,
+            domain=args.domain,
+            difficulty=args.difficulty,
+            store=store,
+            repo_path=target_path,
+            repo=target_repo,
+        )
         leaf.boot()
-        leaf.write_brief(args.task)
-        result = leaf.run_via_hermes(args.task)
+
+        # The real issue path owns the fresh clone, so give the student the
+        # same grounded context that the bridge path provides. This also makes
+        # the reported context size truthful instead of implying that a zero
+        # length context was collected from the target repository.
+        print(f"  codebase context: {len(codebase_context)} chars")
+        enriched_task = _enrich_issue_task(args.task, codebase_context)
+
+        leaf.write_brief(enriched_task)
+        result = leaf.run_via_hermes(enriched_task)
         _log.student_stage(leaf.bead, role, "bookbag_written",
                             repo=str(target_path) if target_path else "")
         _log.student_stage(leaf.bead, role, "teachers_reviewing",
                             repo=str(target_path) if target_path else "")
         if result.get("status") != "success":
             print(f"  \u274c leaf LLM failed: {result.get('error', result.get('status'))}")
-            leaf.dispose()
-            _shutdown_teachers(teachers)
+            error = result.get("error", result.get("status", "leaf failed"))
+            _record_issue_dispatch_failure(
+                leaf.bead,
+                repo_slug,
+                error,
+                issue_number=issue_number,
+                issue_title=issue_title,
+            )
             return
-        leaf.signal_ready()
+        # Persist the CE route before signaling teachers. The route is now
+        # visible in the bookbag before any reviewer can consume the ready
+        # signal, while the student execution remains backward-compatible.
+        routing = _persist_issue_route(
+            leaf.bead,
+            repo_slug,
+            task_shape or classify_task(is_new_implementation=True),
+        )
+        try:
+            leaf.signal_ready()
+            handoff_signaled = True
+        except Exception:
+            # A signal write may succeed immediately before a wrapper reports
+            # an error. Check the protocol file before deciding the handoff
+            # failed, so reviewed work is never relabeled as dispatch failure.
+            try:
+                handoff_signaled = BookbagSignal(
+                    leaf.bead, repo=repo_slug
+                ).check()
+            except Exception:
+                handoff_signaled = False
+            raise
         print(f"  ✅ bead={leaf.bead[:20]} ({len(result.get('response', ''))} chars) — teachers notified")
+        result.update({
+            "chosen_skill": routing["chosen_skill"],
+            "primary_workflow": routing["primary_workflow"],
+            "overlays": routing["overlays"],
+            "discarded_overlays": routing["discarded_overlays"],
+            "curiosity_required": routing["curiosity_required"],
+            "human_gate_required": routing["human_gate_required"],
+        })
 
         # ── Pre-merge Entire review (computational sensor layer) ───────────
         # Runs before the two-judge semantic review. Catches mechanical
@@ -404,6 +686,14 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         print(f"\U0001f4ca Score: {old_s:.1f} \u2192 {new_s:.1f}{gate_msg}")
     except Exception as e:
         print(f"  \u274c async dispatch error: {e}")
+        if not handoff_signaled and leaf is not None and getattr(leaf, "bead", None):
+            _record_issue_dispatch_failure(
+                leaf.bead,
+                repo_slug,
+                e,
+                issue_number=issue_number,
+                issue_title=issue_title,
+            )
     finally:
         if leaf is not None:
             try:
@@ -606,6 +896,8 @@ def _principal_dispatch(
     override_reason: Optional[str] = None,
     task_shape: Optional[dict] = None,
     skip_readiness: bool = False,
+    repo_path: Optional[Path] = None,
+    strict_route_persistence: bool = False,
 ) -> dict:
     """Rank 3 + Rank 4 — Principal dispatch with DDD doubt cycle and CE router.
 
@@ -671,23 +963,41 @@ def _principal_dispatch(
         ce_enabled=routing["chosen_skill"] == "rank5_student_plan",
         complex_task=(routing["chosen_skill"] == "rank5_student_plan"),
         skip_readiness=skip_readiness,
+        repo_path=repo_path,
+        signal_ready=False,
     )
 
+    # A failed leaf must never become a ready teacher handoff. Keep the
+    # route metadata on the returned result for diagnostics, but leave route
+    # persistence and signaling to the success path below.
     result["chosen_skill"] = routing["chosen_skill"]
+    result["primary_workflow"] = routing["primary_workflow"]
+    result["overlays"] = routing["overlays"]
+    result["discarded_overlays"] = routing["discarded_overlays"]
+    result["curiosity_required"] = routing["curiosity_required"]
+    result["human_gate_required"] = routing["human_gate_required"]
+    if result.get("status") != "success":
+        return result
     if doubt_log is not None:
         result["doubt_log"] = doubt_log
-    # Log the routing choice to the bookbag for traceability (best-effort;
-    # never breaks dispatch). Need the bead from the dispatch result.
+    # Persist the full route contract and signal only after it is durable.
     bead = result.get("bead")
     if bead:
-        try:
-            locked_update_bookbag(
-                bead, repo,
-                chosen_skill=routing["chosen_skill"],
-                chosen_skill_label=routing["label"],
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("ce_router: bookbag log skipped: %s", e)
+        routing = _persist_issue_route(
+            bead,
+            repo,
+            task_shape,
+            strict=strict_route_persistence,
+        )
+        result.update({
+            "chosen_skill": routing["chosen_skill"],
+            "primary_workflow": routing["primary_workflow"],
+            "overlays": routing["overlays"],
+            "discarded_overlays": routing["discarded_overlays"],
+            "curiosity_required": routing["curiosity_required"],
+            "human_gate_required": routing["human_gate_required"],
+        })
+        BookbagSignal(bead, repo=repo).ready()
     return result
 
 
@@ -938,7 +1248,10 @@ def _run_single_task(args, store):
         task=args.task, role=role, domain=args.domain,
         difficulty=args.difficulty, store=store, repo=args.repo,
         doubt_enabled=args.doubt_enabled,
+        task_shape=getattr(args, "task_shape", None),
         skip_readiness=bool(args.agent),
+        repo_path=getattr(args, "repo_path", None),
+        strict_route_persistence=bool(getattr(args, "issue_number", None)),
     )
 
     task_score = result.get("task_score", 0)
@@ -970,6 +1283,8 @@ def _run_single_task(args, store):
     else:
         error = result.get("error", result.get("status", "unknown"))
         print(f"\u274c {status}: {error}")
+
+    return result
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
