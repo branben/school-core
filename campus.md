@@ -236,7 +236,8 @@ real risk.
 - Skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md` owns the spawn invocation + wrapper + teardown.
 - FM_HOME: `~/.hermes/school-core-fm-config` (`backend=orca`).
 - Spawn is proven end-to-end (backend gate → worktree/terminal → harness launch → meta/data written).
-- **Blocker:** hermes model provider is `nous` (`tencent/hy3:free`); "No access token found for Nous Portal login" stops the agent before it answers — re-auth via `hermes model`. `--max-runtime` was removed from firstmate (f74d9e4); bound tasks by brief, not flag.
+- Auth: hermes provider is `nous` (`tencent/hy3:free`); token stored in `~/.hermes/auth.json` via the device-code login (`hermes model` → Enter on Nous Portal → approve URL+code in browser, see skill). Validated 2026-08-11 — fm_doctor all-green, live hermes session replies normally. Non-fatal `HTTP 402` on aux-title generation = credit matter, not auth.
+- `--max-runtime` was removed from firstmate (f74d9e4); bound tasks by brief, not flag.
 
 **The principle that matters most:** *the compiler runs before the critic
 speaks.* For a long time the pipeline only ran the critic on prose. The
