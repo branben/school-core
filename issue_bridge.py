@@ -507,10 +507,30 @@ def bridge_issues(
         sys.stderr.write("[issue_bridge] No actionable issues found.\n")
         return results
 
+    # Dry-run is an inspection mode, not a partial execution. It must not
+    # refresh/delete the repo cache, clone anything, or write processed/last-run
+    # state. Fetching and classification above are the complete read-only
+    # preflight; report that codebase context was intentionally not collected.
+    if dry_run:
+        for issue in issues:
+            num = issue["issue_number"]
+            if num in processed:
+                continue
+            results.append({
+                "issue_number": num,
+                "title": issue["title"],
+                "domain": issue["domain"],
+                "difficulty": issue["difficulty"],
+                "status": "dry_run",
+                "codebase_context_chars": 0,
+                "codebase_context_collected": False,
+            })
+        return results
+
     # Clone repo and build codebase context for enrichment
     from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
     cleanup_stale_caches()
-    repo_path = clone_repo(repo) if not dry_run else None
+    repo_path = clone_repo(repo)
 
     for issue in issues:
         num = issue["issue_number"]
@@ -527,25 +547,6 @@ def bridge_issues(
         enriched_prompt = issue["prompt"]
         if codebase_ctx:
             enriched_prompt = f"{codebase_ctx}\n\n## Issue\n{issue['prompt']}"
-
-        if dry_run:
-            results.append({
-                "issue_number": num,
-                "title": issue["title"],
-                "domain": issue["domain"],
-                "difficulty": issue["difficulty"],
-                "status": "dry_run",
-                "codebase_context_chars": len(codebase_ctx),
-            })
-            processed.add(num)
-            try:
-                record_run(
-                    PROCESSED_FILE.parent / "last_run.json",
-                    {"issue": num, "status": "dry_run", "agent": force_agent, "score": None, "trajectory": None},
-                )
-            except Exception as e:
-                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e}\n")
-            continue
 
         try:
             task_result = run_task(

@@ -123,6 +123,42 @@ class TestBridgeIssues:
         mock_task.assert_not_called()
 
     @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    def test_dry_run_is_side_effect_free(
+        self, mock_task, mock_cleanup, mock_clone, mock_build_context,
+        mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """Dry-run classifies only; it must not touch cache or durable state."""
+        processed = tmp_path / "processed.json"
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", processed)
+        mock_fetch.return_value = [
+            {"issue_number": 6, "title": "Dry-run isolation", "body": "",
+             "domain": "debugging", "difficulty": "easy", "prompt": "inspect",
+             "category": "bug", "state": "ready-for-agent"},
+        ]
+
+        results = bridge_issues("user/test", dry_run=True, store=store)
+
+        assert results == [{
+            "issue_number": 6,
+            "title": "Dry-run isolation",
+            "domain": "debugging",
+            "difficulty": "easy",
+            "status": "dry_run",
+            "codebase_context_chars": 0,
+            "codebase_context_collected": False,
+        }]
+        mock_task.assert_not_called()
+        mock_cleanup.assert_not_called()
+        mock_clone.assert_not_called()
+        mock_build_context.assert_not_called()
+        assert not processed.exists()
+        assert not (tmp_path / "last_run.json").exists()
+
+    @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
@@ -1344,11 +1380,12 @@ class TestBridgeGithubSync:
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [{
             "issue_number": 63, "title": "Dry sync", "body": "",
-            "domain": "debugging", "difficulty": "easy", "prompt": "x",
-            "category": "bug", "state": "ready-for-agent",
+             "domain": "debugging", "difficulty": "easy", "prompt": "x",
+             "category": "bug", "state": "ready-for-agent",
         }]
         bridge_issues("user/test", dry_run=True, store=store)
         mock_mark.assert_not_called()
+
 
 
 # ── Retry-once semantics ───────────────────────────────────────────────────
