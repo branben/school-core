@@ -11,9 +11,14 @@ verdict notifications, then triggers the corresponding action:
 
 Runs as a cronjob (every 2 minutes) with workdir=~/Documents/KnowledgeCore/school-core.
 
+The AgentMail transport (key + inbox resolution, request helper, logging) is
+shared with the notifier via agentmail_client — this poller no longer carries
+its own copy of SCHOOL_INBOX / _req / _default_inbox.
+
 Env:
-    AGENTMAIL_API_KEY   (required) — user-scoped key (am_us_…)
-    AGENTMAIL_INBOX      (optional) — destination inbox id; defaults to first inbox
+    AGENTMAIL_API_KEY        (required) — user-scoped key (am_us_…)
+    AGENTMAIL_SCHOOL_INBOX   (optional) — the control-plane inbox; defaults to
+                              AGENTMAIL_INBOX, then the first inbox.
 
 IMPORTANT: This poller runs AS THE PRINCIPAL session, not as a student crewmate.
 It has full bd + bookbag + git authority. Student crewmates CANNOT read local
@@ -26,86 +31,24 @@ matches inbound replies to those threads by subject prefix "[school]".
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE = "https://api.agentmail.to"
-API_PREFIX = "/v0"
+# Make the shared client importable whether run from repo root or src/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Agent-School human-in-the-loop control-plane inbox. Verdict notifications
-# (school_mail.notify_verdict) and human /approve /reject /fix replies live
-# here. Keep in sync with SCHOOL_INBOX in school_mail.py / scripts/school_inbound.py.
-SCHOOL_INBOX = "REDACTED@REDACTED.invalid"
+from agentmail_client import (
+    configure_logging,
+    req,
+    resolve_dest_inbox,
+)
 
-
-def _resolve_key() -> str:
-    """Return the AgentMail API key from env, or fall back to Hermes config.yaml.
-
-    The poller is designed to run as a standalone cron with no login shell, so
-    AGENTMAIL_API_KEY is frequently absent from the environment. In that case
-    read it from the agentmail MCP server URL in ~/.hermes/config.yaml (the
-    value there is real plaintext on disk; only Hermes' tool output redacts it).
-    """
-    key = os.environ.get("AGENTMAIL_API_KEY")
-    if key:
-        return key
-    import re as _re
-    cfg = Path.home() / ".hermes" / "config.yaml"
-    if cfg.exists():
-        for line in cfg.read_text().splitlines():
-            if "mcp.agentmail.to" in line:
-                m = _re.search(r"apiKey=(am_us_[A-Za-z0-9]+)", line)
-                if m:
-                    return m.group(1)
-    raise RuntimeError("AGENTMAIL_API_KEY not set and not found in ~/.hermes/config.yaml")
-
-
-def _headers() -> dict:
-    key = _resolve_key()
-    if not key:
-        raise RuntimeError("AGENTMAIL_API_KEY not set")
-    return {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-
-
-def _req(method: str, path: str, body=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        f"{BASE}{API_PREFIX}{path}", data=data, headers=_headers(), method=method
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        raw = resp.read()
-        return json.loads(raw) if raw else {}
-
-
-def _default_inbox() -> str:
-    """Resolve the principal poller's inbox.
-
-    Prefer the Agent-School control-plane inbox (SCHOOL_INBOX) so the poller
-    watches the same mailbox that notify_verdict sends to and that human
-    replies land in. Falls back to AGENTMAIL_INBOX env, then the first
-    available inbox — mirroring school_mail._resolve_dest_inbox /
-    school_inbound._resolve_inboxes so the poller and notifier stay aligned.
-    """
-    inbox = os.environ.get("AGENTMAIL_INBOX")
-    if inbox:
-        return inbox
-    res = _req("GET", "/inboxes")
-    inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
-    if not inboxes:
-        raise RuntimeError("no AgentMail inboxes available")
-    for ib in inboxes:
-        if ib.get("inbox_id") == SCHOOL_INBOX:
-            return ib["inbox_id"]
-    return inboxes[0]["inbox_id"]
+logger = logging.getLogger("agentmail_poller")
 
 
 def list_unread_replies(inbox: str) -> list[dict]:
@@ -120,9 +63,9 @@ def list_unread_replies(inbox: str) -> list[dict]:
         'Bead: <id>' line) when the human's reply doesn't restate it.
     """
     try:
-        res = _req("GET", f"/inboxes/{inbox}/threads?limit=20")
+        res = req("GET", f"/inboxes/{inbox}/threads?limit=20")
     except Exception as e:
-        sys.stderr.write(f"[agentmail-poller] fetch threads failed: {e}\n")
+        logger.warning("fetch threads failed: %s", e)
         return []
 
     threads = res.get("threads", []) if isinstance(res, dict) else []
@@ -142,7 +85,7 @@ def list_unread_replies(inbox: str) -> list[dict]:
             continue
 
         try:
-            msgs = _req("GET", f"/inboxes/{inbox}/threads/{tid}")
+            msgs = req("GET", f"/inboxes/{inbox}/threads/{tid}")
         except Exception:
             continue
 
@@ -183,20 +126,41 @@ def list_unread_replies(inbox: str) -> list[dict]:
     return replies
 
 
+# Footer command-description lines from the outbound verdict card. When a
+# human replies by quoting the card (standard in email clients), these lines
+# appear inside the HUMAN's message and must never be parsed as commands —
+# `/approve — accept this work...` is an instruction, not a vote. Keep in sync
+# with school_mail.RESPONSE_FOOTER.
+_FOOTER_LINES = frozenset({
+    "/approve — accept this work and merge it",
+    "/reject — mark it rejected",
+    "/fix <note> — send it back with your note",
+})
+
+# Email clients prefix quoted lines with "> " (or variants); strip those before
+# matching so a quoted card cannot leak its footer into command parsing.
+_QUOTE_PREFIX_RE = re.compile(r"^[>\s]*")
+
+
 def _parse_approval(text: str) -> dict | None:
     """Parse /approve /reject /fix from a HUMAN reply.
 
     Only matches a command on its own line (e.g. an explicit '/approve' or
-    '/fix <note>'). This deliberately does NOT substring-match the outbound
-    instruction footer ('Commands: /approve /reject /fix') that the system
-    itself sends — those are not human commands and were causing the poller
-    to act on its own messages.
+    '/fix <note>'). This deliberately does NOT match:
+      * the outbound instruction footer (school_mail.RESPONSE_FOOTER) that the
+        system itself sends — including when a human quotes the card back,
+        which prefixes those lines with '>' — those are not human commands and
+        were causing the poller to act on its own messages.
+      * free-text prose containing the word (commands must be the first token
+        on a line and, for approve/reject, the entire line or a `/cmd ` prefix).
     """
     if not text:
         return None
-    for line in text.splitlines():
-        s = line.strip().lower()
+    for raw_line in text.splitlines():
+        s = _QUOTE_PREFIX_RE.sub("", raw_line.strip().lower())
         if not s:
+            continue
+        if s in _FOOTER_LINES:
             continue
         if s == "/approve" or s.startswith("/approve ") or s == "approve":
             return {"command": "approve", "note": ""}
@@ -218,7 +182,7 @@ def _extract_bead_id(text: str) -> str:
     """
     if not text:
         return ""
-    m = re.search(r"Bead:\s*([A-Za-z0-9_\-.]+)", text)
+    m = re.search(r"Bead:\s*([A-Za-z0-9_\-\.]+)", text)
     if m:
         return m.group(1)
     m = re.search(r"([A-Za-z0-9_\-]+-[A-Za-z0-9_\-]+-[A-Za-z0-9]{6,})", text)
@@ -275,14 +239,13 @@ def _execute_approval(reply: dict, repo_root: str) -> str:
             note = reply.get("note", "")
             bookbag_path = Path.home() / ".hermes" / "bookbag" / f"{bead}.json"
             if bookbag_path.exists():
-                import json as json_mod
-                bag = json_mod.loads(bookbag_path.read_text())
+                bag = json.loads(bookbag_path.read_text())
                 bag.setdefault("reviewer_notes", []).append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "verdict": "REJECTED by human",
                     "note": note or "rejected — see conversation",
                 })
-                bookbag_path.write_text(json_mod.dumps(bag, indent=2))
+                bookbag_path.write_text(json.dumps(bag, indent=2))
 
             subprocess.run(["bd", "update", bead, "--claim"], cwd=str(repo), check=True, capture_output=True)
             return f"❌ REJECTED: {bead} — notes written to bookbag, claimed for human review"
@@ -295,14 +258,13 @@ def _execute_approval(reply: dict, repo_root: str) -> str:
         try:
             bookbag_path = Path.home() / ".hermes" / "bookbag" / f"{bead}.json"
             if bookbag_path.exists():
-                import json as json_mod
-                bag = json_mod.loads(bookbag_path.read_text())
+                bag = json.loads(bookbag_path.read_text())
                 bag.setdefault("fix_requests", []).append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "from": reply.get("from", ""),
                     "note": note,
                 })
-                bookbag_path.write_text(json_mod.dumps(bag, indent=2))
+                bookbag_path.write_text(json.dumps(bag, indent=2))
             return f"🔧 FIX REQUESTED: {bead} — '{note[:60]}...' written to bookbag"
         except Exception as e:
             return f"⚠ FIX processing error for {bead}: {e}"
@@ -312,30 +274,31 @@ def _execute_approval(reply: dict, repo_root: str) -> str:
 
 def main():
     """Single-run poller: check for replies, process them, exit."""
+    configure_logging()
     repo_root = os.environ.get("SCHOOL_CORE_ROOT", str(Path.home() / "school-core"))
 
     try:
-        inbox = _default_inbox()
+        inbox = resolve_dest_inbox()
     except Exception as e:
-        print(f"agentmail-poller: inbox error: {e}")
+        logger.error("inbox error: %s", e)
         sys.exit(1)
 
     replies = list_unread_replies(inbox)
 
     if not replies:
-        print("agentmail-poller: no unread [school] replies")
+        logger.info("no unread [school] replies")
         return
 
     for reply in replies:
-        print(f"  Processing: {reply['command']} → {reply['bead']}")
+        logger.info("processing: %s -> %s", reply["command"], reply["bead"])
         msg = _execute_approval(reply, repo_root)
-        print(f"  {msg}")
+        logger.info("%s", msg)
 
         # Mark the thread processed (correct AgentMail label shape) so we
         # don't reprocess it on the next tick.
         try:
-            _req("PATCH", f"/inboxes/{inbox}/threads/{reply['thread_id']}",
-                 {"add_labels": ["processed"]})
+            req("PATCH", f"/inboxes/{inbox}/threads/{reply['thread_id']}",
+                {"add_labels": ["processed"]})
         except Exception:
             pass
 

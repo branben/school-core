@@ -6,7 +6,37 @@ Run: python -m pytest tests/test_school_mail.py -v
 
 from unittest.mock import patch
 
-from school_mail import notify_issue_alert, notify_build_failure
+from school_mail import (
+    notify_issue_alert,
+    notify_build_failure,
+    notify_pipeline_alert,
+    notify_verdict,
+    RESPONSE_FOOTER,
+)
+
+
+class TestNotifyVerdict:
+    """notify_verdict builds a readable card with an ELI5 line + footer."""
+
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_card_has_eli5_and_footer(self, mock_req, mock_inbox):
+        ok = notify_verdict("bead-1", True, "PASS", "PASS", repo="acme/repo")
+        assert ok is True
+        text = mock_req.call_args[0][2]["text"]
+        # ELI5 line present even with no summary passed
+        assert "What happened:" in text
+        assert "passed both teacher reviews" in text
+        # Response footer with the reply commands on their own lines
+        assert "/approve" in text and "/reject" in text and "/fix <note>" in text
+        assert "Reply with one of:" in text
+
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_summary_wins_over_eli5_default(self, mock_req, mock_inbox):
+        notify_verdict("bead-1", False, "PASS", "FAIL", summary="CTO wants a regression test")
+        text = mock_req.call_args[0][2]["text"]
+        assert "What happened: CTO wants a regression test" in text
 
 
 class TestNotifyIssueAlert:
@@ -62,6 +92,51 @@ class TestNotifyIssueAlert:
         err_line = next(l for l in text.splitlines() if l.startswith("Error:"))
         assert len(err_line) <= 510  # 500 cap + "Error: " prefix
 
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_retry_explains_no_action_needed(self, mock_req, mock_inbox):
+        notify_issue_alert(45, "Flaky", "retry", error="boom", repo="acme/repo", attempt=1)
+        text = mock_req.call_args[0][2]["text"]
+        assert "What happened:" in text
+        assert "No action needed" in text
+        assert "retried automatically" in text
+
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_school_failed_explains_next_step(self, mock_req, mock_inbox):
+        notify_issue_alert(45, "Broken", "school-failed", repo="acme/repo", attempt=2)
+        text = mock_req.call_args[0][2]["text"]
+        assert "What happened:" in text
+        assert "Next step:" in text
+        assert "Needs human review" in text
+
+
+class TestNotifyPipelineAlert:
+    """Pipeline blockers are distinct from issue failures."""
+
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_blocked_card_names_component_and_next_step(self, mock_req, mock_inbox):
+        ok = notify_pipeline_alert(
+            component="school-core-mac runner",
+            reason="runner offline",
+            repo="acme/repo",
+            run_url="https://github.com/acme/repo/actions/runs/7",
+        )
+        assert ok is True
+        _, path, body = mock_req.call_args[0]
+        assert "/inboxes/inbox-1/messages/send" in path
+        assert "PIPELINE BLOCKED" in body["subject"]
+        assert "What happened:" in body["text"]
+        assert "school-core-mac runner" in body["text"]
+        assert "runner offline" in body["text"]
+        assert "Next step:" in body["text"]
+        assert "actions/runs/7" in body["text"]
+
+    @patch("school_mail._resolve_dest_inbox", side_effect=RuntimeError("no inbox"))
+    def test_blocked_card_degrades_without_inbox(self, mock_inbox):
+        assert notify_pipeline_alert("runner", "offline") is False
+
 
 class TestNotifyBuildFailure:
     """notify_build_failure builds the CI-failure alert and never raises."""
@@ -101,6 +176,18 @@ class TestNotifyBuildFailure:
         notify_build_failure(workflow="CI", run_url="u", commit_sha="s", branch="main", failed_jobs=[])
         text = mock_req.call_args[0][2]["text"]
         assert "unknown" in text
+
+    @patch("school_mail._resolve_dest_inbox", return_value="inbox-1")
+    @patch("school_mail._req")
+    def test_card_has_eli5_and_next_step(self, mock_req, mock_inbox):
+        notify_build_failure(
+            workflow="CI", run_url="u", commit_sha="abc123", branch="main",
+            failed_jobs=["pytest"], repo="acme/repo",
+        )
+        text = mock_req.call_args[0][2]["text"]
+        assert "What happened:" in text
+        assert "Next step:" in text
+        assert "Run: u" in text
 
     @patch("school_mail._resolve_dest_inbox", side_effect=RuntimeError("no inbox"))
     def test_no_inbox_degrades(self, mock_inbox):

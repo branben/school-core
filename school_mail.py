@@ -2,101 +2,67 @@
 """AgentMail notify client for the Agent-School Principal.
 
 Sends a verdict notification to the human operator after the Principal
-reconciles a bead's two-judge review. Plain stdlib REST call against the
-AgentMail /v0 API (no SDK, no MCP) — see the `agentmail-rest` skill for the
-verified contract. Best-effort: any failure degrades to stderr + printing so
-the serve-mode Principal never crashes mid-reconcile.
+reconciles a bead's two-judge review, plus alert cards for problem issues
+(retry / school-failed) and CI failures on main.
+
+The AgentMail transport (key + inbox resolution, request helper, logging) is
+shared with the inbound pollers via :mod:`agentmail_client` — see that module
+for the env contract. This module only composes and sends the cards.
+
+Every card is best-effort: any failure degrades to a log line and a ``False``
+return so the Principal / bridge / CI never crashes mid-notify.
 
 Env:
-    AGENTMAIL_API_KEY   (required) — user-scoped key (am_us_…)
-    AGENTMAIL_INBOX      (optional) — destination inbox id (email address).
-                          Defaults to the inbox resolved from the key via
-                          GET /v0/inboxes (first inbox), so it works with no
-                          config in the common single-inbox case.
+    AGENTMAIL_API_KEY        (required) — user-scoped key (am_us_…)
+    AGENTMAIL_SCHOOL_INBOX   (optional) — destination inbox; defaults to
+                              AGENTMAIL_INBOX, then the first inbox.
+    AGENTMAIL_INBOX          (optional) — fallback destination inbox.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import sys
-import urllib.request
-import urllib.error
+import logging
 
-BASE = "https://api.agentmail.to"
-API_PREFIX = "/v0"
+from agentmail_client import (
+    configure_logging,
+    req as _req,          # patched by tests; thin alias to the shared client
+    resolve_dest_inbox as _resolve_dest_inbox,  # patched by tests
+)
 
-# Agent-School human-in-the-loop control-plane inbox. Verdict notifications are
-# sent here so the human can reply with /approve /reject /fix and the inbound
-# poller (scripts/school_inbound.py) — which watches this same inbox — can act.
-# Keep this in sync with SCHOOL_INBOX in scripts/school_inbound.py.
-SCHOOL_INBOX = "REDACTED@REDACTED.invalid"
+logger = logging.getLogger("school_mail")
 
-
-def _headers() -> dict:
-    key = os.environ.get("AGENTMAIL_API_KEY")
-    if not key:
-        raise RuntimeError("AGENTMAIL_API_KEY not set")
-    return {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-
-
-def _req(method: str, path: str, body=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        f"{BASE}{API_PREFIX}{path}", data=data, headers=_headers(), method=method
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        raw = resp.read()
-        return json.loads(raw) if raw else {}
-
-
-def _default_inbox() -> str:
-    """Resolve the destination inbox id from the key (first inbox)."""
-    inbox = os.environ.get("AGENTMAIL_INBOX")
-    if inbox:
-        return inbox
-    res = _req("GET", "/inboxes")
-    inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
-    if not inboxes:
-        raise RuntimeError("no AgentMail inboxes available")
-    return inboxes[0]["inbox_id"]
-
-
-def _resolve_dest_inbox() -> str:
-    """Destination inbox for verdict notifications.
-
-    Prefer the Agent-School control-plane inbox (SCHOOL_INBOX) so the human's
-    replies land where the inbound poller (scripts/school_inbound.py) watches.
-    Falls back to AGENTMAIL_INBOX env, then the first available inbox.
-    """
-    inbox = os.environ.get("AGENTMAIL_INBOX")
-    if inbox:
-        return inbox
-    res = _req("GET", "/inboxes")
-    inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
-    if not inboxes:
-        raise RuntimeError("no AgentMail inboxes available")
-    for ib in inboxes:
-        if ib.get("inbox_id") == SCHOOL_INBOX:
-            return ib["inbox_id"]
-    return inboxes[0]["inbox_id"]
+# Response affordance footer shared by every card that can be acted on. Each
+# command must sit on its own line so the inbound poller's parser
+# (agentmail_poller._parse_approval) sees it as a human command and not as
+# part of this instruction footer.
+RESPONSE_FOOTER = (
+    "Reply with one of:\n"
+    "/approve — accept this work and merge it\n"
+    "/reject — mark it rejected\n"
+    "/fix <note> — send it back with your note"
+)
 
 
 def _format_findings_table(findings: list[dict]) -> str:
-    """Render qodo pre-merge findings + review findings as a compact table."""
+    """Render findings as a compact, column-aligned table."""
     if not findings:
         return "  (none)"
-    lines = ["  file:line                  sev  message"]
+    lines = ["  file:line                 sev  message"]
     for f in findings:
         file = f.get("file", "?")
         line = f.get("line", "?")
         sev = f.get("severity", f.get("level", "?"))
         msg = f.get("message", f.get("description", ""))[:60]
-        lines.append(f"  {file}:{line:<20} {sev:<4} {msg}")
+        loc = f"{file}:{line}"
+        lines.append(f"  {loc:<26} {sev:<4} {msg}")
     return "\n".join(lines)
+
+
+def _plain_verdict(accepted: bool) -> str:
+    """One plain-English sentence about what the verdict means."""
+    if accepted:
+        return "The work passed both teacher reviews and is ready to merge."
+    return "The work did not pass review — see the findings below before deciding."
 
 
 def notify_verdict(
@@ -106,8 +72,8 @@ def notify_verdict(
     coo_verdict: str,
     summary: str = "",
     repo: str = "__global__",
-    qodo_findings: list[dict] | None = None,
-    qodo_status: str | None = None,
+    entire_findings: list[dict] | None = None,
+    entire_status: str | None = None,
     cto_findings: list | None = None,
     coo_findings: list | None = None,
 ) -> bool:
@@ -117,14 +83,15 @@ def notify_verdict(
     network error, etc.) — never raises, so the Principal's reconcile loop
     stays resilient.
 
-    Sends a rubber-stamp card: the human reads the verdict + qodo output
-    and replies with /approve /reject /fix. The AgentMail inbound poller
-    (school_mail_poller.py) processes the reply and triggers merge/dispose.
+    Sends a rubber-stamp card: a plain-English "What happened" line, the
+    verdict + findings, and the response footer the human replies to with
+    /approve /reject /fix. The AgentMail inbound poller
+    (src/agentmail_poller.py) processes the reply and triggers merge/dispose.
     """
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
-        sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
+        logger.warning("notify skipped (no inbox): %s", e)
         return False
 
     mark = "✅ ACCEPTED" if accepted else "❌ REJECTED"
@@ -137,12 +104,15 @@ def notify_verdict(
         f"CTO: {cto_verdict}  |  COO: {coo_verdict}",
     ]
 
-    if qodo_status:
+    # ELI5 layer: what happened, in one plain sentence.
+    parts += ["", f"What happened: {summary.strip() or _plain_verdict(accepted)}"]
+
+    if entire_status:
         parts.append("")
-        parts.append(f"Qodo pre-merge: {qodo_status}")
-        if qodo_findings:
+        parts.append(f"Pre-merge check: {entire_status}")
+        if entire_findings:
             parts.append("  Findings (real bugs only):")
-            parts.append(_format_findings_table(qodo_findings))
+            parts.append(_format_findings_table(entire_findings))
 
     if cto_findings or coo_findings:
         parts.append("")
@@ -152,12 +122,8 @@ def notify_verdict(
         if coo_findings:
             parts.append(f"  COO: {_format_findings_table(coo_findings)}")
 
-    if summary:
-        parts.append("")
-        parts.append(summary)
-
     parts.append("")
-    parts.append("Commands: /approve  /reject  /fix <note>")
+    parts.append(RESPONSE_FOOTER)
 
     text = "\n".join(parts)
 
@@ -168,10 +134,8 @@ def notify_verdict(
             {"to": [inbox], "subject": f"[school] {bead} — {mark}", "text": text},
         )
         return True
-    except urllib.error.URLError as e:
-        sys.stderr.write(f"[school_mail] send failed (network): {e}\n")
     except Exception as e:  # noqa: BLE001 — degrade, never crash the principal
-        sys.stderr.write(f"[school_mail] send failed: {e}\n")
+        logger.warning("send failed: %s", e)
     return False
 
 
@@ -193,14 +157,12 @@ def notify_issue_alert(
 
     Fired exactly once per issue per transition (the bridge retries at most
     once), so it never spams. Best-effort: missing key, network errors, etc.
-    degrade to stderr + False — never raises, so the bridge stays resilient.
-    Uses the same AgentMail channel + control-plane inbox as
-    :func:`notify_verdict`.
+    degrade to a log line + False — never raises, so the bridge stays resilient.
     """
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
-        sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
+        logger.warning("notify skipped (no inbox): %s", e)
         return False
 
     if status == "school-failed":
@@ -212,8 +174,12 @@ def notify_issue_alert(
             f"Repo: {repo}",
             f"Title: {title}",
             "",
-            f"Retry budget exhausted ({attempt}/{retry_limit}) — the school could",
-            "not complete this issue. Needs human review.",
+            # ELI5: what happened and what the human should do.
+            "What happened: the school tried this issue and could not finish "
+            f"it after {attempt}/{retry_limit} attempts.",
+            "",
+            "Next step: open the issue (link below) and decide — re-open it, "
+            "triage it yourself, or close it. Needs human review.",
         ]
     else:  # "retry"
         mark = "🔄 RETRY PENDING"
@@ -224,8 +190,10 @@ def notify_issue_alert(
             f"Repo: {repo}",
             f"Title: {title}",
             "",
-            f"Transient failure on attempt {attempt}/{retry_limit} — will be",
-            "retried automatically on the next cycle.",
+            # ELI5: transient, nothing to do.
+            "What happened: a temporary failure (the gateway or school tools "
+            f"hiccuped) on attempt {attempt}/{retry_limit}. No action needed — "
+            "the issue will be retried automatically on the next cycle.",
         ]
 
     if error:
@@ -241,10 +209,52 @@ def notify_issue_alert(
             {"to": [inbox], "subject": subject, "text": text},
         )
         return True
-    except urllib.error.URLError as e:
-        sys.stderr.write(f"[school_mail] send failed (network): {e}\n")
     except Exception as e:  # noqa: BLE001 — degrade, never crash the bridge
-        sys.stderr.write(f"[school_mail] send failed: {e}\n")
+        logger.warning("send failed: %s", e)
+    return False
+
+
+def notify_pipeline_alert(
+    component: str,
+    reason: str,
+    repo: str = "__global__",
+    run_url: str = "",
+) -> bool:
+    """Alert when the school pipeline is blocked before issue execution.
+
+    This is distinct from an issue failure: no issue ran, so the message names
+    the blocked component and gives the operator a direct diagnostic next step.
+    Best-effort, like every other notification surface.
+    """
+    try:
+        inbox = _resolve_dest_inbox()
+    except Exception as e:
+        logger.warning("pipeline alert skipped (no inbox): %s", e)
+        return False
+
+    subject = f"[school] PIPELINE BLOCKED — {component}"[:120]
+    parts = [
+        f"[Agent-School] Pipeline blocked — {component}",
+        "",
+        f"Repo: {repo}",
+        "",
+        "What happened: the school could not start issue execution this cycle.",
+        f"Reason: {reason}",
+        "",
+        "Next step: restore the named component, then run the school loop again.",
+    ]
+    if run_url:
+        parts += ["", f"Run: {run_url}"]
+
+    try:
+        _req(
+            "POST",
+            f"/inboxes/{inbox}/messages/send",
+            {"to": [inbox], "subject": subject, "text": "\n".join(parts)},
+        )
+        return True
+    except Exception as e:  # noqa: BLE001 — notification must not block the loop
+        logger.warning("pipeline alert send failed: %s", e)
     return False
 
 
@@ -270,7 +280,7 @@ def notify_build_failure(
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
-        sys.stderr.write(f"[school_mail] notify skipped (no inbox: {e})\n")
+        logger.warning("notify skipped (no inbox): %s", e)
         return False
 
     jobs = ", ".join(failed_jobs) if failed_jobs else "unknown job(s)"
@@ -283,6 +293,9 @@ def notify_build_failure(
         f"Commit: {commit_sha[:12]}",
         f"Repo: {repo}",
         "",
+        # ELI5: what happened + what to do.
+        "What happened: the automated checks failed on the main branch.",
+        "",
         "Failed jobs:",
         *(f"  - {j}" for j in (failed_jobs or ["(unknown)"])),
     ]
@@ -293,7 +306,12 @@ def notify_build_failure(
             "gateway (localhost:20128) and Orca on the Mac runner; it may be",
             "an infrastructure issue rather than a code regression.",
         ]
-    parts += ["", f"Run: {run_url}"]
+    parts += [
+        "",
+        "Next step: open the failing run (link below) to see what broke.",
+        "",
+        f"Run: {run_url}",
+    ]
     text = "\n".join(parts)
 
     try:
@@ -303,14 +321,32 @@ def notify_build_failure(
             {"to": [inbox], "subject": subject, "text": text},
         )
         return True
-    except urllib.error.URLError as e:
-        sys.stderr.write(f"[school_mail] send failed (network): {e}\n")
     except Exception as e:  # noqa: BLE001 — degrade, never crash the caller
-        sys.stderr.write(f"[school_mail] send failed: {e}\n")
+        logger.warning("send failed: %s", e)
     return False
 
 
 if __name__ == "__main__":
+    # Safe demo: prints the card it WOULD send without touching the network.
+    # Run `python school_mail.py --send` to actually send the sample.
+    import sys
+
+    configure_logging()
+    if "--send" not in sys.argv:
+        print("[dry-run] would send a verdict card; use --send to actually send")
+        print("---")
+        print(
+            "[Agent-School] demo-bead — ❌ REJECTED\n\n"
+            "Repo: __global__\n"
+            "CTO: PASS  |  COO: FAIL\n\n"
+            "What happened: The work did not pass review — see the findings "
+            "below before deciding.\n\n"
+            "Review findings:\n"
+            "  CTO:   (none)\n"
+            "  COO:   (none)\n\n"
+            + RESPONSE_FOOTER
+        )
+        sys.exit(0)
     ok = notify_verdict(
         "demo-bead", False, "PASS", "FAIL", "teacher-coo found incomplete acceptance criteria"
     )

@@ -115,6 +115,23 @@ school-core/
 | Identity | [`campus.md`](campus.md) |
 | Handoff contract | [`docs/HANDOFF.md`](docs/HANDOFF.md) |
 | Anchors/methods | [`config/anchors.yaml`](config/anchors.yaml) |
+| Notification tone spec | [`docs/notification-style-guide.md`](docs/notification-style-guide.md) |
+
+## Notify env
+
+Notifications (verdict cards, issue alerts, CI alerts) route through
+`school_mail.py` + the shared `agentmail_client.py`. Set the control-plane
+inbox so cards land where the poller watches:
+
+```bash
+AGENTMAIL_SCHOOL_INBOX=vault-synthesis@agentmail.to   # control-plane (default)
+# AGENTMAIL_INBOX=…                                    # override destination
+```
+
+Resolution: `AGENTMAIL_SCHOOL_INBOX` → `AGENTMAIL_INBOX` → first inbox on the
+key. The key itself comes from `AGENTMAIL_API_KEY` or `~/.hermes/config.yaml`.
+See [`docs/notification-style-guide.md`](docs/notification-style-guide.md) for
+the full contract.
 
 ## Contributing
 

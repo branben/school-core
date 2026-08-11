@@ -7,7 +7,7 @@
 #      (school-core-mac, label omniroute) because real task execution needs
 #      the OmniRoute gateway (localhost:20128) + the Orca macOS sandbox,
 #      which only exist on the Mac. Gated on runner liveness so a sleeping
-#      Mac is a clean "skipped", never a hung/red run.
+#      Mac is a visible, alerted "blocked" cycle, never a hung run.
 #   2. VIEW HOSTED — `loop` job runs on ubuntu-latest and always publishes
 #      the board (ht-ml.app), so the board stays up even when the Mac sleeps.
 #   3. STATE IN GIT — data/* is committed after scripts/sanitize_data.py
@@ -27,6 +27,12 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+
+# Do not let two 30-minute Mac executions overlap. Keep the current run alive;
+# GitHub retains only one pending run, so the newest pending cycle wins.
+concurrency:
+  group: school-loop
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -64,8 +70,8 @@ jobs:
         run: |
           # Guard the API call: a missing/expired RUNNER_ADMIN_TOKEN must degrade
           # to "runner offline" (skip execution) — never fail the gate, because
-          # the `loop` job's `if: needs.gate.result == 'success'` would then skip
-          # board publishing too. A token misconfig must not take down the board.
+          # the hosted `loop` job publishes committed board state even when
+          # execute is skipped. A token misconfig must not take down the board.
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
             --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length' 2>/dev/null || true)
           ONLINE=${ONLINE:-0}
@@ -80,9 +86,43 @@ jobs:
             echo "::warning::school-core-mac offline or unverifiable (check RUNNER_ADMIN_TOKEN) — skipping issue execution this cycle"
           fi
 
+  pipeline-alert:
+    # Separate from `gate`: a checkout or AgentMail failure must never make
+    # the gate red, because `loop` relies on gate success to publish the board.
+    name: alert if school loop is blocked
+    needs: gate
+    runs-on: ubuntu-latest
+    if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'false'
+    continue-on-error: true
+    steps:
+      - name: Check out notification code
+        uses: actions/checkout@v4
+
+      - name: Notify pipeline blocked
+        env:
+          AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+          AGENTMAIL_SCHOOL_INBOX: vault-synthesis@agentmail.to
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Best-effort: this job is isolated and cannot block board publishing.
+          python - <<'PY'
+          import os
+          from school_mail import notify_pipeline_alert
+
+          ok = notify_pipeline_alert(
+              component="school-core-mac runner",
+              reason="The self-hosted runner is offline or the liveness token is missing/invalid.",
+              repo=os.environ.get("GITHUB_REPOSITORY", "__global__"),
+              run_url=os.environ.get("RUN_URL", ""),
+          )
+          print(f"notify_pipeline_alert -> {ok}")
+          PY
+
   execute:
     # Real issue execution — runs ONLY on the Mac (gateway + Orca live there).
-    # Skips cleanly when the Mac is asleep. Commits sanitized board state back
+    # Skips execution when the Mac is asleep; the gate sends a pipeline-blocked
+    # alert while the hosted loop still publishes committed board state. Commits
+    # sanitized board state back
     # so the ubuntu `loop` job can publish it and state survives disk death.
     name: execute issues (live Orca + OmniRoute)
     needs: gate

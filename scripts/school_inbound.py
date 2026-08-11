@@ -4,9 +4,19 @@
 Reads threads in the AgentMail inbox, applies /approve /reject /fix
 commands, and labels threads school-processed or school-error.
 
+The AgentMail transport (key + inbox resolution, request helper, logging) is
+shared with the notifier + poller via agentmail_client — this handler no
+longer carries its own copy of SCHOOL_INBOX / _req / key resolution.
+
+Note: ``src/agentmail_poller.py`` is the active inbound path (cronned every
+2 min). This script is the legacy handler, kept operational for manual runs /
+dry-runs and for scanning every inbox (it polls all inboxes, not just the
+control-plane one, so a reply is caught wherever it lands).
+
 Env:
-    AGENTMAIL_API_KEY   (required) — user-scoped key (am_us_…)
-    AGENTMAIL_INBOX     (optional) — inbox id to poll. Defaults to
+    AGENTMAIL_API_KEY        (required) — user-scoped key (am_us_…)
+    AGENTMAIL_SCHOOL_INBOX   (optional) — preferred inbox (polled first)
+    AGENTMAIL_INBOX          (optional) — inbox id to poll. Defaults to
                           the first inbox returned by GET /v0/inboxes.
 
 Usage:
@@ -22,78 +32,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
-import urllib.request
-import urllib.error
+from pathlib import Path
 
-BASE = "https://api.agentmail.to"
-API_PREFIX = "/v0"
+# Make the shared client importable whether run from repo root or scripts/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from agentmail_client import (
+    configure_logging,
+    req,
+)
+
+logger = logging.getLogger("school_inbound")
 
 INBOX_ID_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@agentmail\.to$")
 BeadID_RE = re.compile(r"^[a-zA-Z0-9_\-.]{3,64}$")
 
-# Agent-School human-in-the-loop control-plane inbox. Used as the default
-# poll target when AGENTMAIL_INBOX is not set, since GET /inboxes does not
-# return the school inbox first.
-SCHOOL_INBOX = "REDACTED@REDACTED.invalid"
-
-
-def _resolve_api_key() -> str:
-    """API key from AGENTMAIL_API_KEY env, else the AgentMail MCP server
-    URL configured in ~/.hermes/config.yaml (same key the harness injects)."""
-    key = os.environ.get("AGENTMAIL_API_KEY")
-    if key:
-        return key
-    try:
-        cfg_path = os.path.expanduser("~/.hermes/config.yaml")
-        text = open(cfg_path).read()
-        m = re.search(r"mcp\.agentmail\.to/mcp\?apiKey=([^&\s\"']+)", text)
-        if m:
-            return m.group(1)
-    except Exception:
-        pass
-    raise RuntimeError("AGENTMAIL_API_KEY not set (and not found in ~/.hermes/config.yaml)")
-
-
-def _headers() -> dict:
-    key = _resolve_api_key()
-    return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
-
-def _req(method: str, path: str, body=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        f"{BASE}{API_PREFIX}{path}", data=data, headers=_headers(), method=method
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        raw = resp.read()
-        return json.loads(raw) if raw else {}
-
 
 def _resolve_inboxes() -> list[str]:
-    """All inbox ids to poll, SCHOOL_INBOX first when present.
+    """All inbox ids to poll, AGENTMAIL_SCHOOL_INBOX first when present.
 
     Scanning every inbox (not just the control-plane one) means a human reply
     is caught wherever it lands — including threads whose outbound notification
     was sent to a different inbox before routing was aligned.
     """
     env = os.environ.get("AGENTMAIL_INBOX")
-    res = _req("GET", "/inboxes")
+    res = req("GET", "/inboxes")
     inboxes = res.get("inboxes", []) if isinstance(res, dict) else []
     if not inboxes:
         raise RuntimeError("no AgentMail inboxes available")
     ids = [ib.get("inbox_id") for ib in inboxes if ib.get("inbox_id")]
     if env and INBOX_ID_RE.match(env) and env in ids:
         return [env]
-    ordered = [i for i in ids if i == SCHOOL_INBOX] + [i for i in ids if i != SCHOOL_INBOX]
-    return ordered
+    school = os.environ.get("AGENTMAIL_SCHOOL_INBOX", "").strip()
+    if school and school in ids:
+        return [school] + [i for i in ids if i != school]
+    return ids
 
 
 def _get_unprocessed_threads(inbox: str, limit: int = 100):
     """Return threads that lack school-processed AND school-error labels."""
-    res = _req(
+    res = req(
         "GET",
         f"/inboxes/{inbox}/threads?limit={limit}&label=unread",
     )
@@ -110,7 +92,7 @@ def _get_unprocessed_threads(inbox: str, limit: int = 100):
 
 
 def _get_thread(inbox: str, thread_id: str):
-    return _req("GET", f"/inboxes/{inbox}/threads/{thread_id}")
+    return req("GET", f"/inboxes/{inbox}/threads/{thread_id}")
 
 
 def _patch_thread(
@@ -122,7 +104,7 @@ def _patch_thread(
     body: dict = {"add_labels": add_labels}
     if remove_labels:
         body["remove_labels"] = remove_labels
-    _req("PATCH", f"/inboxes/{inbox}/threads/{thread_id}", body)
+    req("PATCH", f"/inboxes/{inbox}/threads/{thread_id}", body)
 
 
 def _parse_command(body: str):
@@ -179,8 +161,6 @@ def _act_command(inbox: str, thread: dict, command: str, bead: str) -> str:
 
 def _read_bookbag(bead: str) -> dict | None:
     """Read bookbag JSON from disk."""
-    from pathlib import Path
-
     bookbag_dir = Path.home() / ".hermes" / "bookbag"
     path = bookbag_dir / f"{bead}.json"
     if not path.exists():
@@ -193,8 +173,6 @@ def _read_bookbag(bead: str) -> dict | None:
 
 def _update_bookbag(bead: str, updates: dict):
     """Apply updates to a bookbag JSON on disk."""
-    from pathlib import Path
-
     bookbag_dir = Path.home() / ".hermes" / "bookbag"
     path = bookbag_dir / f"{bead}.json"
     if not path.exists():
@@ -215,6 +193,7 @@ def _now_iso() -> str:
 
 
 def main() -> int:
+    configure_logging()
     parser = argparse.ArgumentParser(description="Agent-School inbound command handler")
     parser.add_argument("--dry-run", action="store_true", help="Show what would act, but don't apply")
     args = parser.parse_args()
@@ -222,7 +201,7 @@ def main() -> int:
     try:
         inboxes = _resolve_inboxes()
     except Exception as e:
-        sys.stderr.write(f"[school_inbound] cannot resolve inbox: {e}\n")
+        logger.error("cannot resolve inbox: %s", e)
         return 1
 
     acted = 0
@@ -230,7 +209,7 @@ def main() -> int:
         try:
             threads = _get_unprocessed_threads(inbox)
         except Exception as e:
-            sys.stderr.write(f"[school_inbound] thread list failed for {inbox}: {e}\n")
+            logger.warning("thread list failed for %s: %s", inbox, e)
             continue
 
         for thread in threads:
@@ -267,7 +246,7 @@ def main() -> int:
                     _patch_thread(inbox, thread_id, ["school-error"])
                 except Exception:
                     pass
-                sys.stderr.write(f"[school_inbound] thread {thread_id}: {e}\n")
+                logger.warning("thread %s: %s", thread_id, e)
 
     if acted == 0 and not args.dry_run:
         print("nothing to act on")

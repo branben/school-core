@@ -142,6 +142,9 @@ jobs:
     continue-on-error: true
     env:
       AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
+      # Pin the Agent-School control-plane inbox so CI alerts land where the
+      # verdict cards + poller live (resolve_dest_inbox: SCHOOL -> INBOX -> first).
+      AGENTMAIL_SCHOOL_INBOX: vault-synthesis@agentmail.to
       TEST_RESULT: ${{ needs.test.result }}
       GATE_RESULT: ${{ needs.integration-gate.result }}
       INTEGRATION_RESULT: ${{ needs.integration.result }}
