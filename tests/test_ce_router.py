@@ -16,6 +16,9 @@ from scripts.ce_router import (
     SKILL_RANK_3,
     SKILL_RANK_5,
     SKILL_RANK_6,
+    OVERLAY_BOUNDED_REVIEW,
+    OVERLAY_DOUBT,
+    OVERLAY_SECURITY,
 )
 import conductor
 
@@ -90,6 +93,11 @@ def test_route_decision_logs_to_bookbag():
         "bead123", "__global__",
         chosen_skill=SKILL_RANK_1,
         chosen_skill_label=out["label"],
+        primary_workflow=SKILL_RANK_1,
+        overlays=[],
+        discarded_overlays=[],
+        curiosity_required=False,
+        human_gate_required=False,
     )
 
 
@@ -108,22 +116,118 @@ def test_route_decision_writer_failure_does_not_raise():
     assert out["logged"] is False  # swallowed, never breaks dispatch
 
 
+# ── Runtime policy contract: primary + bounded overlays ─────────────────────
+
+def test_route_decision_emits_primary_and_ranked_overlays():
+    out = route_decision(classify_task(
+        is_new_implementation=True,
+        requires_doubt=True,
+        requires_security_review=True,
+        requires_source_review=True,
+    ))
+    assert out["primary_workflow"] == SKILL_RANK_2
+    assert out["overlays"] == [OVERLAY_DOUBT, OVERLAY_SECURITY]
+    assert out["discarded_overlays"] == ["source-driven-development"]
+
+
+def test_plan_review_replaces_doubt_overlay():
+    out = route_decision(classify_task(
+        is_new_implementation=True,
+        is_plan_review=True,
+        requires_doubt=True,
+    ))
+    assert out["overlays"] == [OVERLAY_BOUNDED_REVIEW]
+    assert out["discarded_overlays"] == []
+
+
+def test_route_decision_preserves_curiosity_and_human_gate_flags():
+    out = route_decision(classify_task(
+        is_curiosity_driven=True,
+        requires_human_gate=True,
+    ))
+    assert out["curiosity_required"] is True
+    assert out["human_gate_required"] is True
+
+
+def test_route_decision_overlay_cap_is_deterministic():
+    out = route_decision(classify_task(
+        requires_doubt=True,
+        requires_security_review=True,
+        requires_source_review=True,
+        requires_observability=True,
+        requires_browser_verification=True,
+    ))
+    assert len(out["overlays"]) == 2
+    assert out["overlays"] == [OVERLAY_DOUBT, OVERLAY_SECURITY]
+    assert out["discarded_overlays"] == [
+        "source-driven-development",
+        "observability-and-instrumentation",
+        "browser-testing-with-devtools",
+    ]
+
+
 # ── conductor._principal_dispatch attaches chosen_skill ──────────────────────
 
 def test_dispatch_attaches_chosen_skill():
     fake_result = {"status": "success", "agent": "coder", "bead": "bead-xyz",
                    "domain": "python-coding"}
-    with patch.object(conductor, "run_leaf", return_value=fake_result), \
+    with patch.object(conductor, "run_leaf", return_value=fake_result) as leaf_mock, \
          patch.object(conductor, "locked_update_bookbag", MagicMock()) as w:
         out = conductor._principal_dispatch(
             task="t", role="coder", domain="python-coding",
             difficulty="easy", store=MagicMock(), repo="__global__",
         )
     assert out["chosen_skill"] == SKILL_RANK_2  # default new-implementation
+    assert out["primary_workflow"] == SKILL_RANK_2
+    assert out["overlays"] == []
+    # The principal owns route persistence and signaling, so the leaf receives
+    # the target/handoff controls rather than emitting a ready signal early.
+    leaf_kwargs = leaf_mock.call_args.kwargs
+    assert leaf_kwargs["signal_ready"] is False
+    assert leaf_kwargs["repo_path"] is None
     # bookbag log happened with the dispatched bead.
     w.assert_called_once()
     _, kwargs = w.call_args
     assert kwargs["chosen_skill"] == SKILL_RANK_2
+    assert kwargs["primary_workflow"] == SKILL_RANK_2
+    assert kwargs["overlays"] == []
+    assert kwargs["discarded_overlays"] == []
+    assert kwargs["curiosity_required"] is False
+    assert kwargs["human_gate_required"] is False
+
+
+def test_dispatch_persists_full_route_contract():
+    fake_result = {"status": "success", "agent": "coder", "bead": "bead-contract",
+                   "domain": "python-coding"}
+    shape = classify_task(
+        is_new_implementation=True,
+        requires_doubt=True,
+        requires_security_review=True,
+        requires_source_review=True,
+        is_curiosity_driven=True,
+        requires_human_gate=True,
+    )
+    with (
+        patch.object(conductor, "run_leaf", return_value=fake_result),
+        patch.object(conductor, "locked_update_bookbag", MagicMock()) as w,
+    ):
+        out = conductor._principal_dispatch(
+            task="t", role="coder", domain="python-coding",
+            difficulty="easy", store=MagicMock(), repo="__global__",
+            task_shape=shape,
+        )
+
+    assert out["primary_workflow"] == SKILL_RANK_2
+    assert out["overlays"] == [OVERLAY_DOUBT, OVERLAY_SECURITY]
+    assert out["discarded_overlays"] == ["source-driven-development"]
+    assert out["curiosity_required"] is True
+    assert out["human_gate_required"] is True
+    _, kwargs = w.call_args
+    assert kwargs["primary_workflow"] == SKILL_RANK_2
+    assert kwargs["overlays"] == [OVERLAY_DOUBT, OVERLAY_SECURITY]
+    assert kwargs["discarded_overlays"] == ["source-driven-development"]
+    assert kwargs["curiosity_required"] is True
+    assert kwargs["human_gate_required"] is True
 
 
 def test_dispatch_chosen_skill_reflects_task_shape():

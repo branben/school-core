@@ -35,6 +35,28 @@ SKILL_RANK_3 = "rank3_ddd_routing"             # principal doubt cycle
 SKILL_RANK_5 = "rank5_student_plan"            # plan decomposition
 SKILL_RANK_6 = "rank6_harness_ready"           # spec-JSON DOD gate
 
+# Runtime policy overlays. These are orthogonal to the primary Rank skill.
+# Their order is the canonical bounded precedence from using-agent-skills.
+OVERLAY_BOUNDED_REVIEW = "bounded-adversarial-plan-review"
+OVERLAY_DOUBT = "doubt-driven-development"
+OVERLAY_SECURITY = "security-and-hardening"
+OVERLAY_SOURCE = "source-driven-development"
+OVERLAY_OBSERVABILITY = "observability-and-instrumentation"
+OVERLAY_BROWSER = "browser-testing-with-devtools"
+OVERLAY_PERFORMANCE = "performance-optimization"
+OVERLAY_TDD = "test-driven-development"
+
+OVERLAY_PRECEDENCE = [
+    OVERLAY_BOUNDED_REVIEW,
+    OVERLAY_DOUBT,
+    OVERLAY_SECURITY,
+    OVERLAY_SOURCE,
+    OVERLAY_OBSERVABILITY,
+    OVERLAY_BROWSER,
+    OVERLAY_PERFORMANCE,
+    OVERLAY_TDD,
+]
+
 # Fixed precedence when several flags are true. Earlier = higher priority.
 # Order rationale: a failed gate (needs a regression test) and a spec-gap
 # (needs a DOD gate) are the most concrete, actionable shapes; architectural
@@ -68,6 +90,17 @@ def classify_task(
     requires_architectural_routing: bool = False,
     complexity: int = 1,
     is_spec_gap: bool = False,
+    # Runtime policy signals. These remain separate from primary rank skills.
+    is_curiosity_driven: bool = False,
+    requires_human_gate: bool = False,
+    is_plan_review: bool = False,
+    requires_doubt: bool = False,
+    requires_security_review: bool = False,
+    requires_source_review: bool = False,
+    requires_observability: bool = False,
+    requires_browser_verification: bool = False,
+    requires_performance_review: bool = False,
+    requires_tdd: bool = False,
 ) -> Dict[str, Any]:
     """Build the task-shape dict from explicit flags.
 
@@ -80,9 +113,19 @@ def classify_task(
         requires_architectural_routing: Needs a routing/lens/model decision.
         complexity: Implied number of sub-steps (>=1).
         is_spec_gap: Task closes an open spec/DOD gap.
+        is_curiosity_driven: Ambiguity may change the plan; surface curiosity questions.
+        requires_human_gate: The decision needs explicit human authorization.
+        is_plan_review: An existing plan or architecture artifact is under review.
+        requires_doubt: A non-trivial decision needs adversarial review.
+        requires_security_review: Security-hardening overlay is independently triggered.
+        requires_source_review: Official-documentation verification is independently triggered.
+        requires_observability: Observability/instrumentation overlay is independently triggered.
+        requires_browser_verification: Browser runtime verification is independently triggered.
+        requires_performance_review: Performance analysis is independently triggered.
+        requires_tdd: Test-driven-development overlay is independently triggered.
 
     Returns:
-        A task-shape dict consumed by choose_skill().
+        A task-shape dict consumed by choose_skill() and _policy_route().
     """
     return {
         "has_failed_gate": bool(has_failed_gate),
@@ -90,6 +133,16 @@ def classify_task(
         "requires_architectural_routing": bool(requires_architectural_routing),
         "complexity": int(complexity),
         "is_spec_gap": bool(is_spec_gap),
+        "is_curiosity_driven": bool(is_curiosity_driven),
+        "requires_human_gate": bool(requires_human_gate),
+        "is_plan_review": bool(is_plan_review),
+        "requires_doubt": bool(requires_doubt),
+        "requires_security_review": bool(requires_security_review),
+        "requires_source_review": bool(requires_source_review),
+        "requires_observability": bool(requires_observability),
+        "requires_browser_verification": bool(requires_browser_verification),
+        "requires_performance_review": bool(requires_performance_review),
+        "requires_tdd": bool(requires_tdd),
     }
 
 
@@ -142,6 +195,50 @@ def choose_skill(task_shape: Dict[str, Any]) -> str:
     return candidates[0]
 
 
+def _policy_route(task_shape: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the bounded runtime route contract from a task shape.
+
+    The existing ``choose_skill`` result remains the primary workflow for
+    compatibility. Overlays are independently triggered, ranked, capped at
+    two, and returned with discarded candidates for observability.
+    """
+    chosen = choose_skill(task_shape)
+    is_plan_review = bool(task_shape.get("is_plan_review", False))
+
+    requested = []
+    if is_plan_review:
+        requested.append(OVERLAY_BOUNDED_REVIEW)
+    if task_shape.get("requires_doubt", False):
+        requested.append(OVERLAY_DOUBT)
+    if task_shape.get("requires_security_review", False):
+        requested.append(OVERLAY_SECURITY)
+    if task_shape.get("requires_source_review", False):
+        requested.append(OVERLAY_SOURCE)
+    if task_shape.get("requires_observability", False):
+        requested.append(OVERLAY_OBSERVABILITY)
+    if task_shape.get("requires_browser_verification", False):
+        requested.append(OVERLAY_BROWSER)
+    if task_shape.get("requires_performance_review", False):
+        requested.append(OVERLAY_PERFORMANCE)
+    if task_shape.get("requires_tdd", False):
+        requested.append(OVERLAY_TDD)
+
+    # A bounded plan review replaces doubt; it does not consume a second slot.
+    if OVERLAY_BOUNDED_REVIEW in requested:
+        requested = [o for o in requested if o != OVERLAY_DOUBT]
+
+    ranked = [overlay for overlay in OVERLAY_PRECEDENCE if overlay in requested]
+    overlays = ranked[:2]
+    discarded = ranked[2:]
+    return {
+        "primary_workflow": chosen,
+        "overlays": overlays,
+        "discarded_overlays": discarded,
+        "curiosity_required": bool(task_shape.get("is_curiosity_driven", False)),
+        "human_gate_required": bool(task_shape.get("requires_human_gate", False)),
+    }
+
+
 def route_decision(
     task_shape: Dict[str, Any],
     bead: Optional[str] = None,
@@ -155,29 +252,51 @@ def route_decision(
         bead: bookbag id to log the choice against (optional).
         repo: repo namespace for the bookbag (default global).
         bookbag_writer: callable(bead, repo, **fields) -> optional; defaults to
-            bookbag.locked_update_bookbag. Passed in so tests can stub it
-            (no real bookbag I/O required).
+            bookbag.locked_update_bookbag. A non-None return means the fields
+            were written; None means the durable write failed. Passed in so
+            tests can stub it (no real bookbag I/O required).
 
     Returns:
         {
-            "chosen_skill": str,
+            "chosen_skill": str,          # backward-compatible primary alias
+            "primary_workflow": str,      # selected primary rank workflow
+            "overlays": list[str],        # at most two ranked overlays
+            "discarded_overlays": list[str],
+            "curiosity_required": bool,
+            "human_gate_required": bool,
             "label": str,
             "task_shape": dict,
-            "logged": bool,   # True if a bookbag write happened
+            "logged": bool,               # True if a bookbag write happened
         }
     """
-    chosen = choose_skill(task_shape)
+    policy = _policy_route(task_shape)
+    chosen = policy["primary_workflow"]
     result = {
         "chosen_skill": chosen,
         "label": SKILL_LABELS.get(chosen, chosen),
         "task_shape": task_shape,
+        **policy,
         "logged": False,
     }
 
     if bead and bookbag_writer is not None:
         try:
-            bookbag_writer(bead, repo, chosen_skill=chosen, chosen_skill_label=result["label"])
-            result["logged"] = True
+            written = bookbag_writer(
+                bead,
+                repo,
+                chosen_skill=chosen,
+                chosen_skill_label=result["label"],
+                primary_workflow=result["primary_workflow"],
+                overlays=result["overlays"],
+                discarded_overlays=result["discarded_overlays"],
+                curiosity_required=result["curiosity_required"],
+                human_gate_required=result["human_gate_required"],
+            )
+            # Bookbag writers use None to report that no artifact was written
+            # (for example, a missing bead or lock timeout). Do not claim a
+            # durable route in that case; callers may need to withhold a ready
+            # signal and retry instead.
+            result["logged"] = written is not None
         except Exception as e:  # noqa: BLE001 — logging must never break dispatch
             logger.warning("ce_router: failed to log chosen_skill to bookbag: %s", e)
             result["logged"] = False
