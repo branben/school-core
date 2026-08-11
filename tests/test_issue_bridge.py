@@ -16,6 +16,8 @@ from issue_bridge import (
     mark_processed,
     is_processed,
     bridge_issues,
+    _run_verify_gate,
+    _run_entire_sensor,
     _run_adversarial_review,
     _heuristic_score,
     verify_task_output,
@@ -316,6 +318,353 @@ class TestAdversarialReviewStep:
         task_result = {"response": ""}
         issue = {"difficulty": "medium"}
         assert _heuristic_score(task_result, issue) == 0.0
+
+
+# ── Verify-gate loudness: skipped vs real failure (U3) ────────────────────
+
+
+class TestVerifyGateMerge:
+    """The skipped-vs-failed distinction must drive the FAIL override.
+
+    A reusable-gate SKIPPED verdict (Nix missing / no verify commands, ran == 0)
+    must NOT force an issue FAIL in default direct/manual mode — the compiler
+    never ran, so there is no evidence of a broken build. The scheduled
+    school-loop blocks missing Nix earlier in its workflow preflight. A real
+    verify failure (ran > 0, non-zero exit) MUST force FAIL so broken code
+    cannot pass review (campus.md #3: compiler before critic).
+    """
+
+    ISSUE = [{
+        "issue_number": 80, "title": "Verify merge", "body": "",
+        "domain": "code-implementation", "difficulty": "medium",
+        "prompt": "implement", "category": "feature", "state": "ready-for-agent",
+    }]
+
+    def _task_ok(self):
+        return {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "code-implementation", "difficulty": "medium",
+            "prompt": "implement", "response": "def f(): return 1",
+        }
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    def test_skipped_verdict_does_not_force_fail(
+        self, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """Direct/manual soft-skip must not fail the issue or append findings.
+
+        The scheduled workflow's hard preflight is tested separately in
+        test_school_loop_workflow.py.
+        """
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": False, "skipped": True, "ran": 0,
+            "failures": [{"cmd": "(nix)", "exit": None,
+                          "stderr": "Nix not found - verify gate SKIPPED."}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        adv = results[0]["adversarial_review"]
+        # No build/verify CRITICAL findings; verdict not forced to FAIL.
+        assert not any(f.get("section") == "build/verify" for f in adv.get("findings", []))
+        assert adv["verdict"] != "FAIL"
+        # Durable loudness: the skip is recorded on the result.
+        assert results[0]["verify_skipped"] is True
+
+    def test_run_verify_gate_pins_flake_to_module_dir_not_cwd(self, tmp_path, monkeypatch):
+        """The gate's flake_path must be the school-core checkout, never cwd.
+
+        Regression for the CI-parity footgun: the bridge used to rely on
+        Path.cwd() being the checkout root, so a workflow `working-directory:`
+        would point the gate at a flake-less dir → nix develop fails with a
+        non-127 error → every issue becomes a fake CRITICAL failure. The flake
+        that provides #verifyShell lives next to issue_bridge.py.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "project_verify.yaml").write_text("verify:\n  - name: c\n    cmd: echo hi\n")
+        import issue_bridge
+        # Prove cwd-independence: run from a totally unrelated directory.
+        monkeypatch.chdir(tmp_path)
+        with patch("verify_gate.run_verify_gate", return_value={
+            "passed": True, "failures": [], "ran": 0, "skipped": False,
+        }) as mock_gate:
+            result = _run_verify_gate(repo, {"issue_number": 1, "title": "t"})
+        mock_gate.assert_called_once()
+        assert mock_gate.call_args.kwargs["flake_path"] == Path(issue_bridge.__file__).resolve().parent
+        # The repo's own project_verify.yaml (when present) must still win as the
+        # command manifest — flake pinning must not disturb the priority shadowing.
+        assert mock_gate.call_args[0][1] == repo / "project_verify.yaml"
+        assert result is not None
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    def test_real_verify_failure_forces_fail(
+        self, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """A real compile/test failure (ran > 0) must force FAIL + CRITICAL."""
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": False, "ran": 1,
+            "failures": [{"cmd": "npm run typecheck", "exit": 1,
+                          "stderr": "TS2322: boom"}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        adv = results[0]["adversarial_review"]
+        assert any(f.get("section") == "build/verify" for f in adv.get("findings", []))
+        assert adv["verdict"] == "FAIL"
+        assert adv["score"] == 0.0
+        assert results[0]["verify_skipped"] is False
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    def test_strict_escalated_verdict_forces_fail(
+        self, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """VERIFY_GATE_STRICT: an escalated (ran==0) gate verdict forces FAIL.
+
+        Strict mode flips an unrunnable gate (Nix missing, no commands) from a
+        soft SKIP into `strict_escalated: True` — the merge must treat that as
+        a real failure even though ran == 0 (compiler-before-critic enforced).
+        """
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": False, "skipped": False, "strict_escalated": True, "ran": 0,
+            "failures": [{"cmd": "(nix)", "exit": None,
+                          "stderr": "Nix not found — verify gate SKIPPED.\n"
+                                     "[VERIFY_GATE_STRICT] Escalation: ..."}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        adv = results[0]["adversarial_review"]
+        assert any(f.get("section") == "build/verify" for f in adv.get("findings", []))
+        assert adv["verdict"] == "FAIL"
+        assert adv["score"] == 0.0
+        assert results[0]["verify_skipped"] is False
+
+    def test_run_verify_gate_strict_exception_escalates(self, monkeypatch):
+        """Strict mode: verify_gate raising must escalate, not return None."""
+        import issue_bridge
+        # Patch the module import to raise, then assert escalation shape.
+        real = issue_bridge._run_verify_gate
+        with monkeypatch.context() as m:
+            m.setenv("VERIFY_GATE_STRICT", "1")
+            # Force the ImportError path by making the repo exist but the
+            # lazy import fail.
+            import tempfile as _tf
+            with _tf.TemporaryDirectory() as td:
+                repo = Path(td)
+                import builtins
+                real_import = builtins.__import__
+                def fake_import(name, *a, **k):
+                    if name == "verify_gate":
+                        raise ImportError("no verify_gate")
+                    return real_import(name, *a, **k)
+                m.setattr(builtins, "__import__", fake_import)
+                res = real(repo, {"issue_number": 1})
+        assert res is not None
+        assert res["strict_escalated"] is True
+        assert res["passed"] is False
+
+
+# ── U6: Entire pre-merge sensor (non-blocking) ─────────────────────────────
+
+
+class TestEntireSensor:
+    """The sync path must run `entire review` as a non-blocking sensor.
+
+    Findings are surfaced (result + last_run) but never override the verdict —
+    the adversarial LLM review is the semantic gate.
+    """
+
+    ISSUE = [{
+        "issue_number": 85, "title": "Entire sensor", "body": "",
+        "domain": "code-implementation", "difficulty": "medium",
+        "prompt": "implement", "category": "feature", "state": "ready-for-agent",
+    }]
+
+    def _task_ok(self):
+        return {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "code-implementation", "difficulty": "medium",
+            "prompt": "implement", "response": "def f(): return 1",
+        }
+
+    def test_sensor_returns_none_when_repo_missing(self):
+        """No clone → None; the pipeline never blocks on the sensor."""
+        assert _run_entire_sensor(Path("/nonexistent/repo")) is None
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    @patch("issue_bridge._run_entire_sensor")
+    def test_bridge_surfaces_entire_sensor_result(
+        self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
+        mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """Sensor findings ride on the result + last_run, without a FAIL override."""
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "failures": [], "ran": 0, "skipped": False,
+        }
+        mock_sensor.return_value = {
+            "status": "fail",
+            "findings": [{"file": "x.py", "line": 3, "severity": "HIGH",
+                           "message": "unused var"}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        # Surfaced on the result…
+        assert results[0]["entire_review"]["status"] == "fail"
+        assert len(results[0]["entire_review"]["findings"]) == 1
+        # …but NOT a verdict override — the LLM review stays the semantic gate.
+        assert results[0]["adversarial_review"]["verdict"] != "FAIL"
+        # Durable record carries a compact summary.
+        runs = json.loads((tmp_path / "last_run.json").read_text())
+        assert runs[-1]["entire"] == {"status": "fail", "findings": 1}
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    @patch("issue_bridge._run_entire_sensor")
+    def test_bridge_records_none_when_sensor_unavailable(
+        self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
+        mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """Sensor unavailable (CLI missing) → result key None, last_run None."""
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "failures": [], "ran": 0, "skipped": False,
+        }
+        mock_sensor.return_value = None
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["entire_review"] is None
+        runs = json.loads((tmp_path / "last_run.json").read_text())
+        assert runs[-1]["entire"] is None
+
+
+# ── U1: session_id threading ───────────────────────────────────────────────
+
+
+class TestCycleSessionId:
+    """The bridge must thread a per-cycle session_id into director.run_task so
+    Layer 3 archival context can fire (U1)."""
+
+    @staticmethod
+    def _issue(num):
+        return [{"issue_number": num, "title": f"T{num}", "body": "",
+                 "domain": "debugging", "difficulty": "easy", "prompt": "p",
+                 "category": "bug", "state": "ready-for-agent"}]
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_run_task_receives_cycle_session_id(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """run_task is called with a loop-YYYYMMDD-HHMM session_id."""
+        import re
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self._issue(300)
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+        bridge_issues("user/test", store=store)
+        sid = mock_task.call_args[1].get("session_id")
+        assert sid, "session_id must be passed to run_task"
+        assert re.fullmatch(r"loop-\d{8}-\d{6}", sid), f"unexpected session_id: {sid}"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_same_session_id_for_issues_in_one_cycle(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """Two issues in one cycle share one session_id (per-cycle, not per-issue)."""
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self._issue(301) + self._issue(302)
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+        bridge_issues("user/test", store=store)
+        sids = {c[1].get("session_id") for c in mock_task.call_args_list}
+        assert len(sids) == 1, f"expected one session per cycle, got {sids}"
 
 
 # ── Verify Task Output Parser ────────────────────────────────────────────

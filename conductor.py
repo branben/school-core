@@ -48,7 +48,7 @@ from principal_doubt import run_doubt_cycle
 from scripts.ce_router import route_decision
 from scripts.spec_gate import check_dod, _load_spec
 from scripts.student_plan import generate_plan, execute_plan, is_complex, COMPLEXITY_THRESHOLD
-from src.qodo_pre_merge import run_qodo_improve
+from src.entire_review import run_entire_review
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
 from github_fetcher import fetch_single_issue, load_config
 from activity_log import ActivityLog
@@ -335,29 +335,29 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
         leaf.signal_ready()
         print(f"  ✅ bead={leaf.bead[:20]} ({len(result.get('response', ''))} chars) — teachers notified")
 
-        # ── Pre-merge Qodo check (computational sensor layer) ──────────────
+        # ── Pre-merge Entire review (computational sensor layer) ───────────
         # Runs before the two-judge semantic review. Catches mechanical
         # issues (unused vars, type narrowing, complexity) that the CTO/COO
-        # LLM judges don't surface. Degrades gracefully if QODO_API_KEY
+        # LLM judges don't surface. Degrades gracefully when the entire CLI
         # is missing — does NOT block the pipeline.
-        qodo_result = {}
+        entire_result = {}
         try:
-            qodo_result = run_qodo_improve(
+            entire_result = run_entire_review(
                 worktree_path=leaf.worktree_path or "",
                 base_branch="main",
             )
-            qodo_status = qodo_result.get("status", "skipped")
-            qodo_findings = qodo_result.get("findings", [])
-            if qodo_status == "fail":
-                print(f"  ⚠ Entire review: {len(qodo_findings)} real issue(s) found")
-            elif qodo_status == "skipped":
+            entire_status = entire_result.get("status", "skipped")
+            entire_findings = entire_result.get("findings", [])
+            if entire_status == "fail":
+                print(f"  ⚠ Entire review: {len(entire_findings)} real issue(s) found")
+            elif entire_status == "skipped":
                 print(f"  ⊘ Entire review: skipped (entire CLI not found)")
             else:
-                print(f"  ✅ Entire review: {qodo_status} — no issues")
+                print(f"  ✅ Entire review: {entire_status} — no issues")
         except Exception as e:
             print(f"  ⚠ Entire review failed: {e}")
-            qodo_status = "error"
-            qodo_findings = []
+            entire_status = "error"
+            entire_findings = []
         # ──────────────────────────────────────────────────────────────────────
 
         cto_v, coo_v = wait_for_verdicts(leaf.bead, repo=target_repo or "__global__", timeout=args.handoff_timeout)
@@ -384,8 +384,8 @@ def _run_issue_async(args, store, role, target_repo: Optional[str] = None):
                 leaf.bead, accepted, cto_v, coo_v,
                 repo=target_repo or "__global__",
                 summary=(bag.get("findings", []) and f"{len(bag.get('findings', []))} findings"),
-                qodo_findings=qodo_findings,
-                qodo_status=qodo_status,
+                entire_findings=entire_findings,
+                entire_status=entire_status,
                 cto_findings=bag.get("cto_findings", []),
                 coo_findings=bag.get("coo_findings", []),
             )
@@ -898,8 +898,8 @@ def _run_async_loop(args, store, repo: str = REPO_GLOBAL):
                         bead, accepted, cto_v, coo_v,
                         repo=repo,
                         summary=(findings or []) and f"{len(findings)} findings",
-                        qodo_findings=(bag or {}).get("qodo_findings", []),
-                        qodo_status=(bag or {}).get("qodo_status", "unknown"),
+                        entire_findings=(bag or {}).get("entire_findings", []),
+                        entire_status=(bag or {}).get("entire_status", "unknown"),
                         cto_findings=(bag or {}).get("cto_findings", []),
                         coo_findings=(bag or {}).get("coo_findings", []),
                     )

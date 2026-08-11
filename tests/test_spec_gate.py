@@ -254,3 +254,43 @@ def test_director_dod_gate_false_no_key_in_result():
         )
     assert out["status"] == "success"
     assert "dod_gate" not in out
+
+
+# ── U1: session_id forwarding to enrich_prompt ───────
+
+def test_director_forwards_session_id_to_enrich_prompt():
+    """run_task must forward session_id so Layer 3 archival fires (U1)."""
+    store = MagicMock()
+    store.get_score.return_value = 100
+
+    with patch("director.call_model", return_value="Mocked response"), \
+         patch("director._run_two_judge_review", return_value=make_passing_review()), \
+         patch("director.enrich_prompt", return_value="") as mock_enrich:
+        out = director.run_task(
+            prompt="Simple task",
+            domain="python-coding",
+            force_agent="coder",
+            store=store,
+            session_id="loop-20260811-1230",
+        )
+    assert out["status"] == "success"
+    mock_enrich.assert_called_once()
+    assert mock_enrich.call_args.kwargs.get("session_id") == "loop-20260811-1230"
+
+
+def test_director_session_id_none_by_default():
+    """Without an explicit session_id, enrich_prompt gets session_id=None."""
+    store = MagicMock()
+    store.get_score.return_value = 100
+
+    with patch("director.call_model", return_value="Mocked response"), \
+         patch("director._run_two_judge_review", return_value=make_passing_review()), \
+         patch("director.enrich_prompt", return_value="") as mock_enrich:
+        out = director.run_task(
+            prompt="Simple task",
+            domain="python-coding",
+            force_agent="coder",
+            store=store,
+        )
+    assert out["status"] == "success"
+    assert mock_enrich.call_args.kwargs.get("session_id") is None

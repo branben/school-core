@@ -24,6 +24,11 @@ from pathlib import Path
 #    GitHub runner (/home/runner/work/school-core/school-core/data/...) layouts.
 REPO_PREFIX_RE = re.compile(r"(?:/[A-Za-z0-9_.~-]+)+/school-core/data/")
 
+# Default cap for committed trajectory history (U2). Trajectory filenames are
+# timestamp-prefixed (YYYYmmdd_HHMMSS_ffffff), so the newest N by name = the
+# last N cycles. Keeps git history bounded while preserving Layer 2 memory.
+DEFAULT_TRAJECTORY_KEEP = 60
+
 # 2) Any remaining /Users/<username> prefix → ~  (removes username + home layout)
 HOME_RE = re.compile(r"/Users/[A-Za-z0-9_.-]+")
 
@@ -37,6 +42,35 @@ def scrub_value(value):
     if isinstance(value, str):
         return HOME_RE.sub("~", REPO_PREFIX_RE.sub("data/", value))
     return value
+
+
+def trim_trajectories(keep: int = DEFAULT_TRAJECTORY_KEEP, traj_dir: Path | None = None) -> int:
+    """Delete all but the newest *keep* trajectory files. Returns count removed.
+
+    Trajectory filenames carry a UTC timestamp prefix, so lexicographic order
+    == chronological order. Called by the school-loop checkpoint before the
+    sanitize + git add -f step (U2), so a fresh checkout sees the last N cycles
+    of Layer 2 history without unbounded repo growth.
+
+    *traj_dir* is injectable for tests; defaults to <repo>/data/trajectories.
+    """
+    # files[:-0] == files[:0] == [] silently keeps everything — a keep=0 (or
+    # negative) is a footgun, not a mode. Clamp to a sane minimum.
+    keep = max(1, int(keep))
+    traj_dir = Path(traj_dir) if traj_dir else Path(__file__).parent.parent / "data" / "trajectories"
+    if not traj_dir.exists():
+        return 0
+    files = sorted(traj_dir.glob("*.json"))
+    if len(files) <= keep:
+        return 0
+    removed = 0
+    for f in files[:-keep]:
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def sanitize_file(path: Path) -> int:
@@ -68,13 +102,36 @@ def sanitize_file(path: Path) -> int:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("usage: python scripts/sanitize_data.py <file.json> [...]")
+    args = list(sys.argv[1:])
+    # U2: `--trim-trajectories [N]` trims the trajectory dir to the newest N
+    # files (default DEFAULT_TRAJECTORY_KEEP) before sanitizing, then sanitizes
+    # each remaining trajectory alongside the explicit file args.
+    trim_keep = None
+    if "--trim-trajectories" in args:
+        idx = args.index("--trim-trajectories")
+        del args[idx]
+        if idx < len(args) and not args[idx].startswith("--"):
+            try:
+                trim_keep = int(args[idx])
+                del args[idx]
+            except ValueError:
+                pass
+        if trim_keep is None:
+            trim_keep = DEFAULT_TRAJECTORY_KEEP
+        removed = trim_trajectories(keep=trim_keep)
+        print(f"[sanitize] trajectories trimmed: removed {removed}")
+        # Sanitize whatever remains so committed trajectories are PII-free.
+        traj_dir = Path(__file__).parent.parent / "data" / "trajectories"
+        if traj_dir.exists():
+            args += sorted(str(p) for p in traj_dir.glob("*.json"))
+
+    if not args:
+        print("usage: python scripts/sanitize_data.py [--trim-trajectories [N]] <file.json> [...]")
         return 2
     total = 0
-    for arg in sys.argv[1:]:
+    for arg in args:
         total += sanitize_file(Path(arg))
-    print(f"[sanitize] done: {total} paths scrubbed across {len(sys.argv) - 1} file(s)")
+    print(f"[sanitize] done: {total} paths scrubbed across {len(args)} file(s)")
     return 0
 
 

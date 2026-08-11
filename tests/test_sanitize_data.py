@@ -8,7 +8,14 @@ the PII guarantee on every CI run.
 
 import json
 
-from scripts.sanitize_data import HOME_RE, REPO_PREFIX_RE, sanitize_file, scrub_value
+from scripts.sanitize_data import (
+    HOME_RE,
+    REPO_PREFIX_RE,
+    DEFAULT_TRAJECTORY_KEEP,
+    sanitize_file,
+    scrub_value,
+    trim_trajectories,
+)
 
 
 class TestScrubValue:
@@ -104,3 +111,54 @@ class TestRegexes:
         assert HOME_RE.sub("~", "kept /Users/brandonbennett and /Users/other") == (
             "kept ~ and ~"
         )
+
+
+class TestTrimTrajectories:
+    """U2: the checkpoint trims trajectory history to the newest N files."""
+
+    def _make_traj_dir(self, tmp_path, n):
+        d = tmp_path / "trajectories"
+        d.mkdir(exist_ok=True)
+        for i in range(n):
+            (d / f"20260801_000000_00000{i}--debugging--agent.json").write_text("{}")
+        return d
+
+    def test_keeps_newest_n(self, tmp_path):
+        d = self._make_traj_dir(tmp_path, 5)
+        removed = trim_trajectories(keep=2, traj_dir=d)
+        assert removed == 3
+        remaining = sorted(p.name for p in d.glob("*.json"))
+        assert len(remaining) == 2
+        # Newest two (highest timestamp prefix) survive: i=3 and i=4.
+        assert remaining == [
+            "20260801_000000_000003--debugging--agent.json",
+            "20260801_000000_000004--debugging--agent.json",
+        ]
+
+    def test_noop_when_under_cap(self, tmp_path):
+        d = self._make_traj_dir(tmp_path, 3)
+        assert trim_trajectories(keep=5, traj_dir=d) == 0
+        assert len(list(d.glob("*.json"))) == 3
+
+    def test_empty_dir(self, tmp_path):
+        d = tmp_path / "trajectories"
+        d.mkdir(exist_ok=True)
+        assert trim_trajectories(keep=2, traj_dir=d) == 0
+
+    def test_keep_zero_is_clamped_to_one(self, tmp_path):
+        """keep=0 is a footgun (files[:-0] removes nothing) — clamp to 1."""
+        d = self._make_traj_dir(tmp_path, 3)
+        removed = trim_trajectories(keep=0, traj_dir=d)
+        assert removed == 2
+        assert len(list(d.glob("*.json"))) == 1
+
+    def test_missing_dir(self, tmp_path):
+        assert trim_trajectories(keep=2, traj_dir=tmp_path / "nope") == 0
+
+    def test_default_keep_is_sane(self):
+        assert DEFAULT_TRAJECTORY_KEEP >= 10
+
+    def test_trims_real_repo_dir_without_error(self):
+        """Sanity: the default (repo) dir trim path works without touching it."""
+        # keep a large cap so this is a no-op in the real repo — never deletes.
+        assert trim_trajectories(keep=10_000) >= 0

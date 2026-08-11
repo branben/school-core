@@ -710,8 +710,16 @@ def run_task(
 
     # Inject vault context (includes past bookbag feedback for this role).
     # Resolve repo_path for Serena LSP symbol enrichment when available.
+    # Forward session_id so Layer 3 archival context fires (U1): the
+    # orchestrator gates _archival_context on session_id (context_orchestrator
+    # .py:78), so dropping it here keeps Layer 3 dead in the school-loop path.
     repo_path = _resolve_repo_path(repo)
-    context_blob = enrich_prompt(domain, prompt, vault_path=DEFAULT_VAULT, repo_path=repo_path)
+    context_blob = enrich_prompt(
+        domain, prompt,
+        vault_path=DEFAULT_VAULT,
+        session_id=session_id,
+        repo_path=repo_path,
+    )
     if context_blob:
         system_prompt = system_prompt + context_blob
         get_decision_log().log(

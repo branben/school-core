@@ -329,28 +329,96 @@ def verify_task_output(
         }
 
 
+def _strict_gate_failure(reason: str) -> dict:
+    """VERIFY_GATE_STRICT escalation: the gate could not run ⇒ issue cannot pass.
+
+    Strict mode enforces campus.md #3 (compiler before critic) end-to-end:
+    when the hermetic gate cannot run at all — module missing, or an internal
+    failure — a strict pipeline treats that as a real gate failure (verdict
+    FAIL) rather than letting the issue flow on unverified. Mirrors the
+    `strict_escalated` shape verify_gate._skipped_verdict returns.
+    """
+    return {
+        "passed": False,
+        "skipped": False,
+        "strict_escalated": True,
+        "ran": 0,
+        "failures": [{
+            "cmd": "(verify_gate)",
+            "exit": None,
+            "stderr": (
+                f"{reason}\n[VERIFY_GATE_STRICT] Escalation: the verify gate "
+                "could not run, so this issue cannot pass "
+                "(compiler-before-critic is enforced)."
+            ),
+        }],
+    }
+
+
 def _run_verify_gate(
     repo_path: Optional[Path],
     issue: dict,
 ) -> Optional[dict]:
     """Run the hermetic verify gate (compile/typecheck/test) on the cloned repo.
 
-    Returns the verify_gate result dict, or None on any failure (non-blocking —
-    we never let the gate itself block the pipeline; a gate failure is reported
-    as a finding, not a crash). Requires Determinate Nix (see flake.nix).
+    Returns the verify_gate result dict, or None on an import/internal failure
+    in the default direct/manual path (the gate is reported as a finding, not a
+    crash). The scheduled school-loop performs a hard Nix + verifyShell
+    preflight before this function is reached. The reusable gate itself emits a
+    visible soft-skip when its toolchain or commands are unavailable. When
+    VERIFY_GATE_STRICT=1, an unrunnable gate escalates to a FAIL verdict instead
+    of returning None (the issue cannot pass unverified).
     """
     if not repo_path or not repo_path.exists():
         return None
     try:
         from verify_gate import run_verify_gate
         project_verify = Path(repo_path) / "project_verify.yaml"
-        return run_verify_gate(repo_path, project_verify if project_verify.exists() else None)
+        # Pin the flake to the school-core checkout (this module's directory),
+        # NEVER Path.cwd() — the runner invokes the bridge from the checkout
+        # root today, but a workflow `working-directory:` would silently point
+        # the gate at a flake-less dir and turn every issue into a fake
+        # CRITICAL failure (missing-flake errors aren't exit-127, so the infra
+        # filter can't catch them). The hermetic shell's flake lives with the
+        # bridge, deterministically.
+        return run_verify_gate(
+            repo_path,
+            project_verify if project_verify.exists() else None,
+            # resolve() guards against a relative __file__ (e.g. invoked as
+            # `python issue_bridge.py`), which would otherwise re-introduce the
+            # cwd dependence we are eliminating.
+            flake_path=Path(__file__).resolve().parent,
+        )
     except ImportError:
-        # verify_gate module not available — not a blocker
+        # verify_gate module not available — not a blocker (unless strict).
+        if os.environ.get("VERIFY_GATE_STRICT") == "1":
+            return _strict_gate_failure("verify_gate module not importable")
         return None
     except Exception as e:
         sys.stderr.write(f"[issue_bridge] verify_gate failed (non-blocking): {e}\n")
+        if os.environ.get("VERIFY_GATE_STRICT") == "1":
+            return _strict_gate_failure(f"verify_gate raised: {e}")
         return None  # Can't run → don't override adversarial review
+
+
+def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
+    """Run `entire review` on the student's clone as a non-blocking sensor.
+
+    Surfaces intent-aware findings (on the result + durable record) but never
+    overrides the verdict — the adversarial LLM review remains the semantic
+    gate. Returns None when the CLI is missing or the clone is unavailable,
+    so the pipeline never blocks on the sensor.
+    """
+    if not repo_path or not repo_path.exists():
+        return None
+    try:
+        from src.entire_review import run_entire_review
+        return run_entire_review(str(repo_path), base_branch="main")
+    except ImportError:
+        return None
+    except Exception as e:
+        sys.stderr.write(f"[issue_bridge] entire sensor failed (non-blocking): {e}\n")
+        return None
 
 
 def _run_adversarial_review(
@@ -427,6 +495,14 @@ def bridge_issues(
     retries = _load_retries()
     results = []
 
+    # U1: one session_id per cycle (not per issue) so Layer 3 archival
+    # context can accumulate across the school-loop's sleep/wake cycles and
+    # the orchestrator's `if session_id:` gate actually fires. Seconds-level
+    # granularity keeps a manual dispatch + the scheduled cron in the same
+    # minute from sharing a key (which would clobber the same consolidation
+    # dir if the write side ever runs under a loop-* id).
+    cycle_session_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+
     if not issues:
         sys.stderr.write("[issue_bridge] No actionable issues found.\n")
         return results
@@ -478,6 +554,7 @@ def bridge_issues(
                 difficulty=issue["difficulty"],
                 force_agent=force_agent,
                 store=store,
+                session_id=cycle_session_id,
             )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
@@ -542,6 +619,33 @@ def bridge_issues(
             # into the adversarial reviewer, so broken code can't pass review.
             verify_result = _run_verify_gate(repo_path, issue)
 
+            # Loudness for direct/manual callers: when the reusable gate could
+            # not run at all (Nix missing / no verify commands), say so in the
+            # loop log AND in the durable record. The scheduled school-loop
+            # rejects missing Nix earlier in its workflow preflight.
+            verify_skipped = bool(verify_result and verify_result.get("skipped"))
+            if verify_skipped:
+                _reason = ((verify_result.get("failures") or [{}])[0].get("stderr") or "n/a")[:120]
+                sys.stderr.write(f"[issue_bridge] verify gate SKIPPED for #{num}: {_reason}\n")
+
+            # Entire pre-merge sensor (non-blocking, U6): intent-aware review
+            # of the student's diff via `entire review`. Findings are surfaced
+            # on the result + durable record, but never override the verdict —
+            # the adversarial (two-judge) review below remains the semantic
+            # gate.
+            entire_review = _run_entire_sensor(repo_path)
+            entire_summary = None
+            if entire_review:
+                entire_summary = {
+                    "status": entire_review.get("status"),
+                    "findings": len(entire_review.get("findings") or []),
+                }
+                if entire_summary["status"] == "fail":
+                    sys.stderr.write(
+                        f"[issue_bridge] entire review FAIL for #{num}: "
+                        f"{entire_summary['findings']} finding(s)\n"
+                    )
+
             # Run adversarial review before verification
             adversarial_review = _run_adversarial_review(
                 task_result=task_result,
@@ -553,8 +657,12 @@ def bridge_issues(
             # This is the enforcement of campus.md #3: the compiler runs before
             # the critic speaks; a broken build cannot earn a PASS.
             # Only override for real test failures (commands that ran), not
-            # discovery issues (no commands found = gate couldn't run at all)
-            # and not infrastructure failures (Nix not available → exit 127).
+            # soft-SKIPPED verdicts (no commands found, or Nix missing — the
+            # reusable gate reports those with ran == 0) and not infrastructure
+            # failures (e.g. a command not found inside the shell → exit 127).
+            # The scheduled school-loop handles its missing infrastructure at
+            # the workflow preflight boundary; VERIFY_GATE_STRICT escalates
+            # unrunnable internal/direct invocations explicitly.
             def _is_infrastructure_failure(f: dict) -> bool:
                 """Check if a verify failure is from missing infrastructure (Nix, etc.)."""
                 exit_code = f.get("exit")
@@ -564,10 +672,17 @@ def bridge_issues(
                     or "command not found" in stderr
                 )
 
-            if verify_result and not verify_result.get("passed") and verify_result.get("ran", 0) > 0:
+            if verify_result and not verify_result.get("passed") and (
+                verify_result.get("ran", 0) > 0
+                or verify_result.get("strict_escalated")  # VERIFY_GATE_STRICT
+            ):
+                # Strict-escalated verdicts (gate could not run at all) are real
+                # failures by definition — the infra filter must not swallow
+                # them back into a soft pass.
+                verify_escalated = bool(verify_result.get("strict_escalated"))
                 real_failures = [
                     f for f in verify_result.get("failures", [])
-                    if not _is_infrastructure_failure(f)
+                    if (not _is_infrastructure_failure(f)) or verify_escalated
                 ]
                 if real_failures:
                     from adversarial_reviewer import Finding, Severity
@@ -622,6 +737,8 @@ def bridge_issues(
                 "gate_crossed": updated.get("gate_crossed"),
                 "verification": verification,
                 "adversarial_review": adversarial_review,
+                "verify_skipped": verify_skipped,
+                "entire_review": entire_review,
             })
             try:
                 record_run(
@@ -638,6 +755,13 @@ def bridge_issues(
                         "title": issue["title"],
                         "domain": issue["domain"],
                         "difficulty": issue["difficulty"],
+                        # verify_skipped lets the board/reports distinguish
+                        # "compiler ran and passed" from "compiler never ran".
+                        "verify_skipped": verify_skipped,
+                        # entire: compact pre-merge sensor summary (status +
+                        # finding count) so the board can surface it; None when
+                        # the CLI/clone was unavailable.
+                        "entire": entire_summary,
                     },
                 )
             except Exception as e_rec:

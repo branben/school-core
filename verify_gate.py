@@ -12,6 +12,14 @@ Safety model (read before changing):
     write artifacts; the original cache is never mutated.
   - Commands run inside `nix develop .#verifyShell` (node/pnpm/python, no network)
     so the host toolchain/network is not touched.
+  - If Nix is unavailable, this reusable library returns a loud SKIPPED
+    verdict (`skipped: True`) instead of reporting fake compile failures — a
+    missing toolchain must never masquerade as a failing build. The production
+    GitHub Actions school-loop performs a separate hard preflight before issue
+    execution, so it fails the execute job when Nix or `verifyShell` is absent.
+    Under `VERIFY_GATE_STRICT=1`, an unrunnable library gate escalates to
+    `skipped: False` + `strict_escalated: True` so the issue cannot pass
+    unverified (compiler-before-critic enforced).
   - Timeouts bound every command; non-zero exit => failure finding.
 
 Usage:
@@ -23,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -91,6 +100,68 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
     return commands
 
 
+def _find_nix() -> Optional[str]:
+    """Locate a usable nix binary: PATH first, then the standard Determinate path.
+
+    The school-loop runner uses Determinate Nix, whose binary lives at
+    /nix/var/nix/profiles/default/bin/nix — not always on PATH for non-login
+    shells — so we probe that location as a fallback.
+    """
+    which = shutil.which("nix")
+    if which:
+        return which
+    determinate = Path("/nix/var/nix/profiles/default/bin/nix")
+    return str(determinate) if determinate.exists() else None
+
+
+def _skipped_verdict(cmd: str, reason: str) -> dict:
+    """Build the loud non-pass verdict when the gate cannot run at all.
+
+    Default library mode (soft-skip): `skipped: True` — the caller receives
+    an explicit non-pass result without a fake compile failure. The scheduled
+    school-loop does not rely on this soft-skip: its workflow preflight blocks
+    issue execution before the bridge starts.
+
+    ``VERIFY_GATE_STRICT=1`` escalates (campus.md #3: the compiler must
+    ACTUALLY run before the critic speaks — if we cannot run it, we cannot
+    pass): the verdict flips to `skipped: False` with `strict_escalated: True`,
+    which the bridge treats as a real gate failure and forces the issue to FAIL.
+    This strict flag covers direct/manual bridge callers and internal gate
+    failures that occur after the workflow preflight.
+    """
+    failures = [{"cmd": cmd, "exit": None, "stderr": reason}]
+    if os.environ.get("VERIFY_GATE_STRICT") == "1":
+        failures[0]["stderr"] += (
+            "\n[VERIFY_GATE_STRICT] Escalation: the verify gate could not run, "
+            "so this issue cannot pass (compiler-before-critic is enforced)."
+        )
+        return {
+            "passed": False,
+            "skipped": False,
+            "strict_escalated": True,
+            "failures": failures,
+            "ran": 0,
+        }
+    return {"passed": False, "skipped": True, "failures": failures, "ran": 0}
+
+
+def _flake_ref(flake_path: Path) -> Path:
+    """Return the directory-form flake reference `nix develop` accepts cleanly.
+
+    Passing the flake.nix *file* path works but prints a warning ("should point
+    at the directory containing the flake.nix file"); the directory form is the
+    clean reference. Falls back to the legacy file form only when neither the
+    path itself nor path/flake.nix exists (caller error — keep the original
+    shape so the error message still names the file).
+    """
+    flake_path = Path(flake_path)
+    if flake_path.is_file():
+        return flake_path.parent
+    if (flake_path / "flake.nix").exists():
+        return flake_path
+    return flake_path / "flake.nix"
+
+
 def _yaml_load(path: Path) -> dict:
     """Minimal YAML loader fallback (avoid hard dep). Tries pyyaml, else a
     tiny parser sufficient for project_verify.yaml's flat `verify:` list."""
@@ -128,7 +199,13 @@ def run_verify_gate(
         timeout: per-command timeout in seconds.
 
     Returns:
-        {"passed": bool, "failures": [...]}
+        {"passed": bool, "failures": [...], "ran": int, "skipped": bool}
+        `skipped` is True only when the reusable gate could not run at all (Nix
+        missing, or no declared verify commands) — a loud non-pass, distinct
+        from a real compile/test failure. The scheduled school-loop preflight
+        blocks before this function when its required Nix infrastructure is
+        absent. Under `VERIFY_GATE_STRICT=1` an unrunnable gate returns
+        `skipped: False` + `strict_escalated: True` instead.
     """
     repo_path = Path(repo_path)
     flake_path = Path(flake_path) if flake_path else Path.cwd()
@@ -137,16 +214,27 @@ def run_verify_gate(
     if not commands:
         # No declared verify commands: we cannot prove correctness, but we
         # must not pretend success. Signal as a soft failure so the reviewer
-        # knows verification was not possible.
-        return {
-            "passed": False,
-            "failures": [{
-                "cmd": "(discovery)",
-                "exit": None,
-                "stderr": "No typecheck/test/lint commands discovered in repo.",
-            }],
-            "ran": 0,
-        }
+        # knows verification was not possible. VERIFY_GATE_STRICT=1 escalates.
+        return _skipped_verdict(
+            "(discovery)",
+            "No typecheck/test/lint commands discovered in repo.",
+        )
+
+    # Loudness: a missing Nix must NOT look like a compile failure. The gate
+    # is only trustworthy when the hermetic shell actually runs, so when it
+    # can't we return an explicit SKIPPED verdict the pipeline can distinguish
+    # from a real failure — a school-failed issue because nix was absent would
+    # be a silent lie.
+    nix_bin = _find_nix()
+    if nix_bin is None:
+        return _skipped_verdict(
+            "(nix)",
+            "Nix not found — verify gate SKIPPED. "
+            "Install Determinate Nix or add `nix` to PATH to run the "
+            "hermetic verify layer.",
+        )
+
+    flake_ref = _flake_ref(flake_path)
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-"))
@@ -157,7 +245,7 @@ def run_verify_gate(
         failures: list[dict] = []
         for cmd in commands:
             cwd = (work / cmd["cwd"]).resolve()
-            full = f'nix develop {flake_path}/flake.nix#verifyShell --command bash -c {cmd["cmd"]!r}'
+            full = f'{nix_bin} develop {flake_ref}#verifyShell --command bash -c {cmd["cmd"]!r}'
             try:
                 res = subprocess.run(
                     full,

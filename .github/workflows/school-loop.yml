@@ -99,6 +99,11 @@ jobs:
       # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
       # /usr/local/bin, so re-expose it (plus common Homebrew paths).
       PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+      # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
+      # bridge. The workflow preflight below already hard-fails missing Nix or
+      # verifyShell; this flag additionally escalates an internal/direct gate
+      # failure into a real issue failure instead of a soft skip.
+      # VERIFY_GATE_STRICT: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -143,6 +148,24 @@ jobs:
           scripts/fm_doctor.sh
           echo "fm_doctor: crew setup OK — proceeding with issue execution"
 
+      # Verify toolchain preflight (U3): nix + flake.nix#verifyShell must be
+      # present for the "compiler before critic" promise to hold. This is a
+      # hard preflight: if the compiler layer cannot run, the execute job must
+      # fail clearly rather than report a green cycle that did no verification.
+      - name: Verify toolchain preflight (nix + verifyShell)
+        run: |
+          NIX_BIN=$(command -v nix || echo /nix/var/nix/profiles/default/bin/nix)
+          if [ ! -x "$NIX_BIN" ]; then
+            echo "::error::nix not found (PATH + Determinate path) — cannot run verify gate"
+            exit 1
+          fi
+          SHELL_NAME=$("$NIX_BIN" eval --raw .#verifyShell.name 2>/dev/null)
+          if [ -z "$SHELL_NAME" ]; then
+            echo "::error::flake.nix#verifyShell did not evaluate — cannot run verify gate"
+            exit 1
+          fi
+          echo "toolchain preflight OK — nix at $NIX_BIN, verifyShell=$SHELL_NAME"
+
       - name: Populate issue cache from GitHub
         run: .venv/bin/python populate_board_cache.py
 
@@ -157,12 +180,15 @@ jobs:
         run: |
           # scores.json carries the school's cross-cycle memory (agent leaderboard
           # used for selection + gate progression); retry_issues.json carries the
-          # retry-once counter for transiently failed issues. Both must survive
-          # the fresh checkout each cycle — commit them sanitized.
-          .venv/bin/python scripts/sanitize_data.py data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
+          # retry-once counter for transiently failed issues; trajectories/ is the
+          # Layer 2 corpus (U2) — without it every fresh checkout is amnesiac. All
+          # must survive the fresh checkout each cycle — commit them sanitized.
+          # --trim-trajectories caps trajectory history to the newest N files so
+          # Layer 2 memory persists without unbounded repo growth.
+          .venv/bin/python scripts/sanitize_data.py --trim-trajectories data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json 2>/dev/null || true
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/trajectories 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "checkpoint: no state changes to commit"
           else
@@ -181,7 +207,9 @@ jobs:
     name: publish board (hosted)
     needs: [gate, execute]
     runs-on: ubuntu-latest
-    if: always() && needs.gate.result == 'success'
+    # `always()` keeps the hosted board alive even if the runner gate itself
+    # errors before it can report a normal offline=false output.
+    if: always()
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -91,7 +91,7 @@ school-core/
 ├── bookbag.py                 # 🎒 Bookbag state + file-lock protocol
 ├── executor.py                # Model routing (ACRouter) + OmniRoute transport
 ├── src/
-│   ├── qodo_pre_merge.py      # ✨ Entire review shim (pre-merge)
+│   ├── entire_review.py       # ✨ Entire review shim (pre-merge)
 │   └── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
 ├── scripts/
 │   └── run_teacher_review_once.py  # One-shot teacher review pass
@@ -104,7 +104,7 @@ school-core/
 | Component | Status |
 |-----------|--------|
 | Test suite | ✅ 942 tests passing, 15 skipped |
-| Qodo pre-merge | ⚠️ Discontinued → Entire CLI |
+| Entire pre-merge | ✅ Wired (`entire review`, intent-aware; replaces discontinued Qodo) |
 | AgentMail loop | ✅ Cron every 2 min |
 | Beads kanban | ✅ 0 blocked, 0 open |
 

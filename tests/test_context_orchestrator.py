@@ -554,6 +554,20 @@ def real_traj_dir(monkeypatch):
     monkeypatch.setattr(traj_mod, "TRAJECTORY_DIR", _REAL_TRAJ_DIR)
 
 
+def _real_domain_counts() -> dict:
+    """Domain → count over the real trajectory dir (integration tests only)."""
+    import json as _json
+    counts = {}
+    for f in _REAL_TRAJ_DIR.glob("*.json"):
+        try:
+            d = _json.loads(f.read_text())
+            dom = d.get("domain", "unknown")
+            counts[dom] = counts.get(dom, 0) + 1
+        except Exception:
+            pass
+    return counts
+
+
 class TestEngramContextRealFiles:
     """Integration tests: _engram_context reading real trajectory files from disk.
 
@@ -561,19 +575,31 @@ class TestEngramContextRealFiles:
     full file-read pipeline end-to-end — no mocks. They validate that
     ``list_trajectories()`` → ``_engram_context()`` formatting works against
     real data with varying scores, agents, and timestamps.
+
+    NOTE (U2): the school-loop now caps committed trajectories to the newest N
+    files, so the real dir may hold only one or two domains on any given fresh
+    checkout. Tests that need specific domains or counts therefore skip
+    (not fail) when the on-disk corpus doesn't happen to satisfy them.
     """
 
-    @pytest.mark.skipif(not _HAS_TRAJECTORIES, reason="Requires data/trajectories/")
+    def _require_domain(self, domain, count=1):
+        if not _HAS_TRAJECTORIES:
+            pytest.skip("Requires data/trajectories/")
+        if _real_domain_counts().get(domain, 0) < count:
+            pytest.skip(f"Requires >= {count} trajectory(s) for domain '{domain}'")
+
     def test_returns_context_for_domain_with_trajectories(self, real_traj_dir):
         """_engram_context returns non-None for a domain that has trajectory files."""
+        self._require_domain("python-testing")
         ctx = _engram_context("python-testing", "Write tests", 2)
         assert ctx is not None
         assert "Past similar trajectories" in ctx
         assert "**" in ctx  # agent is bolded: **agent**
 
-    @pytest.mark.skipif(not _HAS_TRAJECTORIES, reason="Requires data/trajectories/")
     def test_domains_return_distinct_context(self, real_traj_dir):
         """Different domains return different trajectory data."""
+        self._require_domain("python-testing")
+        self._require_domain("git-operations")
         python_ctx = _engram_context("python-testing", "Write tests", 2)
         git_ctx = _engram_context("git-operations", "Squash commits", 2)
 
@@ -582,9 +608,9 @@ class TestEngramContextRealFiles:
         # Each domain has different agents/scores; context content should differ
         assert python_ctx != git_ctx
 
-    @pytest.mark.skipif(not _HAS_TRAJECTORIES, reason="Requires data/trajectories/")
     def test_top_k_limits_results(self, real_traj_dir):
         """Asking for 1 result returns fewer lines than asking for 5."""
+        self._require_domain("code-implementation", count=2)
         ctx_1 = _engram_context("code-implementation", "Implement feature", 1)
         ctx_5 = _engram_context("code-implementation", "Implement feature", 5)
 

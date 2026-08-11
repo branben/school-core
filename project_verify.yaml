@@ -1,0 +1,22 @@
+# project_verify.yaml — what the hermetic verify gate (verify_gate.py) actually
+# runs on this repo, inside `nix develop .#verifyShell`.
+#
+# HARD CONSTRAINT: every command here must run in a NETWORK-LESS shell with ONLY
+# the pinned toolchain (node 22, python 3.12, git, pnpm — see flake.nix). There
+# is no node_modules, no pip deps, no network access. So the honest checks are
+# stdlib-only compile checks: "the compiler runs before the critic speaks"
+# (campus.md #3) means the school's own code must at least parse byte-clean.
+#
+# Do NOT add npm/pytest/ruff commands here until the flake provisions their
+# toolchains — they would fail with command-not-found inside the shell, get
+# filtered as infrastructure noise by issue_bridge, and burn a nix spawn per
+# issue for zero signal (the exact trap the earlier auto-discovery hit with
+# orca/mobile's typecheck/lint/test).
+#
+# This file also SHADOWS the recursive package.json/pyproject.toml discovery:
+# _discover_commands() returns it verbatim and skips inference, so the gate
+# runs exactly what's declared below and nothing else.
+verify:
+  - name: core-python-compile
+    cmd: python3 -m compileall -q *.py
+    cwd: .

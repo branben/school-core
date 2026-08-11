@@ -217,18 +217,18 @@ real risk.
 | Capability | Status | Notes |
 |---|---|---|
 | Students (Hermes) | ✅ Wired | `orca` terminal dispatch; `--yolo --accept-hooks` |
-| Principal verify gate (execute code) | ✅ Wired | `verify_gate.py` + `flake.nix#verifyShell`. Runs typecheck/test hermetically before review |
+| Principal verify gate (execute code) | ✅ Wired | `verify_gate.py` + `flake.nix#verifyShell`. The school-loop execute preflight fails clearly when Nix or `verifyShell` is unavailable, while the hosted board job still publishes committed state. Direct/manual `verify_gate.py` callers receive a visible soft-skip by default — never a fake compile failure; `VERIFY_GATE_STRICT=1` escalates an unrunnable gate to an issue FAIL (R6). Determinate Nix installed 2026-08-11; `flake.nix` pinned `44f5152`. |
 | Layer 1 — Serena LSP symbols | ✅ Wired | `context_orchestrator._serena_context` resolves prompt identifiers to exact `file:line` locations |
 | Adversarial review (text) | ✅ Wired | `adversarial_reviewer.py` — judges student *prose* via `agy/gemini-3.5-flash-high` |
 | Layer 0 — CocoIndex vault | ✅ Wired | `context_orchestrator._cocoindex_context` calls `ccc search` for domain glossary |
-| Layer 2 — Engram trajectories | ✅ Wired | `engram_adapter.search_trajectories` for episodic context |
+| Layer 2 — Engram trajectories | ✅ Wired | `engram_adapter.search_trajectories` for episodic context. Corpus also checkpointed to git (`data/trajectories`, capped at newest 60 by `sanitize_data.py --trim-trajectories`) so Layer 2 survives fresh checkouts (U2) |
+| Layer 3 — archival consolidation | ⚠️ Partial | Gate fires: the bridge threads a per-cycle `loop-*` session_id into `enrich_prompt` so `_archival_context` is consulted (U1, 2026-08-11). Write-side hook — the sync loop writing consolidations under `loop-*` ids (sleep/wake uses `ses_*`) — is the pending half |
 | Verification scoring | ✅ Wired | `verify_task_output` in `issue_bridge.py` — execution correctness via `agy/gemini-3.5-flash-high` |
-| Verify gate (execute code) | ⚠️ Partial | Runs when Nix + `flake.nix#verifyShell` available. Fails gracefully. |
-| Pre-merge review | ✅ Wired | `entire review` via `qodo_pre_merge.py` shim (Qodo Command discontinued) |
+| Pre-merge review | ✅ Wired | `entire review` via `src/entire_review.py` (renamed from `qodo_pre_merge.py`, R13). Runs as a non-blocking sensor in the bridge sync path AND the async conductor path; `_get_entire_path` falls back to `~/.local/bin/entire` for worktree shells (R12) |
 | AgentMail bus (2-judge) | ⚠️ Partial | Two-judge via AgentMail + rubber-stamp poller; sync mode inline, async Phase 2 future |
 | Bookbag-as-contract | ⚠️ Partial | `~/.hermes/bookbag/<bead>.json`; verify on disk |
 | Verification-co-evolution loop | ✅ Wired | `adversarial_reviewer.py` + `director._run_two_judge_review`. 15 unit tests |
-| FirstMate dispatch | ✅ Wired | Fan-out orchestration + result synthesis. Clone: `~/.local/share/firstmate` (persistent; was `/tmp` and wiped on reboot). Spawn verified live 2026-08-10. Agent start blocked by missing Nous Portal token (see Ops note below). |
+| FirstMate dispatch | ⚠️ Partial | Spawn proven live (2026-08-10) + `fm_doctor` preflight wired in school-loop. Nous token resolved 2026-08-11 (device-code login, fm_doctor all-green). Issue-path crew dispatch NOT wired — the bridge still executes direct-Orca; `crew_dispatch.py` behind a `crew_enabled` flag is U4, deferred |
 
 **Ops note — FirstMate install & spawn (verified 2026-08-10):**
 

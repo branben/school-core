@@ -13,8 +13,8 @@ the two-judge review. Output is captured to review_workspace/ and
 passed to the bookbag for the teacher-cto/coo personas.
 
 Usage:
-    from src.qodo_pre_merge import run_qodo_improve
-    result = run_qodo_improve(worktree_path="/path/to/worktree")
+    from src.entire_review import run_entire_review
+    result = run_entire_review(worktree_path="/path/to/worktree")
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 
-class QodoFinding(NamedTuple):
-    """Finding from the review (naming kept for bookbag compatibility)."""
+class EntireFinding(NamedTuple):
+    """Finding from the review (return shape kept bookbag-compatible)."""
     file: str
     line: int | None
     severity: str  # "CRITICAL", "HIGH", "MEDIUM", "LOW"
@@ -38,8 +38,22 @@ class QodoFinding(NamedTuple):
 
 
 def _get_entire_path() -> str | None:
-    """Find the entire CLI binary."""
-    return shutil.which("entire")
+    """Find the entire CLI binary.
+
+    `entire` lives at ~/.local/bin/entire on this machine, but Orca worktree
+    shells (and the runner's minimal LaunchAgent PATH) don't always have
+    ~/.local/bin on PATH — a bare shutil.which() would report "skipped" for a
+    tool that is actually installed. Probe PATH first, then the two standard
+    home-bin locations.
+    """
+    which = shutil.which("entire")
+    if which:
+        return which
+    for candidate in (Path.home() / ".local" / "bin" / "entire",
+                      Path.home() / "bin" / "entire"):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
 
 def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[str]:
@@ -57,7 +71,7 @@ def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[st
         return []
 
 
-def _parse_entire_output(content: str, changed_files: list[str]) -> list[QodoFinding]:
+def _parse_entire_output(content: str, changed_files: list[str]) -> list[EntireFinding]:
     """Parse entire review output into structured findings.
 
     Entire review outputs lines prefixed with severity:
@@ -66,7 +80,7 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[QodoFin
       Medium: file.py:3 — description
       Low: file.py:88 — description
     """
-    findings: list[QodoFinding] = []
+    findings: list[EntireFinding] = []
 
     # Track current file context for findings without line numbers
     current_file = ""
@@ -103,7 +117,7 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[QodoFin
                 if file not in changed_files and file_basename not in [os.path.basename(cf) for cf in changed_files]:
                     continue
 
-                findings.append(QodoFinding(
+                findings.append(EntireFinding(
                     file=file,
                     line=line_no,
                     severity=severity.upper(),
@@ -130,26 +144,26 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[QodoFin
     return unique
 
 
-def run_qodo_improve(worktree_path: str, base_branch: str = "main") -> dict:
+def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
     """Run pre-merge review using `entire review`.
 
-    Replaces the deprecated `qodo --improve` with Entire CLI's intent-aware
-    review. Entire reads git checkpoints to understand developer intent,
-    then audits the diff for mechanical + semantic issues.
+    Entire reads git checkpoints to understand developer intent, then audits
+    the diff for mechanical + semantic issues.
 
-    Returns dict matching the old qodo interface for bookbag compatibility:
+    Returns a bookbag-compatible dict (shape kept stable for the teacher/
+    bookbag consumers that predate the rename):
     - status: "pass" | "fail" | "skipped" | "error"
     - findings: list of finding dicts (real bugs only)
     - skipped: True if entire CLI not available
     - error: str or None
-    - qodo_replacement: "entire-review"
+    - qodo_replacement: "entire-review"  # historical marker, kept for compat
     - review_workspace_path: str (path to captured output)
     - timestamp: ISO datetime
     """
     worktree = Path(worktree_path)
     workspace = worktree / ".hermes" / "review_workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    output_file = workspace / "qodo_improve.md"
+    output_file = workspace / "entire_review.md"
     timestamp = datetime.now(timezone.utc).isoformat()
 
     # Check if entire CLI is available
@@ -203,7 +217,7 @@ def run_qodo_improve(worktree_path: str, base_branch: str = "main") -> dict:
     findings = _parse_entire_output(review_output, changed_files)
 
     # Write structured findings alongside the raw output
-    findings_file = workspace / "qodo_findings.json"
+    findings_file = workspace / "entire_findings.json"
     import json as _json
     findings_file.write_text(_json.dumps([f._asdict() for f in findings], indent=2))
 
@@ -234,7 +248,7 @@ git checkpoints for intent-aware analysis. No API key required.
             summary_md += f"\n### [{f.severity}] {f.file}:{f.line}\n{f.message}\n"
 
     summary_md += f"\n\n---\nRaw output: `{output_file.name}`\nFindings JSON: `{findings_file.name}`"
-    (workspace / "qodo_review_summary.md").write_text(summary_md)
+    (workspace / "entire_review_summary.md").write_text(summary_md)
 
     has_blocking = severity_counts["CRITICAL"] > 0 or severity_counts["HIGH"] > 0
     return {
@@ -252,7 +266,7 @@ if __name__ == "__main__":
     import sys
     worktree = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
-    result = run_qodo_improve(worktree, base)
+    result = run_entire_review(worktree, base)
     print(f"Status: {result['status']}")
     print(f"Qodo replacement: {result['qodo_replacement']}")
     if result["error"]:
