@@ -61,7 +61,7 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     calls = []
 
     def fake_run(args, **kwargs):
-        calls.append(args)
+        calls.append((args, kwargs))
         if args[0].endswith("fm-spawn.sh"):
             return spawn_process()
         return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
@@ -84,7 +84,8 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         teardown_ok=True,
         orca_worktree_id="repo::/tmp/crew-worktree",
     )
-    args = calls[0]
+    spawn_args, spawn_kwargs = calls[0]
+    args = spawn_args
     assert args[args.index("--mode") + 1] == "local-only"
     assert args[args.index("--yolo") + 1] == "on"
     assert args[args.index("--backend") + 1] == "orca"
@@ -93,13 +94,23 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert "__OPINPUT__" in harness_arg
     assert "__BRIEF__" in harness_arg
     assert "--scout" not in args
+    # fm-spawn must see the same FM_HOME/state/data this module uses, or it
+    # resolves its own clone root and cannot find the brief (issue #49).
+    env = spawn_kwargs["env"]
+    assert env["FM_HOME"] == str(crew_dispatch.FM_HOME)
+    assert env["FM_STATE_OVERRIDE"] == str(crew_dispatch.STATE_DIR)
+    assert env["FM_DATA_OVERRIDE"] == str(crew_dispatch.DATA_DIR)
+    assert calls[-1][0] == [
+        "orca", "worktree", "rm", "--worktree", "id:repo::/tmp/crew-worktree",
+        "--force", "--json",
+    ]
     brief = (data / crew_id / "brief.md").read_text()
     assert "Fix the bug" in brief
     assert "report.md" in brief
     assert "local commit" in brief
     assert "branch, commit, and base identity" in brief
     assert str(tmp_path) not in brief
-    assert calls[-1] == [
+    assert calls[-1][0] == [
         "orca", "worktree", "rm", "--worktree", "id:repo::/tmp/crew-worktree",
         "--force", "--json",
     ]
@@ -152,7 +163,7 @@ def test_metadata_is_retried_after_spawn_before_teardown(monkeypatch, tmp_path):
     reads = 0
 
     def fake_run(args, **kwargs):
-        calls.append(args)
+        calls.append((args, kwargs))
         if args[0].endswith("fm-spawn.sh"):
             return spawn_process()
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -183,7 +194,7 @@ def test_metadata_is_retried_after_spawn_before_teardown(monkeypatch, tmp_path):
     )
 
     assert result.orca_worktree_id == "repo::/tmp/late-worktree"
-    assert calls[-1][4] == "id:repo::/tmp/late-worktree"
+    assert calls[-1][0][4] == "id:repo::/tmp/late-worktree"
 
 
 def test_metadata_retry_is_bounded_with_non_advancing_clock(monkeypatch, tmp_path):

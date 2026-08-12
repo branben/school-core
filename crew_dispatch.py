@@ -404,11 +404,22 @@ def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
         f"{Path.home()}/.local/bin/hermes-fm-wrapper",
     )
     harness = f'{wrapper} "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
+    # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
+    # same config/data/state directories this module writes briefs into and
+    # polls for status. fm-spawn falls back to its OWN clone root when
+    # FM_HOME is unset, so without this the spawn looks for the brief in
+    # ~/.local/share/firstmate/data while _write_brief put it in FM_HOME/data
+    # — 'no brief at .../firstmate/data/<id>/brief.md' (observed 2026-08-12,
+    # issue #49).
+    env = dict(os.environ)
+    env["FM_HOME"] = str(FM_HOME)
+    env["FM_STATE_OVERRIDE"] = str(STATE_DIR)
+    env["FM_DATA_OVERRIDE"] = str(DATA_DIR)
     return _run([
         str(FM_SPAWN), crew_id, str(project_dir),
         "--mode", "local-only", "--yolo", "on", "--backend", "orca",
         "--harness", harness,
-    ], timeout=30)
+    ], timeout=30, env=env)
 
 
 def _poll(
