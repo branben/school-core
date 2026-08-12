@@ -464,5 +464,134 @@
     "crew_fallback_reason": "crew_cap_reached",
     "teardown_ok": null,
     "timestamp": "2026-08-12T14:48:43.922535+00:00"
+  },
+  {
+    "issue": 58,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL combined=64.0",
+    "trajectory": "data/trajectories/20260812_223958_205483--python-testing--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "score": 19.77722751,
+      "school_role": "Student",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 0,
+      "gate_max": 24,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=python-testing; task_role=coder; score=19.8; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-12T22:40:27.372113+00:00",
+      "agent": "coder",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "HIGH": 3,
+        "MEDIUM": 5
+      },
+      "findings": [
+        {
+          "severity": "HIGH",
+          "issue_class": "runtime_failure",
+          "citation": "exit_code=1",
+          "description": "SyntaxError: invalid syntax"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "file_created"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "path_correct"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "content_correct"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "git_diff_check"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "commit_created"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "file_created"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "path_correct"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "python-testing",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "timestamp": "2026-08-12T22:40:27.390738+00:00"
   }
 ]
