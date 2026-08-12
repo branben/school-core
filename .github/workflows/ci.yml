@@ -89,6 +89,14 @@ jobs:
     # so the if-expression is evaluated even when the gate itself is skipped
     # (non-push events) or when GitHub's "needs" short-circuit applies.
     name: integration (live Orca + OmniRoute)
+    # CI and School Loop share one Orca daemon + OmniRoute gateway on the
+    # Mac. This cross-workflow lock prevents terminals/worktrees from
+    # colliding. Hosted pytest jobs remain parallel; only the live resource
+    # is serialized. With cancel=false, the current run finishes and GitHub
+    # keeps the newest pending run instead of killing durable work.
+    concurrency:
+      group: school-core-live-orca
+      cancel-in-progress: false
     needs: integration-gate
     runs-on: [self-hosted, omniroute]
     if: always() && needs.integration-gate.result == 'success' && needs.integration-gate.outputs.runner_online == 'true'

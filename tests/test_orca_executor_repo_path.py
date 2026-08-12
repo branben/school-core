@@ -6,9 +6,9 @@ attribute to a module-level constant, which broke instance access
 falls back to the class, not module globals. The class alias
 ``REPO_PATH = REPO_PATH`` restores both access paths.
 
-The module-level and child-worktree tests run in CI without Orca running.
-The instance-access test needs a live Orca runtime (OrcaExecutionManager
-probes Orca on construction) and is skipped otherwise.
+All tests are pure unit tests. The instance-access test uses ``__new__`` so
+collection never probes a live Orca daemon. Live Orca behavior belongs in the
+explicit ORCA_LIVE_TESTS=1 integration suite.
 """
 
 from __future__ import annotations
@@ -17,13 +17,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import orca_executor  # noqa: E402
-from orca_executor import OrcaExecutionManager, OrcaUnavailableError  # noqa: E402
+from orca_executor import OrcaExecutionManager  # noqa: E402
 
 
 def _git_toplevel() -> str:
@@ -36,15 +34,6 @@ def _git_toplevel() -> str:
     return out.stdout.strip()
 
 
-def _orca_available() -> bool:
-    """Best-effort check: can we construct an OrcaExecutionManager?"""
-    try:
-        OrcaExecutionManager()
-        return True
-    except (OrcaUnavailableError, Exception):
-        return False
-
-
 def test_repo_path_module_constant_resolves_to_git_root():
     """Module-level REPO_PATH points at the real school-core checkout."""
     toplevel = _git_toplevel()
@@ -52,17 +41,17 @@ def test_repo_path_module_constant_resolves_to_git_root():
     assert str(orca_executor.REPO_PATH).endswith("school-core")
 
 
-@pytest.mark.skipif(not _orca_available(), reason="needs a running Orca runtime")
-def test_repo_path_instance_access_works():
+def test_repo_path_instance_access_works_without_live_orca():
     """mgr.REPO_PATH must resolve via the class alias (PR #38 regression).
 
-    Skipped without a live Orca runtime (OrcaExecutionManager.__init__ probes
-    Orca), but the resolution logic itself does not require Orca.
+    The property is a class/module constant. Constructing the manager is not
+    needed and would probe the live Orca daemon during test collection, making
+    the unit suite host-dependent. ``__new__`` tests the actual lookup path
+    without starting Orca.
     """
-    mgr = OrcaExecutionManager()
+    mgr = OrcaExecutionManager.__new__(OrcaExecutionManager)
     # Previously raised AttributeError after REPO_PATH became module-level.
     assert str(mgr.REPO_PATH).endswith("school-core")
-    # Instance access must equal the module constant.
     assert mgr.REPO_PATH == orca_executor.REPO_PATH
 
 

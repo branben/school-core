@@ -6,10 +6,15 @@ import yaml
 
 
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "school-loop.yml"
+CI_WORKFLOW = WORKFLOW.with_name("ci.yml")
 
 
 def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+def _ci_workflow() -> dict:
+    return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
 def test_school_loop_serializes_runs_without_cancelling_active_work():
@@ -18,6 +23,18 @@ def test_school_loop_serializes_runs_without_cancelling_active_work():
         "group": "school-loop",
         "cancel-in-progress": False,
     }
+
+
+def test_live_orca_jobs_share_a_cross_workflow_lock():
+    """CI integration and School Loop execute must never use Orca together."""
+    school_loop = _workflow()
+    ci = _ci_workflow()
+    expected = {
+        "group": "school-core-live-orca",
+        "cancel-in-progress": False,
+    }
+    assert school_loop["jobs"]["execute"]["concurrency"] == expected
+    assert ci["jobs"]["integration"]["concurrency"] == expected
 
 
 def test_blocker_alert_is_isolated_from_gate_and_board_publish():

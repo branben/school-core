@@ -125,6 +125,12 @@ jobs:
     # sanitized board state back
     # so the ubuntu `loop` job can publish it and state survives disk death.
     name: execute issues (live Orca + OmniRoute)
+    # Shares the Mac's single Orca daemon + OmniRoute gateway with CI's live
+    # integration job. This is the same cross-workflow lock as ci.yml, so
+    # issue execution and integration tests cannot mutate Orca state together.
+    concurrency:
+      group: school-core-live-orca
+      cancel-in-progress: false
     needs: gate
     runs-on: [self-hosted, omniroute]
     if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'true'
