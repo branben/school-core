@@ -269,7 +269,18 @@ jobs:
           # the cross-cycle in-flight skip + stale sweep rely on. It MUST be
           # checkpointed too, or every fresh checkout starts with an empty
           # registry and an interrupted crew can double-spawn next cycle.
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/trajectories data/sessions/consolidation/*/*.yaml 2>/dev/null || true
+          #
+          # Each add is INDEPENDENT and glob-safe (2026-08-12 fix): a single
+          # unmatched pathspec like data/sessions/consolidation/*/*.yaml makes
+          # `git add` abort the WHOLE command with 'fatal: pathspec did not
+          # match', so one empty dir silently blocked every state commit — the
+          # bridge's run records (scores, last_run, crew registry) stayed
+          # modified-but-unstaged and the board lost the cycle. `find` only
+          # adds real files, so a missing trajectories/ dir or an empty
+          # consolidation tree can never kill the checkpoint.
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
+          find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
+          find data/sessions/consolidation -name '*.yaml' -exec git add -f {} + 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "checkpoint: no state changes to commit"
           else
