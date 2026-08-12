@@ -22,6 +22,7 @@ from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
 from escalation_log import EscalationLog
 from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
+from teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
 from adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
     VerificationCoevolution, CoevolutionReport, ReviewResult,
@@ -174,6 +175,67 @@ def _record_acrouter_outcome(agent: str, success: bool, quality: float = 1.0) ->
         # Routing feedback is non-critical; swallow everything so a
         # persistence/IO hiccup never breaks the actual task pipeline.
         pass
+
+
+def _resolve_capability_metadata(
+    role: str,
+    domain: str,
+    difficulty: str,
+    score: float,
+) -> Optional[dict]:
+    """Resolve the persona/profile/skill/tool contract for observability."""
+    try:
+        from capabilities import resolve_capability
+
+        bounded_score = max(0.0, min(100.0, float(score)))
+        metadata = resolve_capability(
+            domain,
+            bounded_score,
+            task_role=role,
+            difficulty=difficulty,
+        ).to_dict()
+        metadata["selection_reason"] = (
+            f"domain={domain}; task_role={metadata['task_role']}; "
+            f"score={bounded_score:.1f}; difficulty={difficulty}"
+        )
+        return metadata
+    except Exception as e:
+        # Observability must not make a task fail; the missing bundle remains
+        # visible as null in the run record and can be diagnosed separately.
+        sys.stderr.write(f"[director] capability resolution skipped: {e}\n")
+        return None
+
+
+def _attach_teacher_evidence(result: dict) -> Optional[dict]:
+    """Persist teacher evidence and send its normalized signal to ACRouter.
+
+    This is idempotent for a result: synchronous reviews and delayed teacher
+    reviews both pass through this helper, but only the first pass records the
+    router outcome. Evidence is attached to the existing trajectory, which is
+    already sanitized and checkpointed by the school-loop workflow.
+    """
+    review = result.get("review")
+    if not isinstance(review, dict) or result.get("teacher_evidence"):
+        return result.get("teacher_evidence")
+
+    # A DoD gate can reject work after the two judges pass. The final result
+    # acceptance is authoritative for learning; never teach the router that a
+    # spec-failed task succeeded merely because the raw review passed.
+    review = dict(review)
+    if "accepted" in result:
+        review["accepted"] = bool(result["accepted"])
+
+    evidence = build_teacher_evidence(
+        agent=result.get("agent", ""),
+        domain=result.get("domain", ""),
+        difficulty=result.get("difficulty", ""),
+        review=review,
+    )
+    persist_teacher_evidence(result.get("trajectory"), evidence)
+    result["teacher_evidence"] = evidence
+    success, quality = routing_signal(evidence)
+    _record_acrouter_outcome(result.get("agent", ""), success=success, quality=quality)
+    return evidence
 
 
 def _agent_role(agent: str, score: float) -> str:
@@ -909,6 +971,10 @@ def run_task(
                 return {"status": "blocked", "domain": domain, "difficulty": difficulty,
                         "agent": role, "reason": f"readiness check failed (confidence={confidence:.1f}) and A2A fallback unavailable"}
 
+    # Resolve the capability contract after any readiness/A2A role change. This
+    # is metadata only; the legacy routing decision remains authoritative.
+    capability = _resolve_capability_metadata(role, domain, difficulty, role_score)
+
     # Execute the task
     old_score = store.get_score(role, domain)
     error = None
@@ -1009,7 +1075,8 @@ def run_task(
             _record_acrouter_outcome(role, success=False, quality=0.0)
             return {"status": "error", "domain": domain, "difficulty": difficulty,
                     "agent": role, "error": error, "old_score": old_score,
-                    "new_score": store.get_score(role, domain), "trajectory": traj_path}
+                    "new_score": store.get_score(role, domain), "trajectory": traj_path,
+                    "capability": capability}
 
     get_log().finish_task(
         agent=role, domain=domain,
@@ -1049,6 +1116,7 @@ def run_task(
             "new_score": store.get_score(role, domain),
             "task_score": 0.0,  # Will be set after teacher review
             "trajectory": traj_path,
+            "capability": capability,
             "bookbag": str(bead_path(bead, repo)),
             "bead": bead,
             "review": {
@@ -1089,6 +1157,7 @@ def run_task(
             "agent": role, "error": f"Orca sandbox unavailable: {e}",
             "old_score": old_score, "new_score": store.get_score(role, domain),
             "trajectory": traj_path,
+            "capability": capability,
         }
 
     # Score reflects review: accepted → high score, rejected → penalty.
@@ -1098,14 +1167,6 @@ def run_task(
         task_score = max(60, review["combined_score"])
     else:
         task_score = min(40, review["combined_score"])
-
-    # ── ACRouter outcome feedback ──
-    # Record the routing outcome for the combo the executor actually used.
-    # Success = review accepted; quality = normalized combined review score
-    # (in [0, 1]). This is the experience signal the router learns from so
-    # it can bias future combo selection toward combos that actually work
-    # for this role/domain (arXiv:2606.22902 — Agent as Router).
-    _record_acrouter_outcome(role, success=review["accepted"], quality=task_score / 100.0)
 
     result = {
         "status": "success",
@@ -1120,6 +1181,7 @@ def run_task(
         "new_score": store.get_score(role, domain),
         "task_score": task_score,
         "trajectory": traj_path,
+        "capability": capability,
         "bookbag": str(bead_path(bead)),
         "bead": bead,
         "review": review,
@@ -1150,6 +1212,10 @@ def run_task(
             if not gate_result["passed"]:
                 result["accepted"] = False
 
+    # Teacher evidence is durable on the trajectory and is the sole source for
+    # the normalized router signal. This runs after optional DoD evaluation so
+    # the returned result and the learning record describe the same decision.
+    _attach_teacher_evidence(result)
     return result
 
 
@@ -1167,6 +1233,11 @@ def evaluate_and_update(
 
     agent = result["agent"]
     domain = result["domain"]
+
+    # Async bridge runs attach the teacher review before calling this function;
+    # synchronous runs already attached it above. The helper is idempotent and
+    # closes the same feedback loop for both paths.
+    _attach_teacher_evidence(result)
 
     if result.get("status") == "error":
         task_score = 0.0
