@@ -147,6 +147,21 @@ def test_artifact_identity_normalizes_markdown_wrappers():
     assert crew_dispatch._artifact_identity(report) == crew_dispatch._artifact_identity(status)
 
 
+def test_artifact_identity_reads_sectioned_hermes_report():
+    status = "done: branch=fm/task-59 commit=abc123 base=main@def456"
+    report = (
+        "## Branch\n"
+        "- `fm/task-59`\n\n"
+        "## Commit\n"
+        "- `abc123`\n\n"
+        "## Base\n"
+        "- Branch: `branben/fm-fm-task-59`\n"
+        "- Commit: `main@def456`\n"
+    )
+
+    assert crew_dispatch._artifact_identity(report) == crew_dispatch._artifact_identity(status)
+
+
 def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_path):
     _, state, data = configure_paths(monkeypatch, tmp_path)
     crew_id = "fm-loop-20260812-120000-43"

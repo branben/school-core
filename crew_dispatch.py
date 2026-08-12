@@ -189,16 +189,49 @@ def _read_status(path: Path) -> Optional[str]:
 
 
 def _artifact_identity(text: str) -> Optional[dict[str, str]]:
-    """Extract a complete branch/commit/base identity from bounded text."""
-    fields = {
-        match.group(1).lower().replace(" ", "_").replace("-", "_"): match.group(2).strip().strip("`*_")
-        for match in _ARTIFACT_FIELD_RE.finditer(text)
-    }
-    base = fields.get("base") or fields.get("base_ref") or fields.get("base_commit")
+    """Extract a complete branch/commit/base identity from bounded text.
+
+    Accept both the machine-readable status form (``branch=...``) and the
+    Markdown report form produced by Hermes (``## Branch`` followed by a
+    backtick-wrapped bullet). In a ``## Base`` section, the nested commit is
+    the base identity; the nested branch is descriptive and must not replace
+    the task branch.
+    """
+    fields: dict[str, str] = {}
+    section: Optional[str] = None
+
+    def clean(value: str) -> str:
+        return value.strip().strip("`*_[](){}<>.,;:")
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        heading = re.match(r"^#{1,6}\s+(branch|commit|base)\b", stripped, re.IGNORECASE)
+        if heading:
+            section = heading.group(1).lower()
+            continue
+
+        matches = list(_ARTIFACT_FIELD_RE.finditer(stripped))
+        for match in matches:
+            key = match.group(1).lower().replace(" ", "_").replace("-", "_")
+            value = clean(match.group(2))
+            if section == "base" and key in {"commit", "base", "base_ref", "base_commit"}:
+                fields["base"] = value
+            elif key in {"branch", "commit"} and section != "base":
+                fields[key] = value
+            elif key in {"base", "base_ref", "base_commit"}:
+                fields["base"] = value
+
+        # Markdown section values often appear as a bare bullet, e.g.
+        # ``## Branch`` followed by ``- `fm/task-1````.
+        if section in {"branch", "commit"} and not matches:
+            bullet = re.match(r"^-?\s*`([^`]+)`\s*$", stripped)
+            if bullet:
+                fields[section] = clean(bullet.group(1))
+
     identity = {
         "branch": fields.get("branch", ""),
         "commit": fields.get("commit", ""),
-        "base": base or "",
+        "base": fields.get("base", ""),
     }
     return identity if all(identity.values()) else None
 
