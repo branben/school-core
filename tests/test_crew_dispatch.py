@@ -70,7 +70,7 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     result = dispatch_crew(
         issue_number=42,
         task_text="Fix the bug",
-        project_dir=tmp_path,
+        project_dir=tmp_path / "school-project",
         cycle_session_id="loop-20260811-120000",
         timeout=1,
         poll_interval=0,
@@ -109,7 +109,14 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert "report.md" in brief
     assert "local commit" in brief
     assert "branch, commit, and base identity" in brief
-    assert str(tmp_path) not in brief
+    # U8 handoff contract (issue #50): the brief must name the EXACT status
+    # file the poller reads and the report path that survives teardown, or the
+    # agent cannot append the terminal `done:` line. FM runtime paths are
+    # embedded; the project checkout path must not leak into the brief.
+    assert str(state / f"{crew_id}.status") in brief
+    assert str(data / crew_id / "report.md") in brief
+    assert "done: branch=<branch> commit=<commit> base=<base>" in brief
+    assert str(tmp_path / "school-project") not in brief
     assert calls[-1][0] == [
         "orca", "worktree", "rm", "--worktree", "id:repo::/tmp/crew-worktree",
         "--force", "--json",

@@ -187,19 +187,55 @@ def _write_brief(crew_id: str, task_text: str, issue_number: int, project_dir: P
     destination = _task_dir(crew_id)
     destination.mkdir(parents=True, exist_ok=True)
     brief = destination / "brief.md"
+    # Handoff protocol: the crewmate must be told the EXACT status-file and
+    # report paths, or it cannot append the terminal `done:` line the poller
+    # waits on. Observed 2026-08-12 (issue #50): the agent committed its work
+    # and wrote the report into the disposable worktree (a commit) because the
+    # brief never named the status file or the report path — the poll then
+    # timed out and the bridge fell back to the direct path. These paths live
+    # in FM-local runtime state (outside the repo), so absolute paths are safe
+    # here and are exactly what fm-brief.sh embeds for native firstmate tasks.
+    status_file = _status_path(crew_id)
+    report_path = destination / "report.md"
     brief.write_text(
-        "# School crew task\n\n"
+        "You are a crewmate: an autonomous worker agent managed by firstmate. "
+        "Work on your own; do not wait for a human.\n\n"
+        "# Task\n\n"
         f"Issue: #{issue_number}\n"
         # Keep the runtime brief useful without persisting the operator's
         # absolute home path into a durable artifact.
         f"Project: {project_dir.name}\n\n"
-        "## Task\n\n"
         f"{task_text.rstrip()}\n\n"
-        "## Delivery contract\n\n"
-        "Work independently in the assigned Orca worktree and make the requested "
-        "code changes there. Run the relevant checks, create a local commit, and "
-        "write bounded evidence to `report.md` before marking the task done. The "
-        "final `done:` status must name the branch, commit, and base identity.\n"
+        "## Worktree\n\n"
+        "You are in a disposable Orca git worktree of the project. Verify "
+        "isolation first: run `pwd -P` and `git rev-parse --show-toplevel`; "
+        "both must resolve to this disposable worktree, not a primary "
+        "checkout. Create your branch with `git checkout -b "
+        f"fm/{crew_id}` and work there. Never push to any remote and never "
+        "open a PR.\n\n"
+        "## Status file\n\n"
+        "Report progress by appending one short line to the status file:\n\n"
+        f"    {status_file}\n\n"
+        "Use exactly these verbs: `working:`, `blocked:`, `needs-decision:`,"
+        " `resolved:`, `done:`, `failed:`. Append `blocked:` when you are stuck "
+        "and stop. Append `needs-decision:` only for human decisions and stop. "
+        "Each append wakes the supervisor, so report sparingly: only phase "
+        "changes and the terminal states.\n\n"
+        "## Report\n\n"
+        "Write your delivery report (what you changed, the checks you ran, and "
+        "the evidence) to:\n\n"
+        f"    {report_path}\n\n"
+        "The report is the only artifact that survives teardown; the worktree "
+        "is discarded.\n\n"
+        "## Definition of done\n\n"
+        "1. The requested code change is implemented and committed on your "
+        "branch with a local commit.\n"
+        "2. `report.md` exists at the report path above and names the branch, "
+        "commit, and base identity.\n"
+        "3. You append the final `done:` status naming the branch, commit, and "
+        "base identity in this exact form:\n\n"
+        "    done: branch=<branch> commit=<commit> base=<base>\n\n"
+        "Then stop.\n"
     )
     return brief
 
