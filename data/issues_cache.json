@@ -1,5 +1,54 @@
 [
   {
+    "issue_number": 57,
+    "title": "docs: refresh repository status and documentation truth",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 56,
+    "title": "refactor: narrow broad exception handling in conductor/director",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 55,
+    "title": "refactor: extract board dashboard assets to static files",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 54,
+    "title": "feat: encode human approval policy and risk gates",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 53,
+    "title": "[bug] make the full test suite terminate reliably",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 52,
+    "title": "feat: complete async CTO/COO teacher review lifecycle",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 51,
+    "title": "fix: make escalation log instance-safe and corruption-safe",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 27,
     "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",
@@ -156,34 +205,6 @@
   {
     "issue_number": 5,
     "title": "bug: director.py degraded mode doesn't auto-recover when cloud comes back",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 4,
-    "title": "feat: Add code coverage reporting to test suite",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 3,
-    "title": "feat: Create requirements.txt with pinned dependencies",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 2,
-    "title": "feat: Add CI workflow for test suite on push and PR",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 1,
-    "title": "feat: Add GitHub issue templates for bug reports and feature requests",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"

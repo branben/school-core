@@ -8,5 +8,12 @@
     "fallback_reason": "timeout",
     "teardown_ok": true,
     "report_path": null
+  },
+  {
+    "crew_id": "fm-loop-20260812-142342-57",
+    "issue_number": 57,
+    "status": "spawn_failed",
+    "fallback_reason": "spawn_failure",
+    "started_at": "2026-08-12T14:24:22.518371+00:00"
   }
 ]

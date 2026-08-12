@@ -324,5 +324,145 @@
     "crew_used": false,
     "crew_fallback_reason": "timeout",
     "timestamp": "2026-08-12T10:02:47.169916+00:00"
+  },
+  {
+    "issue": 57,
+    "status": "success",
+    "agent": "coder",
+    "score": 55.5,
+    "trajectory": "data/trajectories/20260812_142503_325476--code-implementation--coder.json",
+    "title": "docs: refresh repository status and documentation truth",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "spawn_failure",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:28:22.355604+00:00"
+  },
+  {
+    "issue": 56,
+    "status": "success",
+    "agent": "coder",
+    "score": 53.2,
+    "trajectory": "data/trajectories/20260812_142925_710372--code-implementation--coder.json",
+    "title": "refactor: narrow broad exception handling in conductor/director",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:32:08.762872+00:00"
+  },
+  {
+    "issue": 55,
+    "status": "success",
+    "agent": "coder",
+    "score": 53.0,
+    "trajectory": "data/trajectories/20260812_143238_760256--code-implementation--coder.json",
+    "title": "refactor: extract board dashboard assets to static files",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:36:07.260331+00:00"
+  },
+  {
+    "issue": 54,
+    "status": "success",
+    "agent": "coder",
+    "score": 53.0,
+    "trajectory": "data/trajectories/20260812_143652_866984--code-implementation--coder.json",
+    "title": "feat: encode human approval policy and risk gates",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:38:56.652348+00:00"
+  },
+  {
+    "issue": 53,
+    "status": "success",
+    "agent": "coder",
+    "score": 72.9,
+    "trajectory": "data/trajectories/20260812_143932_173992--python-testing--coder.json",
+    "title": "[bug] make the full test suite terminate reliably",
+    "domain": "python-testing",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:41:56.422210+00:00"
+  },
+  {
+    "issue": 52,
+    "status": "success",
+    "agent": "reviewer",
+    "score": 35.5,
+    "trajectory": "data/trajectories/20260812_144315_334873--code-review--reviewer.json",
+    "title": "feat: complete async CTO/COO teacher review lifecycle",
+    "domain": "code-review",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:45:16.740465+00:00"
+  },
+  {
+    "issue": 51,
+    "status": "success",
+    "agent": "searcher",
+    "score": 33.0,
+    "trajectory": "data/trajectories/20260812_144624_534293--debugging--searcher.json",
+    "title": "fix: make escalation log instance-safe and corruption-safe",
+    "domain": "debugging",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "crew_cap_reached",
+    "teardown_ok": null,
+    "timestamp": "2026-08-12T14:48:43.922535+00:00"
   }
 ]

@@ -9,8 +9,10 @@
         "_default": 35.0
     },
     "coder": {
+        "_difficulty_code-implementation": 1.0,
         "_difficulty_python-testing": 1.0,
-        "python-testing": 8.7660393
+        "code-implementation": 40.56134999999999,
+        "python-testing": 19.77722751
     },
     "foundry-coder-0.5b": {
         "_default": 15.0
@@ -43,5 +45,13 @@
     "owl-alpha": {
         "_default": 25.0,
         "agentic-coding": 30.0
+    },
+    "reviewer": {
+        "_difficulty_code-review": 1.0,
+        "code-review": 10.65
+    },
+    "searcher": {
+        "_difficulty_debugging": 1.0,
+        "debugging": 7.946999999999999
     }
 }
