@@ -249,8 +249,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Only sanitized, schema-owned artifacts are checkpointed. Do not
-          # force-add arbitrary runtime files from the consolidation tree.
-          if find data/sessions/consolidation -type f ! -name '*.yaml' -print -quit 2>/dev/null | grep -q .; then
+          # force-add arbitrary runtime files from the consolidation tree. The
+          # seeded index.md (tracked Layer-3 archival README) is expected; any
+          # OTHER non-YAML file means the consolidation writer left runtime
+          # junk behind and the cycle must fail loudly (2026-08-12: U1
+          # session_id threading made consolidation YAMLs appear every cycle,
+          # which exposed that the guard predates the tracked index.md seed).
+          if find data/sessions/consolidation -type f ! -name '*.yaml' ! -name 'index.md' -print -quit 2>/dev/null | grep -q .; then
             echo "::error::unexpected non-YAML file under data/sessions/consolidation"
             exit 1
           fi
