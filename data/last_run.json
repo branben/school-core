@@ -108,5 +108,202 @@
     "domain": "python-testing",
     "difficulty": "medium",
     "timestamp": "2026-08-10T22:39:24.216561+00:00"
+  },
+  {
+    "issue": 400,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 72.524,
+    "trajectory": null,
+    "title": "T400",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:48:50.433518+00:00"
+  },
+  {
+    "issue": 401,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 27.624,
+    "trajectory": null,
+    "title": "T401",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:01.978143+00:00"
+  },
+  {
+    "issue": 402,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 72.524,
+    "trajectory": null,
+    "title": "T402",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:02.347146+00:00"
+  },
+  {
+    "issue": 403,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 22.524,
+    "trajectory": null,
+    "title": "T403",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:10.991159+00:00"
+  },
+  {
+    "issue": 404,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 22.524,
+    "trajectory": null,
+    "title": "T404",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:18.384940+00:00"
+  },
+  {
+    "issue": 405,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 22.524,
+    "trajectory": null,
+    "title": "T405",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:26.065466+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:49:26.485473+00:00"
+  },
+  {
+    "issue": 408,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 72.524,
+    "trajectory": null,
+    "title": "T408",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:27.340745+00:00"
+  },
+  {
+    "issue": 409,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 72.524,
+    "trajectory": null,
+    "title": "T409",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:27.344224+00:00"
+  },
+  {
+    "issue": 410,
+    "status": "success",
+    "agent": "auto/best-free",
+    "score": 22.524,
+    "trajectory": null,
+    "title": "T410",
+    "domain": "debugging",
+    "difficulty": "easy",
+    "verify_skipped": false,
+    "entire": null,
+    "timestamp": "2026-08-12T00:49:34.301821+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:50:56.367047+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:51:10.175115+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:52:23.355659+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:52:35.441230+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:53:43.616208+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:55:00.080952+00:00"
+  },
+  {
+    "issue": 406,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "timestamp": "2026-08-12T00:55:11.519480+00:00"
+  },
+  {
+    "issue": 46,
+    "status": "success",
+    "agent": "coder",
+    "score": 73.4,
+    "trajectory": null,
+    "timestamp": "2026-08-12T08:43:17.000000+00:00",
+    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
+    "domain": "code-review",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": null,
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": "spawn_failure"
   }
 ]
