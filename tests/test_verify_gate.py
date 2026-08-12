@@ -113,24 +113,6 @@ def test_run_verify_gate_times_out(tmp_path):
     assert "timed out" in res["failures"][0]["stderr"]
 
 
-def test_run_verify_gate_fails_on_nonzero(tmp_path):
-    _write_pkg(tmp_path, ".", {"typecheck": "false"})
-    with mock.patch("verify_gate.subprocess.run") as run:
-        run.return_value = subprocess.CompletedProcess([], 1, "", "boom")
-        res = run_verify_gate(tmp_path)
-    assert res["passed"] is False
-    assert res["failures"][0]["exit"] == 1
-    assert "boom" in res["failures"][0]["stderr"]
-
-
-def test_run_verify_gate_times_out(tmp_path):
-    _write_pkg(tmp_path, ".", {"typecheck": "sleep 99"})
-    with mock.patch("verify_gate.subprocess.run", side_effect=subprocess.TimeoutExpired("x", 1)):
-        res = run_verify_gate(tmp_path, timeout=1)
-    assert res["passed"] is False
-    assert "timed out" in res["failures"][0]["stderr"]
-
-
 def test_no_commands_is_a_failure_not_a_pass(tmp_path):
     res = run_verify_gate(tmp_path)
     assert res["passed"] is False
