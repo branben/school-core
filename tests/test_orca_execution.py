@@ -348,7 +348,13 @@ while True:
         elapsed = time.monotonic() - start
 
         assert result.timed_out, "Code should have timed out"
-        assert elapsed < 10, f"Timeout took too long: {elapsed:.1f}s"
+        # The kill mechanism is asserted above (timed_out). The wall-clock
+        # bound only guards against a *completely* broken timeout (hang), so
+        # it is generous: the self-hosted runner also serves scheduled
+        # school-loop cycles, and Orca terminal create/send/close latency
+        # under that contention can exceed 10s (observed 14.6s 2026-08-12
+        # while a school-loop was mid-cycle).
+        assert elapsed < 60, f"Timeout took too long: {elapsed:.1f}s"
         # Don't check exit_code — timed-out tasks may not have one
 
     def test_execute_empty_code_doesnt_crash(self, manager, track_cleanup):
