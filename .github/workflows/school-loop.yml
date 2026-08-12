@@ -137,8 +137,14 @@ jobs:
       # degrades gracefully (no crash, no alert) when unset.
       AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
       # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
-      # /usr/local/bin, so re-expose it (plus common Homebrew paths).
-      PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+      # /usr/local/bin, so re-expose it (plus common Homebrew paths). The
+      # FirstMate orca backend adapter shells out to `node` (its status-JSON
+      # parsing is a node -e snippet), and node only exists via fnm here — the
+      # interactive shells get it from a transient fnm multishell, but the
+      # LaunchAgent never does. Pin the stable fnm default alias so crew
+      # spawns can find node (observed 2026-08-12, issue #47: crew spawn
+      # failed with 'node: command not found' from backends/orca.sh:27).
+      PATH: /usr/local/bin:/opt/homebrew/bin:/Users/brandonbennett/.local/share/fnm/aliases/default/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
       # U8 crew dispatch: route the student-task through the FirstMate -> Orca
       # crew before the direct model path. The bridge reads this once per
       # cycle and falls back to the direct path on spawn failure / timeout /
