@@ -41,6 +41,24 @@ def test_missing_verify_toolchain_fails_execute_job():
     assert step["run"].count("exit 1") == 2
 
 
+def test_verify_preflight_eval_uses_full_devshell_attr_path():
+    """Regression (2026-08-12): the preflight eval must use the full attr path.
+
+    verifyShell is a devShell (devShells.aarch64-darwin.verifyShell). The
+    `.#verifyShell.name` shorthand resolves for `nix develop` but NOT for
+    `nix eval`, so the old check always returned empty and hard-failed every
+    live cycle after the U3 preflight landed.
+    """
+    workflow = _workflow()
+    step = next(
+        step
+        for step in workflow["jobs"]["execute"]["steps"]
+        if step.get("name") == "Verify toolchain preflight (nix + verifyShell)"
+    )
+    assert "#devShells.aarch64-darwin.verifyShell.name" in step["run"]
+    assert ".#verifyShell.name" not in step["run"]
+
+
 def test_checkpoint_sanitizes_and_stages_only_owned_consolidations():
     workflow = _workflow()
     step = next(
