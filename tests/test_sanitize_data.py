@@ -7,6 +7,8 @@ the PII guarantee on every CI run.
 """
 
 import json
+import subprocess
+import sys
 
 from scripts.sanitize_data import (
     HOME_RE,
@@ -15,6 +17,8 @@ from scripts.sanitize_data import (
     sanitize_file,
     scrub_value,
     trim_trajectories,
+    trim_consolidations,
+    DEFAULT_CONSOLIDATION_KEEP,
 )
 
 
@@ -111,6 +115,102 @@ class TestRegexes:
         assert HOME_RE.sub("~", "kept /Users/brandonbennett and /Users/other") == (
             "kept ~ and ~"
         )
+
+
+class TestSanitizeConsolidation:
+    def test_yaml_round_trip_scrubs_home_repo_and_secret_values(self, tmp_path):
+        p = tmp_path / "session.yaml"
+        p.write_text(
+            "session_id: loop-20260811-120000\n"
+            "source: /Users/brandonbennett/school-core/data/sessions/consolidation/loop.yaml\n"
+            "note: /Users/brandonbennett/.hermes/private\n"
+            "api_key: sk-1234567890abcdef\n"
+        )
+
+        n = sanitize_file(p)
+
+        # Repo prefix + home prefix in the source path, home prefix in the
+        # note, sensitive field, and token pattern are all counted.
+        assert n == 5
+        cleaned = p.read_text()
+        assert "/Users/" not in cleaned
+        assert "data/sessions/consolidation/loop.yaml" in cleaned
+        assert "~/.hermes/private" in cleaned
+        assert "[REDACTED]" in cleaned
+        assert "sk-1234567890abcdef" not in cleaned
+
+    def test_fresh_checkout_can_read_sanitized_consolidation(self, tmp_path, monkeypatch):
+        from context_orchestrator import _archival_context
+
+        source = tmp_path / "source" / "data" / "sessions" / "consolidation" / "loop-20260811-120000"
+        source.mkdir(parents=True)
+        artifact = source / "debugging.yaml"
+        artifact.write_text(
+            "session_id: loop-20260811-120000\n"
+            "domain: debugging\n"
+            "patterns:\n"
+            "  - edited /Users/brandonbennett/school-core/data/x.py\n"
+            "key_learnings: []\n"
+            "error_recurrence: {}\n"
+        )
+        sanitize_file(artifact)
+
+        # Commit the sanitized artifact to a temporary git repository and
+        # clone it, matching the next school-loop checkout boundary.
+        source_repo = tmp_path / "source-repo"
+        source_repo.mkdir()
+        tracked = source_repo / "data" / "sessions" / "consolidation" / "loop-20260811-120000" / "debugging.yaml"
+        tracked.parent.mkdir(parents=True)
+        tracked.write_text(artifact.read_text())
+        subprocess.run(["git", "init", "-q", str(source_repo)], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "config", "user.name", "test"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "add", "data"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "commit", "-qm", "checkpoint"], check=True)
+        fresh_repo = tmp_path / "fresh-checkout"
+        subprocess.run(["git", "clone", "-q", str(source_repo), str(fresh_repo)], check=True)
+
+        # Prove the next-cycle reader in a fresh Python process against that
+        # real checkout, not the current pytest module cache.
+        fresh_root = fresh_repo / "data" / "sessions" / "consolidation"
+        code = (
+            "from pathlib import Path; "
+            "import consolidation_writer; "
+            f"consolidation_writer.CONSOLIDATION_DIR = Path({str(fresh_root)!r}); "
+            "from context_orchestrator import _archival_context; "
+            "print(_archival_context('debugging', 'loop-20260811-120000') or '')"
+        )
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+
+        assert "Archival patterns" in result.stdout
+        assert "data/x.py" in result.stdout
+        assert "/Users/" not in result.stdout
+
+
+class TestTrimConsolidations:
+    def test_keeps_newest_sessions_and_all_domains(self, tmp_path):
+        root = tmp_path / "consolidation"
+        for session in ("loop-20260811-120000", "loop-20260811-120001", "loop-20260811-120002"):
+            session_dir = root / session
+            session_dir.mkdir(parents=True)
+            (session_dir / "debugging.yaml").write_text("session_id: " + session)
+            (session_dir / "testing.yaml").write_text("session_id: " + session)
+
+        removed = trim_consolidations(keep=2, consolidation_dir=root)
+
+        assert removed == 2
+        assert not (root / "loop-20260811-120000").exists()
+        assert sorted(p.name for p in (root / "loop-20260811-120001").glob("*.yaml")) == ["debugging.yaml", "testing.yaml"]
+        assert sorted(p.name for p in (root / "loop-20260811-120002").glob("*.yaml")) == ["debugging.yaml", "testing.yaml"]
+
+    def test_keep_zero_is_clamped(self, tmp_path):
+        root = tmp_path / "consolidation" / "loop-20260811-120000"
+        root.mkdir(parents=True)
+        (root / "debugging.yaml").write_text("session_id: loop-20260811-120000")
+        assert trim_consolidations(keep=0, consolidation_dir=root.parent) == 0
+
+    def test_default_keep_is_sane(self):
+        assert DEFAULT_CONSOLIDATION_KEEP >= 10
 
 
 class TestTrimTrajectories:

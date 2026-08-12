@@ -41,6 +41,21 @@ def test_missing_verify_toolchain_fails_execute_job():
     assert step["run"].count("exit 1") == 2
 
 
+def test_checkpoint_sanitizes_and_stages_only_owned_consolidations():
+    workflow = _workflow()
+    step = next(
+        step
+        for step in workflow["jobs"]["execute"]["steps"]
+        if step.get("name") == "Sanitize + commit board state (durable, PII-free)"
+    )
+    command = step["run"]
+    assert "--trim-consolidations" in command
+    assert "data/sessions/consolidation/*/*.yaml" in command
+    assert "unexpected non-YAML file under data/sessions/consolidation" in command
+    assert "git add -f data/last_run.json" in command
+    assert "git add -f data/sessions/consolidation\n" not in command
+
+
 def test_workflow_preflight_is_distinct_from_library_soft_skip():
     workflow = _workflow()
     step = next(

@@ -225,10 +225,18 @@ jobs:
           # must survive the fresh checkout each cycle — commit them sanitized.
           # --trim-trajectories caps trajectory history to the newest N files so
           # Layer 2 memory persists without unbounded repo growth.
-          .venv/bin/python scripts/sanitize_data.py --trim-trajectories data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
+          .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
+          # The sanitizer exits non-zero if any consolidation still contains
+          # a home path, sensitive field, or recognizable token.
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/trajectories 2>/dev/null || true
+          # Only sanitized, schema-owned artifacts are checkpointed. Do not
+          # force-add arbitrary runtime files from the consolidation tree.
+          if find data/sessions/consolidation -type f ! -name '*.yaml' -print -quit 2>/dev/null | grep -q .; then
+            echo "::error::unexpected non-YAML file under data/sessions/consolidation"
+            exit 1
+          fi
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/trajectories data/sessions/consolidation/*/*.yaml 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "checkpoint: no state changes to commit"
           else
