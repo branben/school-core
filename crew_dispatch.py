@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence
 
+from capabilities import CapabilityBundle
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - exercised on Windows
@@ -46,9 +48,20 @@ CREW_RUNS_FILE = Path(
     os.environ.get("CREW_RUNS_FILE", str(Path(__file__).parent / "data/crew_runs.json"))
 ).expanduser()
 DEFAULT_TIMEOUT = float(os.environ.get("CREW_TIMEOUT_SECONDS", "900"))
+# FirstMate can spend longer than a normal subprocess startup while Orca
+# provisions a worktree/terminal. Keep this separate from the crew's total
+# work timeout so slow provisioning does not masquerade as a spawn failure.
+SPAWN_TIMEOUT_SECONDS = float(os.environ.get("CREW_SPAWN_TIMEOUT_SECONDS", "120"))
 DEFAULT_POLL_INTERVAL = float(os.environ.get("CREW_POLL_INTERVAL_SECONDS", "15"))
 DEFAULT_BLOCKED_GRACE = float(os.environ.get("CREW_BLOCKED_GRACE_SECONDS", "60"))
 MAX_REPORT_BYTES = 256 * 1024
+MAX_SPAWN_ERROR_CHARS = 1000
+_TOKEN_RE = re.compile(
+    r"(?i)(?:sk-[A-Za-z0-9_-]{12,}|github_pat_[A-Za-z0-9_]{10,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{10,}|Bearer\s+[A-Za-z0-9._~+/=-]{12,}|"
+    r"(?:OMNIROUTE_API_KEY|AGENTMAIL_API_KEY|GH_TOKEN)=\S+)"
+)
+_HOME_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:Users|home)/[^\s'\\\"`]+")
 _ARTIFACT_FIELD_RE = re.compile(
     r"(?i)\b(branch|commit|base(?:[_ -](?:ref|commit))?)\s*[:=]\s*([^\s]+)"
 )
@@ -69,6 +82,7 @@ class CrewResult:
     fallback_reason: Optional[str] = None
     teardown_ok: bool = False
     orca_worktree_id: Optional[str] = None
+    capability: Optional[dict] = None
 
 
 class CrewUnavailableError(RuntimeError):
@@ -81,12 +95,63 @@ def _run(args: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(list(args), capture_output=True, text=True, check=False, **kwargs)
 
 
+def _safe_spawn_error(error: object, *, returncode: Optional[int] = None) -> str:
+    """Create bounded, non-sensitive diagnostics for a failed crew spawn.
+
+    Do not persist subprocess arguments: they can contain absolute paths or
+    launch details. Keep only stderr/stdout text, redact token-shaped values
+    and home paths, normalize whitespace, and cap the result for the tracked
+    registry.
+    """
+
+    if isinstance(error, subprocess.TimeoutExpired):
+        raw = "spawn subprocess timed out"
+        kind = "TimeoutExpired"
+    elif isinstance(error, BaseException):
+        raw = str(getattr(error, "stderr", None) or getattr(error, "stdout", None) or error)
+        kind = type(error).__name__
+    else:
+        raw = str(error)
+        kind = "SpawnError"
+
+    redacted = _TOKEN_RE.sub("<redacted-token>", raw)
+    redacted = redacted.replace(str(Path.home()), "<home>")
+    redacted = _HOME_PATH_RE.sub("<absolute-home-path>", redacted)
+    redacted = " ".join(redacted.split())
+    if returncode is not None:
+        redacted = f"returncode={returncode}: {redacted}"
+    return f"{kind}: {redacted}"[:MAX_SPAWN_ERROR_CHARS]
+
+
 def _crew_id(cycle_session_id: str, issue_number: int) -> str:
     return f"fm-{cycle_session_id}-{issue_number}"
 
 
 def _task_dir(crew_id: str) -> Path:
     return DATA_DIR / crew_id
+
+
+def _capability_path(crew_id: str) -> Path:
+    return _task_dir(crew_id) / "capability.json"
+
+
+def _capability_payload(capability: Optional[CapabilityBundle]) -> Optional[dict]:
+    """Return bounded, JSON-safe capability metadata for one crew task."""
+    if capability is None:
+        return None
+    payload = capability.to_dict()
+    payload["schema_version"] = 1
+    return payload
+
+
+def _write_capability_file(crew_id: str, capability: Optional[CapabilityBundle]) -> Optional[Path]:
+    payload = _capability_payload(capability)
+    if payload is None:
+        return None
+    destination = _capability_path(crew_id)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return destination
 
 
 def _local_worktree_id(crew_id: str) -> Optional[str]:
@@ -183,7 +248,13 @@ def _read_meta_until_available(
         sleep_fn(wait)
 
 
-def _write_brief(crew_id: str, task_text: str, issue_number: int, project_dir: Path) -> Path:
+def _write_brief(
+    crew_id: str,
+    task_text: str,
+    issue_number: int,
+    project_dir: Path,
+    capability: Optional[CapabilityBundle] = None,
+) -> Path:
     destination = _task_dir(crew_id)
     destination.mkdir(parents=True, exist_ok=True)
     brief = destination / "brief.md"
@@ -237,6 +308,19 @@ def _write_brief(crew_id: str, task_text: str, issue_number: int, project_dir: P
         "    done: branch=<branch> commit=<commit> base=<base>\n\n"
         "Then stop.\n"
     )
+    if capability is not None:
+        brief.write_text(
+            brief.read_text(encoding="utf-8")
+            + "\n## Capability contract\n\n"
+            + "This is the school-selected launch policy. It is evidence of what "
+            + "was requested, not proof that every tool was used.\n\n"
+            + f"- Task role: {capability.task_role}\n"
+            + f"- Hermes profile: {capability.profile}\n"
+            + f"- School skill anchors: {', '.join(capability.skills) or '(none)'}\n"
+            + f"- School tools: {', '.join(capability.allowed_tools)}\n"
+            + f"- Hermes toolsets: {', '.join(capability.hermes_toolsets)}\n",
+            encoding="utf-8",
+        )
     return brief
 
 
@@ -417,7 +501,11 @@ def sweep_stale_runs(
     return removed
 
 
-def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
+def _spawn(
+    crew_id: str,
+    project_dir: Path,
+    capability: Optional[CapabilityBundle] = None,
+) -> subprocess.CompletedProcess:
     # fm-spawn.sh requires BOTH --mode and --yolo on every ship (they are the
     # task's delivery contract). --yolo on = the crew's routine approvals are
     # granted so an unattended crewmate can complete work; the delivery
@@ -435,10 +523,13 @@ def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
     # markers) and the spawn aborts with 'no launch template' (observed
     # 2026-08-12, issue #48). Recipe: devops/agent-school-verification
     # skill (firstmate-orca-spawn-recipe.md).
-    wrapper = os.environ.get(
-        "FM_WRAPPER",
-        f"{Path.home()}/.local/bin/hermes-fm-wrapper",
+    repo_wrapper = Path(__file__).resolve().parent / "scripts" / "hermes-fm-wrapper"
+    default_wrapper = (
+        repo_wrapper
+        if repo_wrapper.is_file()
+        else Path.home() / ".local/bin/hermes-fm-wrapper"
     )
+    wrapper = os.environ.get("FM_WRAPPER", str(default_wrapper))
     harness = f'{wrapper} "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
@@ -451,11 +542,21 @@ def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
     env["FM_HOME"] = str(FM_HOME)
     env["FM_STATE_OVERRIDE"] = str(STATE_DIR)
     env["FM_DATA_OVERRIDE"] = str(DATA_DIR)
+    payload = _capability_payload(capability)
+    if payload is not None:
+        env.update({
+            "FM_AGENT_CAPABILITY_VERSION": str(payload["schema_version"]),
+            "FM_AGENT_TASK_ROLE": capability.task_role,
+            "FM_AGENT_PROFILE": capability.profile,
+            "FM_AGENT_SKILL_ANCHORS": ",".join(capability.skills),
+            "FM_AGENT_ALLOWED_TOOLS": ",".join(capability.allowed_tools),
+            "FM_AGENT_TOOLSETS": ",".join(capability.hermes_toolsets),
+        })
     return _run([
         str(FM_SPAWN), crew_id, str(project_dir),
         "--mode", "local-only", "--yolo", "on", "--backend", "orca",
         "--harness", harness,
-    ], timeout=30, env=env)
+    ], timeout=SPAWN_TIMEOUT_SECONDS, env=env)
 
 
 def _poll(
@@ -494,6 +595,7 @@ def dispatch_crew(
     task_text: str,
     project_dir: Path,
     cycle_session_id: str,
+    capability: Optional[CapabilityBundle] = None,
     timeout: float = DEFAULT_TIMEOUT,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     blocked_grace: float = DEFAULT_BLOCKED_GRACE,
@@ -506,30 +608,42 @@ def dispatch_crew(
 
     crew_id = _crew_id(cycle_session_id, issue_number)
     sweep_stale_runs(now=now_fn(), path=CREW_RUNS_FILE)
-    _write_brief(crew_id, task_text, issue_number, Path(project_dir))
+    project_dir = Path(project_dir)
+    _write_brief(crew_id, task_text, issue_number, project_dir, capability)
+    _write_capability_file(crew_id, capability)
     started_at = datetime.now(timezone.utc).isoformat()
+    capability_record = _capability_payload(capability)
     try:
-        result = _spawn(crew_id, Path(project_dir))
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        reason = str(exc) or "fm-spawn could not be executed"
+        if capability is not None and not capability.hermes_toolsets:
+            raise CrewUnavailableError("capability policy has no Hermes toolsets")
+        result = _spawn(crew_id, project_dir, capability)
+    except (CrewUnavailableError, OSError, subprocess.TimeoutExpired) as exc:
+        spawn_error = _safe_spawn_error(exc)
         _record_run({
             "crew_id": crew_id,
             "issue_number": issue_number,
             "status": "spawn_failed",
             "fallback_reason": "spawn_failure",
+            "spawn_error": spawn_error,
+            "capability": capability_record,
             "started_at": started_at,
         })
-        raise CrewUnavailableError(reason) from exc
+        raise CrewUnavailableError(spawn_error) from exc
     if result.returncode != 0:
-        reason = (result.stderr or result.stdout or "fm-spawn failed").strip()
+        spawn_error = _safe_spawn_error(
+            (result.stderr or result.stdout or "fm-spawn failed").strip(),
+            returncode=result.returncode,
+        )
         _record_run({
             "crew_id": crew_id,
             "issue_number": issue_number,
             "status": "spawn_failed",
             "fallback_reason": "spawn_failure",
+            "spawn_error": spawn_error,
+            "capability": capability_record,
             "started_at": started_at,
         })
-        raise CrewUnavailableError(reason)
+        raise CrewUnavailableError(spawn_error)
 
     meta = _read_meta_until_available(
         crew_id,
@@ -549,6 +663,7 @@ def dispatch_crew(
         "issue_number": issue_number,
         "status": "running",
         "orca_worktree_id": worktree_id,
+        "capability": capability_record,
         "started_at": started_at,
     })
 
@@ -624,6 +739,7 @@ def dispatch_crew(
             str(report_path.relative_to(DATA_DIR))
             if report_path else None
         ),
+        "capability": capability_record,
     })
     return CrewResult(
         crew_id=crew_id,
@@ -632,4 +748,5 @@ def dispatch_crew(
         fallback_reason=fallback_reason,
         teardown_ok=teardown_ok,
         orca_worktree_id=worktree_id,
+        capability=capability_record,
     )

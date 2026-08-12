@@ -48,7 +48,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FM_CLONE="${FM_CLONE:-$HOME/.local/share/firstmate}"
 FM_HOME="${FM_HOME:-$HOME/.hermes/school-core-fm-config}"
 HERMES_BIN="${HERMES_BIN:-$HOME/.local/bin/hermes}"
-FM_WRAPPER="${FM_WRAPPER:-$HOME/.local/bin/hermes-fm-wrapper}"
+FM_WRAPPER_DEFAULT="$REPO_ROOT/scripts/hermes-fm-wrapper"
+if [ ! -x "$FM_WRAPPER_DEFAULT" ]; then
+  FM_WRAPPER_DEFAULT="$HOME/.local/bin/hermes-fm-wrapper"
+fi
+FM_WRAPPER="${FM_WRAPPER:-$FM_WRAPPER_DEFAULT}"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 
 PASS=0

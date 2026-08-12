@@ -199,6 +199,27 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
+    def test_capability_failure_skips_crew_and_uses_direct_fallback(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge._resolve_crew_capability", lambda *args, **kwargs: None)
+        dispatch_calls = []
+        monkeypatch.setattr("issue_bridge.dispatch_crew", lambda **kwargs: dispatch_calls.append(kwargs))
+        mock_fetch.return_value = [
+            {"issue_number": 19, "title": "Capability fallback", "body": "",
+             "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+             "category": "bug", "state": "ready-for-agent"},
+        ]
+        mock_task.return_value = {"status": "error", "error": "direct path failed"}
+
+        results = bridge_issues("user/test", store=store, crew_enabled=True)
+
+        assert results[0]["status"] == "retry"
+        assert results[0]["crew_fallback_reason"] == "capability_resolution_failure"
+        assert dispatch_calls == []
+
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
     def test_task_failure_retries_once_then_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [

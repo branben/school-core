@@ -2,11 +2,13 @@
 
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import crew_dispatch
+from capabilities import resolve_capability
 from crew_dispatch import CrewResult, CrewUnavailableError, dispatch_crew
 
 
@@ -129,6 +131,85 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert str(tmp_path) not in json.dumps(runs[-1])
 
 
+def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_path):
+    _, state, data = configure_paths(monkeypatch, tmp_path)
+    crew_id = "fm-loop-20260812-120000-43"
+    (state / f"{crew_id}.meta").write_text("orca_worktree_id=repo::/tmp/crew-worktree\n")
+    (state / f"{crew_id}.status").write_text(
+        "working: coding\n"
+        "done: branch=fm/task-43 commit=abc123 base=main@def456\n"
+    )
+    report = data / crew_id / "report.md"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        "# Deliverable\nDone.\n\n"
+        "Branch: fm/task-43\nCommit: abc123\nBase: main@def456\n"
+    )
+    capability = resolve_capability(
+        "python-testing", 30, task_role="coder", difficulty="medium"
+    )
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0].endswith("fm-spawn.sh"):
+            return spawn_process()
+        return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+    result = dispatch_crew(
+        issue_number=43,
+        task_text="Use the selected coder capability",
+        project_dir=tmp_path / "school-project",
+        cycle_session_id="loop-20260812-120000",
+        capability=capability,
+        timeout=1,
+        poll_interval=0,
+    )
+
+    assert result.status == "done"
+    assert result.capability["profile"] == "student-coder"
+    spawn_args, spawn_kwargs = calls[0]
+    env = spawn_kwargs["env"]
+    assert env["FM_AGENT_TASK_ROLE"] == "coder"
+    assert env["FM_AGENT_PROFILE"] == "student-coder"
+    assert env["FM_AGENT_SKILL_ANCHORS"] == ",".join(capability.skills)
+    assert env["FM_AGENT_ALLOWED_TOOLS"] == "python,testing,git"
+    assert env["FM_AGENT_TOOLSETS"] == ",".join(capability.hermes_toolsets)
+    assert "FM_AGENT_CAPABILITY_FILE" not in env
+    assert "FM_AGENT_PERSONA_FILE" not in env
+    brief = (data / crew_id / "brief.md").read_text()
+    assert "## Capability contract" in brief
+    assert "Hermes profile: student-coder" in brief
+    assert "Hermes toolsets:" in brief
+    payload = json.loads((data / crew_id / "capability.json").read_text())
+    assert payload["task_role"] == "coder"
+    assert payload["hermes_toolsets"] == list(capability.hermes_toolsets)
+    assert "school-project" not in json.dumps(payload)
+
+
+def test_empty_capability_tool_policy_fails_closed(monkeypatch, tmp_path):
+    configure_paths(monkeypatch, tmp_path)
+    capability = resolve_capability(
+        "python-testing", 30, task_role="coder", difficulty="medium"
+    )
+    invalid = replace(capability, hermes_toolsets=())
+    monkeypatch.setattr(
+        crew_dispatch,
+        "_spawn",
+        lambda *args, **kwargs: pytest.fail("empty policy must not spawn"),
+    )
+
+    with pytest.raises(CrewUnavailableError, match="no Hermes toolsets"):
+        dispatch_crew(
+            issue_number=44,
+            task_text="Reject an empty policy",
+            project_dir=tmp_path,
+            cycle_session_id="loop-20260812-120000",
+            capability=invalid,
+        )
+
+
 def test_spawn_timeout_raises_typed_error(monkeypatch, tmp_path):
     configure_paths(monkeypatch, tmp_path)
 
@@ -159,6 +240,70 @@ def test_spawn_failure_raises_typed_error(monkeypatch, tmp_path):
             project_dir=tmp_path,
             cycle_session_id="loop-20260811-120000",
         )
+
+
+def test_spawn_failure_persists_bounded_redacted_error(monkeypatch, tmp_path):
+    configure_paths(monkeypatch, tmp_path)
+    token = "github_pat_1234567890abcdefghijklmnopqrstuvwxyz"
+    bearer = "Bearer abcdefghijklmnopqrstuvwxyz123456"
+    private_path = "/Users/another-user/.hermes/private"
+
+    def fail_run(args, **kwargs):
+        return subprocess.CompletedProcess(
+            args,
+            7,
+            "",
+            f"gateway unavailable token={token} auth={bearer} path={private_path}",
+        )
+
+    monkeypatch.setattr(crew_dispatch, "_run", fail_run)
+    with pytest.raises(CrewUnavailableError, match="gateway unavailable"):
+        dispatch_crew(
+            issue_number=70,
+            task_text="Record the failure",
+            project_dir=tmp_path,
+            cycle_session_id="loop-20260811-120000",
+        )
+
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    record = runs[-1]
+    assert record["status"] == "spawn_failed"
+    assert record["spawn_error"].startswith("SpawnError: returncode=7:")
+    assert "gateway unavailable" in record["spawn_error"]
+    assert token not in record["spawn_error"]
+    assert bearer not in record["spawn_error"]
+    assert "github_pat_" not in record["spawn_error"]
+    assert "another-user" not in record["spawn_error"]
+    assert str(Path.home()) not in record["spawn_error"]
+    assert "/Users/" not in record["spawn_error"]
+    assert len(record["spawn_error"]) <= crew_dispatch.MAX_SPAWN_ERROR_CHARS
+
+
+def test_spawn_timeout_persists_type_without_command_arguments(monkeypatch, tmp_path):
+    configure_paths(monkeypatch, tmp_path)
+
+    def timeout_run(args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            args,
+            kwargs.get("timeout", 0),
+            stderr="provider token=github_pat_1234567890",
+        )
+
+    monkeypatch.setattr(crew_dispatch, "_run", timeout_run)
+    with pytest.raises(CrewUnavailableError, match="timed out"):
+        dispatch_crew(
+            issue_number=71,
+            task_text="Record the timeout",
+            project_dir=tmp_path,
+            cycle_session_id="loop-20260811-120000",
+        )
+
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    record = runs[-1]
+    assert record["status"] == "spawn_failed"
+    assert record["spawn_error"] == "TimeoutExpired: spawn subprocess timed out"
+    assert "github_pat_" not in json.dumps(record)
+    assert str(tmp_path) not in json.dumps(record)
 
 
 def test_metadata_is_retried_after_spawn_before_teardown(monkeypatch, tmp_path):

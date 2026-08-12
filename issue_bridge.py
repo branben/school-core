@@ -26,7 +26,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from github_fetcher import fetch_issues, load_config, _gh_command
-from executor import call_model, COMBO_MAP, ExecutorError
+from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
+from capabilities import CapabilityBundle, resolve_capability
 from scoring import ScoreStore
 from school_mail import notify_issue_alert
 # U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
@@ -439,6 +440,15 @@ def _mark_github_issue(repo: str, issue_number: int, status: str,
         sys.stderr.write(f"[issue_bridge] Failed to update GitHub issue #{issue_number}: {e}\n")
 
 
+def _observability_fields(task_result: dict) -> dict:
+    """Return bounded persona/review evidence for durable run records."""
+    fields = {}
+    for key in ("capability", "teacher_evidence"):
+        if key in task_result:
+            fields[key] = task_result.get(key)
+    return fields
+
+
 def record_run(path: Path, entry: dict) -> None:
     """Append an entry to a JSON-list run log at *path*, atomically.
 
@@ -728,6 +738,36 @@ def _crew_active_issue(crew_runs_file, issue_number: int) -> bool:
     )
 
 
+def _resolve_crew_capability(
+    issue: dict,
+    store: ScoreStore,
+    force_agent: Optional[str] = None,
+) -> Optional[CapabilityBundle]:
+    """Resolve the canonical role/profile/tool policy before crew launch.
+
+    The bridge must choose the bundle before FirstMate creates the worktree.
+    ``force_agent`` preserves the existing manual override; otherwise the
+    domain map supplies the deterministic task role and the score store only
+    supplies the school-rank input to the same canonical resolver used by
+    direct student leaves.
+    """
+    try:
+        domain = issue["domain"]
+        task_role = force_agent or get_role_for_domain(domain)
+        score = store.get_score(task_role, domain)
+        return resolve_capability(
+            domain,
+            score,
+            task_role=task_role,
+            difficulty=issue.get("difficulty", "medium"),
+        )
+    except Exception as exc:
+        sys.stderr.write(
+            f"[issue_bridge] crew capability resolution skipped: {exc}\n"
+        )
+        return None
+
+
 def _crew_report_content(report_path) -> Optional[str]:
     """Read a bounded crew report.md into the student deliverable.
 
@@ -860,12 +900,20 @@ def bridge_issues(
         #  - An active crew record (interrupted prior cycle) skips the issue;
         #    a per-cycle cap keeps serial crew polling inside the job timeout.
         crew_id = f"fm-{cycle_session_id}-{num}"
+        crew_capability = _resolve_crew_capability(issue, store, force_agent) if crew_enabled else None
         crew_result: Optional[CrewResult] = None
         crew_fallback_reason: Optional[str] = None
         crew_used = False
         crew_skip_reason: Optional[str] = None
 
-        if crew_enabled and _crew_active_issue(CREW_RUNS_FILE, num):
+        if crew_enabled and crew_capability is None:
+            crew_skip_reason = "capability_resolution_failure"
+            crew_fallback_reason = crew_skip_reason
+            sys.stderr.write(
+                f"[issue_bridge] #{num}: capability policy unavailable — direct fallback\n"
+            )
+
+        if crew_enabled and crew_skip_reason is None and _crew_active_issue(CREW_RUNS_FILE, num):
             crew_skip_reason = "crew_in_flight"
             sys.stderr.write(f"[issue_bridge] #{num}: crew {crew_id} still active — skipping this cycle\n")
             # A stale record (crew aborted > CREW_TIMEOUT_SECONDS ago) can
@@ -903,6 +951,7 @@ def bridge_issues(
                     task_text=enriched_prompt,
                     project_dir=repo_path or Path.cwd(),
                     cycle_session_id=cycle_session_id,
+                    capability=crew_capability,
                 )
             except CrewUnavailableError as e:
                 crew_fallback_reason = "spawn_failure"
@@ -932,6 +981,13 @@ def bridge_issues(
                 f"[issue_bridge] #{num}: crew {crew_result.status} ({crew_fallback_reason}) — direct fallback\n"
             )
 
+        # Keep the direct review path on the same task role selected for the
+        # crew. This prevents an A2A/readiness reroute from silently changing
+        # the persona after a crew fallback or provided report.
+        dispatch_force_agent = (
+            force_agent
+            or (crew_capability.task_role if crew_enabled and crew_capability else None)
+        )
         try:
             if crew_result is not None and crew_result.status == "done":
                 # The crew's report.md IS the student deliverable: substitution
@@ -941,7 +997,7 @@ def bridge_issues(
                     prompt=enriched_prompt,
                     domain=issue["domain"],
                     difficulty=issue["difficulty"],
-                    force_agent=force_agent,
+                    force_agent=dispatch_force_agent,
                     store=store,
                     session_id=cycle_session_id,
                     provided_student_output=deliverable,
@@ -951,7 +1007,7 @@ def bridge_issues(
                     prompt=enriched_prompt,
                     domain=issue["domain"],
                     difficulty=issue["difficulty"],
-                    force_agent=force_agent,
+                    force_agent=dispatch_force_agent,
                     store=store,
                     session_id=cycle_session_id,
                 )
@@ -1051,6 +1107,8 @@ def bridge_issues(
                     "difficulty": issue["difficulty"],
                     "status": "error",
                     "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
                     "crew_id": crew_result.crew_id if crew_result else None,
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
@@ -1065,7 +1123,9 @@ def bridge_issues(
                             "agent": task_result.get("agent"),
                             "score": _review.get("combined_score"),
                             "rejection": _reject_reason,
-                            "trajectory": None,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
                         },
                     )
                 except Exception as e_rec:
@@ -1199,6 +1259,7 @@ def bridge_issues(
                 "difficulty": issue["difficulty"],
                 "status": "success",
                 "agent": task_result.get("agent"),
+                **_observability_fields(task_result),
                 "old_score": updated.get("old_score"),
                 "new_score": updated.get("new_score"),
                 "gate_crossed": updated.get("gate_crossed"),
@@ -1220,6 +1281,7 @@ def bridge_issues(
                         "agent": task_result.get("agent"),
                         "score": combined_score,
                         "trajectory": task_result.get("trajectory"),
+                        **_observability_fields(task_result),
                         # title/domain/difficulty let the board re-render the
                         # card after the issue is auto-closed (it leaves the
                         # open-issues cache once closed).
@@ -1281,7 +1343,9 @@ def bridge_issues(
                             "status": "retry",
                             "agent": task_result.get("agent"),
                             "score": None,
-                            "trajectory": None,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
                         },
                     )
                 except Exception as e_rec:
@@ -1302,6 +1366,8 @@ def bridge_issues(
                     "difficulty": issue["difficulty"],
                     "status": task_result.get("status", "error"),
                     "error": err,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
                     "crew_id": crew_result.crew_id if crew_result else None,
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
@@ -1315,7 +1381,9 @@ def bridge_issues(
                             "status": task_result.get("status", "error"),
                             "agent": task_result.get("agent"),
                             "score": None,
-                            "trajectory": None,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
                         },
                     )
                 except Exception as e_rec:

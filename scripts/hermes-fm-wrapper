@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# FirstMate launch wrapper for Hermes crewmates.
+# $1 = encoded brief (from firstmate operational input)
+#
+# Capability propagation is task-scoped through FM_AGENT_* variables. Hermes's
+# native profile flag is intentionally not used: the local CLI previously had
+# a profile/skills-snapshot compatibility bug. Instead, the wrapper loads the
+# validated committed SOUL.md into the initial prompt and applies the validated
+# native Hermes toolset policy.
+set -euo pipefail
+
+MAX_TURNS="${FM_AGENT_MAX_TURNS:-16}"
+if [[ ! "$MAX_TURNS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "hermes-fm-wrapper: invalid max-turns policy" >&2
+  exit 78
+fi
+HERMES="${HERMES:-$(command -v hermes 2>/dev/null || true)}"
+if [[ -z "$HERMES" || ! -x "$HERMES" ]]; then
+  echo "hermes-fm-wrapper: Hermes CLI is unavailable" >&2
+  exit 78
+fi
+DEFAULT_TOOLSETS="agentmail,bfl,clarify,cronjob,delegation,engram,file,kanban,memory,session_search,skills,terminal,todo,web,codegraph,cocoindex,roblox-studio,serena,serena-roblox"
+BRIEF="${1:-}"
+PROFILE="${FM_AGENT_PROFILE:-}"
+if [[ -n "${FM_AGENT_CAPABILITY_VERSION:-}" && -z "${FM_AGENT_TOOLSETS:-}" ]]; then
+  echo "hermes-fm-wrapper: capability policy has no Hermes toolsets" >&2
+  exit 78
+fi
+TOOLSETS="${FM_AGENT_TOOLSETS:-$DEFAULT_TOOLSETS}"
+SKILL_ANCHORS="${FM_AGENT_SKILL_ANCHORS:-}"
+# The capability manifest owns this allowlist; the wrapper repeats it at the
+# process boundary so a malformed env value cannot become an arbitrary Hermes
+# CLI argument. Unknown values fail closed and let school-core use direct
+# fallback rather than silently granting the broad default toolset.
+if [[ ! "$TOOLSETS" =~ ^[a-z0-9_-]+(,[a-z0-9_-]+)*$ ]]; then
+  echo "hermes-fm-wrapper: malformed toolset policy" >&2
+  exit 78
+fi
+IFS=',' read -r -a TOOLSET_NAMES <<< "$TOOLSETS"
+for toolset in "${TOOLSET_NAMES[@]}"; do
+  case "$toolset" in
+    agentmail|bfl|clarify|cronjob|delegation|engram|file|kanban|memory|session_search|skills|terminal|todo|web|codegraph|cocoindex|roblox-studio|serena|serena-roblox) ;;
+    *)
+      echo "hermes-fm-wrapper: invalid toolset policy" >&2
+      exit 78
+      ;;
+  esac
+done
+
+INPUT="$BRIEF"
+if [[ -n "$PROFILE" ]]; then
+  if [[ ! "$PROFILE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "hermes-fm-wrapper: invalid profile name" >&2
+    exit 78
+  fi
+
+  PERSONA_FILE=""
+  for candidate in \
+    "$PWD/config/profiles/$PROFILE/SOUL.md" \
+    "$HOME/.hermes/profiles/$PROFILE/SOUL.md"; do
+    if [[ -r "$candidate" ]]; then
+      PERSONA_FILE="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$PERSONA_FILE" || ! -r "$PERSONA_FILE" ]]; then
+    echo "hermes-fm-wrapper: persona '$PROFILE' is unavailable" >&2
+    exit 78
+  fi
+
+  PERSONA=$(cat "$PERSONA_FILE")
+  printf -v INPUT '%s\n\n---\n\n%s' "$PERSONA" "$INPUT"
+fi
+
+if [[ -n "$SKILL_ANCHORS" ]]; then
+  printf -v INPUT '%s\n\n---\n\nSchool capability anchors (requested policy; not proof of tool use):\n%s' "$INPUT" "$SKILL_ANCHORS"
+fi
+
+# Use query mode, not interactive stdin mode. In an Orca terminal, stdin is
+# composer input and is not guaranteed to be submitted; query mode starts the
+# Hermes turn immediately and returns a bounded process result to FirstMate.
+exec "$HERMES" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
+  --query "$INPUT" --yolo --quiet --max-turns "$MAX_TURNS"
