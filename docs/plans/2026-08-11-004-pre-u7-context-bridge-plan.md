@@ -1,7 +1,7 @@
 ---
 title: Pre-U7 context and bridge readiness
 type: feat
-status: active
+status: complete
 date: 2026-08-11
 origin: docs/plans/2026-08-11-001-feat-pipeline-context-verify-dispatch-plan.md
 ---
@@ -182,4 +182,4 @@ U7 is ready only when:
 
 ## Handoff
 
-After U4 is complete, begin the existing U7–U9 plan at its first standalone lifecycle unit. Do not wire the bridge to FirstMate as part of this plan.
+Pre-U7 is complete and landed in three isolated commits: `30697d1`, `7b0acfa`, and `6651800`. The Layer 3 bead is closed with evidence; the U7 bead remains open. The pre-U7 focused gate passed 224 tests, including a temporary git commit/clone and fresh-process archival read proof. Begin the existing U7–U9 plan at its first standalone lifecycle unit. Do not wire the bridge to FirstMate as part of this plan.
