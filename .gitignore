@@ -36,6 +36,9 @@ Thumbs.db
 
 # Project data (runtime-generated cache/state — never tracked; regenerates on run)
 data/
+!data/
+data/*
+!data/crew_runs.json
 .omo/
 
 # Logs
