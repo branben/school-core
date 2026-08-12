@@ -382,9 +382,15 @@ def sweep_stale_runs(
 
 
 def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
+    # fm-spawn.sh requires BOTH --mode and --yolo on every ship (they are the
+    # task's delivery contract). --yolo off = no-mistakes mode: the crew works
+    # in its Orca worktree, commits locally, and reports; it cannot push to
+    # remote or run destructive actions without explicit approval. Omitting
+    # --yolo made every spawn fail at the CLI gate and silently fall back to
+    # the direct path (observed 2026-08-12, issue #46).
     return _run([
         str(FM_SPAWN), crew_id, str(project_dir),
-        "--mode", "local-only", "--backend", "orca",
+        "--mode", "local-only", "--yolo", "off", "--backend", "orca",
     ], timeout=30)
 
 

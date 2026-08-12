@@ -84,7 +84,7 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         teardown_ok=True,
         orca_worktree_id="repo::/tmp/crew-worktree",
     )
-    assert calls[0][-4:] == ["--mode", "local-only", "--backend", "orca"]
+    assert calls[0][-6:] == ["--mode", "local-only", "--yolo", "off", "--backend", "orca"]
     assert "--scout" not in calls[0]
     brief = (data / crew_id / "brief.md").read_text()
     assert "Fix the bug" in brief
