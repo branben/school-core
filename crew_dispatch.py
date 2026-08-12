@@ -191,7 +191,7 @@ def _read_status(path: Path) -> Optional[str]:
 def _artifact_identity(text: str) -> Optional[dict[str, str]]:
     """Extract a complete branch/commit/base identity from bounded text."""
     fields = {
-        match.group(1).lower().replace(" ", "_").replace("-", "_"): match.group(2).strip()
+        match.group(1).lower().replace(" ", "_").replace("-", "_"): match.group(2).strip().strip("`*_")
         for match in _ARTIFACT_FIELD_RE.finditer(text)
     }
     base = fields.get("base") or fields.get("base_ref") or fields.get("base_commit")

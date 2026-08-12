@@ -131,6 +131,22 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert str(tmp_path) not in json.dumps(runs[-1])
 
 
+def test_artifact_identity_normalizes_markdown_wrappers():
+    status = "done: branch=fm/task-58 commit=abc123 base=main@def456"
+    report = (
+        "- branch: `fm/task-58`\n"
+        "- commit: `abc123`\n"
+        "- base: `main@def456`\n"
+    )
+
+    assert crew_dispatch._artifact_identity(status) == {
+        "branch": "fm/task-58",
+        "commit": "abc123",
+        "base": "main@def456",
+    }
+    assert crew_dispatch._artifact_identity(report) == crew_dispatch._artifact_identity(status)
+
+
 def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_path):
     _, state, data = configure_paths(monkeypatch, tmp_path)
     crew_id = "fm-loop-20260812-120000-43"
