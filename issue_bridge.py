@@ -768,6 +768,7 @@ def bridge_issues(
                     "crew_id": crew_result.crew_id if crew_result else None,
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
                     record_run(
@@ -794,6 +795,7 @@ def bridge_issues(
                 "crew_id": crew_result.crew_id if crew_result else None,
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
+                "teardown_ok": crew_result.teardown_ok if crew_result else None,
             })
             try:
                 record_run(
@@ -941,6 +943,7 @@ def bridge_issues(
                 "crew_id": crew_result.crew_id if crew_result else None,
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
+                "teardown_ok": crew_result.teardown_ok if crew_result else None,
             })
             try:
                 record_run(
@@ -970,6 +973,7 @@ def bridge_issues(
                         "crew_id": crew_result.crew_id if crew_result else None,
                         "crew_used": crew_used,
                         "crew_fallback_reason": crew_fallback_reason,
+                        "teardown_ok": crew_result.teardown_ok if crew_result else None,
                     },
                 )
             except Exception as e_rec:
@@ -994,6 +998,7 @@ def bridge_issues(
                     "crew_id": crew_result.crew_id if crew_result else None,
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
                     record_run(
@@ -1027,6 +1032,7 @@ def bridge_issues(
                     "crew_id": crew_result.crew_id if crew_result else None,
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
                     record_run(

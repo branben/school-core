@@ -1688,10 +1688,17 @@ class TestCrewDispatchPath:
         assert r["status"] == "success"
         assert r["crew_used"] is True
         assert r["crew_id"] == "fm-loop-20260811-120000-402"
+        assert r["teardown_ok"] is True
         assert mock_crew.call_args[1]["issue_number"] == 402
         # The crew deliverable substituted for the student model call.
         assert mock_task.call_args[1]["provided_student_output"] == (
             tmp_path / "report.md").read_text()
+        # U9: the durable last_run entry carries the compact crew block.
+        runs = json.loads((tmp_path / "last_run.json").read_text())
+        assert runs[-1]["crew_id"] == "fm-loop-20260811-120000-402"
+        assert runs[-1]["crew_used"] is True
+        assert runs[-1]["teardown_ok"] is True
+        assert runs[-1]["crew_fallback_reason"] is None
 
     def test_spawn_failure_falls_back_direct(self, monkeypatch, tmp_path, store):
         """CrewUnavailableError → same-cycle direct path, reason recorded."""
@@ -1707,6 +1714,8 @@ class TestCrewDispatchPath:
         assert results[0]["status"] == "success"
         assert results[0]["crew_used"] is False
         assert results[0]["crew_fallback_reason"] == "spawn_failure"
+        # No crew_result on spawn failure → teardown_ok surfaces as None.
+        assert results[0]["teardown_ok"] is None
         mock_crew.assert_called_once()
         mock_task.assert_called_once()
         assert "provided_student_output" not in mock_task.call_args[1]
@@ -1732,6 +1741,8 @@ class TestCrewDispatchPath:
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_fallback_reason"] == "timeout"
+        # U9: teardown_ok rides the crew block on the result.
+        assert results[0]["teardown_ok"] is True
         mock_task.assert_called_once()
 
     def test_failed_falls_back_direct(self, monkeypatch, tmp_path, store):
@@ -1755,6 +1766,7 @@ class TestCrewDispatchPath:
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_fallback_reason"] == "crew_failed"
+        assert results[0]["teardown_ok"] is True
         mock_task.assert_called_once()
 
     def test_fallback_also_fails_retries_once(self, monkeypatch, tmp_path, store):
