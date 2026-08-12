@@ -552,6 +552,104 @@ class TestVerifyGateMerge:
         assert res["strict_escalated"] is True
         assert res["passed"] is False
 
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    @patch("issue_bridge._mark_github_issue")
+    def test_rejected_two_judge_review_forces_school_failed(
+        self, mock_mark, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """A two-judge rejection must close the loop as school-failed, not done.
+
+        Regression for 2026-08-12: issues #51/#52 scored 33/35 (below the
+        documented >= 50 acceptance threshold) yet were closed school-done
+        because the bridge never consulted the review verdict. The director
+        gates acceptance (both judges PASS and score >= 50), so when run_task
+        returns review.accepted == False the bridge must mark school-failed
+        and leave the issue open instead of closing it.
+        """
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "ran": 1, "failures": [],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        task = self._task_ok()
+        task["task_score"] = 33.0
+        task["review"] = {
+            "cto_verdict": "FAIL",
+            "coo_verdict": "FAIL",
+            "combined_score": 33.0,
+            "accepted": False,
+        }
+        mock_task.return_value = task
+
+        results = bridge_issues("user/test", store=store)
+
+        # The close decision must honor the verdict: school-failed, open.
+        assert results[0]["status"] == "error"
+        assert "two-judge review rejected" in results[0]["error"]
+        # The low combined score was preserved on the durable record.
+        last_run = json.loads((tmp_path / "last_run.json").read_text())
+        assert last_run[-1]["status"] == "school-failed"
+        assert last_run[-1]["score"] == 33.0
+        assert "rejection" in last_run[-1]
+        # GitHub is labeled school-failed and left OPEN — never closed done.
+        assert mock_mark.call_args[0] == ("user/test", 80, "error")
+        assert not any(
+            c.args[2] == "success" for c in mock_mark.call_args_list
+        )
+        # The designed penalty landed in the score store — the agent's
+        # recorded score stays below the >= 50 acceptance threshold.
+        assert store.get_score("auto/best-free", "code-implementation") < 50
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    def test_accepted_two_judge_review_passes_through(
+        self, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """A genuine PASS (accepted=True, both judges, >= 50) still closes done.
+
+        Guards the gate from over-triggering: only an explicit rejection routes
+        to school-failed; a real pass and a legacy/async missing review must
+        both take the normal success path.
+        """
+        mock_ib_call.return_value = (
+            '{"score": 88, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "ran": 1, "failures": [],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        task = self._task_ok()
+        task["task_score"] = 88.0
+        task["review"] = {
+            "cto_verdict": "PASS",
+            "coo_verdict": "PASS",
+            "combined_score": 88.0,
+            "accepted": True,
+        }
+        mock_task.return_value = task
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        last_run = json.loads((tmp_path / "last_run.json").read_text())
+        assert last_run[-1]["status"] == "success"
+
 
 # ── U6: Entire pre-merge sensor (non-blocking) ─────────────────────────────
 

@@ -815,6 +815,66 @@ def bridge_issues(
             continue
 
         if task_result["status"] == "success":
+            # ── Two-judge acceptance gate ──
+            # run_task already ran the CTO+COO review; both must PASS at
+            # score >= 50 with no CRITICAL finding for accepted=True. The
+            # bridge must honor that verdict at CLOSE time — a rejected
+            # review (low score / FAIL verdict / CRITICAL finding) is a real
+            # quality failure, not a pass. Rejected → school-failed + left
+            # open for human triage, exactly like the exception path.
+            # (Observed 2026-08-12: issues #51/#52 scored 33/35 and were
+            # closed school-done because the verdict was never consulted.)
+            # A missing review (legacy/async fixtures) passes through: the
+            # async skip_review path intentionally carries empty verdicts.
+            _review = task_result.get("review") or {}
+            _reviewed = bool(_review.get("cto_verdict") or _review.get("coo_verdict"))
+            if _reviewed and _review.get("accepted") is False:
+                _reject_reason = (
+                    f"two-judge review rejected: cto={_review.get('cto_verdict')} "
+                    f"coo={_review.get('coo_verdict')} "
+                    f"combined={_review.get('combined_score')}"
+                )
+                sys.stderr.write(f"[issue_bridge] #{num}: {_reject_reason} — school-failed\n")
+                # Score store reflects the director's designed penalty
+                # (task_score is min(40, combined) for a rejection).
+                evaluate_and_update(task_result, task_result.get("task_score", 0.0), store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                })
+                try:
+                    record_run(
+                        PROCESSED_FILE.parent / "last_run.json",
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": _review.get("combined_score"),
+                            "rejection": _reject_reason,
+                            "trajectory": None,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                processed.add(num)
+                continue
+
             # NEW: run the code before the critic speaks (campus.md #3).
             # Compile/typecheck/test failures become CRITICAL findings fed
             # into the adversarial reviewer, so broken code can't pass review.
