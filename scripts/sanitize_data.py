@@ -14,6 +14,11 @@ Usage:
     python scripts/sanitize_data.py data/last_run.json data/issues_cache.json ...
 """
 
+# Python 3.9 (the runner's venv is built from macOS /usr/bin/python3 = 3.9.6)
+# evaluates `Path | None` annotations at runtime; this defers them so the
+# sanitizer survives the checkpoint step (2026-08-12).
+from __future__ import annotations
+
 import json
 import re
 import sys
