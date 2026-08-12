@@ -84,8 +84,15 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         teardown_ok=True,
         orca_worktree_id="repo::/tmp/crew-worktree",
     )
-    assert calls[0][-6:] == ["--mode", "local-only", "--yolo", "off", "--backend", "orca"]
-    assert "--scout" not in calls[0]
+    args = calls[0]
+    assert args[args.index("--mode") + 1] == "local-only"
+    assert args[args.index("--yolo") + 1] == "on"
+    assert args[args.index("--backend") + 1] == "orca"
+    harness_arg = args[args.index("--harness") + 1]
+    assert "hermes-fm-wrapper" in harness_arg
+    assert "__OPINPUT__" in harness_arg
+    assert "__BRIEF__" in harness_arg
+    assert "--scout" not in args
     brief = (data / crew_id / "brief.md").read_text()
     assert "Fix the bug" in brief
     assert "report.md" in brief

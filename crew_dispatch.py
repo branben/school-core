@@ -383,14 +383,31 @@ def sweep_stale_runs(
 
 def _spawn(crew_id: str, project_dir: Path) -> subprocess.CompletedProcess:
     # fm-spawn.sh requires BOTH --mode and --yolo on every ship (they are the
-    # task's delivery contract). --yolo off = no-mistakes mode: the crew works
-    # in its Orca worktree, commits locally, and reports; it cannot push to
-    # remote or run destructive actions without explicit approval. Omitting
+    # task's delivery contract). --yolo on = the crew's routine approvals are
+    # granted so an unattended crewmate can complete work; the delivery
+    # contract still forbids remote pushes / destructive actions (the school
+    # works in its Orca worktree, commits locally, and reports). Omitting
     # --yolo made every spawn fail at the CLI gate and silently fall back to
     # the direct path (observed 2026-08-12, issue #46).
+    #
+    # Hermes is NOT in firstmate's verified adapter list (claude|codex|
+    # opencode|pi|pi-signed|grok|kimi|muse), so the hermes-fm-wrapper must be
+    # passed as a RAW LAUNCH COMMAND with template placeholders (single-quoted
+    # in shell; here they are literal argv elements, which is equivalent).
+    # fm-spawn.sh substitutes __BRIEF__/__OPINPUT__ itself; without --harness,
+    # harness resolution returns 'unknown' on the runner (no agent env
+    # markers) and the spawn aborts with 'no launch template' (observed
+    # 2026-08-12, issue #48). Recipe: devops/agent-school-verification
+    # skill (firstmate-orca-spawn-recipe.md).
+    wrapper = os.environ.get(
+        "FM_WRAPPER",
+        f"{Path.home()}/.local/bin/hermes-fm-wrapper",
+    )
+    harness = f'{wrapper} "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
     return _run([
         str(FM_SPAWN), crew_id, str(project_dir),
-        "--mode", "local-only", "--yolo", "off", "--backend", "orca",
+        "--mode", "local-only", "--yolo", "on", "--backend", "orca",
+        "--harness", harness,
     ], timeout=30)
 
 
