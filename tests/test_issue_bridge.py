@@ -6,6 +6,7 @@ Run: python -m pytest tests/test_issue_bridge.py -v
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, call
 
 import pytest
@@ -25,6 +26,9 @@ from issue_bridge import (
     _ensure_school_labels,
     _load_retries,
     _save_retries,
+    _crew_enabled_from_env,
+    _crew_active_issue,
+    _crew_report_content,
     SCHOOL_DONE_LABEL,
     SCHOOL_FAILED_LABEL,
     PROCESSED_FILE,
@@ -53,6 +57,14 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
     monkeypatch.setattr("issue_bridge._LABELS_ENSURED", False)
     # Hermetic retry counter — never touch the real data/retry_issues.json.
     monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retry_issues.json")
+    # Hermetic processed-set too — the live data/processed_issues.json already
+    # contains real issue numbers, and crew tests use 4xx that can collide.
+    monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed_issues.json")
+    # U8: crew flag defaults OFF in tests (flag-off must be today's path);
+    # crew registry is hermetic — never touch the real data/crew_runs.json.
+    monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", tmp_path / "crew_runs.json")
+    monkeypatch.delenv("CREW_ENABLED", raising=False)
+    monkeypatch.delenv("CREW_MAX_PER_CYCLE", raising=False)
     # Never send real AgentMail alerts from tests.
     monkeypatch.setattr("issue_bridge.notify_issue_alert", lambda *a, **k: True)
 
@@ -1542,3 +1554,384 @@ class TestRetryOnce:
         assert mock_notify.call_args[0][2] == "school-failed"
         assert mock_notify.call_args[1].get("attempt") == 2
         assert "connection refused" in mock_notify.call_args[1].get("error", "")
+
+
+# ── U8: crew dispatch path (CREW_ENABLED) ─────────────────────────────────
+
+
+class TestCrewDispatchPath:
+    """The student-task path routes through the crew module when enabled.
+
+    Flag-off (default) must be byte-for-byte today's path — run_task direct,
+    no crew dispatch. Flag-on: done feeds the crew report as the student
+    deliverable (via run_task's provided_student_output); spawn failure,
+    timeout, failed, and blocked fall back to the direct path same-cycle with
+    the fallback_reason recorded; the fallback itself failing carries the
+    existing retry-once semantics.
+    """
+
+    @staticmethod
+    def _issue(num):
+        return [{"issue_number": num, "title": f"T{num}", "body": "",
+                 "domain": "debugging", "difficulty": "easy", "prompt": "p",
+                 "category": "bug", "state": "ready-for-agent"}]
+
+    @staticmethod
+    def _task_ok(num):
+        return {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+
+    @staticmethod
+    def _repo_mocks(tmp_path):
+        """Hermetic repo_reader stack (same targets as the E2E tests).
+
+        clone_repo is imported *inside* bridge_issues, so the patch target is
+        repo_reader.clone_repo, not a module attribute of issue_bridge.
+        """
+        return (
+            patch("repo_reader.cleanup_stale_caches"),
+            patch("repo_reader.clone_repo", return_value=tmp_path / "repo"),
+            patch("repo_reader.build_codebase_context", return_value=""),
+        )
+
+    @staticmethod
+    def _enter_repo_mocks(tmp_path):
+        """Enter the hermetic repo mocks; returns the stack for cleanup."""
+        stack = TestCrewDispatchPath._repo_mocks(tmp_path)
+        for m in stack:
+            m.start()
+        return stack
+
+    @staticmethod
+    def _exit_repo_mocks(stack):
+        for m in reversed(stack):
+            m.stop()
+
+    @staticmethod
+    def _crew_done(num, tmp_path):
+        """CrewResult-shaped done result with a real report.md."""
+        report = tmp_path / "report.md"
+        report.write_text(
+            "branch=fm/task-%d commit=abc123 base=main@def456\n"
+            "Implemented the fix in the Orca worktree.\n" % num
+        )
+        return SimpleNamespace(
+            crew_id=f"fm-loop-20260811-120000-{num}",
+            status="done",
+            report_path=report,
+            fallback_reason=None,
+            teardown_ok=True,
+            orca_worktree_id="repo::/tmp/worktree",
+        )
+
+    def test_flag_off_is_direct_path(self, monkeypatch, tmp_path, store):
+        """CREW_ENABLED absent → crew never dispatched; run_task called direct."""
+        import issue_bridge
+        calls = []
+        def fake_gh(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["label", "list"]:
+                return "[]"
+            return None
+        monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(400)) as mock_fetch, \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(400)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        mock_crew.assert_not_called()
+        mock_task.assert_called_once()
+        assert "provided_student_output" not in mock_task.call_args[1]
+
+    def test_flag_off_ignores_env_garbage(self, monkeypatch, tmp_path, store):
+        """CREW_ENABLED=garbage → crew off (fail closed), not on."""
+        monkeypatch.setenv("CREW_ENABLED", "banana")
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(401)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(401)):
+            bridge_issues("user/test", crew_enabled=None, store=store)
+        mock_crew.assert_not_called()
+
+    def test_crew_done_feeds_report_as_student_output(
+        self, monkeypatch, tmp_path, store,
+    ):
+        """done → report.md content flows through run_task as the deliverable."""
+        import issue_bridge
+        monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", tmp_path / "crew_runs.json")
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(402)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew", return_value=self._crew_done(402, tmp_path)) as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(402)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+        r = results[0]
+        assert r["status"] == "success"
+        assert r["crew_used"] is True
+        assert r["crew_id"] == "fm-loop-20260811-120000-402"
+        assert mock_crew.call_args[1]["issue_number"] == 402
+        # The crew deliverable substituted for the student model call.
+        assert mock_task.call_args[1]["provided_student_output"] == (
+            tmp_path / "report.md").read_text()
+
+    def test_spawn_failure_falls_back_direct(self, monkeypatch, tmp_path, store):
+        """CrewUnavailableError → same-cycle direct path, reason recorded."""
+        from crew_dispatch import CrewUnavailableError
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(403)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew",
+                   side_effect=CrewUnavailableError("fm-spawn missing")) as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(403)) as mock_task:
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+        assert results[0]["status"] == "success"
+        assert results[0]["crew_used"] is False
+        assert results[0]["crew_fallback_reason"] == "spawn_failure"
+        mock_crew.assert_called_once()
+        mock_task.assert_called_once()
+        assert "provided_student_output" not in mock_task.call_args[1]
+
+    def test_timeout_falls_back_direct(self, monkeypatch, tmp_path, store):
+        """Non-done terminal status (timeout) → direct path, reason recorded."""
+        timeout = SimpleNamespace(
+            crew_id=f"fm-loop-20260811-120000-404", status="timeout",
+            report_path=None, fallback_reason="timeout",
+            teardown_ok=True, orca_worktree_id=None,
+        )
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(404)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew", return_value=timeout), \
+             patch("director.run_task", return_value=self._task_ok(404)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+        assert results[0]["status"] == "success"
+        assert results[0]["crew_fallback_reason"] == "timeout"
+        mock_task.assert_called_once()
+
+    def test_failed_falls_back_direct(self, monkeypatch, tmp_path, store):
+        """Crew 'failed' → direct path, reason recorded."""
+        failed = SimpleNamespace(
+            crew_id=f"fm-loop-20260811-120000-405", status="failed",
+            report_path=None, fallback_reason="crew_failed",
+            teardown_ok=True, orca_worktree_id=None,
+        )
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(405)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew", return_value=failed), \
+             patch("director.run_task", return_value=self._task_ok(405)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+        assert results[0]["status"] == "success"
+        assert results[0]["crew_fallback_reason"] == "crew_failed"
+        mock_task.assert_called_once()
+
+    def test_fallback_also_fails_retries_once(self, monkeypatch, tmp_path, store):
+        """Crew spawn fails AND direct path fails → retry-once carry (R8)."""
+        from crew_dispatch import CrewUnavailableError
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(406)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew",
+                   side_effect=CrewUnavailableError("gateway down")), \
+             patch("director.run_task", return_value={"status": "error", "error": "model unavailable"}):
+            # Attempt 1 → retry scheduled, crew reason preserved.
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+            assert results[0]["status"] == "retry"
+            assert results[0]["retry_attempt"] == 1
+            assert results[0]["crew_fallback_reason"] == "spawn_failure"
+            assert not is_processed(406)
+            # Attempt 2 → final error + processed.
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+            assert results[0]["status"] == "error"
+            assert is_processed(406)
+
+    def test_in_flight_record_skips_issue(self, monkeypatch, tmp_path, store):
+        """An active crew record (interrupted prior cycle) skips, never double-spawns.
+
+        The registry is matched by issue_number, NOT crew_id — crew_id embeds
+        the writing cycle's session id, so a leftover record from a DIFFERENT
+        (interrupted) cycle must still block this issue.
+        """
+        import datetime as _dt
+        import issue_bridge
+        runs = tmp_path / "crew_runs.json"
+        recent = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        runs.write_text(json.dumps([{
+            "crew_id": "fm-loop-20260810-230000-407",  # a PRIOR cycle
+            "issue_number": 407,
+            "status": "running",
+            "started_at": recent,  # fresh → not stale → sweep leaves it
+        }]))
+        monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", runs)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(407)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task") as mock_task:
+            results = bridge_issues(
+                "user/test", crew_enabled=True, store=store,
+                cycle_session_id="loop-20260811-120000",
+            )
+        assert results[0]["status"] == "crew_in_flight"
+        assert results[0]["crew_skip_reason"] == "crew_in_flight"
+        mock_crew.assert_not_called()
+        mock_task.assert_not_called()
+        assert not is_processed(407)
+
+    def test_in_flight_record_sweeps_when_stale(self, monkeypatch, tmp_path, store):
+        """A STALE active record triggers the sweep on skip (unstrands the issue).
+
+        Without this, an interrupted crew would be skipped forever: the sweep
+        only runs inside dispatch_crew, which the skip prevents.
+        """
+        import issue_bridge
+        runs = tmp_path / "crew_runs.json"
+        runs.write_text(json.dumps([{
+            "crew_id": "fm-loop-20260701-000000-407",
+            "issue_number": 407,
+            "status": "running",
+            "started_at": "2026-07-01T00:00:00+00:00",  # > CREW_TIMEOUT old
+        }]))
+        monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", runs)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(407)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.sweep_stale_runs") as mock_sweep, \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task") as mock_task:
+            results = bridge_issues(
+                "user/test", crew_enabled=True, store=store,
+                cycle_session_id="loop-20260811-120000",
+            )
+        assert results[0]["status"] == "crew_in_flight"
+        mock_sweep.assert_called_once()
+        mock_crew.assert_not_called()
+        mock_task.assert_not_called()
+
+    def test_per_cycle_cap_falls_back_direct(self, monkeypatch, tmp_path, store):
+        """After CREW_MAX_PER_CYCLE dispatches, later issues go direct."""
+        done = self._crew_done(408, tmp_path)
+        done2 = self._crew_done(409, tmp_path)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(408) + self._issue(409)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew", side_effect=[done, done2]) as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(408)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues(
+                "user/test", crew_enabled=True, crew_max_per_cycle=1, store=store,
+            )
+        # First issue consumed the cap via crew; second fell back to direct.
+        assert mock_crew.call_count == 1
+        assert len(results) == 2
+        by_num = {r["issue_number"]: r for r in results}
+        assert by_num[408]["crew_used"] is True
+        assert by_num[409]["crew_used"] is False
+        assert by_num[409]["crew_fallback_reason"] == "crew_cap_reached"
+        assert mock_task.call_count == 2
+
+    def test_crew_done_report_missing_falls_back(self, monkeypatch, tmp_path, store):
+        """done without a usable report → treat as fallback, direct path."""
+        no_report = SimpleNamespace(
+            crew_id=f"fm-loop-20260811-120000-410", status="done",
+            report_path=tmp_path / "missing.md", fallback_reason="report_missing",
+            teardown_ok=True, orca_worktree_id="repo::/tmp/wt",
+        )
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(410)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew", return_value=no_report), \
+             patch("director.run_task", return_value=self._task_ok(410)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", crew_enabled=True, store=store)
+        assert results[0]["status"] == "success"
+        assert results[0]["crew_fallback_reason"] == "report_missing"
+        assert results[0]["crew_used"] is False
+        mock_task.assert_called_once()
+
+    # ── flag parsing / registry helpers ─────────────────────────────────
+
+    def test_flag_parsing(self, monkeypatch):
+        for truthy in ("1", "true", "TRUE", "yes", "on", " True "):
+            monkeypatch.setenv("CREW_ENABLED", truthy)
+            assert _crew_enabled_from_env() is True, truthy
+        for falsy in ("", "0", "false", "no", "off", "banana", None):
+            if falsy is None:
+                monkeypatch.delenv("CREW_ENABLED", raising=False)
+            else:
+                monkeypatch.setenv("CREW_ENABLED", falsy)
+            assert _crew_enabled_from_env() is False, falsy
+
+    def test_active_issue_reads_registry(self, tmp_path):
+        runs = tmp_path / "crew_runs.json"
+        runs.write_text(json.dumps([
+            {"crew_id": "fm-loop-a-1", "issue_number": 1, "status": "running"},
+            {"crew_id": "fm-loop-b-1", "issue_number": 1, "status": "blocked"},
+            {"crew_id": "fm-loop-c-2", "issue_number": 2, "status": "done"},
+            {"crew_id": "fm-loop-d-2", "issue_number": 2, "status": "failed"},
+        ]))
+        # Any active record for the issue blocks it — even from another cycle.
+        assert _crew_active_issue(runs, 1) is True
+        assert _crew_active_issue(runs, 2) is False  # only terminal statuses
+        assert _crew_active_issue(runs, 3) is False
+
+    def test_active_issue_missing_file(self, tmp_path):
+        assert _crew_active_issue(tmp_path / "nope.json", 1) is False
+
+    def test_report_content_bounds_and_missing(self, tmp_path):
+        assert _crew_report_content(None) is None
+        assert _crew_report_content(tmp_path / "missing.md") is None
+        big = tmp_path / "big.md"
+        big.write_text("x" * (600 * 1024))
+        assert _crew_report_content(big) is None
+        small = tmp_path / "ok.md"
+        small.write_text("branch=x commit=y base=z")
+        assert _crew_report_content(small) == "branch=x commit=y base=z"
+        blank = tmp_path / "blank.md"
+        blank.write_text("   \n")
+        assert _crew_report_content(blank) is None

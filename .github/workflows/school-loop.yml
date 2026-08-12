@@ -139,6 +139,18 @@ jobs:
       # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
       # /usr/local/bin, so re-expose it (plus common Homebrew paths).
       PATH: /usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+      # U8 crew dispatch: route the student-task through the FirstMate -> Orca
+      # crew before the direct model path. The bridge reads this once per
+      # cycle and falls back to the direct path on spawn failure / timeout /
+      # blocked with retry-once carry, so a broken crew never strands an
+      # issue. fm_doctor (preflight below) already hard-fails missing crew
+      # infra, so by the time the bridge runs the crew path is expected live.
+      CREW_ENABLED: "1"
+      # Crew runs poll for minutes (CREW_TIMEOUT_SECONDS default 900s) and the
+      # job is under a 30-min timeout — cap serial crew dispatches per cycle.
+      # Default is 1; raise only if the cycle budget allows more than one
+      # crew run within the job timeout.
+      CREW_MAX_PER_CYCLE: "1"
       # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
       # bridge. The workflow preflight below already hard-fails missing Nix or
       # verifyShell; this flag additionally escalates an internal/direct gate
@@ -225,7 +237,7 @@ jobs:
           # must survive the fresh checkout each cycle — commit them sanitized.
           # --trim-trajectories caps trajectory history to the newest N files so
           # Layer 2 memory persists without unbounded repo growth.
-          .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json
+          .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json
           # The sanitizer exits non-zero if any consolidation still contains
           # a home path, sensitive field, or recognizable token.
           git config user.name "github-actions[bot]"
@@ -236,7 +248,11 @@ jobs:
             echo "::error::unexpected non-YAML file under data/sessions/consolidation"
             exit 1
           fi
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/trajectories data/sessions/consolidation/*/*.yaml 2>/dev/null || true
+          # data/crew_runs.json is the U8 crew registry — the durable record
+          # the cross-cycle in-flight skip + stale sweep rely on. It MUST be
+          # checkpointed too, or every fresh checkout starts with an empty
+          # registry and an interrupted crew can double-spawn next cycle.
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/trajectories data/sessions/consolidation/*/*.yaml 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "checkpoint: no state changes to commit"
           else

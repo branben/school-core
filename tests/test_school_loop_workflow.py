@@ -76,3 +76,34 @@ def test_workflow_preflight_is_distinct_from_library_soft_skip():
     assert preflight_index < bridge_index
     # The hosted board job does not depend on execute success.
     assert workflow["jobs"]["loop"]["if"] == "always()"
+
+
+def test_u8_crew_dispatch_wired_into_execute_job():
+    """U8: crew path is enabled in the live workflow, bounded per cycle.
+
+    The bridge reads CREW_ENABLED once per cycle; the execute job must set it
+    so the FirstMate -> Orca crew path runs before the direct model path, with
+    a per-cycle cap that fits the 30-min job timeout.
+    """
+    workflow = _workflow()
+    env = workflow["jobs"]["execute"]["env"]
+    assert env.get("CREW_ENABLED") in ("1", 1), "crew dispatch must be on"
+    assert int(env.get("CREW_MAX_PER_CYCLE", 1)) >= 1
+
+
+def test_u8_crew_registry_is_checkpointed():
+    """U8: data/crew_runs.json must survive the fresh checkout each cycle.
+
+    The registry powers the cross-cycle in-flight skip + stale sweep; if it is
+    not sanitized + committed, every cycle starts empty and an interrupted
+    crew can double-spawn next cycle.
+    """
+    workflow = _workflow()
+    step = next(
+        step
+        for step in workflow["jobs"]["execute"]["steps"]
+        if step.get("name") == "Sanitize + commit board state (durable, PII-free)"
+    )
+    command = step["run"]
+    assert "data/crew_runs.json" in command  # sanitizer input
+    assert "data/crew_runs.json" in command.split("git add -f", 1)[1]  # staged

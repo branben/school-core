@@ -590,6 +590,7 @@ def run_task(
     phase_students: Optional[list] = None,
     phase_drop_rate: float = 0.5,
     phase_seeds: Optional[list] = None,
+    provided_student_output: Optional[str] = None,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -621,9 +622,22 @@ def run_task(
                   from ``domain`` plus the other available COMBO_MAP roles).
         phase_drop_rate: Fraction of shared context blocks dropped per phase.
         phase_seeds: Optional per-student seeds for reproducible isolation.
+        provided_student_output: When set (U8 crew path), skip the student model
+                  call entirely and use this text as the student's ``response``.
+                  The review/scoring/bookbag pipeline is unchanged — the crew's
+                  report.md content becomes the deliverable the teachers assess.
+                  Invalid with ``isolated_phases`` (that path already produces a
+                  response and returns early).
     """
     if store is None:
         store = ScoreStore()
+
+    if provided_student_output is not None and isolated_phases:
+        raise ValueError(
+            "provided_student_output is invalid with isolated_phases: "
+            "that path reasons its own response and returns before the "
+            "student model call."
+        )
 
     # ── Isolated reasoning phases (Diversity Collapse fix, arXiv:2604.18005) ──
     # When enabled, run the task through N role "students", each in its own
@@ -860,9 +874,16 @@ def run_task(
             response = f"CE execution completed. Artifacts written to docs/solutions/{ce_result['task_id']}/"
             ce_phases = ce_result["ce_phases"]
     else:
-        # Original execution path
+        # Original execution path. U8: when the crew path already produced a
+        # student deliverable (crew report.md), substitute it for the student
+        # model call — the deliverable was created by a real code-producing
+        # crew, so no model call happens here. Review/scoring treat it exactly
+        # like any other response.
         try:
-            response = call_model(role, prompt, system_prompt=system_prompt)
+            if provided_student_output is not None:
+                response = provided_student_output
+            else:
+                response = call_model(role, prompt, system_prompt=system_prompt)
         except Exception as e:
             error = str(e)
 

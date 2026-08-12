@@ -294,3 +294,59 @@ def test_director_session_id_none_by_default():
         )
     assert out["status"] == "success"
     assert mock_enrich.call_args.kwargs.get("session_id") is None
+
+
+# ── U8: provided_student_output substitution ─────────────────────────────
+
+
+def test_director_provided_student_output_skips_model_call():
+    """provided_student_output substitutes for the student model call (U8).
+
+    The crew's report.md becomes the student deliverable: call_model must NOT
+    be invoked, and the response must be exactly the provided text — the rest
+    of the pipeline (bookbag + two-judge review) runs unchanged on it.
+    """
+    store = MagicMock()
+    store.get_score.return_value = 100
+    crew_report = (
+        "branch=fm/task-77 commit=abc123 base=main@def456\n"
+        "Implemented the fix in the Orca worktree.\n"
+    )
+
+    with patch("director.call_model", return_value="Mocked response") as mock_model, \
+         patch("director._run_two_judge_review", return_value=make_passing_review()) as mock_review:
+        out = director.run_task(
+            prompt="Fix the bug",
+            domain="python-coding",
+            force_agent="coder",
+            store=store,
+            provided_student_output=crew_report,
+        )
+    assert out["status"] == "success"
+    assert out["response"] == crew_report
+    mock_model.assert_not_called()
+    mock_review.assert_called_once()
+    # The teachers review the crew deliverable, not a model answer.
+    assert mock_review.call_args.kwargs["output"] == crew_report
+
+
+def test_director_provided_student_output_invalid_with_isolated_phases():
+    """provided_student_output + isolated_phases is a contract violation."""
+    store = MagicMock()
+    store.get_score.return_value = 100
+    with patch("director.call_model", return_value="Mocked response"), \
+         patch("director._run_two_judge_review", return_value=make_passing_review()):
+        try:
+            director.run_task(
+                prompt="Task",
+                domain="python-coding",
+                force_agent="coder",
+                store=store,
+                isolated_phases=True,
+                provided_student_output="text",
+            )
+        except ValueError as e:
+            assert "provided_student_output" in str(e)
+            assert "isolated_phases" in str(e)
+        else:
+            raise AssertionError("expected ValueError for provided_student_output + isolated_phases")

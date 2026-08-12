@@ -28,6 +28,17 @@ from github_fetcher import fetch_issues, load_config, _gh_command
 from executor import call_model, COMBO_MAP, ExecutorError
 from scoring import ScoreStore
 from school_mail import notify_issue_alert
+# U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
+# monkeypatch the symbols; the crew module itself stays dependency-free of the
+# bridge.
+from crew_dispatch import (
+    CrewResult,
+    CrewUnavailableError,
+    CREW_RUNS_FILE as CREW_RUNS_FILE,
+    DEFAULT_TIMEOUT as CREW_DEFAULT_TIMEOUT,
+    dispatch_crew as dispatch_crew,
+    sweep_stale_runs as sweep_stale_runs,
+)
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
@@ -122,6 +133,16 @@ RETRY_FILE = Path(__file__).parent / "data" / "retry_issues.json"
 # Retry-once: a failed issue gets one retry on the next cycle before it is
 # marked processed + school-failed. attempt 1 → schedule retry; attempt 2 → final.
 RETRY_LIMIT = 2
+
+# U8: crew dispatch flag. Read once per cycle (not per issue) so a cycle is
+# internally consistent. Default OFF in tests and for direct callers; the
+# scheduled school-loop turns it on via CREW_ENABLED=1.
+CREW_ENABLED_DEFAULT = False
+# Per-cycle cap on crew dispatches (each crew run polls for minutes and the
+# job is under a 30-min timeout). Default 1.
+CREW_MAX_PER_CYCLE_DEFAULT = 1
+# Crew statuses that mean "still active — do not start a second one this cycle".
+_CREW_ACTIVE_STATUSES = {"running", "blocked"}
 
 
 def _load_retries() -> dict[int, int]:
@@ -466,12 +487,71 @@ def _run_adversarial_review(
         }
 
 
+def _crew_enabled_from_env() -> bool:
+    """Parse CREW_ENABLED with lenient truthiness (1/true/yes/on → on).
+
+    Anything else — absent, 0, false, or garbage — is OFF. Invalid values must
+    fail closed: an unparseable flag must never silently enable crew dispatch.
+    """
+    raw = os.environ.get("CREW_ENABLED", "")
+    if not raw:
+        return CREW_ENABLED_DEFAULT
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _crew_active_issue(crew_runs_file, issue_number: int) -> bool:
+    """True when the durable registry has an active (running/blocked) record.
+
+    Matches by ``issue_number`` — NOT by crew_id. crew_id embeds the cycle's
+    session id (``fm-loop-<cycle>-<issue>``), so matching it would only ever
+    fire within the cycle that wrote the record; an interrupted prior cycle
+    would never be seen again. The registry is written by crew_dispatch (U7)
+    and checkpointed, so a leftover active record means the crew may still
+    hold the issue's worktree — starting a second crew would double-spawn.
+    Skip the issue this cycle and let the stale sweep / next cycle reclaim it.
+    """
+    try:
+        raw = json.loads(crew_runs_file.read_text()) if crew_runs_file.exists() else []
+        runs = raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        return False
+    return any(
+        int(entry.get("issue_number", -1)) == int(issue_number)
+        and entry.get("status") in _CREW_ACTIVE_STATUSES
+        for entry in runs
+    )
+
+
+def _crew_report_content(report_path) -> Optional[str]:
+    """Read a bounded crew report.md into the student deliverable.
+
+    Bounded read guards against a pathologically large report; an unreadable
+    report falls back to direct execution (the crew produced no usable
+    deliverable).
+    """
+    if report_path is None:
+        return None
+    try:
+        report = Path(report_path)
+        if not report.exists():
+            return None
+        if report.stat().st_size > 512 * 1024:  # 512 KiB hard bound
+            return None
+        content = report.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return content if content.strip() else None
+
+
 def bridge_issues(
     repo: str,
     labels: Optional[List[str]] = None,
     force_agent: Optional[str] = None,
     dry_run: bool = False,
     store: Optional[ScoreStore] = None,
+    crew_enabled: Optional[bool] = None,
+    crew_max_per_cycle: Optional[int] = None,
+    cycle_session_id: Optional[str] = None,
 ) -> list[dict]:
     """Fetch actionable issues and dispatch each as a Director task.
 
@@ -480,11 +560,24 @@ def bridge_issues(
     `store` is injectable for test isolation; when omitted a live ScoreStore
     (data/scores.json) is used in production. Tests MUST pass a temp store to
     avoid polluting the real scores file.
+
+    `crew_enabled` is an explicit knob; None reads CREW_ENABLED from the
+    environment once per cycle (tests pass False to stay on today's path).
+    `crew_max_per_cycle` caps crew dispatches per cycle (default 1).
+    `cycle_session_id` overrides the auto-generated loop-* id (tests use a
+    fixed id so crew_ids and session threading are deterministic).
     """
     from director import run_task, evaluate_and_update
 
     if store is None:
         store = ScoreStore()
+    # U8: read the flag once per cycle so a cycle is internally consistent.
+    crew_enabled = (
+        _crew_enabled_from_env() if crew_enabled is None else bool(crew_enabled)
+    )
+    crew_max_per_cycle = (
+        CREW_MAX_PER_CYCLE_DEFAULT if crew_max_per_cycle is None else int(crew_max_per_cycle)
+    )
     if not repo:
         # school-loop passes --repo "$SCHOOL_REPO" (usually empty) → resolve the
         # repo from the current checkout's origin remote, same as bridge_poll.
@@ -494,6 +587,7 @@ def bridge_issues(
     processed = _load_processed()
     retries = _load_retries()
     results = []
+    crew_dispatched = 0
 
     # U1: one session_id per cycle (not per issue) so Layer 3 archival
     # context can accumulate across the school-loop's sleep/wake cycles and
@@ -501,7 +595,7 @@ def bridge_issues(
     # granularity keeps a manual dispatch + the scheduled cron in the same
     # minute from sharing a key (which would clobber the same consolidation
     # dir if the write side ever runs under a loop-* id).
-    cycle_session_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    cycle_session_id = cycle_session_id or f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
     if not issues:
         sys.stderr.write("[issue_bridge] No actionable issues found.\n")
@@ -548,15 +642,113 @@ def bridge_issues(
         if codebase_ctx:
             enriched_prompt = f"{codebase_ctx}\n\n## Issue\n{issue['prompt']}"
 
-        try:
-            task_result = run_task(
-                prompt=enriched_prompt,
-                domain=issue["domain"],
-                difficulty=issue["difficulty"],
-                force_agent=force_agent,
-                store=store,
-                session_id=cycle_session_id,
+        # ── U8: crew dispatch path ──────────────────────────────────────
+        # When enabled, route the student-task through a real code-producing
+        # crew (FirstMate -> Orca) before the direct model path:
+        #  - done → the crew's report.md becomes the student deliverable and
+        #    flows through the normal review/scoring (no student model call).
+        #  - CrewUnavailableError (spawn failure) or non-done terminal status
+        #    (timeout/failed/blocked) → same-cycle fallback to the direct path;
+        #    the fallback_reason is recorded on the result.
+        #  - Fallback itself fails → existing retry-once semantics carry.
+        #  - An active crew record (interrupted prior cycle) skips the issue;
+        #    a per-cycle cap keeps serial crew polling inside the job timeout.
+        crew_id = f"fm-{cycle_session_id}-{num}"
+        crew_result: Optional[CrewResult] = None
+        crew_fallback_reason: Optional[str] = None
+        crew_used = False
+        crew_skip_reason: Optional[str] = None
+
+        if crew_enabled and _crew_active_issue(CREW_RUNS_FILE, num):
+            crew_skip_reason = "crew_in_flight"
+            sys.stderr.write(f"[issue_bridge] #{num}: crew {crew_id} still active — skipping this cycle\n")
+            # A stale record (crew aborted > CREW_TIMEOUT_SECONDS ago) can
+            # otherwise strand the issue: the sweep only runs inside
+            # dispatch_crew, which the skip prevents. Sweep now so a stale
+            # record is reclaimed and the next cycle can retry the issue.
+            # Best-effort — never blocks the skip path.
+            try:
+                sweep_stale_runs(path=CREW_RUNS_FILE, stale_after=CREW_DEFAULT_TIMEOUT)
+            except Exception as _e_sweep:
+                sys.stderr.write(f"[issue_bridge] crew stale sweep failed for #{num}: {_e_sweep}\n")
+            results.append({
+                "issue_number": num,
+                "title": issue["title"],
+                "domain": issue["domain"],
+                "difficulty": issue["difficulty"],
+                "status": "crew_in_flight",
+                "crew_skip_reason": crew_skip_reason,
+                "crew_id": crew_id,
+            })
+            continue
+
+        if crew_enabled and crew_dispatched >= crew_max_per_cycle:
+            crew_skip_reason = "crew_cap_reached"
+            crew_fallback_reason = crew_skip_reason
+            sys.stderr.write(
+                f"[issue_bridge] #{num}: crew cap ({crew_max_per_cycle}) reached this cycle — direct path\n"
             )
+
+        if crew_enabled and crew_skip_reason is None:
+            crew_dispatched += 1
+            try:
+                crew_result = dispatch_crew(
+                    issue_number=num,
+                    task_text=enriched_prompt,
+                    project_dir=repo_path or Path.cwd(),
+                    cycle_session_id=cycle_session_id,
+                )
+            except CrewUnavailableError as e:
+                crew_fallback_reason = "spawn_failure"
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: crew spawn failed ({e}) — direct fallback\n"
+                )
+            except Exception as e:
+                crew_fallback_reason = "crew_unexpected"
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: crew dispatch raised ({e}) — direct fallback\n"
+                )
+
+        deliverable: Optional[str] = None
+        if crew_result is not None and crew_result.status == "done":
+            deliverable = _crew_report_content(crew_result.report_path)
+            if deliverable is None:
+                crew_fallback_reason = crew_result.fallback_reason or "report_unusable"
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: crew done but no usable report ({crew_fallback_reason}) — direct fallback\n"
+                )
+                crew_result = None
+        elif crew_result is not None:
+            # Non-done terminal status (timeout/failed/blocked) → same-cycle
+            # direct fallback; the crew's own reason rides on the result.
+            crew_fallback_reason = crew_result.fallback_reason or crew_result.status
+            sys.stderr.write(
+                f"[issue_bridge] #{num}: crew {crew_result.status} ({crew_fallback_reason}) — direct fallback\n"
+            )
+
+        try:
+            if crew_result is not None and crew_result.status == "done":
+                # The crew's report.md IS the student deliverable: substitution
+                # through run_task keeps review/scoring/bookbag on one path.
+                crew_used = True
+                task_result = run_task(
+                    prompt=enriched_prompt,
+                    domain=issue["domain"],
+                    difficulty=issue["difficulty"],
+                    force_agent=force_agent,
+                    store=store,
+                    session_id=cycle_session_id,
+                    provided_student_output=deliverable,
+                )
+            else:
+                task_result = run_task(
+                    prompt=enriched_prompt,
+                    domain=issue["domain"],
+                    difficulty=issue["difficulty"],
+                    force_agent=force_agent,
+                    store=store,
+                    session_id=cycle_session_id,
+                )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
             err = str(e)
@@ -573,6 +765,9 @@ def bridge_issues(
                     "status": "retry",
                     "retry_attempt": attempts,
                     "error": err,
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
                 })
                 try:
                     record_run(
@@ -596,6 +791,9 @@ def bridge_issues(
                 "difficulty": issue["difficulty"],
                 "status": "error",
                 "error": err,
+                "crew_id": crew_result.crew_id if crew_result else None,
+                "crew_used": crew_used,
+                "crew_fallback_reason": crew_fallback_reason,
             })
             try:
                 record_run(
@@ -740,6 +938,9 @@ def bridge_issues(
                 "adversarial_review": adversarial_review,
                 "verify_skipped": verify_skipped,
                 "entire_review": entire_review,
+                "crew_id": crew_result.crew_id if crew_result else None,
+                "crew_used": crew_used,
+                "crew_fallback_reason": crew_fallback_reason,
             })
             try:
                 record_run(
@@ -763,6 +964,12 @@ def bridge_issues(
                         # finding count) so the board can surface it; None when
                         # the CLI/clone was unavailable.
                         "entire": entire_summary,
+                        # U8: crew path metadata for surfacing (U9): crew_used
+                        # true when the crew report was the deliverable;
+                        # fallback_reason names spawn/timeout/cap skips.
+                        "crew_id": crew_result.crew_id if crew_result else None,
+                        "crew_used": crew_used,
+                        "crew_fallback_reason": crew_fallback_reason,
                     },
                 )
             except Exception as e_rec:
@@ -784,6 +991,9 @@ def bridge_issues(
                     "status": "retry",
                     "retry_attempt": attempts,
                     "error": err,
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
                 })
                 try:
                     record_run(
@@ -814,6 +1024,9 @@ def bridge_issues(
                     "difficulty": issue["difficulty"],
                     "status": task_result.get("status", "error"),
                     "error": err,
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
                 })
                 try:
                     record_run(
