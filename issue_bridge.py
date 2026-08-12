@@ -18,6 +18,7 @@ Usage:
 
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -206,12 +207,151 @@ def _ensure_school_labels(repo: str) -> None:
         sys.stderr.write(f"[issue_bridge] Failed to ensure school labels: {e}\n")
 
 
+_COMMENT_HOME_RE = re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+")
+_COMMENT_TOKEN_RE = re.compile(
+    r"(?i)\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|bearer\s+[A-Za-z0-9._-]{12,})\b"
+)
+
+
+def _scrub_comment_text(text: str, limit: int = 160) -> str:
+    """Sanitize a text excerpt for a public GitHub comment.
+
+    Home paths are shortened to ``~`` and credential-shaped tokens are
+    redacted — the close comment is visible to anyone with repo read access,
+    so it must not leak PII (same discipline as scripts/sanitize_data.py).
+    """
+    text = text or ""
+    text = text.replace("\n", " ").strip()
+    text = _COMMENT_HOME_RE.sub("~", text)
+    text = _COMMENT_TOKEN_RE.sub("[redacted]", text)
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return text
+
+
+def _build_school_comment(
+    issue: dict,
+    task_result: dict,
+    verification: dict,
+    adversarial_review: dict,
+    verify_skipped: bool,
+    entire_summary: Optional[dict],
+    combined_score: float,
+    crew_used: bool,
+    crew_fallback_reason: Optional[str],
+) -> str:
+    """Render a compact STE close comment from evidence already at hand.
+
+    No extra LLM call: the verdicts, tool outcomes, and the bookbag are all
+    recorded by the time the issue closes, so the comment is deterministic
+    and cheap. Written for a human reader AND a future agent — it says what
+    was done, which tools produced the evidence, and why the school concluded
+    success, with an ELI5 block at the bottom (docs/notification-style-guide.md
+    vocabulary: "the school", "review", "pre-merge check").
+
+    The bookbag is read best-effort from ``task_result["bookbag"]``; a missing
+    or unreadable bookbag omits that section instead of failing the close.
+    """
+    review = task_result.get("review") or {}
+    title = _scrub_comment_text(issue.get("title"), 90) or "(untitled)"
+    agent = task_result.get("agent") or issue.get("agent") or "auto"
+    domain = task_result.get("domain") or issue.get("domain") or "_default"
+    difficulty = task_result.get("difficulty") or issue.get("difficulty") or "medium"
+    response = _scrub_comment_text(task_result.get("response"), 220)
+
+    # ── Evidence bullets ──
+    cto = review.get("cto_verdict") or "n/a"
+    coo = review.get("coo_verdict") or "n/a"
+    review_line = f"- Review: CTO {cto} / COO {coo}"
+    if review.get("accepted") is not None:
+        review_line += f" — {'accepted' if review.get('accepted') else 'not accepted'}"
+
+    adv = adversarial_review or {}
+    adv_line = "- Adversarial review: not run"
+    if adv.get("verdict") is not None:
+        n_findings = len(adv.get("findings") or [])
+        adv_line = (
+            f"- Adversarial review: {adv.get('verdict')} "
+            f"(score {float(adv.get('score') or 0):.0f}, {n_findings} finding(s))"
+        )
+
+    if verify_skipped:
+        verify_line = "- Verify gate: skipped (no compiler/commands)"
+    else:
+        ran = (verification or {}).get("ran")
+        v_verdict = (verification or {}).get("verdict", "PASS")
+        verify_line = f"- Verify gate: {v_verdict}"
+        if ran is not None:
+            verify_line += f" ({ran} command(s))"
+
+    if entire_summary:
+        e_status = entire_summary.get("status") or "n/a"
+        e_findings = entire_summary.get("findings") or 0
+        entire_line = f"- Pre-merge check: {e_status} ({e_findings} finding(s))"
+    else:
+        entire_line = "- Pre-merge check: not run"
+
+    if crew_used:
+        crew_line = "- Crew: yes (FirstMate/Orca worktree)"
+    elif crew_fallback_reason:
+        crew_line = f"- Crew: fell back to direct ({_scrub_comment_text(crew_fallback_reason, 60)})"
+    else:
+        crew_line = "- Crew: not used (direct path)"
+
+    # ── Bookbag summary (best-effort) ──
+    bag_lines: list = []
+    bag_path = task_result.get("bookbag")
+    if bag_path:
+        try:
+            bag = json.loads(Path(bag_path).read_text())
+            bag_summary = (bag.get("summary") or "").strip()
+            if not bag_summary and bag.get("output"):
+                bag_summary = str(bag.get("output"))[:220]
+            if bag_summary:
+                bag_lines.append(_scrub_comment_text(bag_summary, 300))
+            n_files = len(bag.get("files_changed") or [])
+            n_ac = len(bag.get("ac_met") or [])
+            n_block = len(bag.get("blockers") or [])
+            bag_lines.append(
+                f"- Files changed: {n_files} · Acceptance criteria met: {n_ac} · Blockers: {n_block}"
+            )
+        except Exception:
+            bag_lines = []  # unreadable bookbag — omit the section
+
+    lines = [
+        f"✅ Processed by the school — status: success — score: {combined_score:.1f}",
+        "",
+        "**What the school did**",
+        f"- Issue: {title} ({domain}, {difficulty})",
+        f"- Agent: {agent}",
+        review_line,
+        adv_line,
+        verify_line,
+        entire_line,
+        crew_line,
+    ]
+    if response:
+        lines.append(f"- Answer (excerpt): {response}")
+    if bag_lines:
+        lines += ["", "**Bookbag**", *bag_lines]
+    lines += [
+        "",
+        "**In plain words**",
+        "What happened: the school read the issue, produced an answer, and "
+        "checked it. Two reviewers approved it, so the issue is now closed. "
+        "Next step: open the issue to see the details.",
+    ]
+    return "\n".join(lines)
+
+
 def _mark_github_issue(repo: str, issue_number: int, status: str,
-                       score: Optional[float] = None) -> None:
+                       score: Optional[float] = None,
+                       comment: Optional[str] = None) -> None:
     """Reflect a processed issue on GitHub so the repo list shows the school's work.
 
     - ``status == "success"`` → add the ``school-done`` label and close the
-      issue, with the combined score in the close comment.
+      issue, with the combined score in the close comment (or the provided
+      rich comment when given).
     - ``status == "error"`` → add the ``school-failed`` label and leave the
       issue open for human retriage.
 
@@ -225,9 +365,10 @@ def _mark_github_issue(repo: str, issue_number: int, status: str,
         label = SCHOOL_DONE_LABEL if status == "success" else SCHOOL_FAILED_LABEL
         _gh_command(["issue", "edit", str(issue_number), "--repo", repo, "--add-label", label])
         if status == "success":
-            comment = "✅ Processed by Agent School — status: success"
-            if score is not None:
-                comment += f" — score: {score:.1f}"
+            if comment is None:
+                comment = "✅ Processed by the school — status: success"
+                if score is not None:
+                    comment += f" — score: {score:.1f}"
             _gh_command(["issue", "close", str(issue_number), "--repo", repo, "--comment", comment])
     except Exception as e:
         sys.stderr.write(f"[issue_bridge] Failed to update GitHub issue #{issue_number}: {e}\n")
@@ -1038,7 +1179,14 @@ def bridge_issues(
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
-            _mark_github_issue(repo, num, "success", score=combined_score)
+            _mark_github_issue(
+                repo, num, "success", score=combined_score,
+                comment=_build_school_comment(
+                    issue, task_result, verification, adversarial_review,
+                    verify_skipped, entire_summary, combined_score,
+                    crew_used, crew_fallback_reason,
+                ),
+            )
             retries.pop(num, None)
             processed.add(num)
         else:

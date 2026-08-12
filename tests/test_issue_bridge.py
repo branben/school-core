@@ -23,6 +23,8 @@ from issue_bridge import (
     _heuristic_score,
     verify_task_output,
     _mark_github_issue,
+    _build_school_comment,
+    _scrub_comment_text,
     _ensure_school_labels,
     _load_retries,
     _save_retries,
@@ -1341,6 +1343,170 @@ class TestE2EPipeline:
         assert 0 <= combined <= 100
         # Combined should be broad-band: exec 80 + review 100 + heuristic 16 → at least 40
         assert combined > 0
+
+
+# ── Rich close comment (STE evidence summary) ─────────────────────────────
+
+
+class TestSchoolComment:
+    """_build_school_comment renders a compact STE evidence summary.
+
+    The close comment must tell a human AND a future agent what the school
+    actually did: verdicts, which tools produced the evidence, a bookbag
+    summary, and an ELI5 line. It must be deterministic (no extra LLM call)
+    and must never leak PII (home paths / tokens scrubbed).
+    """
+
+    ISSUE = {
+        "issue_number": 80, "title": "Make escalation log instance-safe",
+        "body": "", "domain": "code-implementation", "difficulty": "medium",
+        "prompt": "implement", "category": "feature", "state": "ready-for-agent",
+    }
+
+    def _task(self, **kw):
+        task = {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "code-implementation", "difficulty": "medium",
+            "prompt": "implement",
+            "response": "Refactored escalation_log.py to use instance state.",
+            "review": {
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 89.7, "accepted": True,
+            },
+            "bookbag": "/nonexistent/bookbag.json",  # absent → section omitted
+        }
+        task.update(kw)
+        return task
+
+    def test_renders_verdicts_tools_and_eli5(self):
+        comment = _build_school_comment(
+            self.ISSUE, self._task(),
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={
+                "verdict": "GOOD", "score": 88.0,
+                "findings": [{"section": "a"}, {"section": "b"}],
+            },
+            verify_skipped=False,
+            entire_summary={"status": "pass", "findings": 0},
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "score: 89.7" in comment
+        assert "CTO PASS / COO PASS" in comment
+        assert "accepted" in comment
+        assert "Adversarial review: GOOD" in comment
+        assert "2 finding(s)" in comment
+        assert "Verify gate: PASS (1 command(s))" in comment
+        assert "Pre-merge check: pass (0 finding(s))" in comment
+        assert "Crew: not used (direct path)" in comment
+        # ELI5 block at the bottom
+        assert comment.strip().endswith(
+            "Next step: open the issue to see the details."
+        )
+        assert "What happened:" in comment
+        # No bookbag file → section omitted, not crashed
+        assert "**Bookbag**" not in comment
+
+    def test_includes_bookbag_summary_when_readable(self, tmp_path):
+        bag = tmp_path / "bag.json"
+        bag.write_text(json.dumps({
+            "summary": "Made the log path a per-instance field, not a global.",
+            "files_changed": ["escalation_log.py"],
+            "ac_met": ["no globals", "tests pass"],
+            "blockers": [],
+            "output": "ignored when summary present",
+        }))
+        comment = _build_school_comment(
+            self.ISSUE, self._task(bookbag=str(bag)),
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "pass", "findings": 0},
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "**Bookbag**" in comment
+        assert "per-instance field" in comment
+        assert "Files changed: 1" in comment
+        assert "Acceptance criteria met: 2" in comment
+        assert "Blockers: 0" in comment
+
+    def test_bookbag_output_fallback_when_summary_empty(self, tmp_path):
+        bag = tmp_path / "bag2.json"
+        bag.write_text(json.dumps({
+            "summary": "",  # empty → falls back to output excerpt
+            "output": "Refactored the log path into an instance field.\nTests: 12 passed.",
+            "files_changed": ["escalation_log.py"],
+            "ac_met": [], "blockers": ["needs manual check"],
+        }))
+        comment = _build_school_comment(
+            self.ISSUE, self._task(bookbag=str(bag)),
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "fail", "findings": 3},
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "**Bookbag**" in comment
+        assert "instance field" in comment  # output excerpt used
+        assert "Blockers: 1" in comment
+        assert "Pre-merge check: fail (3 finding(s))" in comment
+
+    def test_crew_fallback_and_skipped_verify_rendered(self):
+        comment = _build_school_comment(
+            self.ISSUE, self._task(),
+            verification={"verdict": "PASS", "score": 90.0, "ran": 0},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=True,
+            entire_summary=None,
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason="spawn timed out",
+        )
+        assert "Verify gate: skipped" in comment
+        assert "Pre-merge check: not run" in comment
+        assert "fell back to direct (spawn timed out)" in comment
+        assert "Adversarial review: not run" not in comment
+
+    def test_scrub_removes_home_paths_and_tokens(self):
+        task = self._task(response=(
+            "Fixed in /Users/brandonbennett/school-core/escalation_log.py; "
+            "key sk-1f24b3ef61d2e1f9-a3db47-823f823a removed."
+        ))
+        comment = _build_school_comment(
+            self.ISSUE, task,
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "pass", "findings": 0},
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "/Users/brandonbennett" not in comment
+        assert "sk-1f24b3ef61d2e1f9-a3db47-823f823a" not in comment
+        assert "[redacted]" in comment
+
+    def test_mark_github_issue_uses_rich_comment(self, monkeypatch):
+        calls = []
+        def fake_gh(args, timeout=30):
+            calls.append(list(args))
+            if args[:2] == ["label", "list"]:
+                return "[]"
+            return None
+        monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+        _mark_github_issue("acme/test", 7, "success", score=89.7,
+                           comment=_build_school_comment(
+                               self.ISSUE, self._task(),
+                               verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+                               adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+                               verify_skipped=False,
+                               entire_summary={"status": "pass", "findings": 0},
+                               combined_score=89.7,
+                               crew_used=False, crew_fallback_reason=None,
+                           ))
+        close = next(" ".join(c) for c in calls if c and c[0] == "issue" and c[1] == "close")
+        assert "CTO PASS / COO PASS" in close  # rich comment used
+        assert "In plain words" in close
 
 
 # ── GitHub Issue Sync (close + lifecycle labels) ──────────────────────────
