@@ -51,7 +51,8 @@ def test_two_judge_review_persists_verdict_to_per_repo_namespace():
         repo=repo,
     )
 
-    with patch("director.AdversarialReviewer", _FakeReviewer):
+    with patch("director.AdversarialReviewer", _FakeReviewer), \
+         patch("director.call_model", side_effect=RuntimeError("no model in tests")):
         result = _run_two_judge_review(
             bead=bead,
             output="here is the doc",
@@ -60,6 +61,9 @@ def test_two_judge_review_persists_verdict_to_per_repo_namespace():
         )
 
     assert result["accepted"] is True
+    # Narrative synthesis is best-effort — no model in tests → None, not crash.
+    assert result.get("cto_narrative") is None
+    assert result.get("coo_narrative") is None
 
     # Verdict MUST be persisted to the per-repo namespace.
     bag = read_bookbag(bead, repo=repo)
@@ -85,7 +89,8 @@ def test_two_judge_review_defaults_to_global_namespace():
         repo=REPO_GLOBAL,
     )
 
-    with patch("director.AdversarialReviewer", _FakeReviewer):
+    with patch("director.AdversarialReviewer", _FakeReviewer), \
+         patch("director.call_model", side_effect=RuntimeError("no model in tests")):
         _run_two_judge_review(
             bead=bead,
             output="here is the doc",
@@ -95,3 +100,39 @@ def test_two_judge_review_defaults_to_global_namespace():
     bag = read_bookbag(bead, repo=REPO_GLOBAL)
     assert bag is not None
     assert bag["cto_verdict"] == "PASS"
+
+
+def test_narrative_synthesis_persists_to_bookbag():
+    """A successful narrative call lands in the per-repo bookbag."""
+    import json as _json
+    bead = "bead-narrative"
+    repo = "branben/sound-royale-ny"
+
+    write_bookbag(
+        bead,
+        student="coder",
+        domain="documentation",
+        difficulty="easy",
+        task="write a doc",
+        output="here is the doc",
+        repo=repo,
+    )
+
+    fake_json = _json.dumps({
+        "cto": {"summary": "Solid logic.", "liked": "Clean.", "lesson": "Keep it simple."},
+        "coo": {"summary": "Covers the issue.", "liked": "Complete."},
+    })
+
+    with patch("director.AdversarialReviewer", _FakeReviewer), \
+         patch("director.call_model", return_value=fake_json):
+        result = _run_two_judge_review(
+            bead=bead,
+            output="here is the doc",
+            task={"domain": "documentation", "difficulty": "easy"},
+            repo=repo,
+        )
+
+    assert result["cto_narrative"]["summary"] == "Solid logic."
+    assert result["coo_narrative"]["liked"] == "Complete."
+    bag = read_bookbag(bead, repo=repo)
+    assert bag["cto_narrative"]["lesson"] == "Keep it simple."

@@ -318,6 +318,29 @@ def _build_school_comment(
         except Exception:
             bag_lines = []  # unreadable bookbag — omit the section
 
+    # ── Per-judge narrative collapsible sections (best-effort) ──
+    # Synthesized at review time (director) and persisted on the review dict
+    # and the bookbag. Absent narratives (legacy runs / synthesis failure)
+    # simply omit the collapsible blocks — the compact bullets above always
+    # carry the verdicts.
+    judge_blocks: list = []
+    coo_narrative = (review.get("coo_narrative") or {})
+    cto_narrative = (review.get("cto_narrative") or {})
+    if coo_narrative:
+        judge_blocks.append(
+            _render_judge_block(
+                "COO", "completeness + acceptance", review,
+                coo_narrative, "conversational",
+            )
+        )
+    if cto_narrative:
+        judge_blocks.append(
+            _render_judge_block(
+                "CTO", "correctness + security", review,
+                cto_narrative, "technical", lesson=True,
+            )
+        )
+
     lines = [
         f"✅ Processed by the school — status: success — score: {combined_score:.1f}",
         "",
@@ -334,6 +357,8 @@ def _build_school_comment(
         lines.append(f"- Answer (excerpt): {response}")
     if bag_lines:
         lines += ["", "**Bookbag**", *bag_lines]
+    if judge_blocks:
+        lines += ["", "**Judge notes**", *judge_blocks]
     lines += [
         "",
         "**In plain words**",
@@ -341,6 +366,46 @@ def _build_school_comment(
         "checked it. Two reviewers approved it, so the issue is now closed. "
         "Next step: open the issue to see the details.",
     ]
+    return "\n".join(lines)
+
+
+def _render_judge_block(
+    judge: str,
+    lenses: str,
+    review: dict,
+    narrative: dict,
+    tone: str,
+    lesson: bool = False,
+) -> str:
+    """Render one judge's narrative as a GitHub collapsible ``<details>`` block.
+
+    Each judge gets its own persona: ``tone`` names the voice (conversational
+    for COO, technical for CTO), and the CTO block additionally carries a
+    "what to learn from this" line. Everything is scrubbed for the public
+    comment. Returns an empty string if the narrative carries no content.
+    """
+    verdict = review.get("cto_verdict") if judge == "CTO" else review.get("coo_verdict")
+    score = review.get("cto_score") if judge == "CTO" else review.get("coo_score")
+    score_txt = f"score {float(score):.0f}" if isinstance(score, (int, float)) else ""
+    # Distinct per-judge marker: CTO is technical (👔), COO conversational (🗣️).
+    marker = "👔" if tone == "technical" else "🗣️"
+    lines = [
+        f"<details>",
+        f"<summary>{marker} {judge} review — {lenses} ({verdict or 'n/a'}{', ' + score_txt if score_txt else ''})</summary>",
+        "",
+    ]
+    if narrative.get("summary"):
+        lines.append(f"**Lens summary:** {_scrub_comment_text(narrative['summary'], 400)}")
+        lines.append("")
+    for label, key in (("What I liked", "liked"), ("Could do better", "improve")):
+        if narrative.get(key):
+            lines.append(f"- **{label}:** {_scrub_comment_text(narrative[key], 300)}")
+    for label, key in (("Why it passed", "why_passed"), ("Why it failed", "why_failed")):
+        if narrative.get(key):
+            lines.append(f"- **{label}:** {_scrub_comment_text(narrative[key], 300)}")
+    if lesson and narrative.get("lesson"):
+        lines.append(f"- **What to learn from this:** {_scrub_comment_text(narrative['lesson'], 300)}")
+    lines.append("</details>")
     return "\n".join(lines)
 
 

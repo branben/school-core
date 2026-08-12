@@ -1,3 +1,4 @@
+import json
 import re
 import sys
 import yaml
@@ -24,6 +25,7 @@ from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO
 from adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
     VerificationCoevolution, CoevolutionReport, ReviewResult,
+    extract_balanced_json,
 )
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec
@@ -419,6 +421,28 @@ def _run_two_judge_review(
         f"{'ACCEPTED' if accepted else 'REJECTED'}\n"
     )
 
+    # ── Per-judge narrative (best-effort, ONE extra call) ──
+    # The structured verdicts/findings are machine-readable but not
+    # human-readable. Synthesize a short conversational note per judge —
+    # CTO (correctness/security tone) and COO (operational/completeness
+    # tone) — so a human OR an agent reading the close comment can see what
+    # each reviewer actually thought. Best-effort: a model failure yields
+    # None narratives and the comment simply omits the collapsible sections
+    # (the compact verdict bullets above always survive).
+    cto_narrative, coo_narrative = _synthesize_judge_narratives(
+        _call_model=_call_model,
+        task=task,
+        output=output,
+        cto_verdict=cto_verdict, cto_score=cto_result.score, cto_lens=cto_result.lens_used,
+        coo_verdict=coo_verdict, coo_score=coo_result.score, coo_lens=coo_result.lens_used,
+        cto_findings=[f.to_dict() for f in cto_result.findings],
+        coo_findings=[f.to_dict() for f in coo_result.findings],
+    )
+    if cto_narrative:
+        update_bookbag(bead, cto_narrative=cto_narrative, repo=repo)
+    if coo_narrative:
+        update_bookbag(bead, coo_narrative=coo_narrative, repo=repo)
+
     return {
         "cto_verdict": cto_verdict,
         "coo_verdict": coo_verdict,
@@ -428,7 +452,82 @@ def _run_two_judge_review(
         "findings": [f.to_dict() for f in all_findings],
         "accepted": accepted,
         "coevolution": coevolution_report.to_dict() if coevolution_report else None,
+        "cto_narrative": cto_narrative,
+        "coo_narrative": coo_narrative,
     }
+
+
+def _synthesize_judge_narratives(
+    _call_model,
+    task: dict,
+    output: str,
+    cto_verdict: str, cto_score: float, cto_lens: str,
+    coo_verdict: str, coo_score: float, coo_lens: str,
+    cto_findings: list,
+    coo_findings: list,
+):
+    """One best-effort LLM call producing short CTO + COO narrative blocks.
+
+    Returns ``(cto_narrative, coo_narrative)`` — dicts or None on any
+    failure. The prompt demands JSON-only output; the narrative is written
+    for a human reader AND a future agent (plain sentences, light STE, no
+    internal jargon). The CTO block carries a "what to learn from this"
+    line; the COO block is more conversational. Findings are summarized
+    (not pasted) so the call stays small and cheap.
+    """
+    def _compact(findings):
+        if not findings:
+            return "none"
+        lines = []
+        for f in findings[:5]:
+            sev = (f.get("severity") or "LOW")
+            desc = (f.get("description") or "")[:180]
+            lines.append(f"- {sev}: {desc}")
+        if len(findings) > 5:
+            lines.append(f"- … +{len(findings) - 5} more")
+        return "\n".join(lines)
+
+    sys_prompt = (
+        "You are the review panel of a small software school. Two reviewers "
+        "(CTO and COO) just judged a student's work. Write their notes.\n\n"
+        "Rules:\n"
+        "- Plain, simple English. Short sentences. Light STE.\n"
+        "- Be honest and specific, but kind — this is feedback to a student.\n"
+        "- CTO speaks with a technical, direct tone (correctness + security).\n"
+        "- COO speaks conversationally (completeness + acceptance criteria).\n"
+        "- Do NOT invent findings that are not listed.\n"
+        "- Respond with ONLY valid JSON. No markdown fences.\n\n"
+        '{"cto": {"summary": "2-3 sentence lens review summary", '
+        '"liked": "what was done well", "improve": "what could be better", '
+        '"why_passed": "only if PASS, why it passed", '
+        '"why_failed": "only if FAIL, why it failed", '
+        '"lesson": "what to learn from this"}, '
+        '"coo": {"summary": "2-3 sentence lens review summary", '
+        '"liked": "what was done well", "improve": "what could be better", '
+        '"why_passed": "only if PASS, why it passed", '
+        '"why_failed": "only if FAIL, why it failed"}}'
+    )
+    user_prompt = (
+        f"[TASK]\nTitle: {task.get('title', 'n/a')}\n"
+        f"Domain: {task.get('domain', 'n/a')} · Difficulty: {task.get('difficulty', 'n/a')}\n\n"
+        f"[CTO REVIEW] verdict={cto_verdict} score={cto_score:.0f} lenses={cto_lens}\n"
+        f"Findings:\n{_compact(cto_findings)}\n\n"
+        f"[COO REVIEW] verdict={coo_verdict} score={coo_score:.0f} lenses={coo_lens}\n"
+        f"Findings:\n{_compact(coo_findings)}\n\n"
+        f"[STUDENT OUTPUT (first 1200 chars)]\n{output[:1200]}"
+    )
+    try:
+        raw = _call_model(user_prompt, sp=sys_prompt, timeout=60)
+        block = extract_balanced_json(raw, "{", "}")
+        parsed = json.loads(block)
+        cto = parsed.get("cto") or {}
+        coo = parsed.get("coo") or {}
+        cto_narrative = {k: (v or "").strip() for k, v in cto.items() if isinstance(v, str) and v.strip()}
+        coo_narrative = {k: (v or "").strip() for k, v in coo.items() if isinstance(v, str) and v.strip()}
+        return (cto_narrative or None), (coo_narrative or None)
+    except Exception as e:
+        sys.stderr.write(f"[director] Judge-narrative synthesis skipped: {e}\n")
+        return None, None
 
 
 def _acceptance_checks_from_spec(task: dict, repo: str = REPO_GLOBAL) -> list[dict]:

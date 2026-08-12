@@ -1486,6 +1486,122 @@ class TestSchoolComment:
         assert "sk-1f24b3ef61d2e1f9-a3db47-823f823a" not in comment
         assert "[redacted]" in comment
 
+    def test_renders_collapsible_judge_sections(self):
+        task = self._task()
+        task["review"] = {
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "cto_score": 100.0, "coo_score": 79.0,
+            "combined_score": 89.5, "accepted": True,
+            "cto_narrative": {
+                "summary": "Logic is sound and the fix is safe.",
+                "liked": "Clear error handling.",
+                "improve": "Add one more edge-case test.",
+                "why_passed": "No correctness or security findings.",
+                "lesson": "Verify error paths even when happy path works.",
+            },
+            "coo_narrative": {
+                "summary": "Covers the issue end to end.",
+                "liked": "Acceptance criteria all met.",
+                "improve": "Could document the new flag.",
+                "why_passed": "Completeness checks passed.",
+            },
+        }
+        comment = _build_school_comment(
+            self.ISSUE, task,
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "pass", "findings": 0},
+            combined_score=89.5,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "**Judge notes**" in comment
+        # COO block: conversational, no lesson line
+        assert "<details>" in comment
+        assert "COO review — completeness + acceptance (PASS, score 79)" in comment
+        assert "Covers the issue end to end." in comment
+        assert "Could document the new flag." in comment
+        assert "Why it passed:** Completeness checks passed" in comment
+        # CTO block: technical tone + lesson line
+        assert "CTO review — correctness + security (PASS, score 100)" in comment
+        assert "Logic is sound and the fix is safe." in comment
+        assert "Clear error handling." in comment
+        assert "Add one more edge-case test." in comment
+        assert "No correctness or security findings." in comment
+        assert "What to learn from this:** Verify error paths" in comment
+        assert "</details>" in comment
+        # ELI5 still at the bottom
+        assert comment.strip().endswith("Next step: open the issue to see the details.")
+
+    def test_fail_verdict_renders_why_failed_and_distinct_markers(self):
+        task = self._task()
+        task["review"] = {
+            "cto_verdict": "FAIL", "coo_verdict": "FAIL",
+            "cto_score": 30.0, "coo_score": 40.0,
+            "combined_score": 35.0, "accepted": False,
+            "cto_narrative": {
+                "summary": "Found a logic bug.",
+                "liked": "Tests exist.",
+                "improve": "Fix the off-by-one.",
+                "why_failed": "Correctness check failed.",
+                "lesson": "Trace edge cases before submitting.",
+            },
+            "coo_narrative": {
+                "summary": "Missed the acceptance criteria.",
+                "improve": "Cover the negative path.",
+                "why_failed": "Incomplete coverage.",
+            },
+        }
+        comment = _build_school_comment(
+            self.ISSUE, task,
+            verification={"verdict": "FAIL", "score": 20.0, "ran": 1},
+            adversarial_review={"verdict": "FAIL", "score": 10.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "fail", "findings": 1},
+            combined_score=35.0,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        # FAIL narratives render the why_failed line, not why_passed.
+        assert "Why it failed:** Correctness check failed." in comment
+        assert "Why it failed:** Incomplete coverage." in comment
+        assert "Why it passed" not in comment
+        # Distinct per-judge markers: CTO technical 👔, COO conversational 🗣️.
+        assert "👔 CTO review" in comment
+        assert "🗣️ COO review" in comment
+        assert "What to learn from this:** Trace edge cases" in comment
+
+    def test_judge_sections_absent_when_no_narrative(self):
+        comment = _build_school_comment(
+            self.ISSUE, self._task(),  # review dict has no narratives
+            verification={"verdict": "PASS", "score": 90.0, "ran": 1},
+            adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
+            verify_skipped=False,
+            entire_summary={"status": "pass", "findings": 0},
+            combined_score=89.7,
+            crew_used=False, crew_fallback_reason=None,
+        )
+        assert "**Judge notes**" not in comment
+        assert "<details>" not in comment
+        assert "CTO PASS / COO PASS" in comment  # compact bullets survive
+
+    def test_imperfect_narrative_json_returns_none(self, monkeypatch):
+        """A fenced/unparseable synthesis response must degrade to None, not crash."""
+        from director import _synthesize_judge_narratives
+        calls = []
+        def fake_call(prompt, sp=None, timeout=60):
+            calls.append(prompt)
+            return "```json\n{\"cto\": {\"summary\": \"ok\"} \n"  # unbalanced → extract fails
+        result = _synthesize_judge_narratives(
+            _call_model=fake_call,
+            task={"title": "t", "domain": "d", "difficulty": "easy"},
+            output="out",
+            cto_verdict="PASS", cto_score=90.0, cto_lens="correctness",
+            coo_verdict="PASS", coo_score=80.0, coo_lens="completeness",
+            cto_findings=[], coo_findings=[],
+        )
+        assert result == (None, None)
+        assert calls, "the model should have been called once"
+
     def test_mark_github_issue_uses_rich_comment(self, monkeypatch):
         calls = []
         def fake_gh(args, timeout=30):
