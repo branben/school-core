@@ -1,5 +1,12 @@
 [
   {
+    "issue_number": 50,
+    "title": "test: add unit tests for _crew_enabled_from_env truthiness",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 27,
     "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",

@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "crew_id": "fm-loop-20260812-094604-50",
+    "issue_number": 50,
+    "status": "timeout",
+    "started_at": "2026-08-12T09:46:17.381792+00:00",
+    "orca_worktree_present": true,
+    "fallback_reason": "timeout",
+    "teardown_ok": true,
+    "report_path": null
+  }
+]

@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
+    "title": "feat: add audit_retries.py — health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -305,5 +305,24 @@
     "crew_id": null,
     "crew_used": false,
     "crew_fallback_reason": "spawn_failure"
+  },
+  {
+    "issue": 50,
+    "status": "success",
+    "agent": "coder",
+    "score": 89.69200000000001,
+    "trajectory": "data/trajectories/20260812_100136_965453--python-testing--coder.json",
+    "title": "test: add unit tests for _crew_enabled_from_env truthiness",
+    "domain": "python-testing",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": "fm-loop-20260812-094604-50",
+    "crew_used": false,
+    "crew_fallback_reason": "timeout",
+    "timestamp": "2026-08-12T10:02:47.169916+00:00"
   }
 ]
