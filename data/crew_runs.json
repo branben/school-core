@@ -15,5 +15,57 @@
     "status": "spawn_failed",
     "fallback_reason": "spawn_failure",
     "started_at": "2026-08-12T14:24:22.518371+00:00"
+  },
+  {
+    "crew_id": "fm-loop-20260812-223718-58",
+    "issue_number": 58,
+    "status": "failed",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "score": 19.77722751,
+      "school_role": "Student",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 0,
+      "gate_max": 24,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "schema_version": 1
+    },
+    "started_at": "2026-08-12T22:37:32.011402+00:00",
+    "orca_worktree_present": true,
+    "fallback_reason": "artifact_identity_mismatch",
+    "teardown_ok": true,
+    "report_path": null
   }
 ]
