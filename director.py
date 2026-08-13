@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from scoring import ScoreStore, GATES, EFCScorer
+from scoring import ScoreStore, GATES
 from routing import route_task
 from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFoundError
 from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
 from trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
-from engram_adapter import engram_available, save_trajectory as engram_save, delete_observation
+from engram_adapter import engram_available
 from training.lora_pipeline import has_adapter
 from cocoindex_client import cocoindex_available
 from context_orchestrator import DEFAULT_VAULT, enrich_prompt
@@ -1433,111 +1433,16 @@ def evaluate_and_update(
     evaluation: str = None,
     store: ScoreStore = None,
 ) -> dict:
-    if store is None:
-        store = ScoreStore()
+    """Compatibility façade for the extracted score finalizer."""
+    from score_finalizer import finalize_score
 
-    if result.get("status") == "blocked":
-        return result
-
-    agent = result["agent"]
-    domain = result["domain"]
-
-    # Async bridge runs attach the teacher review before calling this function;
-    # synchronous runs already attached it above. The helper is idempotent and
-    # closes the same feedback loop for both paths.
-    _attach_teacher_evidence(result)
-
-    if result.get("status") == "error":
-        task_score = 0.0
-
-    # ── EFC Scoring (U1) ──
-    # Decompose task_score into Informative × Valid × Retained factors.
-    # The composite score replaces raw task_score for the agent update,
-    # so failed tasks (V=0) or empty responses (R=0) correctly produce 0.
-    response = result.get("response", "") or ""
-    efc = EFCScorer.score(task_score, response)
-    effective_score = efc.composite
-
-    old = store.get_score(agent, domain)
-    new = store.update_score(agent, domain, effective_score)
-    old_gate = store.gate_for_score(old)
-    new_gate = store.gate_for_score(new)
-
-    crossed = None
-    for gname, gthr in sorted(GATES.items(), key=lambda x: x[1]):
-        if old < gthr <= new:
-            crossed = gname
-
-    # ── Compliance Tracking (U4) ──
-    had_error = result.get("status") == "error" or result.get("error") is not None
-    routed = True
-    attempted = len(response.strip()) > 0
-    completed = not had_error
-    scored = task_score > 0
-    compliance_score = round(sum(1 for d in [routed, attempted, completed, scored] if d) / 4.0 * 100, 2)
-
-    trajectory_path = result.get("trajectory")
-    if trajectory_path:
-        import json
-        with open(trajectory_path) as f:
-            traj = json.load(f)
-        traj["task_score"] = task_score
-        traj["efc"] = {
-            "informative": efc.informative,
-            "valid": efc.valid,
-            "retained": efc.retained,
-            "composite": efc.composite,
-        }
-        traj["compliance"] = {
-            "routed": routed,
-            "attempted": attempted,
-            "completed": completed,
-            "scored": scored,
-            "score": compliance_score,
-        }
-        traj["old_score"] = old
-        traj["new_score"] = new
-        traj["evaluation"] = evaluation
-        with open(trajectory_path, "w") as f:
-            json.dump(traj, f, indent=2, ensure_ascii=False)
-
-        if engram_available():
-            old_obs_id = traj.get("engram_obs_id")
-            if old_obs_id:
-                delete_observation(old_obs_id)
-            new_obs_id = engram_save(traj, trajectory_path)
-            if new_obs_id:
-                traj["engram_obs_id"] = new_obs_id
-                with open(trajectory_path, "w") as f:
-                    json.dump(traj, f, indent=2, ensure_ascii=False)
-
-    result["old_score"] = old
-    result["new_score"] = new
-    result["gate_crossed"] = crossed
-    result["task_score"] = task_score
-    result["efc_score"] = efc.composite
-    result["compliance"] = {
-        "score": compliance_score,
-        "dimensions": {
-            "routed": routed,
-            "attempted": attempted,
-            "completed": completed,
-            "scored": scored,
-        },
-    }
-    # Log activity
-    if crossed:
-        get_log().gate_cross(
-            agent=agent, domain=domain,
-            from_gate=old_gate, to_gate=new_gate,
-            score=new,
-        )
-    get_log().finish_task(
-        agent=agent, domain=domain,
-        score=new, success=(task_score >= 40),
-        gate_crossed=crossed,
+    return finalize_score(
+        result,
+        task_score,
+        evaluation=evaluation,
+        store=store,
+        attach_teacher_evidence=_attach_teacher_evidence,
     )
-    return result
 
 
 def get_training_data(domain: str, min_score: float = 50.0) -> list:

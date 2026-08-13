@@ -232,6 +232,7 @@ echo "hello"
 # ── Orca Execution Tests (require running Orca) ──────────────────────────────
 
 
+@pytest.mark.live
 @skip_without_orca
 class TestOrcaExecution:
     """Test the Orca sandbox with real code that exercises different paths.
@@ -462,6 +463,7 @@ class TestExecutionResult:
 # ── Conductor Integration Test ────────────────────────────────────────────────
 
 
+@pytest.mark.live
 class TestConductorOrcaFlow:
     """End-to-end test: run a task through the conductor with Orca execution.
 
@@ -532,6 +534,7 @@ class TestConductorOrcaFlow:
 # ── Worktree Disposal Tests ──────────────────────────────────────────────────
 
 
+@pytest.mark.live
 @skip_without_orca
 class TestWorktreeDisposal:
     """Test close_worktree() against the native Orca CLI contract.
@@ -620,6 +623,7 @@ class TestWorktreeDisposal:
         assert dummy_worktree.exists(), "Mock never removed it"
 
 
+@pytest.mark.live
 @skip_without_orca
 class TestCreateWorktreeRepoPath:
     """create_worktree() must scope --repo to the target clone for cross-repo dispatch."""

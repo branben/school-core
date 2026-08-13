@@ -33,7 +33,12 @@ from school_mail import notify_issue_alert
 from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
 from crew_admission import decide_admission
-from shadow_routing import build_shadow_evidence, load_shadow_history
+from shadow_routing import load_shadow_history
+from bridge_seams import (
+    build_shadow_routing_packet as _build_shadow_routing_packet,
+    observability_fields as _observability_fields,
+    strict_gate_failure as _strict_gate_failure,
+)
 # U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
 # monkeypatch the symbols; the crew module itself stays dependency-free of the
 # bridge.
@@ -444,50 +449,74 @@ def _mark_github_issue(repo: str, issue_number: int, status: str,
         sys.stderr.write(f"[issue_bridge] Failed to update GitHub issue #{issue_number}: {e}\n")
 
 
-def _observability_fields(task_result: dict) -> dict:
-    """Return bounded persona/review evidence for durable run records."""
-    fields = {}
-    for key in ("capability", "teacher_evidence"):
-        if key in task_result:
-            fields[key] = task_result.get(key)
-    return fields
-
-
-def _build_shadow_routing_packet(
-    task_result: dict,
-    issue: dict,
-    score: float,
-    retry_count: int,
-    history: list[dict],
-    candidates,
+def _prepare_run_entry(
+    entry: dict,
+    metrics: Optional[PipelineMetrics] = None,
 ) -> dict:
-    """Build observational routing evidence without changing route selection."""
-    current = {
-        "agent": task_result.get("agent"),
-        "score": score,
-        "status": task_result.get("status"),
-        "difficulty": issue.get("difficulty"),
-        "retry_count": retry_count,
-        "confidence": task_result.get("confidence")
-        if task_result.get("confidence") is not None
-        else (task_result.get("review") or {}).get("confidence"),
-        "review_packet": task_result.get("review_packet"),
-        "capability": task_result.get("capability"),
-        # Runtime tool usage is intentionally passed through only when a
-        # producer proves it. Capability declarations are merely "offered".
-        "tool_usage": task_result.get("tool_usage"),
-    }
-    # The normal loader already returns a bounded list, but this helper also
-    # accepts test/legacy callers. Reassert the packet invariant at the seam so
-    # malformed or oversized preloaded state cannot expand the shadow payload.
-    if not isinstance(history, list):
-        history = []
-    history = [item for item in history if isinstance(item, dict)][-256:]
-    return build_shadow_evidence(
-        history,
-        current=current,
-        candidates=candidates,
-    )
+    """Add the server timestamp and optional bounded metrics packet once."""
+    persistence_started = time.perf_counter()
+    if "timestamp" not in entry:
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat()
+    if metrics is not None:
+        metrics.record_stage_duration(
+            "persistence",
+            (time.perf_counter() - persistence_started) * 1000.0,
+        )
+        entry["pipeline_metrics"] = metrics.snapshot()
+    return entry
+
+
+def _load_run_entries(path: Path) -> list[dict]:
+    """Load a JSON-list run log, treating missing/corrupt state as empty."""
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return []
+    return raw if isinstance(raw, list) else []
+
+
+def _write_run_entries(path: Path, entries: list[dict]) -> None:
+    """Atomically replace a JSON-list run log."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(entries, indent=2))
+    os.replace(tmp, path)
+
+
+class RunBatch:
+    """Accumulate one bridge cycle's run entries and flush them atomically.
+
+    The bridge still owns retry/processed/score checkpoints separately. This
+    narrow batch only removes repeated read/modify/replace cycles for the
+    append-only ``last_run.json`` journal while preserving its JSON shape and
+    corruption recovery behavior.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self._pending: list[dict] = []
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._pending)
+
+    def append(
+        self,
+        entry: dict,
+        metrics: Optional[PipelineMetrics] = None,
+    ) -> None:
+        self._pending.append(_prepare_run_entry(entry, metrics))
+
+    def flush(self) -> None:
+        """Append pending entries with one atomic read/modify/replace."""
+        if not self._pending:
+            return
+        existing = _load_run_entries(self.path)
+        existing.extend(self._pending)
+        _write_run_entries(self.path, existing)
+        self._pending.clear()
 
 
 def record_run(
@@ -495,41 +524,11 @@ def record_run(
     entry: dict,
     metrics: Optional[PipelineMetrics] = None,
 ) -> None:
-    """Append an entry to a JSON-list run log at *path*, atomically.
-
-    Each entry gets a server-side ``timestamp`` (ISO-8601 UTC) added if
-    the entry does not already have one.  Writes to a temporary file then
-    renames for crash-safe atomicity.  Creates parent directories as needed.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    persistence_started = time.perf_counter()
-    if "timestamp" not in entry:
-        entry["timestamp"] = datetime.now(timezone.utc).isoformat()
-
-    # Read existing runs (empty list if file missing or corrupt)
-    existing: list[dict] = []
-    if path.exists():
-        try:
-            existing = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
-            existing = []
-
-    existing.append(entry)
-
-    # Add the bounded packet immediately before the atomic write. This keeps
-    # the measurement additive and avoids a second state-write just to attach
-    # telemetry; the persistence preparation time is the useful F0 baseline.
-    if metrics is not None:
-        metrics.record_stage_duration(
-            "persistence",
-            (time.perf_counter() - persistence_started) * 1000.0,
-        )
-        entry["pipeline_metrics"] = metrics.snapshot()
-
-    # Atomic write: temp → rename
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(existing, indent=2))
-    os.replace(tmp, path)
+    """Append one entry to a JSON-list run log with atomic replacement."""
+    prepared = _prepare_run_entry(entry, metrics)
+    existing = _load_run_entries(path)
+    existing.append(prepared)
+    _write_run_entries(path, existing)
 
 
 def verify_task_output(
@@ -620,32 +619,6 @@ def verify_task_output(
             "gaps": ["Verification response unparseable"],
             "strengths": [],
         }
-
-
-def _strict_gate_failure(reason: str) -> dict:
-    """VERIFY_GATE_STRICT escalation: the gate could not run ⇒ issue cannot pass.
-
-    Strict mode enforces campus.md #3 (compiler before critic) end-to-end:
-    when the hermetic gate cannot run at all — module missing, or an internal
-    failure — a strict pipeline treats that as a real gate failure (verdict
-    FAIL) rather than letting the issue flow on unverified. Mirrors the
-    `strict_escalated` shape verify_gate._skipped_verdict returns.
-    """
-    return {
-        "passed": False,
-        "skipped": False,
-        "strict_escalated": True,
-        "ran": 0,
-        "failures": [{
-            "cmd": "(verify_gate)",
-            "exit": None,
-            "stderr": (
-                f"{reason}\n[VERIFY_GATE_STRICT] Escalation: the verify gate "
-                "could not run, so this issue cannot pass "
-                "(compiler-before-critic is enforced)."
-            ),
-        }],
-    }
 
 
 def _run_verify_gate(
@@ -959,6 +932,7 @@ def bridge_issues(
     # once per bridge cycle rather than reparsing last_run.json for every
     # issue; this also gives all issues in a cycle a consistent baseline.
     shadow_history = load_shadow_history(PROCESSED_FILE.parent / "last_run.json")
+    run_batch = RunBatch(PROCESSED_FILE.parent / "last_run.json")
 
     for issue in issues:
         num = issue["issue_number"]
@@ -1146,8 +1120,7 @@ def bridge_issues(
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
-                    record_run(
-                        PROCESSED_FILE.parent / "last_run.json",
+                    run_batch.append(
                         {"issue": num, "status": "retry", "agent": None, "score": None, "trajectory": None},
                     )
                 except Exception as e_rec:
@@ -1173,8 +1146,7 @@ def bridge_issues(
                 "teardown_ok": crew_result.teardown_ok if crew_result else None,
             })
             try:
-                record_run(
-                    PROCESSED_FILE.parent / "last_run.json",
+                run_batch.append(
                     {"issue": num, "status": "error", "agent": None, "score": None, "trajectory": None},
                 )
             except Exception as e_rec:
@@ -1234,8 +1206,7 @@ def bridge_issues(
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
-                    record_run(
-                        PROCESSED_FILE.parent / "last_run.json",
+                    run_batch.append(
                         {
                             "issue": num,
                             "status": "school-failed",
@@ -1462,8 +1433,7 @@ def bridge_issues(
                 "pipeline_metrics": metrics.snapshot(),
             })
             try:
-                record_run(
-                    PROCESSED_FILE.parent / "last_run.json",
+                run_batch.append(
                     {
                         "issue": num,
                         "status": "success",
@@ -1530,8 +1500,7 @@ def bridge_issues(
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
-                    record_run(
-                        PROCESSED_FILE.parent / "last_run.json",
+                    run_batch.append(
                         {
                             "issue": num,
                             "status": "retry",
@@ -1568,8 +1537,7 @@ def bridge_issues(
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 })
                 try:
-                    record_run(
-                        PROCESSED_FILE.parent / "last_run.json",
+                    run_batch.append(
                         {
                             "issue": num,
                             "status": task_result.get("status", "error"),
@@ -1591,6 +1559,14 @@ def bridge_issues(
                     sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
                 processed.add(num)
 
+    # Flush the append-only journal once after all issue outcomes are queued.
+    # Retry, processed, score, and crew checkpoints retain their existing
+    # boundaries; only last_run.json is batched here. Preserve the legacy
+    # non-fatal write behavior if the journal is temporarily unavailable.
+    try:
+        run_batch.flush()
+    except Exception as e_rec:
+        sys.stderr.write(f"[issue_bridge] Failed to flush run batch: {e_rec}\n")
     _save_retries(retries)
     _save_processed(processed)
     return results
