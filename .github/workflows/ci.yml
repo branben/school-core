@@ -10,6 +10,11 @@ on:
   # you want the live-Orca suite re-run on the current main.
   workflow_dispatch:
 
+# Keep the default GITHUB_TOKEN read-only. The runner liveness gate uses the
+# separately scoped RUNNER_ADMIN_TOKEN secret only for the runners API.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: pytest (py${{ matrix.python-version }})

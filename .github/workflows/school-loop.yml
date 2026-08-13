@@ -34,11 +34,10 @@ concurrency:
   group: school-loop
   cancel-in-progress: false
 
+# Default token is read-only. Jobs that checkpoint state or update issue
+# lifecycle labels declare their narrower write permissions below.
 permissions:
-  contents: write
-  # issues: write — the execute job's bridge closes + labels processed issues
-  # (school-done / school-failed) so the repo list reflects the school's work.
-  issues: write
+  contents: read
 
 env:
   # SCHOOL_REPO: override with owner/repo if this workflow runs from
@@ -133,6 +132,9 @@ jobs:
       cancel-in-progress: false
     needs: gate
     runs-on: [self-hosted, omniroute]
+    permissions:
+      contents: write
+      issues: write
     if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'true'
     timeout-minutes: 30
     env:
@@ -305,6 +307,9 @@ jobs:
     name: publish board (hosted)
     needs: [gate, execute]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
     # `always()` keeps the hosted board alive even if the runner gate itself
     # errors before it can report a normal offline=false output.
     if: always()

@@ -37,6 +37,62 @@ def test_live_orca_jobs_share_a_cross_workflow_lock():
     assert ci["jobs"]["integration"]["concurrency"] == expected
 
 
+def test_default_github_tokens_are_read_only_and_writes_are_job_scoped():
+    school_loop = _workflow()
+    ci = _ci_workflow()
+
+    assert ci["permissions"] == {"contents": "read"}
+    assert school_loop["permissions"] == {"contents": "read"}
+    assert school_loop["jobs"]["execute"]["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+    }
+    assert school_loop["jobs"]["loop"]["permissions"] == {
+        "contents": "write",
+        "issues": "read",
+    }
+
+
+def _paths_containing(value, needle: str, path=()):
+    """Return parsed-YAML paths whose string values contain ``needle``."""
+    if isinstance(value, dict):
+        matches = []
+        for key, child in value.items():
+            matches.extend(_paths_containing(child, needle, path + (str(key),)))
+        return matches
+    if isinstance(value, list):
+        matches = []
+        for index, child in enumerate(value):
+            matches.extend(_paths_containing(child, needle, path + (str(index),)))
+        return matches
+    if isinstance(value, str) and needle in value:
+        return [path]
+    return []
+
+
+def test_runner_admin_token_is_used_only_by_runner_liveness_gates():
+    school_loop = _workflow()
+    ci = _ci_workflow()
+    expected = "${{ secrets.RUNNER_ADMIN_TOKEN }}"
+
+    ci_gate = ci["jobs"]["integration-gate"]["steps"][0]
+    school_gate = school_loop["jobs"]["gate"]["steps"][0]
+    assert ci_gate["env"]["GH_TOKEN"] == expected
+    assert school_gate["env"]["GH_TOKEN"] == expected
+    assert "actions/runners" in ci_gate["run"]
+    assert "actions/runners" in school_gate["run"]
+
+    # Keep the secret confined to the two explicit GH_TOKEN bindings. This
+    # recursively scans parsed YAML rather than only checking selected job
+    # environments, so a future step-level leak is caught.
+    assert _paths_containing(ci, expected) == [
+        ("jobs", "integration-gate", "steps", "0", "env", "GH_TOKEN"),
+    ]
+    assert _paths_containing(school_loop, expected) == [
+        ("jobs", "gate", "steps", "0", "env", "GH_TOKEN"),
+    ]
+
+
 def test_blocker_alert_is_isolated_from_gate_and_board_publish():
     workflow = _workflow()
     alert = workflow["jobs"]["pipeline-alert"]
