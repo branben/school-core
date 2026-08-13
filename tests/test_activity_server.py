@@ -38,7 +38,10 @@ class TestBoardApi:
         data = json.loads(resp.read().decode())
         assert "columns" in data
         cols = data["columns"]
-        for key in ("todo", "in_progress", "in_review", "done"):
+        for key in (
+            "todo", "in_progress", "in_review", "retry",
+            "blocked", "crew_in_flight", "school_failed", "done",
+        ):
             assert key in cols, f"Expected key '{key}' in columns"
             assert isinstance(cols[key], list), f"Column '{key}' should be a list"
 

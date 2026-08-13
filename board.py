@@ -56,6 +56,10 @@ def assign_column(
     1. **Last-run status** overrides:
        - ``"in_progress"`` → ``"in_progress"``
        - ``"review"`` / ``"in_review"`` → ``"in_review"``
+       - ``"retry"`` → ``"retry"``
+       - ``"blocked"`` → ``"blocked"``
+       - ``"crew_in_flight"`` → ``"crew_in_flight"``
+       - ``"school-failed"`` / ``"error"`` → ``"school_failed"``
        - ``"done"`` / ``"success"`` → ``"done"``
     2. **Processed** (number in *processed* set) → ``"done"``
     3. **Open issue** (``state != "done"``) → ``"todo"``
@@ -74,7 +78,8 @@ def assign_column(
     Returns
     -------
     str
-        One of ``"todo"``, ``"in_progress"``, ``"in_review"``, ``"done"``.
+        One of ``"todo"``, ``"in_progress"``, ``"in_review"``, ``"retry"``,
+        ``"blocked"``, ``"crew_in_flight"``, ``"school_failed"``, ``"done"``.
     """
     num = issue["issue_number"]
 
@@ -87,7 +92,15 @@ def assign_column(
             return "in_review"
         if status in ("done", "success"):
             return "done"
-        # "blocked", "error", "dry_run" — fall through
+        if status == "retry":
+            return "retry"
+        if status == "blocked":
+            return "blocked"
+        if status == "crew_in_flight":
+            return "crew_in_flight"
+        if status in ("school-failed", "error"):
+            return "school_failed"
+        # Unknown/non-terminal statuses fall through to the remaining rules.
 
     # Priority 2: processed → Done
     if num in processed:
@@ -212,10 +225,9 @@ h2 {
   font-size: 0.8rem;
   color: var(--brass-dim);
   font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
-}
-.board-grid {
+}  .board-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.75rem;
   min-width: 0;
   flex: 1 1 auto;
@@ -359,7 +371,7 @@ _JS_POLL = """
 (function() {
   'use strict';
   function rerender(columns) {
-    var keys = ['todo','in_progress','in_review','done'];
+    var keys = ['todo','in_progress','in_review','retry','blocked','crew_in_flight','school_failed','done'];
     var cols = document.querySelectorAll('.col');
     for (var i = 0; i < cols.length; i++) {
       var container = cols[i].querySelector('.cards');
@@ -424,6 +436,10 @@ _COLUMN_META = [
     ("todo", "To Do"),
     ("in_progress", "In Progress"),
     ("in_review", "In Review"),
+    ("retry", "Retry Pending"),
+    ("blocked", "Blocked"),
+    ("crew_in_flight", "Crew In Flight"),
+    ("school_failed", "School Failed"),
     ("done", "Done"),
 ]
 
@@ -469,6 +485,10 @@ def build_board_html(
         "todo": [],
         "in_progress": [],
         "in_review": [],
+        "retry": [],
+        "blocked": [],
+        "crew_in_flight": [],
+        "school_failed": [],
         "done": [],
     }
     for issue in issues:

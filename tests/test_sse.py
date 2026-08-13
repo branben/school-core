@@ -97,7 +97,10 @@ class TestSseEndpoint:
             f"No valid JSON data line found in SSE body: {body_text[:300]}"
         )
         assert "columns" in found_payload
-        for key in ("todo", "in_progress", "in_review", "done"):
+        for key in (
+            "todo", "in_progress", "in_review", "retry",
+            "blocked", "crew_in_flight", "school_failed", "done",
+        ):
             assert key in found_payload["columns"], (
                 f"Expected column '{key}' in board payload"
             )

@@ -210,7 +210,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
     def _build_board_json_payload(self) -> dict:
         """Build the board JSON payload (same shape as ``/api/board.json``).
 
-        Returns ``{"columns": {"todo": […], "in_progress": […], …}}``.
+        Returns ``{"columns": {"todo": […], "in_progress": […], …}}`` with
+        the same eight lifecycle keys as ``board._COLUMN_META``.
         Safe to call from the SSE streaming loop — never sends HTTP headers.
         """
         from board import assign_column, _build_last_run_map
@@ -223,6 +224,10 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                     "todo": [],
                     "in_progress": [],
                     "in_review": [],
+                    "retry": [],
+                    "blocked": [],
+                    "crew_in_flight": [],
+                    "school_failed": [],
                     "done": [],
                 }
             }
@@ -234,6 +239,10 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             "todo": [],
             "in_progress": [],
             "in_review": [],
+            "retry": [],
+            "blocked": [],
+            "crew_in_flight": [],
+            "school_failed": [],
             "done": [],
         }
 

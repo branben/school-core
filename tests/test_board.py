@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from board import build_board_html
+from board import assign_column, build_board_html
 
 
 class TestBuildBoardHtml:
@@ -72,6 +72,31 @@ class TestBuildBoardHtml:
         assert "In Review Task" in html, "Issue 3 should land in 'In Review'"
         # Issue 4: in processed → Done
         assert "Done Task" in html, "Issue 4 should land in 'Done'"
+
+    @pytest.mark.parametrize(
+        ("status", "expected"),
+        [
+            ("retry", "retry"),
+            ("blocked", "blocked"),
+            ("crew_in_flight", "crew_in_flight"),
+            ("school-failed", "school_failed"),
+            ("error", "school_failed"),
+        ],
+    )
+    def test_failure_and_waiting_states_have_distinct_columns(self, status, expected):
+        """Operational failure states must not disappear into To Do."""
+        issue = {"issue_number": 20, "title": "Stateful issue", "state": "open"}
+        assert assign_column(issue, set(), {20: {"status": status}}) == expected
+
+    def test_board_renders_failure_state_columns(self):
+        """The durable status columns are visible to a human operator."""
+        html = build_board_html(
+            [{"issue_number": 21, "title": "Failed issue", "state": "open"}],
+            [],
+            [{"issue": 21, "status": "school-failed"}],
+        )
+        assert "School Failed" in html
+        assert "Failed issue" in html
 
     def test_column_assignment_with_last_run_done(self):
         """Issues in last_run with status 'success' map to Done."""
