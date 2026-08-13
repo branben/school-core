@@ -649,6 +649,123 @@ def test_crew_ids_include_issue_and_cycle(monkeypatch, tmp_path):
     assert crew_dispatch._crew_id("loop-a", 1) != crew_dispatch._crew_id("loop-a", 2)
 
 
+def test_wrapper_failed_handshake_is_terminal_failure(monkeypatch, tmp_path):
+    """U10: the wrapper's deterministic handshake (Hermes exited without a
+    terminal status) reaches dispatch_crew as an immediate failed result, so the
+    supervisor never polls an idle session to the full timeout."""
+    configure_paths(monkeypatch, tmp_path)
+    crew_id = "fm-loop-20260812-120000-30"
+    # The scout went idle: no report, no done:/failed: line from the crew. The
+    # wrapper appends the handshake line when Hermes exits.
+    (crew_dispatch.STATE_DIR / f"{crew_id}.status").write_text(
+        "working: reconnaissance\n"
+        "failed: hermes-exit-0-no-terminal-status\n"
+    )
+    (crew_dispatch.STATE_DIR / f"{crew_id}.meta").write_text("orca_worktree_id=repo::/tmp/worktree\n")
+    monkeypatch.setattr(
+        crew_dispatch,
+        "_run",
+        lambda args, **kwargs: spawn_process() if args[0].endswith("fm-spawn.sh") else subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    result = dispatch_crew(
+        issue_number=30,
+        task_text="Idle scout",
+        project_dir=tmp_path,
+        cycle_session_id="loop-20260812-120000",
+        timeout=1,
+        poll_interval=0,
+    )
+    assert result.status == "failed"
+    assert result.report_path is None
+    assert result.fallback_reason == "crew_failed"
+    assert result.teardown_ok is True
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    assert runs[-1]["status"] == "failed"
+    assert runs[-1]["fallback_reason"] == "crew_failed"
+
+
+def test_supervisor_unexpected_failure_records_terminal_state(monkeypatch, tmp_path):
+    """U10: an unexpected supervisor-side failure during polling/collection still
+    lands a deterministic terminal record (never a stale `running`), so the
+    next-cycle sweep and the bridge fallback see a bounded failure."""
+    configure_paths(monkeypatch, tmp_path)
+    crew_id = "fm-loop-20260812-120000-31"
+    (crew_dispatch.STATE_DIR / f"{crew_id}.meta").write_text("orca_worktree_id=repo::/tmp/worktree\n")
+    monkeypatch.setattr(
+        crew_dispatch,
+        "_run",
+        lambda args, **kwargs: spawn_process() if args[0].endswith("fm-spawn.sh") else subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    def boom(*args, **kwargs):
+        raise OSError("status channel unreadable")
+
+    monkeypatch.setattr(crew_dispatch, "_read_status_detail", boom)
+    result = dispatch_crew(
+        issue_number=31,
+        task_text="Supervisor failure",
+        project_dir=tmp_path,
+        cycle_session_id="loop-20260812-120000",
+        timeout=1,
+        poll_interval=0,
+    )
+    assert result.status == "failed"
+    assert result.fallback_reason == "supervisor_unexpected"
+    assert result.report_path is None
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    assert runs[-1]["status"] == "failed"
+    assert runs[-1]["fallback_reason"] == "supervisor_unexpected"
+    assert runs[-1]["teardown_ok"] is True
+
+
+def test_terminal_state_persisted_before_teardown(monkeypatch, tmp_path):
+    """U10: the outcome record lands in the registry BEFORE teardown, so a
+    cleanup failure can never hide or lose the terminal result."""
+    configure_paths(monkeypatch, tmp_path)
+    crew_id = "fm-loop-20260812-120000-32"
+    (crew_dispatch.STATE_DIR / f"{crew_id}.status").write_text(
+        "done: branch=fm/task-32 commit=abc123 base=main@def456\n"
+    )
+    (crew_dispatch.STATE_DIR / f"{crew_id}.meta").write_text("orca_worktree_id=repo::/tmp/worktree\n")
+    report = crew_dispatch.DATA_DIR / crew_id / "report.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("done\nBranch: fm/task-32\nCommit: abc123\nBase: main@def456\n")
+    monkeypatch.setattr(
+        crew_dispatch,
+        "_run",
+        lambda args, **kwargs: spawn_process() if args[0].endswith("fm-spawn.sh") else subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    order = []
+    real_update = crew_dispatch._update_run
+
+    def ordered_update(crew_id, updates, path=None):
+        order.append((crew_id, updates))
+        real_update(crew_id, updates, path)
+
+    monkeypatch.setattr(crew_dispatch, "_update_run", ordered_update)
+    monkeypatch.setattr(crew_dispatch, "teardown_worktree", lambda _: order.append("teardown") or False)
+
+    result = dispatch_crew(
+        issue_number=32,
+        task_text="Ordering",
+        project_dir=tmp_path,
+        cycle_session_id="loop-20260812-120000",
+        timeout=1,
+        poll_interval=0,
+    )
+    assert result.status == "done"
+    assert result.teardown_ok is False
+    # The terminal outcome is persisted before teardown is attempted; the
+    # teardown_ok update follows cleanup.
+    terminal_update = next(u for _, u in order if u.get("status") == "done")
+    assert order.index((crew_id, terminal_update)) < order.index("teardown")
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    assert runs[-1]["status"] == "done"
+    assert runs[-1]["teardown_ok"] is False
+    assert runs[-1]["report_path"] == f"{crew_id}/report.md"
+
+
 def test_blocked_grace_expires_as_blocked(monkeypatch, tmp_path):
     configure_paths(monkeypatch, tmp_path)
     clock = FakeClock()

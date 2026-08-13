@@ -228,7 +228,7 @@ real risk.
 | AgentMail bus (2-judge) | ⚠️ Partial | Two-judge via AgentMail + rubber-stamp poller; sync mode inline, async Phase 2 future |
 | Bookbag-as-contract | ⚠️ Partial | `~/.hermes/bookbag/<bead>.json`; verify on disk |
 | Verification-co-evolution loop | ✅ Wired | `adversarial_reviewer.py` + `director._run_two_judge_review`. 15 unit tests |
-| FirstMate dispatch | ⚠️ Partial | Spawn proven live (2026-08-10) + `fm_doctor` preflight wired in school-loop. Nous token resolved 2026-08-11 (device-code login, fm_doctor all-green). Issue-path crew dispatch NOT wired — the bridge still executes direct-Orca; `crew_dispatch.py` behind a `crew_enabled` flag is U4, deferred |
+| FirstMate dispatch | ✅ Wired | Spawn proven live (2026-08-10) + `fm_doctor` preflight wired in school-loop. Nous token resolved 2026-08-11 (device-code login, fm_doctor all-green). Crew dispatch wired: `CREW_ENABLED=1` in school-loop routes eligible issues through `crew_dispatch.py` (FirstMate → Orca → Hermes, local-only, direct-Orca fallback, `CREW_MAX_PER_CYCLE=1`). U10 deterministic terminal handshake (2026-08-12): the wrapper appends a bounded `failed: hermes-exit-<code>-no-terminal-status` to the supervised status path when Hermes exits without terminal evidence — never a fabricated pass — and the registry persists the terminal outcome before teardown. Remaining: one fresh-checkout live smoke proof (bead `school-core-wqz`) |
 
 **Ops note — FirstMate install & spawn (verified 2026-08-10):**
 
@@ -238,6 +238,7 @@ real risk.
 - Spawn is proven end-to-end (backend gate → worktree/terminal → harness launch → meta/data written).
 - Auth: hermes provider is `nous` (`tencent/hy3:free`); token stored in `~/.hermes/auth.json` via the device-code login (`hermes model` → Enter on Nous Portal → approve URL+code in browser, see skill). Validated 2026-08-11 — fm_doctor all-green, live hermes session replies normally. Non-fatal `HTTP 402` on aux-title generation = credit matter, not auth.
 - `--max-runtime` was removed from firstmate (f74d9e4); bound tasks by brief, not flag.
+- U10 handshake (2026-08-12): the wrapper receives the exact supervised paths via `FM_STATUS_FILE`/`FM_REPORT_FILE`. On Hermes exit with no terminal status line, it appends `failed: hermes-exit-<code>-no-terminal-status` so the supervisor never polls an idle session to the full timeout. A passing result still requires the crew's own `done:` line + report.md identity evidence — the wrapper never writes `done:` itself.
 
 **The principle that matters most:** *the compiler runs before the critic
 speaks.* For a long time the pipeline only ran the critic on prose. The

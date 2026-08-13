@@ -79,5 +79,37 @@ fi
 # Use query mode, not interactive stdin mode. In an Orca terminal, stdin is
 # composer input and is not guaranteed to be submitted; query mode starts the
 # Hermes turn immediately and returns a bounded process result to FirstMate.
-exec "$HERMES" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
+# Capture the exit code: it feeds the deterministic terminal handshake below.
+set +e
+"$HERMES" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
   --query "$INPUT" --yolo --quiet --max-turns "$MAX_TURNS"
+HERMES_EXIT=$?
+set -e
+
+# U10 deterministic terminal handshake: the supervised launch contract requires
+# a terminal status line (done/failed/blocked/needs-decision). When Hermes ends
+# without one — the observed idle-scout failure where the crew sat in a
+# conversational state and never wrote report.md or a status line — record a
+# bounded failure on the EXACT supervised status path so the supervisor reaches
+# a terminal state immediately instead of polling to the full timeout. This
+# records the process outcome; it never fabricates a passing report (a pass
+# still requires the crew's own report.md + done: identity evidence).
+if [[ -n "${FM_STATUS_FILE:-}" ]]; then
+  if mkdir -p "$(dirname "$FM_STATUS_FILE")" 2>/dev/null; then
+    TERMINAL=""
+    if [[ -f "$FM_STATUS_FILE" ]]; then
+      LAST_LINE="$(tail -n 1 "$FM_STATUS_FILE" 2>/dev/null | sed 's/^[[:space:]]*//' || true)"
+      case "$LAST_LINE" in
+        done:*|failed:*|blocked:*|needs-decision:*) TERMINAL="yes" ;;
+      esac
+    fi
+    if [[ -z "$TERMINAL" ]]; then
+      printf 'failed: hermes-exit-%s-no-terminal-status\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
+        || echo "hermes-fm-wrapper: could not write terminal handshake to $FM_STATUS_FILE" >&2
+    fi
+  else
+    echo "hermes-fm-wrapper: cannot create status directory for $FM_STATUS_FILE" >&2
+  fi
+fi
+
+exit "$HERMES_EXIT"

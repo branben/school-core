@@ -575,6 +575,13 @@ def _spawn(
     env["FM_HOME"] = str(FM_HOME)
     env["FM_STATE_OVERRIDE"] = str(STATE_DIR)
     env["FM_DATA_OVERRIDE"] = str(DATA_DIR)
+    # U10 deterministic handshake: hand the wrapper the EXACT supervised
+    # artifact/status paths so it can append a bounded terminal status line
+    # (never a passing report) when Hermes exits without one. The supervisor
+    # polls these same paths, so the launch contract and the poll contract
+    # cannot drift.
+    env["FM_STATUS_FILE"] = str(_status_path(crew_id))
+    env["FM_REPORT_FILE"] = str(_task_dir(crew_id) / "report.md")
     payload = _capability_payload(capability)
     if payload is not None:
         env.update({
@@ -700,71 +707,82 @@ def dispatch_crew(
         "started_at": started_at,
     })
 
-    terminal_status, fallback_reason, status_detail = _poll(
-        crew_id,
-        timeout=timeout,
-        poll_interval=poll_interval,
-        blocked_grace=blocked_grace,
-        now_fn=now_fn,
-        sleep_fn=sleep_fn,
-    )
-    report_path: Optional[Path] = None
-    if terminal_status == "done":
-        candidate = _task_dir(crew_id) / "report.md"
-        if not worktree_id:
-            terminal_status = "failed"
-            fallback_reason = "artifact_identity_missing"
-            log.warning("crew %s reached done without an Orca worktree identity", crew_id)
-        elif _artifact_identity(status_detail) is None:
-            terminal_status = "failed"
-            fallback_reason = "artifact_status_evidence_missing"
-            log.warning("crew %s done status lacks branch/commit/base evidence", crew_id)
-        elif candidate.exists():
-            try:
-                if candidate.stat().st_size > MAX_REPORT_BYTES:
-                    fallback_reason = "report_too_large"
-                    log.warning("crew %s report.md exceeds %d bytes", crew_id, MAX_REPORT_BYTES)
-                    terminal_status = "failed"
-                else:
-                    report_text = candidate.read_text(encoding="utf-8")
-                    status_identity = _artifact_identity(status_detail)
-                    report_identity = _artifact_identity(report_text)
-                    if status_identity and report_identity and status_identity == report_identity:
-                        report_path = candidate
-                    elif report_text.strip() and report_identity:
-                        fallback_reason = "artifact_identity_mismatch"
-                        terminal_status = "failed"
-                        log.warning(
-                            "crew %s status/report artifact identities do not match",
-                            crew_id,
-                        )
-                    elif report_text.strip():
-                        fallback_reason = "artifact_evidence_missing"
-                        terminal_status = "failed"
-                        log.warning(
-                            "crew %s report.md lacks branch/commit/base evidence",
-                            crew_id,
-                        )
-                    else:
-                        fallback_reason = "report_empty"
-                        terminal_status = "failed"
-                        log.warning("crew %s reached done with an empty report.md", crew_id)
-            except OSError as exc:
-                fallback_reason = "report_unreadable"
+    try:
+        terminal_status, fallback_reason, status_detail = _poll(
+            crew_id,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            blocked_grace=blocked_grace,
+            now_fn=now_fn,
+            sleep_fn=sleep_fn,
+        )
+        report_path: Optional[Path] = None
+        if terminal_status == "done":
+            candidate = _task_dir(crew_id) / "report.md"
+            if not worktree_id:
                 terminal_status = "failed"
-                log.warning("crew %s report.md could not be read: %s", crew_id, exc)
-        else:
-            fallback_reason = "report_missing"
-            terminal_status = "failed"
-            log.warning("crew %s reached done without report.md", crew_id)
-    elif terminal_status == "failed":
-        fallback_reason = "crew_failed"
+                fallback_reason = "artifact_identity_missing"
+                log.warning("crew %s reached done without an Orca worktree identity", crew_id)
+            elif _artifact_identity(status_detail) is None:
+                terminal_status = "failed"
+                fallback_reason = "artifact_status_evidence_missing"
+                log.warning("crew %s done status lacks branch/commit/base evidence", crew_id)
+            elif candidate.exists():
+                try:
+                    if candidate.stat().st_size > MAX_REPORT_BYTES:
+                        fallback_reason = "report_too_large"
+                        log.warning("crew %s report.md exceeds %d bytes", crew_id, MAX_REPORT_BYTES)
+                        terminal_status = "failed"
+                    else:
+                        report_text = candidate.read_text(encoding="utf-8")
+                        status_identity = _artifact_identity(status_detail)
+                        report_identity = _artifact_identity(report_text)
+                        if status_identity and report_identity and status_identity == report_identity:
+                            report_path = candidate
+                        elif report_text.strip() and report_identity:
+                            fallback_reason = "artifact_identity_mismatch"
+                            terminal_status = "failed"
+                            log.warning(
+                                "crew %s status/report artifact identities do not match",
+                                crew_id,
+                            )
+                        elif report_text.strip():
+                            fallback_reason = "artifact_evidence_missing"
+                            terminal_status = "failed"
+                            log.warning(
+                                "crew %s report.md lacks branch/commit/base evidence",
+                                crew_id,
+                            )
+                        else:
+                            fallback_reason = "report_empty"
+                            terminal_status = "failed"
+                            log.warning("crew %s reached done with an empty report.md", crew_id)
+                except OSError as exc:
+                    fallback_reason = "report_unreadable"
+                    terminal_status = "failed"
+                    log.warning("crew %s report.md could not be read: %s", crew_id, exc)
+            else:
+                fallback_reason = "report_missing"
+                terminal_status = "failed"
+                log.warning("crew %s reached done without report.md", crew_id)
+        elif terminal_status == "failed":
+            fallback_reason = "crew_failed"
+    except Exception as exc:
+        # U10: an unexpected supervisor-side failure during polling or artifact
+        # collection must still land a terminal state in the registry with a
+        # bounded reason; the bridge's direct-Orca fallback then sees a
+        # deterministic record instead of a stale `running` entry.
+        log.exception("crew %s supervisor failed during lifecycle: %s", crew_id, exc)
+        terminal_status = "failed"
+        fallback_reason = "supervisor_unexpected"
+        report_path = None
 
-    teardown_ok = teardown_worktree(worktree_id)
+    # U10: persist the terminal state BEFORE teardown so a cleanup failure can
+    # never mask or lose the outcome record. teardown_ok is then recorded as a
+    # second update so failed cleanup stays visible without hiding the result.
     _update_run(crew_id, {
         "status": terminal_status,
         "fallback_reason": fallback_reason,
-        "teardown_ok": teardown_ok,
         # Keep the durable registry portable: callers still receive the
         # absolute runtime Path, but the checkpointable record stores only a
         # path relative to FM_DATA.
@@ -774,6 +792,8 @@ def dispatch_crew(
         ),
         "capability": capability_record,
     })
+    teardown_ok = teardown_worktree(worktree_id)
+    _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(
         crew_id=crew_id,
         status=terminal_status,
