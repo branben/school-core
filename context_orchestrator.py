@@ -195,16 +195,31 @@ def _archival_context(domain: str, session_id: str) -> Optional[str]:
     Respects LAYER_3_CHAR_BUDGET to avoid blowing the 10K context limit.
     """
     try:
-        from consolidation_writer import load_consolidation_for_domain, load_all_consolidation
+        from consolidation_writer import (
+            load_consolidation_for_domain,
+            load_all_consolidation,
+            load_latest_consolidation_for_domain,
+        )
 
-        # Try domain-specific first, then fall back to all for this session
+        # Prefer the current session's requested domain. If it is absent,
+        # prefer the newest prior session for that same domain. Only when no
+        # same-domain archive exists do we retain the older compatibility
+        # fallback to an unrelated consolidation in the current session.
         data = load_consolidation_for_domain(session_id, domain)
+        current_fallback = None
         if not data:
             all_data = load_all_consolidation(session_id)
+            current_fallback = all_data[0] if all_data else None
             data = next(
                 (d for d in all_data if d.get("domain") == domain),
-                all_data[0] if all_data else None,
+                None,
             )
+        if not data:
+            data = load_latest_consolidation_for_domain(
+                domain, exclude_session_id=session_id
+            )
+        if not data:
+            data = current_fallback
         if not data:
             return None
 

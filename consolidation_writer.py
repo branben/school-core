@@ -88,6 +88,35 @@ def load_consolidation_for_domain(
         return None
 
 
+def load_latest_consolidation_for_domain(
+    domain: str,
+    exclude_session_id: Optional[str] = None,
+) -> Optional[dict]:
+    """Load the newest available prior session's consolidation for *domain*.
+
+    Session IDs are timestamped by the school loop, so reverse lexical order is
+    deterministic and matches recency. The optional exclusion prevents a caller
+    from re-reading the current session when it is explicitly asking for prior
+    context. Missing or malformed files are skipped without blocking dispatch.
+    """
+    if not CONSOLIDATION_DIR.exists():
+        return None
+    for session_dir in sorted(CONSOLIDATION_DIR.iterdir(), key=lambda p: p.name, reverse=True):
+        if not session_dir.is_dir() or session_dir.name == exclude_session_id:
+            continue
+        filepath = session_dir / f"{domain}.yaml"
+        if not filepath.exists():
+            continue
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            sys.stderr.write(f"[consolidation] load failed for {filepath}: {e}\n")
+    return None
+
+
 def load_all_consolidation(session_id: str) -> list[dict]:
     """Load all consolidation YAMLs for a session. Returns list of dicts."""
     session_dir = CONSOLIDATION_DIR / session_id
