@@ -40,9 +40,9 @@ jobs:
         run: python -m compileall -q .
 
       - name: Run tests
-        # Live-Orca tests are gated by ORCA_LIVE_TESTS=1 and skipped by default,
-        # so this runs the full suite without requiring a running Orca daemon.
-        run: python -m pytest -q
+        # Keep the hosted matrix hermetic and fast: live Orca tests have an
+        # explicit marker and run only in the push-only self-hosted lane below.
+        run: python -m pytest -q -m "not live"
 
   integration-gate:
     # Hosted-runner pre-flight check for the live-Orca integration job. The
@@ -139,7 +139,7 @@ jobs:
             http://localhost:20128/v1/models >/dev/null && echo "gateway OK"
 
       - name: Run live-Orca + OmniRoute integration tests
-        run: .venv/bin/python -m pytest tests/test_orca_execution.py -v
+        run: .venv/bin/python -m pytest -m live tests/test_orca_execution.py -v
 
   notify:
     # One AgentMail alert per failed push-to-main run — the school's human

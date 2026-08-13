@@ -17,6 +17,26 @@ def _ci_workflow() -> dict:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_hosted_matrix_excludes_live_tests_by_marker():
+    ci = _ci_workflow()
+    test_step = next(step for step in ci["jobs"]["test"]["steps"] if step.get("name") == "Run tests")
+
+    assert '-m "not live"' in test_step["run"]
+
+
+def test_self_hosted_integration_selects_live_tests_explicitly():
+    ci = _ci_workflow()
+    integration = ci["jobs"]["integration"]
+    test_step = next(
+        step for step in integration["steps"]
+        if step.get("name") == "Run live-Orca + OmniRoute integration tests"
+    )
+
+    assert integration["env"]["ORCA_LIVE_TESTS"] == "1"
+    assert "-m live" in test_step["run"]
+    assert "test_orca_execution.py" in test_step["run"]
+
+
 def test_school_loop_serializes_runs_without_cancelling_active_work():
     workflow = _workflow()
     assert workflow["concurrency"] == {
