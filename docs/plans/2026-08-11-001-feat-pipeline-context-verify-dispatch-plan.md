@@ -1,18 +1,25 @@
 ---
 title: Pipeline Gaps — 4-Layer Context, Verify Gate, and FirstMate Dispatch
 type: feat
-status: active
+status: completed
 date: 2026-08-11
 deepened: 2026-08-11
 origin: .scratch/wayfinder-map-pipeline-gaps.md
+completed: 2026-08-12
 ---
 
 # Pipeline Gaps — 4-Layer Context, Verify Gate, and FirstMate Dispatch
 
 **Date:** 2026-08-11
-**Status:** Active
+**Status:** Completed
 **Plan type:** feat
 **Depth:** Deep
+
+> **Completed 2026-08-12.** All five units (U1–U5) are implemented, committed,
+> and live-proven through the school-loop issue path (see the U7–U9 compound
+> plan and the U1–U6 landing manifest). This document remains as the historical
+> spec; further changes are tracked in
+> `docs/plans/2026-08-12-002-refactor-dirty-tree-product-slices-plan.md`.
 
 ## Summary
 
@@ -105,7 +112,7 @@ The wayfinder map (`.scratch/wayfinder-map-pipeline-gaps.md`) confirmed on disk 
 
 ### KTD-8: In-flight registry prevents duplicate crew dispatch (deepened 2026-08-11)
 
-**Decision:** `crew_dispatch` persists every spawn to `data/crew_runs.json` (`crew_id`, issue, `orca_worktree_id`, status, started_at), committed via the checkpoint pattern like `data/retry_issues.json`. The bridge skips issues with a `running` record; a next-spawn sweep removes stale entries via `orca worktree rm`.
+**Decision:** `crew_dispatch` persists every spawn to `data/crew_runs.json` with portable fields (`crew_id`, issue, status, started_at, and a boolean worktree-present marker), committed via the checkpoint pattern like `data/retry_issues.json`. The path-bearing `orca_worktree_id` stays in an ignored FM-local sidecar on the runner; it is never checkpointed. The bridge skips issues with a `running` record; a next-spawn sweep removes stale entries via the sidecar identity or retains the record with a warning when that identity is unavailable.
 
 **Rationale:** The cron cadence (`*/5`) is shorter than a crew task (up to 15 min), so overlapping cycles are the norm, not the exception. Without a registry, two cycles crew-dispatch the same issue and both poll GitHub/AgentMail — the duplicate-work and API-limit concern. The registry makes crew dispatch exactly-once across cycles with zero extra API calls (status polling is local file reads).
 
@@ -209,7 +216,7 @@ verified in `bin/fm-spawn.sh:214`). Surface contract decisions:
 - **Cadence is event-driven, not heartbeat** (verified: the brief tells the crewmate "report sparingly: only phase changes a supervisor would act on"). A crewmate appends `blocked:` once and then *stops writing* — so a long grace is pure delay; ~60s only catches a fast self-`resolved:` race before falling back.
 - Spawn failure → raise a typed `CrewUnavailableError` (the bridge catches it for fallback); poll timeout and `failed:` status → return `CrewResult` with a non-done status.
 - **`crew_id` derived from the U1 cycle id** (`fm-<cycle_session_id>-<issue>` — seconds granularity) so overlapping cycles can't collide on `$FM_HOME/state/<id>` files.
-- **In-flight registry + sweep (KTD-8):** persist every spawn to `data/crew_runs.json` (`crew_id`, issue, `orca_worktree_id`, status, started_at); on each spawn, sweep stale `running`/`blocked` entries older than N cycles via `orca worktree rm` (log + continue on failure). Status polling is local file reads — zero API cost.
+- **In-flight registry + sweep (KTD-8):** persist every spawn to `data/crew_runs.json` using portable fields (`crew_id`, issue, status, started_at, and worktree-present marker). Keep the path-bearing Orca identity in an ignored FM-local sidecar, not in the checkpointed file. On each spawn, sweep stale `running`/`blocked` entries older than N cycles via the sidecar identity and `orca worktree rm`; log and retain on cleanup refusal or missing local identity. Status polling is local file reads — zero API cost.
 - Poll interval ~15s, 15-minute timeout by default, overridable in tests.
 - **Teardown: `fm-teardown.sh` is ALWAYS refused for orca** (verified 2026-08-11): orca worktree ids are `<repoId>::<path>` (live sample `1b3e3f14-…::/Users/brandonbennett/…`), and `fm_backend_validate_task_endpoint` (`fm-teardown.sh:431`) gates every orca teardown on `fm_backend_endpoint_atom_valid` (`fm-backend.sh:505-506`), which only accepts `[A-Za-z0-9._@%+-]` — `::` and `/` never pass. So the sweep and any immediate cleanup MUST call `orca worktree rm --worktree "id:<id>" --force` directly (the exact call `fm_backend_orca_remove_worktree` uses, `orca.sh:184`), never `fm-teardown.sh`. Store the create-returned `worktree-id` verbatim in `crew_runs.json` for this.
 - **Sweep path PROVEN live (2026-08-11)** — two disposable worktrees created via the exact backend invocation (`orca worktree create --repo "id:<repo-id>" --name <id> --no-parent --setup skip --json`), then `orca worktree rm --worktree "id:<id>" --force --json` returned `{"removed": true}` for both a bare worktree AND a worktree with a live attached terminal. Verified clean at all three levels: orca worktree list (absent), `git worktree list` (absent), filesystem (dir gone); terminal cleaned too; git branch pruned. No debris left (worktree count returned to pre-drill 17). A single command handles the terminal-attached case — no separate terminal kill needed.
