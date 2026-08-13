@@ -47,6 +47,7 @@ from activity_log import ActivityLog
 
 _log = ActivityLog()
 from scoring import ScoreStore
+from capabilities import capability_for_task_role, resolve_capability
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +146,15 @@ class StudentLeaf:
         self._mgr: Optional[OrcaExecutionManager] = None
         self._booted = False
 
-        # Hermes profile name derived from role
-        self._hermes_profile = self._profile_for_role(role)
+        # Canonical capability contract: rank comes from the score, while the
+        # specialized task role/profile/tools come from the existing role map.
+        self.capability = resolve_capability(
+            domain,
+            self._store.get_score(role, domain),
+            task_role=role,
+            difficulty=difficulty,
+        )
+        self._hermes_profile = self.capability.profile
 
     def _repo_slug(self) -> str:
         """Derive the bookbag/score namespace for this leaf.
@@ -164,17 +172,8 @@ class StudentLeaf:
 
     @staticmethod
     def _profile_for_role(role: str) -> str:
-        """Map a school-core role to a Hermes profile name."""
-        mapping = {
-            "coder": "student-coder",
-            "searcher": "student-searcher",
-            "executor": "student-executor",
-            "browser": "student-browser",
-            "reviewer": "student-reviewer",
-            "tester": "student-coder",
-            "debugger": "student-coder",
-        }
-        return mapping.get(role, "student-coder")
+        """Compatibility wrapper around the canonical capability manifest."""
+        return capability_for_task_role(role)[0]
 
     def boot(self) -> str:
         """Create the disposable student worktree in Orca.
@@ -317,6 +316,7 @@ class StudentLeaf:
             "response": response,
             "response_chars": len(response),
             "hermes_profile": self._hermes_profile,
+            "capability": self.capability.to_dict(),
         }
         self._mgr.write_student_output(self.worktree_path, self.bead, output_data)
 
@@ -387,6 +387,7 @@ class StudentLeaf:
             dod_gate=dod_gate,
             skip_readiness=skip_readiness,
         )
+        result.setdefault("capability", self.capability.to_dict())
         return result
 
     def write_output(self, data: dict) -> Path:
