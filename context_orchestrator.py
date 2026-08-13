@@ -1,13 +1,91 @@
+import hashlib
+import os
 import re
 import subprocess
 import sys
+import threading
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
 # Default vault path. Resolves to <repo>/data/vault so the framework works
 # out-of-the-box without a personal path. Override via the vault_path argument
 # or by setting AGENT_SCHOOL_VAULT env var.
-import os
+
+
+_CONTEXT_CACHE_MAX = 64
+_CONTEXT_CACHE: OrderedDict[tuple, str] = OrderedDict()
+_CONTEXT_CACHE_LOCK = threading.RLock()
+
+
+def clear_context_cache() -> None:
+    """Clear same-session context packets (primarily for tests and operators)."""
+    with _CONTEXT_CACHE_LOCK:
+        _CONTEXT_CACHE.clear()
+
+
+def _repo_identity(repo_path: Optional[Path]) -> str:
+    """Return a code-sensitive, non-persisted identity for cache keys."""
+    if not repo_path:
+        return "none"
+    path = Path(repo_path).expanduser().resolve()
+    try:
+        git_marker = path / ".git"
+        head = git_marker.read_text(errors="replace") if git_marker.is_file() else ""
+        head_file = git_marker / "HEAD"
+        if head_file.exists():
+            head += head_file.read_text(errors="replace")
+        index = git_marker / "index"
+        stat = index.stat() if index.exists() else None
+        return f"{path}:{head[:200]}:{stat.st_mtime_ns if stat else 0}:{stat.st_size if stat else 0}"
+    except OSError:
+        return str(path)
+
+
+def _context_cache_key(domain, prompt, vault, top_k, session_id, repo_path) -> tuple:
+    normalized = " ".join((prompt or "").split()).lower()
+    prompt_id = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return (
+        str(domain), prompt_id, str(Path(vault).expanduser().resolve()), int(top_k),
+        str(session_id), _repo_identity(repo_path),
+    )
+
+
+def _cached_context(key: tuple) -> Optional[str]:
+    with _CONTEXT_CACHE_LOCK:
+        if key not in _CONTEXT_CACHE:
+            return None
+        value = _CONTEXT_CACHE.pop(key)
+        _CONTEXT_CACHE[key] = value
+        return value
+
+
+def _store_context(key: tuple, value: str) -> None:
+    with _CONTEXT_CACHE_LOCK:
+        _CONTEXT_CACHE.pop(key, None)
+        _CONTEXT_CACHE[key] = value
+        while len(_CONTEXT_CACHE) > _CONTEXT_CACHE_MAX:
+            _CONTEXT_CACHE.popitem(last=False)
+
+
+def _probe_context_source(metrics, source: str, probe):
+    """Run one optional context probe and report only hit/latency metadata."""
+    if metrics is None:
+        return probe()
+    import time
+    started = time.perf_counter()
+    result = None
+    try:
+        result = probe()
+        return result
+    finally:
+        metrics.record_context(
+            source,
+            hit=bool(result),
+            latency_ms=(time.perf_counter() - started) * 1000.0,
+        )
+
 
 _REPO_ROOT = Path(__file__).resolve().parent
 # Default vault = repo root, where `ccc init` creates the .cocoindex_code/
@@ -32,6 +110,7 @@ def enrich_prompt(
     top_k: int = 3,
     session_id: Optional[str] = None,
     repo_path: Optional[Path] = None,
+    metrics=None,
 ) -> str:
     """Gather context from vault (CocoIndex) + past trajectories (Engram)
     + Serena (LSP symbol search) + archival consolidation (Layer 3) and
@@ -44,54 +123,61 @@ def enrich_prompt(
 
     Returns empty string on any failure (non-blocking by design)."""
     vault = vault_path or DEFAULT_VAULT
-    parts = []
+    cache_key = None
+    if session_id:
+        cache_key = _context_cache_key(
+            domain, prompt, vault, top_k, session_id, repo_path,
+        )
+        cached = _cached_context(cache_key)
+        if cached is not None:
+            if metrics is not None:
+                metrics.record_context("cache", hit=True)
+            return cached
 
-    # 1. Structural context from vault via CocoIndex (code-review, python-testing)
+    # Probe order is fixed for deterministic rendering; execution is bounded
+    # and concurrent because these sources do not depend on one another.
+    probes = []
     if domain in ("code-review", "python-testing", "_default"):
-        try:
-            ctx = _cocoindex_context(prompt, vault, top_k)
-            if ctx:
-                parts.append(ctx)
-        except Exception as e:
-            sys.stderr.write(f"[context] cocoindex failed: {e}\n")
-
-    # 1b. Exact symbol context via Serena LSP (code-heavy domains)
+        probes.append(("cocoindex", lambda: _cocoindex_context(prompt, vault, top_k)))
     if domain in ("code-implementation", "python-coding", "python-testing",
                   "code-review", "debugging", "_default"):
-        try:
-            ctx = _serena_context(prompt, repo_path, top_k)
-            if ctx:
-                parts.append(ctx)
-        except Exception as e:
-            sys.stderr.write(f"[context] serena failed: {e}\n")
-
-    # 2. Temporal context from Engram (all domains) — similar past trajectories
+        probes.append(("serena", lambda: _serena_context(prompt, repo_path, top_k)))
     if domain in ("_default", "code-review", "python-testing", "git-operations"):
-        try:
-            ctx = _engram_context(domain, prompt, top_k)
-            if ctx:
-                parts.append(ctx)
-        except Exception as e:
-            sys.stderr.write(f"[context] engram failed: {e}\n")
-
-    # 3. Archival context from Layer 3 consolidation YAML files
+        probes.append(("engram", lambda: _engram_context(domain, prompt, top_k)))
     if session_id:
+        probes.append(("archival", lambda: _archival_context(domain, session_id)))
+
+    def _run_probe(item):
+        source, probe = item
         try:
-            ctx = _archival_context(domain, session_id)
+            return source, _probe_context_source(metrics, source, probe)
+        except Exception as e:
+            sys.stderr.write(f"[context] {source} failed: {e}\n")
+            return source, None
+
+    parts = []
+    if probes:
+        with ThreadPoolExecutor(max_workers=min(4, len(probes)), thread_name_prefix="school-context") as pool:
+            results = list(pool.map(_run_probe, probes))
+        for _source, ctx in results:
             if ctx:
                 parts.append(ctx)
-        except Exception as e:
-            sys.stderr.write(f"[context] archival failed: {e}\n")
 
     if not parts:
-        return ""
+        result = ""
+        if cache_key is not None:
+            _store_context(cache_key, result)
+        return result
 
     combined = "\\n\n".join(parts)
-    return (
+    result = (
         "\n\n---\n### Context from Knowledge Vault\n"
         f"{combined}\n"
         "---"
     )
+    if cache_key is not None:
+        _store_context(cache_key, result)
+    return result
 
 
 def _cocoindex_context(prompt: str, vault: Path, top_k: int) -> Optional[str]:

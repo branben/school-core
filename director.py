@@ -1,4 +1,6 @@
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 import re
 import sys
 import yaml
@@ -30,6 +32,9 @@ from adversarial_reviewer import (
 )
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec
+from verify_gate import run_verify_gate
+from pipeline_metrics import PipelineMetrics
+from review_packet import ReviewPacket
 
 SYSTEM_PROMPTS = {
     "python-testing": (
@@ -297,6 +302,8 @@ def _run_two_judge_review(
     codebase_context: str = "",
     role: str = "reviewer",
     repo: str = REPO_GLOBAL,
+    pipeline_metrics: Optional[PipelineMetrics] = None,
+    synthesize_narratives: Optional[bool] = None,
 ) -> dict:
     """Run CTO+COO two-judge adversarial review on student output.
 
@@ -307,12 +314,36 @@ def _run_two_judge_review(
 
     Both must return PASS for the work to be accepted.
     Returns dict with cto_verdict, coo_verdict, combined findings, and accepted flag.
+
+    ``synthesize_narratives=None`` preserves the legacy direct-call behavior;
+    the normal ``run_task`` path passes False so this non-gating enrichment does
+    not delay issue completion.
     """
-    _call_model = lambda prompt, sp=None, **kw: call_model(
-        role, prompt, system_prompt=sp,
-        timeout=kw.get("timeout", 90),
-    )
-    reviewer = AdversarialReviewer(call_model_fn=_call_model)
+    if synthesize_narratives is None:
+        synthesize_narratives = True
+
+    def _call_model(prompt, sp=None, **kw):
+        try:
+            response = call_model(
+                role, prompt, system_prompt=sp,
+                timeout=kw.get("timeout", 90),
+            )
+        except Exception:
+            if pipeline_metrics is not None:
+                pipeline_metrics.record_model(
+                    role,
+                    prompt_chars=len(prompt or ""),
+                )
+            raise
+        if pipeline_metrics is not None:
+            pipeline_metrics.record_model(
+                role,
+                prompt_chars=len(prompt or ""),
+                output_chars=len(response or ""),
+            )
+        return response
+    if pipeline_metrics is not None:
+        pipeline_metrics.record_call("two_judge_review")
 
     # ── Orca Execution ──
     # Execute student code in an Orca terminal sandbox before CTO review.
@@ -402,25 +433,153 @@ def _run_two_judge_review(
                 suggestion="",
             ))
 
-    # CTO review: correctness + security
-    cto_result = reviewer.review(
-        output=output,
-        task=task,
-        codebase_context=codebase_context,
-        lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
-    )
+    # ── Repo verify gate (BUILD lens) ──
+    # The Orca step above executes the extracted *snippet*; this step runs the
+    # repo's OWN hermetic verify commands (typecheck/test/lint declared in
+    # project_verify.yaml, inside `nix develop .#verifyShell`) against a real
+    # checkout when one resolves — the "compiler before the critic speaks"
+    # layer (campus.md #3) that actually reaches the two teachers. Real
+    # failures are CRITICAL (auto-veto): the repo's declared contract failing
+    # on the actual checkout is hard execution evidence, not model opinion.
+    # A skipped gate (no checkout path / no Nix / no declared commands) is a
+    # LOUD LOW advisory — never a fabricated pass; VERIFY_GATE_STRICT=1
+    # escalates the skip to a veto (cannot pass if we cannot run).
+    # Set REVIEW_RUN_VERIFY_GATE=0 to disable entirely (hermetic unit runs).
+    build_findings: list = []
+    verification_output: str = ""
+    verify_strict = os.environ.get("VERIFY_GATE_STRICT") == "1"
+    if (
+        task.get("domain") in executable_domains
+        and os.environ.get("REVIEW_RUN_VERIFY_GATE", "1").strip().lower()
+        not in ("0", "false", "no")
+    ):
+        repo_path = _resolve_repo_path(repo)
+        if pipeline_metrics is not None:
+            pipeline_metrics.record_call("verify_gate")
+            pipeline_metrics.record_verification(invocations=1)
+        if repo_path is None:
+            # A missing checkout is an unrunnable gate, not an implicit pass.
+            # Keep the default path advisory, but make strict mode a veto.
+            vg = {
+                "passed": False,
+                "skipped": True,
+                "failures": [{
+                    "cmd": "(repo)",
+                    "exit": None,
+                    "stderr": "No repository checkout resolved — verify gate SKIPPED.",
+                }],
+                "ran": 0,
+            }
+            verification_output = json.dumps(vg, indent=2)[:2000]
+            build_findings.append(Finding(
+                section="build",
+                issue_class="verification_skipped",
+                severity=Severity.CRITICAL if verify_strict else Severity.LOW,
+                citation="repo_unresolved",
+                description=vg["failures"][0]["stderr"],
+                suggestion="Resolve a cached checkout before running the build gate",
+            ))
+        else:
+            try:
+                # Pin the runner flake to this module's checkout. The review
+                # may run from a workflow working-directory unrelated to the
+                # school-core flake that provides verifyShell.
+                vg = run_verify_gate(
+                    repo_path=repo_path,
+                    project_verify=None,
+                    flake_path=Path(__file__).resolve().parent,
+                )
+                if pipeline_metrics is not None:
+                    gate_metrics = vg.get("telemetry") or {}
+                    pipeline_metrics.record_verification(
+                        shell_starts=gate_metrics.get("shell_starts", 0),
+                        commands=gate_metrics.get("commands", 0),
+                        copied_bytes=gate_metrics.get("copied_bytes", 0),
+                    )
+                verification_output = json.dumps(vg, indent=2)[:2000]
+                if vg.get("skipped"):
+                    reason = (vg.get("failures") or [{}])[0].get(
+                        "stderr", "verify gate could not run"
+                    )
+                    build_findings.append(Finding(
+                        section="build",
+                        issue_class="verification_skipped",
+                        severity=Severity.CRITICAL if verify_strict else Severity.LOW,
+                        citation="gate_skipped",
+                        description=reason[:300],
+                        suggestion=("Install Nix with a verifyShell and declare "
+                                    "project_verify.yaml commands"),
+                    ))
+                elif vg.get("strict_escalated") or not vg.get("passed"):
+                    for failure in vg.get("failures", []):
+                        build_findings.append(Finding(
+                            section="build",
+                            issue_class="verify_failed",
+                            severity=Severity.CRITICAL,
+                            citation=f"cmd: {failure.get('cmd', '')}",
+                            description=(failure.get("stderr") or "verify command failed")[:300],
+                            suggestion="Fix the failing verify command (typecheck/test/lint)",
+                        ))
+                else:
+                    build_findings.append(Finding(
+                        section="build",
+                        issue_class="verification_passed",
+                        severity=Severity.LOW,
+                        citation=f"ran={vg.get('ran', 0)} commands",
+                        description=f"Repo verify gate passed ({vg.get('ran', 0)} commands)",
+                        suggestion="",
+                    ))
+            except Exception as e:
+                # Keep the review alive in soft mode, but never let strict mode
+                # accept work after the compiler layer itself errored.
+                vg = {
+                    "passed": False,
+                    "skipped": True,
+                    "gate_error": True,
+                    "failures": [{"cmd": "(verify_gate)", "exit": None,
+                                  "stderr": str(e)[:500]}],
+                    "ran": 0,
+                }
+                verification_output = json.dumps(vg, indent=2)[:2000]
+                build_findings.append(Finding(
+                    section="build",
+                    issue_class="verify_gate_error",
+                    severity=Severity.CRITICAL if verify_strict else Severity.LOW,
+                    citation="exception",
+                    description=str(e)[:200],
+                    suggestion="Inspect the verify gate infrastructure before retrying",
+                ))
 
-    # COO review: completeness + build verification
-    coo_result = reviewer.review(
-        output=output,
-        task=task,
-        codebase_context=codebase_context,
-        lens_types=[LensType.COMPLETENESS],
-    )
+    def _run_judge(lens_types):
+        # Separate reviewer instances keep per-reviewer statistics isolated;
+        # only immutable result values are merged below.
+        judge = AdversarialReviewer(call_model_fn=_call_model)
+        return judge.review(
+            output=output,
+            task=task,
+            codebase_context=codebase_context,
+            lens_types=lens_types,
+        )
+
+    def _run_both_judges():
+        # CTO and COO are independent lenses. The fixed bound of two prevents
+        # review fan-out while allowing their model calls to overlap.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="school-review") as pool:
+            cto_future = pool.submit(_run_judge, [LensType.CORRECTNESS, LensType.SECURITY])
+            coo_future = pool.submit(_run_judge, [LensType.COMPLETENESS])
+            # Resolve by named future, not completion order, so persisted output
+            # remains CTO then COO and acceptance is deterministic.
+            return cto_future.result(), coo_future.result()
+
+    if pipeline_metrics is not None:
+        with pipeline_metrics.stage("review"):
+            cto_result, coo_result = _run_both_judges()
+    else:
+        cto_result, coo_result = _run_both_judges()
 
     cto_verdict = cto_result.verdict.value  # "PASS" or "FAIL"
     coo_verdict = coo_result.verdict.value
-    all_findings = execution_findings + cto_result.findings + coo_result.findings
+    all_findings = execution_findings + build_findings + cto_result.findings + coo_result.findings
     # Acceptance requires both judges PASS at score >= 50. A CRITICAL finding
     # (from lens findings) is an automatic veto — broken or unsafe output cannot
     # be accepted even if both judges happen to say PASS.
@@ -466,6 +625,25 @@ def _run_two_judge_review(
     except Exception as e:  # co-evolution is advisory; never break the acceptance verdict
         sys.stderr.write(f"[director] coevolution pass skipped: {e}\n")
 
+    review_packet = ReviewPacket.create(
+        artifact={"bead": bead, "repo": repo},
+        execution={"findings": execution_findings},
+        verification=verification_output,
+        cto={
+            "verdict": cto_verdict,
+            "score": cto_result.score,
+            "confidence": cto_result.confidence,
+            "findings": [f.to_dict() for f in cto_result.findings],
+        },
+        coo={
+            "verdict": coo_verdict,
+            "score": coo_result.score,
+            "confidence": coo_result.confidence,
+            "findings": [f.to_dict() for f in coo_result.findings],
+        },
+        accepted=accepted,
+    )
+
     # Update bookbag with review results
     update_bookbag(
         bead,
@@ -474,6 +652,7 @@ def _run_two_judge_review(
         findings=[f.to_dict() for f in all_findings],
         accepted=accepted,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
+        verification=verification_output or None,
         repo=repo,
     )
 
@@ -483,23 +662,21 @@ def _run_two_judge_review(
         f"{'ACCEPTED' if accepted else 'REJECTED'}\n"
     )
 
-    # ── Per-judge narrative (best-effort, ONE extra call) ──
-    # The structured verdicts/findings are machine-readable but not
-    # human-readable. Synthesize a short conversational note per judge —
-    # CTO (correctness/security tone) and COO (operational/completeness
-    # tone) — so a human OR an agent reading the close comment can see what
-    # each reviewer actually thought. Best-effort: a model failure yields
-    # None narratives and the comment simply omits the collapsible sections
-    # (the compact verdict bullets above always survive).
-    cto_narrative, coo_narrative = _synthesize_judge_narratives(
-        _call_model=_call_model,
-        task=task,
-        output=output,
-        cto_verdict=cto_verdict, cto_score=cto_result.score, cto_lens=cto_result.lens_used,
-        coo_verdict=coo_verdict, coo_score=coo_result.score, coo_lens=coo_result.lens_used,
-        cto_findings=[f.to_dict() for f in cto_result.findings],
-        coo_findings=[f.to_dict() for f in coo_result.findings],
-    )
+    # ── Per-judge narrative (optional, non-gating enrichment) ──
+    # The normal issue path returns immediately after the structured verdict.
+    # Direct/manual callers can opt into the legacy synchronous detail pass.
+    if synthesize_narratives:
+        cto_narrative, coo_narrative = _synthesize_judge_narratives(
+            _call_model=_call_model,
+            task=task,
+            output=output,
+            cto_verdict=cto_verdict, cto_score=cto_result.score, cto_lens=cto_result.lens_used,
+            coo_verdict=coo_verdict, coo_score=coo_result.score, coo_lens=coo_result.lens_used,
+            cto_findings=[f.to_dict() for f in cto_result.findings],
+            coo_findings=[f.to_dict() for f in coo_result.findings],
+        )
+    else:
+        cto_narrative, coo_narrative = None, None
     if cto_narrative:
         update_bookbag(bead, cto_narrative=cto_narrative, repo=repo)
     if coo_narrative:
@@ -510,12 +687,18 @@ def _run_two_judge_review(
         "coo_verdict": coo_verdict,
         "cto_score": cto_result.score,
         "coo_score": coo_result.score,
+        "cto_confidence": cto_result.confidence,
+        "coo_confidence": coo_result.confidence,
+        "confidence": max(cto_result.confidence, coo_result.confidence),
         "combined_score": combined_score,
         "findings": [f.to_dict() for f in all_findings],
+        "build_findings": [f.to_dict() for f in build_findings],
+        "build_verification": verification_output or None,
         "accepted": accepted,
         "coevolution": coevolution_report.to_dict() if coevolution_report else None,
         "cto_narrative": cto_narrative,
         "coo_narrative": coo_narrative,
+        "review_packet": review_packet.to_dict(),
     }
 
 
@@ -752,6 +935,8 @@ def run_task(
     phase_drop_rate: float = 0.5,
     phase_seeds: Optional[list] = None,
     provided_student_output: Optional[str] = None,
+    pipeline_metrics: Optional[PipelineMetrics] = None,
+    synthesize_narratives: bool = False,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -889,12 +1074,24 @@ def run_task(
     # orchestrator gates _archival_context on session_id (context_orchestrator
     # .py:78), so dropping it here keeps Layer 3 dead in the school-loop path.
     repo_path = _resolve_repo_path(repo)
-    context_blob = enrich_prompt(
-        domain, prompt,
-        vault_path=DEFAULT_VAULT,
-        session_id=session_id,
-        repo_path=repo_path,
-    )
+    if pipeline_metrics is not None:
+        with pipeline_metrics.stage("context"):
+            context_blob = enrich_prompt(
+                domain, prompt,
+                vault_path=DEFAULT_VAULT,
+                session_id=session_id,
+                repo_path=repo_path,
+                metrics=pipeline_metrics,
+            )
+    else:
+        context_blob = enrich_prompt(
+            domain, prompt,
+            vault_path=DEFAULT_VAULT,
+            session_id=session_id,
+            repo_path=repo_path,
+        )
+    if pipeline_metrics is not None:
+        pipeline_metrics.record_context("vault", hit=bool(context_blob))
     if context_blob:
         system_prompt = system_prompt + context_blob
         get_decision_log().log(
@@ -1048,7 +1245,16 @@ def run_task(
             if provided_student_output is not None:
                 response = provided_student_output
             else:
-                response = call_model(role, prompt, system_prompt=system_prompt)
+                if pipeline_metrics is not None:
+                    with pipeline_metrics.stage("student_model"):
+                        response = call_model(role, prompt, system_prompt=system_prompt)
+                    pipeline_metrics.record_model(
+                        role,
+                        prompt_chars=len(prompt or "") + len(system_prompt or ""),
+                        output_chars=len(response or ""),
+                    )
+                else:
+                    response = call_model(role, prompt, system_prompt=system_prompt)
         except Exception as e:
             error = str(e)
 
@@ -1146,6 +1352,8 @@ def run_task(
             codebase_context=context_blob or "",
             role="reviewer",
             repo=repo,
+            pipeline_metrics=pipeline_metrics,
+            synthesize_narratives=synthesize_narratives,
         )
     except OrcaUnavailableError as e:
         # Hard fail: Orca sandbox is required for executable domains.

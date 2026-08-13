@@ -5,6 +5,7 @@ any CI. The real `nix develop` path is exercised manually / in integration.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -12,6 +13,7 @@ from unittest import mock
 import pytest
 
 from verify_gate import (
+    _build_verify_script,
     _discover_commands,
     _flake_ref,
     run_verify_gate,
@@ -80,6 +82,81 @@ def test_project_verify_yaml_shadows_recursive_discovery(tmp_path):
     assert not any("npm:" in c["name"] or "orca" in c["name"] for c in cmds)
 
 
+def test_verify_wrapper_executes_each_command_and_emits_markers(tmp_path):
+    """Exercise the generated wrapper in a real shell, not only a subprocess mock."""
+    commands = [
+        {"cmd": "printf pass", "cwd": "."},
+        {"cmd": "printf boom; exit 3", "cwd": "."},
+    ]
+
+    script, _starts, _ends = _build_verify_script(commands, tmp_path, timeout=5)
+    timeout_bin = tmp_path / "bin" / "timeout"
+    timeout_bin.parent.mkdir()
+    timeout_bin.write_text("#!/usr/bin/env bash\nshift\nexec \"$@\"\n")
+    timeout_bin.chmod(0o755)
+    env = dict(os.environ)
+    env["PATH"] = f"{timeout_bin.parent}:{env.get('PATH', '')}"
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "__SCHOOL_VERIFY_START_0__" in result.stdout
+    assert "pass" in result.stdout
+    assert "__SCHOOL_VERIFY_END_0__0" in result.stdout
+    assert "__SCHOOL_VERIFY_START_1__" in result.stdout
+    assert "boom" in result.stdout
+    assert "__SCHOOL_VERIFY_END_1__3" in result.stdout
+
+
+def test_run_verify_gate_uses_one_shell_for_multiple_commands(tmp_path):
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "test": "true"})
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("verify_gate._find_nix", return_value="nix"):
+        res = run_verify_gate(tmp_path)
+
+    assert res["passed"] is True
+    assert res["ran"] == 2
+    assert len(calls) == 1
+    assert "npm run typecheck" in calls[0][0]
+    assert "npm run test" in calls[0][0]
+    assert res["telemetry"]["shell_starts"] == 1
+    assert res["telemetry"]["commands"] == 2
+
+
+def test_run_verify_gate_preserves_per_command_failure_evidence(tmp_path):
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "test": "false"})
+
+    def fake_run(cmd, **kwargs):
+        output = (
+            "__SCHOOL_VERIFY_START_0__\n\npass\n"
+            "__SCHOOL_VERIFY_END_0__0\n"
+            "__SCHOOL_VERIFY_START_1__\n\nboom\n"
+            "__SCHOOL_VERIFY_END_1__1\n"
+        )
+        return subprocess.CompletedProcess([], 0, output, "")
+
+    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("verify_gate._find_nix", return_value="nix"):
+        res = run_verify_gate(tmp_path)
+
+    assert res["ran"] == 2
+    assert res["passed"] is False
+    assert res["failures"] == [{"cmd": "npm run test", "exit": 1, "stderr": "boom"}]
+    assert res["telemetry"]["shell_starts"] == 1
+
+
 def test_run_verify_gate_passes_when_all_zero(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
@@ -89,6 +166,9 @@ def test_run_verify_gate_passes_when_all_zero(tmp_path):
         res = run_verify_gate(tmp_path)
     assert res["passed"] is True
     assert res["ran"] == 1
+    assert res["telemetry"]["shell_starts"] == 1
+    assert res["telemetry"]["commands"] == 1
+    assert res["telemetry"]["copied_bytes"] > 0
 
 
 def test_run_verify_gate_fails_on_nonzero(tmp_path):
@@ -155,6 +235,51 @@ def test_strict_mode_escalates_no_commands(tmp_path, monkeypatch):
     assert res["passed"] is False
     assert res["skipped"] is False
     assert res["strict_escalated"] is True
+
+
+def test_repo_root_project_verify_yaml_auto_probed(tmp_path):
+    """With no explicit manifest, the gate honors the repo's OWN
+    project_verify.yaml over package.json inference."""
+    (tmp_path / "project_verify.yaml").write_text(
+        "verify:\n  - name: core-python-compile\n    cmd: python3 -m compileall -q *.py\n    cwd: .\n"
+    )
+    _write_pkg(tmp_path, ".", {"typecheck": "tsc --noEmit", "test": "vitest"})
+    cmds = _discover_commands(tmp_path, None)
+    assert len(cmds) == 1
+    assert cmds[0]["name"] == "core-python-compile"
+    assert "compileall" in cmds[0]["cmd"]
+    assert not any("npm" in c["name"] for c in cmds)
+
+
+def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
+    """The scratch copy must exclude .git/venv/node_modules bloat so the gate
+    stays fast on large checkouts — verify commands never need that noise."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true"})
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "objects").mkdir()
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "dep.js").write_text("boom")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "lib").write_text("boom")
+
+    seen_cwds: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        seen_cwds.append(str(kwargs.get("cwd", "")))
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("verify_gate._find_nix", return_value="nix"):
+        res = run_verify_gate(tmp_path)
+
+    assert res["passed"] is True
+    assert seen_cwds, "verify command should have run in the scratch copy"
+    assert not any("node_modules" in c for c in seen_cwds)
+    assert not any(".git" in c for c in seen_cwds)
+    assert not any(".venv" in c for c in seen_cwds)
+    assert res["telemetry"]["shell_starts"] == 1
+    assert res["telemetry"]["commands"] == 1
+    assert res["telemetry"]["copied_bytes"] > 0
 
 
 def test_default_mode_not_affected_by_env_gap(tmp_path, monkeypatch):

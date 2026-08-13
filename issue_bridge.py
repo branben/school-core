@@ -30,6 +30,10 @@ from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
 from capabilities import CapabilityBundle, resolve_capability
 from scoring import ScoreStore
 from school_mail import notify_issue_alert
+from pipeline_metrics import PipelineMetrics
+from review_packet import ReviewPacket
+from crew_admission import decide_admission
+from shadow_routing import build_shadow_evidence, load_shadow_history
 # U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
 # monkeypatch the symbols; the crew module itself stays dependency-free of the
 # bridge.
@@ -449,7 +453,42 @@ def _observability_fields(task_result: dict) -> dict:
     return fields
 
 
-def record_run(path: Path, entry: dict) -> None:
+def _build_shadow_routing_packet(
+    task_result: dict,
+    issue: dict,
+    score: float,
+    retry_count: int,
+    history_path: Path,
+    candidates,
+) -> dict:
+    """Build observational routing evidence without changing route selection."""
+    current = {
+        "agent": task_result.get("agent"),
+        "score": score,
+        "status": task_result.get("status"),
+        "difficulty": issue.get("difficulty"),
+        "retry_count": retry_count,
+        "confidence": task_result.get("confidence")
+        if task_result.get("confidence") is not None
+        else (task_result.get("review") or {}).get("confidence"),
+        "review_packet": task_result.get("review_packet"),
+        "capability": task_result.get("capability"),
+        # Runtime tool usage is intentionally passed through only when a
+        # producer proves it. Capability declarations are merely "offered".
+        "tool_usage": task_result.get("tool_usage"),
+    }
+    return build_shadow_evidence(
+        load_shadow_history(history_path),
+        current=current,
+        candidates=candidates,
+    )
+
+
+def record_run(
+    path: Path,
+    entry: dict,
+    metrics: Optional[PipelineMetrics] = None,
+) -> None:
     """Append an entry to a JSON-list run log at *path*, atomically.
 
     Each entry gets a server-side ``timestamp`` (ISO-8601 UTC) added if
@@ -457,6 +496,7 @@ def record_run(path: Path, entry: dict) -> None:
     renames for crash-safe atomicity.  Creates parent directories as needed.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    persistence_started = time.perf_counter()
     if "timestamp" not in entry:
         entry["timestamp"] = datetime.now(timezone.utc).isoformat()
 
@@ -469,6 +509,16 @@ def record_run(path: Path, entry: dict) -> None:
             existing = []
 
     existing.append(entry)
+
+    # Add the bounded packet immediately before the atomic write. This keeps
+    # the measurement additive and avoids a second state-write just to attach
+    # telemetry; the persistence preparation time is the useful F0 baseline.
+    if metrics is not None:
+        metrics.record_stage_duration(
+            "persistence",
+            (time.perf_counter() - persistence_started) * 1000.0,
+        )
+        entry["pipeline_metrics"] = metrics.snapshot()
 
     # Atomic write: temp → rename
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -715,6 +765,16 @@ def _crew_enabled_from_env() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _crew_active_count(crew_runs_file) -> int:
+    """Count durable active crew claims without exposing paths or payloads."""
+    try:
+        raw = json.loads(crew_runs_file.read_text()) if crew_runs_file.exists() else []
+        runs = raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        return 0
+    return sum(1 for entry in runs if entry.get("status") in _CREW_ACTIVE_STATUSES)
+
+
 def _crew_active_issue(crew_runs_file, issue_number: int) -> bool:
     """True when the durable registry has an active (running/blocked) record.
 
@@ -736,6 +796,20 @@ def _crew_active_issue(crew_runs_file, issue_number: int) -> bool:
         and entry.get("status") in _CREW_ACTIVE_STATUSES
         for entry in runs
     )
+
+
+def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        return max(minimum, int(default))
+
+
+def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
+    try:
+        return max(minimum, float(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        return max(minimum, float(default))
 
 
 def _resolve_crew_capability(
@@ -834,6 +908,10 @@ def bridge_issues(
     retries = _load_retries()
     results = []
     crew_dispatched = 0
+    cycle_started = time.monotonic()
+    runner_slots = _env_int("CREW_RUNNER_SLOTS", crew_max_per_cycle, minimum=0)
+    cycle_budget_seconds = _env_float("CREW_CYCLE_BUDGET_SECONDS", 1800.0, minimum=0.0)
+    retry_pressure_limit = _env_int("CREW_RETRY_PRESSURE_LIMIT", 2, minimum=1)
 
     # U1: one session_id per cycle (not per issue) so Layer 3 archival
     # context can accumulate across the school-loop's sleep/wake cycles and
@@ -874,14 +952,17 @@ def bridge_issues(
 
     for issue in issues:
         num = issue["issue_number"]
+        metrics = PipelineMetrics()
         if num in processed:
             continue
 
         # Build codebase context for this issue
         issue_text = f"{issue['title']}\n\n{issue.get('body', '')}"
         codebase_ctx = ""
-        if repo_path:
-            codebase_ctx = build_codebase_context(repo_path, issue_text)
+        with metrics.stage("context"):
+            if repo_path:
+                codebase_ctx = build_codebase_context(repo_path, issue_text)
+        metrics.record_context("codebase", hit=bool(codebase_ctx))
 
         # Enrich prompt with codebase context
         enriched_prompt = issue["prompt"]
@@ -914,6 +995,7 @@ def bridge_issues(
             )
 
         if crew_enabled and crew_skip_reason is None and _crew_active_issue(CREW_RUNS_FILE, num):
+            metrics.record_crew("in_flight")
             crew_skip_reason = "crew_in_flight"
             sys.stderr.write(f"[issue_bridge] #{num}: crew {crew_id} still active — skipping this cycle\n")
             # A stale record (crew aborted > CREW_TIMEOUT_SECONDS ago) can
@@ -936,14 +1018,26 @@ def bridge_issues(
             })
             continue
 
-        if crew_enabled and crew_dispatched >= crew_max_per_cycle:
-            crew_skip_reason = "crew_cap_reached"
-            crew_fallback_reason = crew_skip_reason
-            sys.stderr.write(
-                f"[issue_bridge] #{num}: crew cap ({crew_max_per_cycle}) reached this cycle — direct path\n"
+        if crew_enabled and crew_skip_reason is None:
+            admission = decide_admission(
+                dispatched=crew_dispatched,
+                configured_cap=crew_max_per_cycle,
+                runner_slots=runner_slots,
+                active_claims=_crew_active_count(CREW_RUNS_FILE),
+                remaining_seconds=cycle_budget_seconds - (time.monotonic() - cycle_started),
+                crew_timeout_seconds=CREW_DEFAULT_TIMEOUT,
+                retry_pressure=len(retries),
+                retry_pressure_limit=retry_pressure_limit,
             )
+            if not admission.admitted:
+                crew_skip_reason = admission.reason
+                crew_fallback_reason = crew_skip_reason
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: crew admission denied ({crew_skip_reason}) — direct path\n"
+                )
 
         if crew_enabled and crew_skip_reason is None:
+            metrics.record_crew("spawn")
             crew_dispatched += 1
             try:
                 crew_result = dispatch_crew(
@@ -953,6 +1047,9 @@ def bridge_issues(
                     cycle_session_id=cycle_session_id,
                     capability=crew_capability,
                 )
+                metrics.record_crew("poll")
+                if crew_result.teardown_ok:
+                    metrics.record_crew("teardown")
             except CrewUnavailableError as e:
                 crew_fallback_reason = "spawn_failure"
                 sys.stderr.write(
@@ -981,6 +1078,9 @@ def bridge_issues(
                 f"[issue_bridge] #{num}: crew {crew_result.status} ({crew_fallback_reason}) — direct fallback\n"
             )
 
+        if crew_fallback_reason:
+            metrics.record_crew("fallback")
+
         # Keep the direct review path on the same task role selected for the
         # crew. This prevents an A2A/readiness reroute from silently changing
         # the persona after a crew fallback or provided report.
@@ -989,28 +1089,31 @@ def bridge_issues(
             or (crew_capability.task_role if crew_enabled and crew_capability else None)
         )
         try:
-            if crew_result is not None and crew_result.status == "done":
-                # The crew's report.md IS the student deliverable: substitution
-                # through run_task keeps review/scoring/bookbag on one path.
-                crew_used = True
-                task_result = run_task(
-                    prompt=enriched_prompt,
-                    domain=issue["domain"],
-                    difficulty=issue["difficulty"],
-                    force_agent=dispatch_force_agent,
-                    store=store,
-                    session_id=cycle_session_id,
-                    provided_student_output=deliverable,
-                )
-            else:
-                task_result = run_task(
-                    prompt=enriched_prompt,
-                    domain=issue["domain"],
-                    difficulty=issue["difficulty"],
-                    force_agent=dispatch_force_agent,
-                    store=store,
-                    session_id=cycle_session_id,
-                )
+            with metrics.stage("student_generation"):
+                if crew_result is not None and crew_result.status == "done":
+                    # The crew's report.md IS the student deliverable: substitution
+                    # through run_task keeps review/scoring/bookbag on one path.
+                    crew_used = True
+                    task_result = run_task(
+                        prompt=enriched_prompt,
+                        domain=issue["domain"],
+                        difficulty=issue["difficulty"],
+                        force_agent=dispatch_force_agent,
+                        store=store,
+                        session_id=cycle_session_id,
+                        provided_student_output=deliverable,
+                        pipeline_metrics=metrics,
+                    )
+                else:
+                    task_result = run_task(
+                        prompt=enriched_prompt,
+                        domain=issue["domain"],
+                        difficulty=issue["difficulty"],
+                        force_agent=dispatch_force_agent,
+                        store=store,
+                        session_id=cycle_session_id,
+                        pipeline_metrics=metrics,
+                    )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
             err = str(e)
@@ -1077,6 +1180,7 @@ def bridge_issues(
             continue
 
         if task_result["status"] == "success":
+            canonical_packet = ReviewPacket.from_dict(task_result.get("review_packet"))
             # ── Two-judge acceptance gate ──
             # run_task already ran the CTO+COO review; both must PASS at
             # score >= 50 with no CRITICAL finding for accepted=True. The
@@ -1089,7 +1193,12 @@ def bridge_issues(
             # A missing review (legacy/async fixtures) passes through: the
             # async skip_review path intentionally carries empty verdicts.
             _review = task_result.get("review") or {}
-            _reviewed = bool(_review.get("cto_verdict") or _review.get("coo_verdict"))
+            if canonical_packet is not None and canonical_packet.is_authoritative:
+                _review = dict(_review)
+                _review["accepted"] = canonical_packet.accepted
+            _reviewed = bool(
+                canonical_packet is not None and canonical_packet.is_authoritative
+            ) or bool(_review.get("cto_verdict") or _review.get("coo_verdict"))
             if _reviewed and _review.get("accepted") is False:
                 _reject_reason = (
                     f"two-judge review rejected: cto={_review.get('cto_verdict')} "
@@ -1144,7 +1253,28 @@ def bridge_issues(
             # NEW: run the code before the critic speaks (campus.md #3).
             # Compile/typecheck/test failures become CRITICAL findings fed
             # into the adversarial reviewer, so broken code can't pass review.
-            verify_result = _run_verify_gate(repo_path, issue)
+            if (
+                canonical_packet is not None
+                and canonical_packet.is_authoritative
+                and canonical_packet.is_verification_authoritative
+            ):
+                # The director already ran the authoritative build gate. Reuse
+                # its evidence instead of paying for a second checkout/shell.
+                metrics.record_call("verify_gate_reused")
+                with metrics.stage("verify"):
+                    verify_result = canonical_packet.verification
+            else:
+                metrics.record_call("verify_gate")
+                metrics.record_verification(invocations=1)
+                with metrics.stage("verify"):
+                    verify_result = _run_verify_gate(repo_path, issue)
+            if verify_result:
+                gate_metrics = verify_result.get("telemetry") or {}
+                metrics.record_verification(
+                    shell_starts=gate_metrics.get("shell_starts", 0),
+                    commands=gate_metrics.get("commands", 0),
+                    copied_bytes=gate_metrics.get("copied_bytes", 0),
+                )
 
             # Loudness for direct/manual callers: when the reusable gate could
             # not run at all (Nix missing / no verify commands), say so in the
@@ -1160,7 +1290,9 @@ def bridge_issues(
             # on the result + durable record, but never override the verdict —
             # the adversarial (two-judge) review below remains the semantic
             # gate.
-            entire_review = _run_entire_sensor(repo_path)
+            metrics.record_call("entire")
+            with metrics.stage("entire"):
+                entire_review = _run_entire_sensor(repo_path)
             entire_summary = None
             if entire_review:
                 entire_summary = {
@@ -1172,13 +1304,23 @@ def bridge_issues(
                         f"[issue_bridge] entire review FAIL for #{num}: "
                         f"{entire_summary['findings']} finding(s)\n"
                     )
+            if canonical_packet is not None and canonical_packet.is_authoritative:
+                canonical_packet.attach_entire(entire_summary)
 
-            # Run adversarial review before verification
-            adversarial_review = _run_adversarial_review(
-                task_result=task_result,
-                issue=issue,
-                codebase_ctx=codebase_ctx,
-            )
+            # Reuse the director's canonical CTO+COO result when available;
+            # legacy task results retain the bridge's old review fallback.
+            if canonical_packet is not None and canonical_packet.is_authoritative:
+                metrics.record_call("adversarial_review_reused")
+                with metrics.stage("review"):
+                    adversarial_review = canonical_packet.adversarial_summary()
+            else:
+                metrics.record_call("adversarial_review")
+                with metrics.stage("review"):
+                    adversarial_review = _run_adversarial_review(
+                        task_result=task_result,
+                        issue=issue,
+                        codebase_ctx=codebase_ctx,
+                    )
 
             # Merge verify-gate failures into the review as CRITICAL findings.
             # This is the enforcement of campus.md #3: the compiler runs before
@@ -1226,13 +1368,19 @@ def bridge_issues(
                     adversarial_review["score"] = 0.0
 
             # Verify output correctness with codebase context
-            verification = verify_task_output(
-                original_prompt=enriched_prompt,
-                agent_response=task_result["response"],
-                domain=issue["domain"],
-                difficulty=issue["difficulty"],
-                codebase_context=codebase_ctx,
-            )
+            metrics.record_call("output_verification")
+            with metrics.stage("output_verification"):
+                verification = verify_task_output(
+                    original_prompt=enriched_prompt,
+                    agent_response=task_result["response"],
+                    domain=issue["domain"],
+                    difficulty=issue["difficulty"],
+                    codebase_context=codebase_ctx,
+                )
+
+            if canonical_packet is not None and canonical_packet.is_authoritative:
+                canonical_packet.attach_output_verification(verification)
+                task_result["review_packet"] = canonical_packet.to_dict()
 
             # Combined score: execution * 0.5 + review * 0.3 + heuristic * 0.2
             execution_score = verification["score"]
@@ -1251,7 +1399,35 @@ def bridge_issues(
             )
 
             task_result["adversarial_review"] = adversarial_review
-            updated = evaluate_and_update(task_result, combined_score, store=store)
+            try:
+                shadow_candidates = store.list_agents()
+            except Exception:
+                shadow_candidates = [task_result.get("agent")]
+            shadow_routing = _build_shadow_routing_packet(
+                task_result,
+                issue,
+                combined_score,
+                retries.get(num, 0),
+                PROCESSED_FILE.parent / "last_run.json",
+                shadow_candidates,
+            )
+            task_result["shadow_routing"] = shadow_routing
+            with metrics.stage("scoring"):
+                updated = evaluate_and_update(task_result, combined_score, store=store)
+            review_evidence = task_result.get("review") or {}
+            critical_findings = sum(
+                1 for finding in (review_evidence.get("findings") or [])
+                if finding.get("severity") == "CRITICAL"
+            )
+            critical_findings += sum(
+                1 for finding in (adversarial_review.get("findings") or [])
+                if finding.get("severity") == "CRITICAL"
+            )
+            metrics.record_quality(
+                accepted=review_evidence.get("accepted"),
+                critical_findings=critical_findings,
+                retry_count=retries.get(num, 0),
+            )
             results.append({
                 "issue_number": num,
                 "title": issue["title"],
@@ -1265,12 +1441,15 @@ def bridge_issues(
                 "gate_crossed": updated.get("gate_crossed"),
                 "verification": verification,
                 "adversarial_review": adversarial_review,
+                "review_packet": task_result.get("review_packet"),
                 "verify_skipped": verify_skipped,
                 "entire_review": entire_review,
                 "crew_id": crew_result.crew_id if crew_result else None,
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
                 "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                "shadow_routing": shadow_routing,
+                "pipeline_metrics": metrics.snapshot(),
             })
             try:
                 record_run(
@@ -1282,6 +1461,10 @@ def bridge_issues(
                         "score": combined_score,
                         "trajectory": task_result.get("trajectory"),
                         **_observability_fields(task_result),
+                        "review_packet": task_result.get("review_packet"),
+                        # F7 is observational: this packet is for offline
+                        # evaluation only and never feeds route_task.
+                        "shadow_routing": shadow_routing,
                         # title/domain/difficulty let the board re-render the
                         # card after the issue is auto-closed (it leaves the
                         # open-issues cache once closed).
@@ -1303,6 +1486,7 @@ def bridge_issues(
                         "crew_fallback_reason": crew_fallback_reason,
                         "teardown_ok": crew_result.teardown_ok if crew_result else None,
                     },
+                    metrics=metrics,
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")

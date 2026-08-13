@@ -29,6 +29,7 @@
         name = "school-core-verify";
         packages = [
           pkgs.nodejs_22  # nodejs_20 is EOL/insecure in nixpkgs 26.05
+          pkgs.coreutils  # provides the per-command `timeout` wrapper
           pkgs.pnpm  # nodePackages was removed in nixpkgs 26.05; pnpm now lives at top level
           pkgs.python312
           pkgs.ripgrep
