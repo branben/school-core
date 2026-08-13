@@ -209,6 +209,34 @@ def _yaml_load(path: Path) -> dict:
     return out
 
 
+def _build_verify_script(
+    commands: list[dict],
+    work: Path,
+    timeout: int,
+) -> tuple[str, list[str], list[str]]:
+    """Build the bounded shell wrapper and its per-command marker lists."""
+    starts: list[str] = []
+    ends: list[str] = []
+    script_lines = ["set +e"]
+    for index, cmd in enumerate(commands):
+        cwd = (work / cmd["cwd"]).resolve()
+        start = f"__SCHOOL_VERIFY_START_{index}__"
+        end = f"__SCHOOL_VERIFY_END_{index}__"
+        starts.append(start)
+        ends.append(end)
+        script_lines.append(f"printf '%s\\n' {shlex.quote(start)}")
+        script_lines.append(
+            f"(cd -- {shlex.quote(str(cwd))} && "
+            f"timeout {int(timeout)}s bash -c {shlex.quote(cmd['cmd'])}) 2>&1"
+        )
+        script_lines.append("status=$?")
+        script_lines.append(f"printf '\\n%s%d\\n' {shlex.quote(end)} \"$status\"")
+    # The wrapper reports command-level statuses through markers; its own
+    # exit status must not hide later command diagnostics.
+    script_lines.append("exit 0")
+    return "\n".join(script_lines), starts, ends
+
+
 def run_verify_gate(
     repo_path: Path,
     project_verify: Optional[Path] = None,
@@ -282,26 +310,7 @@ def run_verify_gate(
         work = scratch / "repo"
 
         failures: list[dict] = []
-        starts: list[str] = []
-        ends: list[str] = []
-        script_lines = ["set +e"]
-        for index, cmd in enumerate(commands):
-            cwd = (work / cmd["cwd"]).resolve()
-            start = f"__SCHOOL_VERIFY_START_{index}__"
-            end = f"__SCHOOL_VERIFY_END_{index}__"
-            starts.append(start)
-            ends.append(end)
-            script_lines.append(f"printf '%s\\n' {shlex.quote(start)}")
-            script_lines.append(
-                f"(cd -- {shlex.quote(str(cwd))} && "
-                f"timeout {int(timeout)}s bash -c {shlex.quote(cmd['cmd'])}) 2>&1"
-            )
-            script_lines.append("status=$?")
-            script_lines.append(f"printf '\\n%s%d\\n' {shlex.quote(end)} \"$status\"")
-        # The wrapper reports command-level statuses through markers; its own
-        # exit status must not hide later command diagnostics.
-        script_lines.append("exit 0")
-        script = "\\n".join(script_lines)
+        script, starts, ends = _build_verify_script(commands, work, timeout)
         full = f"{nix_bin} develop {flake_ref}#verifyShell --command bash -c {shlex.quote(script)}"
         try:
             res = subprocess.run(
@@ -321,7 +330,7 @@ def run_verify_gate(
         else:
             output = (res.stdout or "")
             if res.stderr:
-                output += f"\\n{res.stderr}"
+                output += f"\n{res.stderr}"
             found_markers = 0
             for index, cmd in enumerate(commands):
                 start_pos = output.find(starts[index])

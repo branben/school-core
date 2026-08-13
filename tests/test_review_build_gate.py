@@ -9,6 +9,7 @@ verification output (the ``verification`` field from HANDOFF.md's schema).
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from unittest.mock import patch
 
@@ -27,6 +28,21 @@ class _FakeReviewer:
 
     def review(self, **kwargs):
         return ReviewResult(verdict=Verdict.PASS, findings=[])
+
+
+class _FakeOrca:
+    """Keep build-gate tests hermetic; Orca is covered by live integration tests."""
+
+    def __init__(self):
+        pass
+
+    def execute(self, **kwargs):
+        return SimpleNamespace(
+            timed_out=False,
+            exit_code=0,
+            duration_ms=0,
+            stderr="",
+        )
 
 
 def _review_with_build_gate(monkeypatch, repo_path, vg_result, bead="bead-build-gate", gate=None):
@@ -48,6 +64,7 @@ def _review_with_build_gate(monkeypatch, repo_path, vg_result, bead="bead-build-
         gate or (lambda repo_path, project_verify=None, **kwargs: vg_result),
     )
     with patch("director.AdversarialReviewer", _FakeReviewer), \
+         patch("director.OrcaExecutionManager", _FakeOrca), \
          patch("director.call_model", side_effect=RuntimeError("no model in tests")):
         return _run_two_judge_review(
             bead=bead,

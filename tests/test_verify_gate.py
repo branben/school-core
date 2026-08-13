@@ -5,6 +5,7 @@ any CI. The real `nix develop` path is exercised manually / in integration.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -12,6 +13,7 @@ from unittest import mock
 import pytest
 
 from verify_gate import (
+    _build_verify_script,
     _discover_commands,
     _flake_ref,
     run_verify_gate,
@@ -78,6 +80,38 @@ def test_project_verify_yaml_shadows_recursive_discovery(tmp_path):
     assert len(cmds) == 1
     assert cmds[0]["name"] == "core-python-compile"
     assert not any("npm:" in c["name"] or "orca" in c["name"] for c in cmds)
+
+
+def test_verify_wrapper_executes_each_command_and_emits_markers(tmp_path):
+    """Exercise the generated wrapper in a real shell, not only a subprocess mock."""
+    commands = [
+        {"cmd": "printf pass", "cwd": "."},
+        {"cmd": "printf boom; exit 3", "cwd": "."},
+    ]
+
+    script, _starts, _ends = _build_verify_script(commands, tmp_path, timeout=5)
+    timeout_bin = tmp_path / "bin" / "timeout"
+    timeout_bin.parent.mkdir()
+    timeout_bin.write_text("#!/usr/bin/env bash\nshift\nexec \"$@\"\n")
+    timeout_bin.chmod(0o755)
+    env = dict(os.environ)
+    env["PATH"] = f"{timeout_bin.parent}:{env.get('PATH', '')}"
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "__SCHOOL_VERIFY_START_0__" in result.stdout
+    assert "pass" in result.stdout
+    assert "__SCHOOL_VERIFY_END_0__0" in result.stdout
+    assert "__SCHOOL_VERIFY_START_1__" in result.stdout
+    assert "boom" in result.stdout
+    assert "__SCHOOL_VERIFY_END_1__3" in result.stdout
 
 
 def test_run_verify_gate_uses_one_shell_for_multiple_commands(tmp_path):
