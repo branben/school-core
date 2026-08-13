@@ -1,6 +1,8 @@
 """F7: growth-aware routing remains observational until proven offline."""
 
-from shadow_routing import build_shadow_evidence
+import json
+
+from shadow_routing import build_shadow_evidence, load_shadow_history
 
 
 def _record(
@@ -99,6 +101,25 @@ def test_shadow_packet_never_infers_tool_use_and_redacts_untrusted_text():
     assert packet["tools"]["offered"] == ["not-allowed", "python"]
     assert "/Users/private" not in str(packet)
     assert len(packet["tools"]["offered"]) <= 16
+
+
+def test_shadow_history_is_bounded_and_ignores_malformed_entries(tmp_path):
+    path = tmp_path / "last_run.json"
+    path.write_text(json.dumps([None, *({"score": i} for i in range(300))]))
+
+    history = load_shadow_history(path, limit=999)
+
+    assert len(history) == 256
+    assert all(isinstance(item, dict) for item in history)
+    assert history[0]["score"] == 44
+    assert history[-1]["score"] == 299
+
+
+def test_shadow_history_malformed_state_is_empty(tmp_path):
+    path = tmp_path / "last_run.json"
+    path.write_text("not json")
+
+    assert load_shadow_history(path) == []
 
 
 def test_shadow_packet_extracts_proven_tool_invocations_only():

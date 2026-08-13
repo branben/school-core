@@ -59,6 +59,19 @@ def test_repo_identity_invalidates_cached_packet(monkeypatch, tmp_path):
     assert calls == ["coco", "coco"]
 
 
+def test_context_cache_evicts_oldest_entry():
+    context.clear_context_cache()
+
+    for index in range(context._CONTEXT_CACHE_MAX + 1):
+        context._store_context(("key", index), f"value-{index}")
+
+    assert context._cached_context(("key", 0)) is None
+    assert context._cached_context(("key", context._CONTEXT_CACHE_MAX)) == (
+        f"value-{context._CONTEXT_CACHE_MAX}"
+    )
+    assert len(context._CONTEXT_CACHE) == context._CONTEXT_CACHE_MAX
+
+
 def test_context_sources_probe_in_parallel_with_deterministic_render_order(
     monkeypatch, tmp_path,
 ):

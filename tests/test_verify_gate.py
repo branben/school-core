@@ -37,6 +37,16 @@ def _write_pkg(tmp_path: Path, sub: str, scripts: dict) -> None:
     (d / "package.json").write_text(json.dumps({"scripts": scripts}))
 
 
+def _successful_marker_output(count: int) -> str:
+    lines = []
+    for index in range(count):
+        lines.extend([
+            f"__SCHOOL_VERIFY_START_{index}__",
+            f"__SCHOOL_VERIFY_END_{index}__0",
+        ])
+    return "\n".join(lines) + "\n"
+
+
 def test_discovers_root_package_scripts(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "tsc --noEmit", "test": "vitest"})
     cmds = _discover_commands(tmp_path, None)
@@ -120,7 +130,7 @@ def test_run_verify_gate_uses_one_shell_for_multiple_commands(tmp_path):
 
     def fake_run(cmd, **kwargs):
         calls.append((cmd, kwargs))
-        return subprocess.CompletedProcess([], 0, "", "")
+        return subprocess.CompletedProcess([], 0, _successful_marker_output(2), "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
          mock.patch("verify_gate._find_nix", return_value="nix"):
@@ -157,12 +167,62 @@ def test_run_verify_gate_preserves_per_command_failure_evidence(tmp_path):
     assert res["telemetry"]["shell_starts"] == 1
 
 
-def test_run_verify_gate_passes_when_all_zero(tmp_path):
+def test_run_verify_gate_rejects_markerless_success(tmp_path):
+    """A zero shell exit is not proof when no per-command markers were emitted."""
     _write_pkg(tmp_path, ".", {"typecheck": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
     ):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        res = run_verify_gate(tmp_path)
+
+    assert res["passed"] is False
+    assert res["ran"] == 1
+    assert res["failures"][0]["cmd"] == "(verify_shell)"
+    assert "markers" in res["failures"][0]["stderr"]
+
+
+def test_run_verify_gate_rejects_partial_markers_zero_exit(tmp_path):
+    """A shell that proves only some declared commands must fail closed."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "lint": "true"})
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ):
+        run.return_value = subprocess.CompletedProcess(
+            [], 0, _successful_marker_output(1), ""
+        )
+        res = run_verify_gate(tmp_path)
+
+    assert res["passed"] is False
+    assert res["failures"][0]["cmd"] == "(verify_shell)"
+    assert "markers" in res["failures"][0]["stderr"]
+    assert "npm run lint" in res["failures"][0]["stderr"]
+
+
+def test_run_verify_gate_rejects_partial_markers_nonzero_exit(tmp_path):
+    """Partial marker evidence preserves the shell error and missing command."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "lint": "true"})
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ):
+        run.return_value = subprocess.CompletedProcess(
+            [], 1, _successful_marker_output(1), "typecheck failed"
+        )
+        res = run_verify_gate(tmp_path)
+
+    assert res["passed"] is False
+    assert res["failures"][0]["exit"] == 1
+    assert "markers" in res["failures"][0]["stderr"]
+    assert "typecheck failed" in res["failures"][0]["stderr"]
+    assert "npm run lint" in res["failures"][0]["stderr"]
+
+
+def test_run_verify_gate_passes_when_all_zero(tmp_path):
+    _write_pkg(tmp_path, ".", {"typecheck": "true"})
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ):
+        run.return_value = subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
         res = run_verify_gate(tmp_path)
     assert res["passed"] is True
     assert res["ran"] == 1
@@ -266,7 +326,7 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
 
     def fake_run(cmd, **kwargs):
         seen_cwds.append(str(kwargs.get("cwd", "")))
-        return subprocess.CompletedProcess([], 0, "", "")
+        return subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
          mock.patch("verify_gate._find_nix", return_value="nix"):

@@ -458,7 +458,7 @@ def _build_shadow_routing_packet(
     issue: dict,
     score: float,
     retry_count: int,
-    history_path: Path,
+    history: list[dict],
     candidates,
 ) -> dict:
     """Build observational routing evidence without changing route selection."""
@@ -477,8 +477,14 @@ def _build_shadow_routing_packet(
         # producer proves it. Capability declarations are merely "offered".
         "tool_usage": task_result.get("tool_usage"),
     }
+    # The normal loader already returns a bounded list, but this helper also
+    # accepts test/legacy callers. Reassert the packet invariant at the seam so
+    # malformed or oversized preloaded state cannot expand the shadow payload.
+    if not isinstance(history, list):
+        history = []
+    history = [item for item in history if isinstance(item, dict)][-256:]
     return build_shadow_evidence(
-        load_shadow_history(history_path),
+        history,
         current=current,
         candidates=candidates,
     )
@@ -949,6 +955,10 @@ def bridge_issues(
     from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
     cleanup_stale_caches()
     repo_path = clone_repo(repo)
+    # Shadow evidence is observational and bounded. Load the same snapshot
+    # once per bridge cycle rather than reparsing last_run.json for every
+    # issue; this also gives all issues in a cycle a consistent baseline.
+    shadow_history = load_shadow_history(PROCESSED_FILE.parent / "last_run.json")
 
     for issue in issues:
         num = issue["issue_number"]
@@ -1408,7 +1418,7 @@ def bridge_issues(
                 issue,
                 combined_score,
                 retries.get(num, 0),
-                PROCESSED_FILE.parent / "last_run.json",
+                shadow_history,
                 shadow_candidates,
             )
             task_result["shadow_routing"] = shadow_routing
