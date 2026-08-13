@@ -54,6 +54,28 @@ def _judge(value: Any) -> dict:
     return result
 
 
+def _verification_was_attempted(value: Any) -> bool:
+    """Return whether the packet contains evidence from an actual gate run."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return False
+    if not isinstance(value, dict):
+        return False
+    try:
+        ran = max(0, int(value.get("ran", 0) or 0))
+    except (TypeError, ValueError, OverflowError):
+        ran = 0
+    return bool(
+        value.get("passed")
+        or value.get("skipped")
+        or value.get("strict_escalated")
+        or value.get("gate_error")
+        or ran > 0
+    )
+
+
 def _verification(value: Any) -> dict:
     if isinstance(value, str):
         try:
@@ -108,7 +130,7 @@ class ReviewPacket:
         cto_data = _judge(cto)
         coo_data = _judge(coo)
         if verification_authoritative is None:
-            verification_authoritative = verification is not None
+            verification_authoritative = _verification_was_attempted(verification)
         return cls({
             "schema_version": SCHEMA_VERSION,
             "authority": "director",

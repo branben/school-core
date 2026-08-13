@@ -71,8 +71,30 @@ def test_director_emits_packet_alongside_legacy_review_fields():
     assert packet is not None
     assert packet.is_authoritative
     assert packet.accepted is result["accepted"]
+    assert packet.is_verification_authoritative is False
     assert result["review_packet"]["judges"]["cto"]["verdict"] == result["cto_verdict"]
     assert result["review_packet"]["judges"]["coo"]["verdict"] == result["coo_verdict"]
+
+
+def test_empty_verification_is_not_authoritative():
+    packet = ReviewPacket.create(verification="")
+    empty_mapping_packet = ReviewPacket.create(verification={})
+
+    assert packet.is_verification_authoritative is False
+    assert empty_mapping_packet.is_verification_authoritative is False
+
+
+def test_skipped_verification_is_authoritative_evidence():
+    packet = ReviewPacket.create(
+        verification={
+            "passed": False,
+            "skipped": True,
+            "ran": 0,
+            "failures": [{"cmd": "(nix)", "stderr": "Nix missing"}],
+        },
+    )
+
+    assert packet.is_verification_authoritative is True
 
 
 def test_bridge_reuses_packet_instead_of_duplicate_gate_or_review(
