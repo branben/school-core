@@ -162,6 +162,46 @@ def test_artifact_identity_reads_sectioned_hermes_report():
     assert crew_dispatch._artifact_identity(report) == crew_dispatch._artifact_identity(status)
 
 
+def test_artifact_identity_reads_bare_bullet_base_section():
+    """U10 regression: a bare-bullet ``## Base`` (the brief's own report format)
+    must be captured, not silently dropped."""
+    status = (
+        "done: branch=fm/fm-live-smoke-20260813-123335-700001 "
+        "commit=0f03c7897162796ea0e56bc99b99dfbd30970cc9 base=origin/main"
+    )
+    report = (
+        "## Branch\n"
+        "- `fm/fm-live-smoke-20260813-123335-700001`\n\n"
+        "## Commit\n"
+        "- `0f03c7897162796ea0e56bc99b99dfbd30970cc9`\n\n"
+        "## Base\n"
+        "- `origin/main`\n\n"
+        "## Isolation Check\n"
+        "- `pwd -P` resolves to the disposable Orca worktree.\n"
+    )
+
+    assert crew_dispatch._artifact_identity(report) == crew_dispatch._artifact_identity(status)
+
+
+def test_artifact_identity_keeps_nested_base_commit_style():
+    """The nested ``## Base`` style (Branch:/Commit: labels) still sets base."""
+    report = (
+        "## Branch\n"
+        "- `fm/task-60`\n\n"
+        "## Commit\n"
+        "- `abc123`\n\n"
+        "## Base\n"
+        "- Branch: `branben/fm-fm-task-60`\n"
+        "- Commit: `main@def456`\n"
+    )
+
+    assert crew_dispatch._artifact_identity(report) == {
+        "branch": "fm/task-60",
+        "commit": "abc123",
+        "base": "main@def456",
+    }
+
+
 def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_path):
     _, state, data = configure_paths(monkeypatch, tmp_path)
     crew_id = "fm-loop-20260812-120000-43"

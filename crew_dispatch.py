@@ -222,8 +222,9 @@ def _artifact_identity(text: str) -> Optional[dict[str, str]]:
                 fields["base"] = value
 
         # Markdown section values often appear as a bare bullet, e.g.
-        # ``## Branch`` followed by ``- `fm/task-1````.
-        if section in {"branch", "commit"} and not matches:
+        # ``## Branch`` followed by ``- `fm/task-1````, or ``## Base``
+        # followed by ``- `origin/main```.
+        if section in {"branch", "commit", "base"} and not matches:
             bullet = re.match(r"^-?\s*`([^`]+)`\s*$", stripped)
             if bullet:
                 fields[section] = clean(bullet.group(1))
