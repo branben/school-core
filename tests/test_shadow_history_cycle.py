@@ -5,6 +5,20 @@ from unittest.mock import MagicMock
 import issue_bridge
 
 
+def test_shadow_packet_normalizes_legacy_history_input():
+    packet = issue_bridge._build_shadow_routing_packet(
+        {"agent": "coder", "status": "success"},
+        {"difficulty": "easy"},
+        80.0,
+        0,
+        None,
+        [],
+    )
+
+    assert packet["samples"] == 1
+    assert packet["mode"] == "shadow"
+
+
 def test_bridge_loads_shadow_history_once_per_cycle(monkeypatch, tmp_path, store):
     issues = [
         {

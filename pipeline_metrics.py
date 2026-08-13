@@ -82,10 +82,10 @@ class PipelineMetrics:
             "retry_count": 0,
         }
 
-    def _event(self) -> None:
-        with self._lock:
-            if self._event_count < self._max_events:
-                self._event_count += 1
+    def _event_unlocked(self) -> None:
+        """Increment the bounded event count while the caller holds ``_lock``."""
+        if self._event_count < self._max_events:
+            self._event_count += 1
 
     @contextmanager
     def stage(self, name: str) -> Iterator[None]:
@@ -105,7 +105,7 @@ class PipelineMetrics:
             self._timings[label] = round(
                 _nonnegative_float(self._timings.get(label)) + _nonnegative_float(duration_ms), 3
             )
-            self._event()
+            self._event_unlocked()
 
     def ensure_stage(self, name: str) -> None:
         """Declare a stage even when an optional path did not run."""
@@ -117,7 +117,7 @@ class PipelineMetrics:
         label = _name(name)
         with self._lock:
             self._calls[label] = _nonnegative_int(self._calls.get(label, 0)) + _nonnegative_int(count)
-            self._event()
+            self._event_unlocked()
 
     def record_model(
         self,
@@ -136,7 +136,7 @@ class PipelineMetrics:
             label = _name(role)
             roles = self._model["roles"]
             roles[label] = _nonnegative_int(roles.get(label, 0)) + 1
-            self._event()
+            self._event_unlocked()
 
     def record_verification(
         self,
@@ -155,7 +155,7 @@ class PipelineMetrics:
                 ("copied_bytes", copied_bytes),
             ):
                 self._verification[key] += _nonnegative_int(value)
-            self._event()
+            self._event_unlocked()
 
     def record_context(self, source: str, *, hit: bool, latency_ms: float = 0.0) -> None:
         """Record source hit/miss and latency without retaining context text."""
@@ -166,7 +166,7 @@ class PipelineMetrics:
             stats["latency_ms"] = round(
                 _nonnegative_float(stats["latency_ms"]) + _nonnegative_float(latency_ms), 3
             )
-            self._event()
+            self._event_unlocked()
 
     def record_crew(self, event: str) -> None:
         """Record a bounded crew lifecycle event by category."""
@@ -181,7 +181,7 @@ class PipelineMetrics:
         with self._lock:
             if key:
                 self._crew[key] += 1
-            self._event()
+            self._event_unlocked()
 
     def record_quality(
         self,
@@ -195,7 +195,7 @@ class PipelineMetrics:
             self._quality["accepted"] = bool(accepted) if accepted is not None else None
             self._quality["critical_findings"] = _nonnegative_int(critical_findings)
             self._quality["retry_count"] = _nonnegative_int(retry_count)
-            self._event()
+            self._event_unlocked()
 
     def snapshot(self) -> dict:
         """Return a JSON-safe, bounded measurement packet."""

@@ -477,6 +477,12 @@ def _build_shadow_routing_packet(
         # producer proves it. Capability declarations are merely "offered".
         "tool_usage": task_result.get("tool_usage"),
     }
+    # The normal loader already returns a bounded list, but this helper also
+    # accepts test/legacy callers. Reassert the packet invariant at the seam so
+    # malformed or oversized preloaded state cannot expand the shadow payload.
+    if not isinstance(history, list):
+        history = []
+    history = [item for item in history if isinstance(item, dict)][-256:]
     return build_shadow_evidence(
         history,
         current=current,

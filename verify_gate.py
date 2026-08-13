@@ -352,15 +352,27 @@ def run_verify_gate(
             # A successful shell without every command marker is not proof
             # that the declared checks ran. Treat marker loss as a verify-shell
             # failure rather than allowing a silent false pass.
-            if found_markers < len(commands):
+            if found_markers < len(commands) or (not commands and res.returncode != 0):
+                missing = [
+                    cmd["cmd"]
+                    for index, cmd in enumerate(commands)
+                    if output.find(starts[index]) < 0
+                    or output.find(ends[index], output.find(starts[index]) + len(starts[index])) < 0
+                ]
+                marker_detail = (
+                    f"verify shell emitted {found_markers}/{len(commands)} command markers; "
+                    "execution evidence is incomplete"
+                )
+                if missing:
+                    marker_detail += " missing: " + "; ".join(missing)
                 if res.returncode != 0:
-                    detail = (res.stderr or res.stdout or "verify shell failed")[-1500:]
+                    detail = (
+                        marker_detail + "; "
+                        + (res.stderr or res.stdout or "verify shell failed")[-1500:]
+                    )
                     exit_code = res.returncode
                 else:
-                    detail = (
-                        f"verify shell emitted {found_markers}/{len(commands)} "
-                        "command markers; execution evidence is incomplete"
-                    )
+                    detail = marker_detail
                     exit_code = res.returncode
                 failures.append({
                     "cmd": "(verify_shell)",
