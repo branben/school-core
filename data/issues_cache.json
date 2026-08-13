@@ -1,5 +1,19 @@
 [
   {
+    "issue_number": 59,
+    "title": "test: School Loop artifact-handshake smoke proof",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 58,
+    "title": "test: School Loop real-issue smoke proof",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 27,
     "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",
