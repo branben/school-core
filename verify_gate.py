@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -47,13 +48,19 @@ ALLOWED_CONFIG_NAMES = ("project_verify.yaml", "package.json", "pyproject.toml")
 def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[dict]:
     """Return a list of {name, cmd, cwd} verify commands.
 
-    Priority: explicit project_verify.yaml > inferred from package.json /
-    pyproject.toml. Sub-projects (e.g. a `mobile/` dir with its own
-    package.json) are discovered recursively so a repo that typechecks
-    sub-projects separately is not missed (this is exactly the gap that bit
-    the Orca mobile reconnect work: mobile typechecks independently of root).
+    Priority: explicit project_verify.yaml > the repo's own root
+    project_verify.yaml (auto-probed when no explicit manifest is given) >
+    inferred from package.json / pyproject.toml. Sub-projects (e.g. a
+    `mobile/` dir with its own package.json) are discovered recursively so a
+    repo that typechecks sub-projects separately is not missed (this is
+    exactly the gap that bit the Orca mobile reconnect work: mobile
+    typechecks independently of root).
     """
     commands: list[dict] = []
+
+    if project_verify is None:
+        default_manifest = repo_path / "project_verify.yaml"
+        project_verify = default_manifest if default_manifest.exists() else None
 
     if project_verify and project_verify.exists():
         try:
@@ -100,6 +107,17 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
     return commands
 
 
+# Scratch-copy noise the verify commands never need (VCS metadata, venvs,
+# node_modules, caches). A full copytree of a large checkout (e.g. a fat dev
+# checkout with .git + accumulated data) would otherwise stall the gate for
+# minutes before the first compile check runs.
+_VERIFY_COPY_IGNORE = shutil.ignore_patterns(
+    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+    "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
+    ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store",
+)
+
+
 def _find_nix() -> Optional[str]:
     """Locate a usable nix binary: PATH first, then the standard Determinate path.
 
@@ -141,8 +159,15 @@ def _skipped_verdict(cmd: str, reason: str) -> dict:
             "strict_escalated": True,
             "failures": failures,
             "ran": 0,
+            "telemetry": {"shell_starts": 0, "commands": 0, "copied_bytes": 0},
         }
-    return {"passed": False, "skipped": True, "failures": failures, "ran": 0}
+    return {
+        "passed": False,
+        "skipped": True,
+        "failures": failures,
+        "ran": 0,
+        "telemetry": {"shell_starts": 0, "commands": 0, "copied_bytes": 0},
+    }
 
 
 def _flake_ref(flake_path: Path) -> Path:
@@ -239,34 +264,101 @@ def run_verify_gate(
     # Copy clone to a writable scratch dir so tests can emit artifacts.
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-"))
     try:
-        shutil.copytree(repo_path, scratch / "repo", dirs_exist_ok=True)
+        copied_bytes = 0
+
+        def _copy_with_measurement(src, dst, *, follow_symlinks=True):
+            nonlocal copied_bytes
+            try:
+                copied_bytes += max(0, Path(src).stat().st_size)
+            except OSError:
+                pass
+            return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
+        shutil.copytree(
+            repo_path, scratch / "repo", dirs_exist_ok=True,
+            ignore=_VERIFY_COPY_IGNORE,
+            copy_function=_copy_with_measurement,
+        )
         work = scratch / "repo"
 
         failures: list[dict] = []
-        for cmd in commands:
+        starts: list[str] = []
+        ends: list[str] = []
+        script_lines = ["set +e"]
+        for index, cmd in enumerate(commands):
             cwd = (work / cmd["cwd"]).resolve()
-            full = f'{nix_bin} develop {flake_ref}#verifyShell --command bash -c {cmd["cmd"]!r}'
-            try:
-                res = subprocess.run(
-                    full,
-                    shell=True,
-                    cwd=str(cwd),
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                )
-            except subprocess.TimeoutExpired:
-                failures.append({"cmd": cmd["cmd"], "exit": None,
-                                  "stderr": f"timed out after {timeout}s"})
-                continue
-            if res.returncode != 0:
+            start = f"__SCHOOL_VERIFY_START_{index}__"
+            end = f"__SCHOOL_VERIFY_END_{index}__"
+            starts.append(start)
+            ends.append(end)
+            script_lines.append(f"printf '%s\\n' {shlex.quote(start)}")
+            script_lines.append(
+                f"(cd -- {shlex.quote(str(cwd))} && "
+                f"timeout {int(timeout)}s bash -c {shlex.quote(cmd['cmd'])}) 2>&1"
+            )
+            script_lines.append("status=$?")
+            script_lines.append(f"printf '\\n%s%d\\n' {shlex.quote(end)} \"$status\"")
+        # The wrapper reports command-level statuses through markers; its own
+        # exit status must not hide later command diagnostics.
+        script_lines.append("exit 0")
+        script = "\\n".join(script_lines)
+        full = f"{nix_bin} develop {flake_ref}#verifyShell --command bash -c {shlex.quote(script)}"
+        try:
+            res = subprocess.run(
+                full,
+                shell=True,
+                cwd=str(work),
+                capture_output=True,
+                text=True,
+                timeout=(timeout * max(1, len(commands))) + 30,
+            )
+        except subprocess.TimeoutExpired:
+            failures.append({
+                "cmd": "(verify_shell)",
+                "exit": None,
+                "stderr": f"verify shell timed out after {(timeout * max(1, len(commands))) + 30}s",
+            })
+        else:
+            output = (res.stdout or "")
+            if res.stderr:
+                output += f"\\n{res.stderr}"
+            found_markers = 0
+            for index, cmd in enumerate(commands):
+                start_pos = output.find(starts[index])
+                end_pos = output.find(ends[index], start_pos + len(starts[index]))
+                status_text = output[end_pos + len(ends[index]):].lstrip() if end_pos >= 0 else ""
+                try:
+                    exit_code = int(status_text.split()[0])
+                except (IndexError, ValueError):
+                    exit_code = None
+                if start_pos >= 0 and end_pos >= 0 and exit_code is not None:
+                    found_markers += 1
+                    if exit_code != 0:
+                        detail = output[start_pos + len(starts[index]):end_pos].strip()
+                        failures.append({
+                            "cmd": cmd["cmd"],
+                            "exit": exit_code,
+                            "stderr": (detail or "verify command failed")[-1500:],
+                        })
+            # Keep mocked/single-command harnesses backward-compatible when
+            # they return a CompletedProcess without wrapper markers.
+            if not found_markers and res.returncode != 0:
                 failures.append({
-                    "cmd": cmd["cmd"],
+                    "cmd": commands[0]["cmd"] if commands else "(verify_shell)",
                     "exit": res.returncode,
-                    "stderr": (res.stderr or res.stdout)[-1500:],
+                    "stderr": (res.stderr or res.stdout or "verify shell failed")[-1500:],
                 })
 
-        return {"passed": not failures, "failures": failures, "ran": len(commands)}
+        return {
+            "passed": not failures,
+            "failures": failures,
+            "ran": len(commands),
+            "telemetry": {
+                "shell_starts": 1,
+                "commands": len(commands),
+                "copied_bytes": copied_bytes,
+            },
+        }
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
