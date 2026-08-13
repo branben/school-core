@@ -349,13 +349,23 @@ def run_verify_gate(
                             "exit": exit_code,
                             "stderr": (detail or "verify command failed")[-1500:],
                         })
-            # Keep mocked/single-command harnesses backward-compatible when
-            # they return a CompletedProcess without wrapper markers.
-            if not found_markers and res.returncode != 0:
+            # A successful shell without every command marker is not proof
+            # that the declared checks ran. Treat marker loss as a verify-shell
+            # failure rather than allowing a silent false pass.
+            if found_markers < len(commands):
+                if res.returncode != 0:
+                    detail = (res.stderr or res.stdout or "verify shell failed")[-1500:]
+                    exit_code = res.returncode
+                else:
+                    detail = (
+                        f"verify shell emitted {found_markers}/{len(commands)} "
+                        "command markers; execution evidence is incomplete"
+                    )
+                    exit_code = res.returncode
                 failures.append({
-                    "cmd": commands[0]["cmd"] if commands else "(verify_shell)",
-                    "exit": res.returncode,
-                    "stderr": (res.stderr or res.stdout or "verify shell failed")[-1500:],
+                    "cmd": "(verify_shell)",
+                    "exit": exit_code,
+                    "stderr": detail,
                 })
 
         return {

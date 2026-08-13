@@ -49,6 +49,26 @@ def test_active_claims_and_cycle_budget_fail_closed():
     assert too_late.reason == "insufficient_cycle_time"
 
 
+def test_zero_capacity_fails_closed():
+    no_runner = decide_admission(
+        dispatched=0, configured_cap=1, runner_slots=0,
+        active_claims=0, remaining_seconds=1800,
+        crew_timeout_seconds=900, retry_pressure=0,
+    )
+    assert no_runner.admitted is False
+    assert no_runner.reason == "crew_cap_reached"
+    assert no_runner.effective_cap == 0
+
+    disabled = decide_admission(
+        dispatched=0, configured_cap=0, runner_slots=4,
+        active_claims=0, remaining_seconds=1800,
+        crew_timeout_seconds=900, retry_pressure=0,
+    )
+    assert disabled.admitted is False
+    assert disabled.reason == "crew_cap_reached"
+    assert disabled.effective_cap == 0
+
+
 def test_retry_pressure_reduces_optional_crew_admission():
     decision = decide_admission(
         dispatched=0, configured_cap=2, runner_slots=2,
