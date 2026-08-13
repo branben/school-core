@@ -35,6 +35,7 @@ from scripts.spec_gate import check_dod, _load_spec
 from verify_gate import run_verify_gate
 from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
+from score_finalizer import finalize_score
 
 SYSTEM_PROMPTS = {
     "python-testing": (
@@ -1434,8 +1435,6 @@ def evaluate_and_update(
     store: ScoreStore = None,
 ) -> dict:
     """Compatibility façade for the extracted score finalizer."""
-    from score_finalizer import finalize_score
-
     return finalize_score(
         result,
         task_score,

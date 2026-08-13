@@ -474,7 +474,9 @@ def _load_run_entries(path: Path) -> list[dict]:
         raw = json.loads(path.read_text())
     except (json.JSONDecodeError, OSError):
         return []
-    return raw if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        return []
+    return [entry for entry in raw if isinstance(entry, dict)]
 
 
 def _write_run_entries(path: Path, entries: list[dict]) -> None:
@@ -1566,7 +1568,10 @@ def bridge_issues(
     try:
         run_batch.flush()
     except Exception as e_rec:
-        sys.stderr.write(f"[issue_bridge] Failed to flush run batch: {e_rec}\n")
+        sys.stderr.write(
+            f"[issue_bridge] Failed to flush run batch at {run_batch.path}: "
+            f"{type(e_rec).__name__}: {e_rec}\n"
+        )
     _save_retries(retries)
     _save_processed(processed)
     return results

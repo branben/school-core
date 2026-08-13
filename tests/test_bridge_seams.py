@@ -39,6 +39,38 @@ def test_shadow_packet_seam_rebounds_oversized_legacy_history():
     assert packet["live_routing_unchanged"] is True
 
 
+def test_shadow_packet_seam_normalizes_none_history():
+    packet = build_shadow_routing_packet(
+        {"agent": "current", "status": "success"},
+        {"difficulty": "medium"},
+        80.0,
+        0,
+        None,
+        ["current"],
+    )
+
+    assert packet["samples"] == 1
+    assert packet["retry"]["attempted"] == 1
+
+
+def test_shadow_packet_seam_prefers_top_level_confidence():
+    packet = build_shadow_routing_packet(
+        {
+            "agent": "current",
+            "status": "success",
+            "confidence": 0.25,
+            "review": {"confidence": 0.90},
+        },
+        {"difficulty": "medium"},
+        80.0,
+        0,
+        [],
+        ["current"],
+    )
+
+    assert packet["confidence"]["mean"] == 0.25
+
+
 def test_strict_gate_failure_seam_preserves_fail_closed_contract():
     result = strict_gate_failure("toolchain unavailable")
 

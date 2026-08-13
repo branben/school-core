@@ -40,6 +40,30 @@ def test_run_batch_preserves_existing_history_and_corrupt_state_recovery(tmp_pat
     assert runs == [{"issue": 3, "status": "school-failed", "timestamp": runs[0]["timestamp"]}]
 
 
+def test_run_batch_filters_malformed_history_entries(tmp_path):
+    path = tmp_path / "last_run.json"
+    path.write_text(json.dumps([None, {"issue": 7, "status": "success"}, "bad"]))
+    batch = RunBatch(path)
+    batch.append({"issue": 8, "status": "retry"})
+    batch.flush()
+
+    runs = json.loads(path.read_text())
+    assert [entry["issue"] for entry in runs] == [7, 8]
+
+
+def test_run_batch_retains_pending_entries_when_write_fails(tmp_path):
+    batch = RunBatch(tmp_path / "last_run.json")
+    batch.append({"issue": 9, "status": "retry"})
+
+    with patch("issue_bridge._write_run_entries", side_effect=OSError("disk full")):
+        try:
+            batch.flush()
+        except OSError:
+            pass
+
+    assert batch.pending_count == 1
+
+
 def test_bridge_cycle_flushes_all_run_outcomes_once(tmp_path, monkeypatch, store):
     """A multi-issue cycle writes its append-only journal in one replacement."""
     issues = [
