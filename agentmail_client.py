@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -82,15 +83,42 @@ def _headers() -> dict:
     }
 
 
-def req(method: str, path: str, body=None):
-    """Make a /v0 API call. Returns the parsed JSON response (or {})."""
+def req(method: str, path: str, body=None, _tries: int = 4):
+    """Make a /v0 API call. Returns the parsed JSON response (or {}).
+
+    Retries transient failures (HTTP 429 Too Many Requests and 5xx) with
+    exponential backoff so the cron poller is resilient to AgentMail rate
+    limiting. Hard 4xx errors (other than 429) are not retried. Caps at
+    ``_tries`` attempts; honors a ``Retry-After`` header when present.
+    """
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(
-        f"{BASE}{API_PREFIX}{path}", data=data, headers=_headers(), method=method
-    )
-    with urllib.request.urlopen(request, timeout=15) as resp:
-        raw = resp.read()
-        return json.loads(raw) if raw else {}
+    last_exc: Exception | None = None
+    for attempt in range(_tries):
+        try:
+            request = urllib.request.Request(
+                f"{BASE}{API_PREFIX}{path}", data=data, headers=_headers(), method=method
+            )
+            with urllib.request.urlopen(request, timeout=15) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            retryable = e.code == 429 or 500 <= e.code < 600
+            if retryable and attempt < _tries - 1:
+                retry_after = e.headers.get("Retry-After") if e.headers else None
+                wait = min(int(retry_after), 60) if (retry_after and str(retry_after).isdigit()) else min(2 ** attempt * 5, 60)
+                logger.warning("AgentMail %s on %s; retry in %ss", e.code, path, wait)
+                time.sleep(wait)
+                continue
+            raise
+        except urllib.error.URLError as e:
+            last_exc = e
+            if attempt < _tries - 1:
+                time.sleep(min(2 ** attempt * 5, 60))
+                continue
+            raise
+    assert last_exc is not None
+    raise last_exc
 
 
 def resolve_dest_inbox() -> str:
