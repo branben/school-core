@@ -1364,6 +1364,27 @@ def bridge_issues(
 
         if task_result["status"] == "success":
             canonical_packet = ReviewPacket.from_dict(task_result.get("review_packet"))
+            # Option-B integration seam: durably record this finished job on the
+            # grading queue so the grader consumer (school_grader.drain) can
+            # finalize it asynchronously at 20+ scale. At cap=1 the loop still
+            # runs the inline finalization below (behavior unchanged); the queue
+            # is the ready hook for the future separate grading stage. The
+            # enqueue is non-fatal — a queue failure must never break dispatch.
+            try:
+                from school_grader import GradingQueue, GradingJob
+                _gq = GradingQueue()
+                _gq.enqueue(GradingJob(
+                    issue_number=num,
+                    crew_id=(crew_result.crew_id if crew_result else None),
+                    repo=repo,
+                    domain=issue.get("domain", ""),
+                    difficulty=issue.get("difficulty", ""),
+                    task_score=task_result.get("task_score"),
+                    review_packet=task_result.get("review_packet"),
+                    canonical_review=task_result.get("review"),
+                ))
+            except Exception as _e:
+                sys.stderr.write(f"[issue_bridge] #{num}: grading enqueue skipped ({_e})\n")
             # ── Two-judge acceptance gate ──
             # run_task already ran the CTO+COO review; both must PASS at
             # score >= 50 with no CRITICAL finding for accepted=True. The

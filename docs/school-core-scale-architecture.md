@@ -92,18 +92,35 @@ one teacher watching one whiteboard.
 - On crew `done`: enqueues a **grading job** (bookbag path + verification
   + report) to the grading queue; does NOT grade inline.
 
-### 3.2 Grading Department (`school_grader.py` + queue, NEW)
-- Consumes grading jobs from a durable queue (file-backed or Redis-free local
-  broker — keep it dependency-light like the rest of the repo).
-- Runs the **existing** two-judge review + verify-gate + entire-sensor logic
-  (lifted verbatim from `issue_bridge` lines ~1138–1494) against the crew's
-  *persisted* verification (bookbag), never re-running on the clean base.
-- Writes scores via a **lock-safe `ScoreStore`** (see §4).
-- Emits board state + `compound_learning` observation.
+### 3.2 Grading Department (`school_grader.py` + queue) — IMPLEMENTED
 
-This extraction is *mechanical*: the review/grade logic already lives in one
-cohesive block; moving it behind a queue consumer removes it from the hot
-dispatch path.
+> Status: landed as of this slice. The grading queue + consumer exist and are
+> tested (`tests/test_school_grader.py`, 9 tests). The dispatch-office
+> scheduler (§3.1) is the next slice.
+
+- `GradingQueue` — file-backed durable JSONL queue (data/grading_queue.jsonl),
+  fcntl-locked for concurrent enqueues from a fleet of dispatchers, dedup by
+  `(issue_number, crew_id)` (N2.1).
+- `grade(job, ...)` consumer — finalizes one finished job: two-judge acceptance
+  decision (reuses `ReviewPacket`, never re-gates the clean base — N5.3),
+  idempotent lock-safe `ScoreStore` write (N5.2 / N2.3 — replay = no-op),
+  `compound_learning` observation (fail-soft), GitHub label via the non-fatal
+  `LabelWriteQueue` (N7.2). Never raises.
+- `drain(queue, ...)` — processes all pending jobs in **bounded waves**
+  (`bounded_grader_pool_size`, N6.1) so ledger writes never exceed what the
+  lock-safe store can absorb.
+- CLI: `python -m school_grader --drain [--score-store PATH]
+  [--compound-store PATH] [--max-workers N]` — a standalone pipeline stage.
+- Integration seam: `issue_bridge.process_issues` enqueues a `GradingJob` on
+  every successful task (non-fatal). At cap=1 the inline finalization still
+  runs (behavior unchanged); the queue is the ready hook for the 20+ separate
+  grading stage. The consumer's idempotency means the inline+queue pairing
+  never double-grades.
+
+This extraction is *mechanical*: the review/grade logic already lived in one
+cohesive block; it is now reachable behind a queue consumer, decoupled from
+dispatch. The actual switch (inline finalization → separate drain stage)
+happens when concurrency rises, not before.
 
 ## 4. Must-fix before 20+ (small, known)
 
