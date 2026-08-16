@@ -69,3 +69,11 @@ scripts/prior_solutions/cocoindex_store/
 
 # Entire session tracking (logs can carry prompt content — never commit)
 .entire/
+
+# Secret environment files — NEVER track. Real OMNIROUTE_API_KEY lives in
+# school-core/.env (loaded via python-dotenv in executor.py). .env.example is
+# the committed, placeholder-only template. A previously-committed real key
+# had to be rotated, so keep .env strictly ignored.
+.env
+.env.*
+!.env.example
