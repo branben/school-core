@@ -37,6 +37,12 @@ def test_self_hosted_integration_selects_live_tests_explicitly():
     assert "test_orca_execution.py" in test_step["run"]
 
 
+def test_school_loop_targets_sound_royale_explicitly():
+    """The scheduled school loop must consume Sound Royale, not school-core issues."""
+    workflow = _workflow()
+    assert workflow["env"]["SCHOOL_REPO"] == "branben/sound-royale-ny"
+
+
 def test_school_loop_serializes_runs_without_cancelling_active_work():
     workflow = _workflow()
     assert workflow["concurrency"] == {
@@ -46,15 +52,27 @@ def test_school_loop_serializes_runs_without_cancelling_active_work():
 
 
 def test_live_orca_jobs_share_a_cross_workflow_lock():
-    """CI integration and School Loop execute must never use Orca together."""
+    """CI integration and School Loop execute must never use Orca together.
+
+    N6.3 (worst-day-ever): the School Loop execute job now keys its lock on the
+    Orca daemon identity (school-core-live-orca-<daemon>) so a fleet of N daemons
+    runs N execute jobs without mutual lock-out; a single stalled job only
+    blocks its own daemon. The CI integration job keeps the GLOBAL
+    school-core-live-orca group — the shared-resource guard that prevents
+    integration tests from using Orca at the same time as ANY execute job.
+    """
     school_loop = _workflow()
     ci = _ci_workflow()
-    expected = {
+    expected_loop = {
+        "group": "school-core-live-orca-${{ inputs.orca_daemon || 'default' }}",
+        "cancel-in-progress": False,
+    }
+    expected_ci = {
         "group": "school-core-live-orca",
         "cancel-in-progress": False,
     }
-    assert school_loop["jobs"]["execute"]["concurrency"] == expected
-    assert ci["jobs"]["integration"]["concurrency"] == expected
+    assert school_loop["jobs"]["execute"]["concurrency"] == expected_loop
+    assert ci["jobs"]["integration"]["concurrency"] == expected_ci
 
 
 def test_default_github_tokens_are_read_only_and_writes_are_job_scoped():

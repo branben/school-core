@@ -63,7 +63,8 @@ _TOKEN_RE = re.compile(
 )
 _HOME_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])/(?:Users|home)/[^\s'\\\"`]+")
 _ARTIFACT_FIELD_RE = re.compile(
-    r"(?i)\b(branch|commit|base(?:[_ -](?:ref|commit))?)\s*[:=]\s*([^\s]+)"
+    r"(?i)\b(branch|commit|base(?:\s+identity)?(?:\s*\([^)]*\))?(?:[_ -](?:ref|commit))?)\s*[:=]\s*"
+    r"[*_]*\s*([^\s]+)"
 )
 
 _STATUS_RE = re.compile(
@@ -83,6 +84,9 @@ class CrewResult:
     teardown_ok: bool = False
     orca_worktree_id: Optional[str] = None
     capability: Optional[dict] = None
+    artifact_identity: Optional[dict[str, object]] = None
+    verification: Optional[dict] = None
+    entire_review: Optional[dict] = None
 
 
 class CrewUnavailableError(RuntimeError):
@@ -214,11 +218,11 @@ def _artifact_identity(text: str) -> Optional[dict[str, str]]:
         for match in matches:
             key = match.group(1).lower().replace(" ", "_").replace("-", "_")
             value = clean(match.group(2))
-            if section == "base" and key in {"commit", "base", "base_ref", "base_commit"}:
+            if section == "base" and key in {"commit", "base", "base_ref", "base_commit", "base_identity"}:
                 fields["base"] = value
             elif key in {"branch", "commit"} and section != "base":
                 fields[key] = value
-            elif key in {"base", "base_ref", "base_commit"}:
+            elif key == "base" or key.startswith("base_"):
                 fields["base"] = value
 
         # Markdown section values often appear as a bare bullet, e.g.
@@ -235,6 +239,59 @@ def _artifact_identity(text: str) -> Optional[dict[str, str]]:
         "base": fields.get("base", ""),
     }
     return identity if all(identity.values()) else None
+
+
+def _revision_forms_match(left: str, right: str) -> bool:
+    """Compare Git revisions while allowing short hashes and ref prefixes."""
+    left = left.strip().strip("`*_[](){}<>").lower()
+    right = right.strip().strip("`*_[](){}<>").lower()
+    if left == right:
+        return True
+
+    # Reports commonly call the branch point ``main@<sha>`` while the status
+    # line records only the resolved SHA (or vice versa).
+    def revision_part(value: str) -> str:
+        value = value.rsplit("@", 1)[-1]
+        if value.startswith("refs/heads/"):
+            value = value[len("refs/heads/"):]
+        if value.startswith("origin/"):
+            value = value[len("origin/"):]
+        return value
+
+    left_revision = revision_part(left)
+    right_revision = revision_part(right)
+    if re.fullmatch(r"[0-9a-f]{7,40}", left_revision) and re.fullmatch(
+        r"[0-9a-f]{7,40}", right_revision
+    ):
+        return left_revision.startswith(right_revision) or right_revision.startswith(left_revision)
+
+    # ``main`` and ``origin/main`` are the same logical base ref in a local
+    # Orca worktree; keep this alias narrow rather than accepting arbitrary
+    # substrings.
+    def ref_name(value: str) -> str:
+        value = value.removeprefix("refs/heads/")
+        return value.removeprefix("origin/")
+
+    return ref_name(left) == ref_name(right)
+
+
+def _artifact_identities_match(left: Optional[dict[str, str]], right: Optional[dict[str, str]]) -> bool:
+    """Return whether two complete artifact identities describe one commit.
+
+    FirstMate status and Hermes reports are produced by different writers. One
+    may use a full SHA while the other uses a short SHA or an explicit local
+    remote ref. Branch names remain exact after harmless ``refs/heads/``
+    normalization; only Git revision representation is relaxed.
+    """
+    if not left or not right:
+        return False
+    left_branch = left.get("branch", "").removeprefix("refs/heads/")
+    right_branch = right.get("branch", "").removeprefix("refs/heads/")
+    return (
+        bool(left_branch and right_branch and left_branch == right_branch)
+        and _revision_forms_match(left.get("commit", ""), right.get("commit", ""))
+        and _revision_forms_match(left.get("base", ""), right.get("base", ""))
+    )
 
 
 def _has_artifact_identity(report: str) -> bool:
@@ -425,6 +482,12 @@ def _save_runs(runs: list[dict], path: Optional[Path] = None) -> None:
 
 
 def _record_run(entry: dict, path: Optional[Path] = None) -> None:
+    # N3.2 (worst-day-ever): stamp a monotonic start so stale-sweep is immune to
+    # wall-clock skew. The human-readable ISO ``started_at`` is kept for ops; the
+    # monotonic value drives all age math.
+    if entry.get("status") in {"running", "blocked"} and "started_monotonic" not in entry:
+        entry = dict(entry)
+        entry["started_monotonic"] = time.monotonic()
     with _registry_lock(path):
         runs = _load_runs(path)
         runs.append(_portable_entry(entry))
@@ -491,20 +554,30 @@ def _started_at(entry: dict) -> Optional[float]:
 def sweep_stale_runs(
     *,
     now: Optional[float] = None,
+    now_monotonic: Optional[float] = None,
     stale_after: float = DEFAULT_TIMEOUT,
     path: Optional[Path] = None,
 ) -> int:
-    """Remove old running/blocked records and best-effort reclaim their Orca worktrees."""
+    """Remove old running/blocked records and best-effort reclaim their Orca worktrees.
 
-    current = time.time() if now is None else now
+    N3.2 (worst-day-ever): when ``now_monotonic`` is supplied, age is measured on
+    the monotonic clock (immune to wall-clock skew between the Mac and GitHub).
+    Falls back to the wall-clock ``now`` path (legacy) when monotonic is absent.
+    """
+
     with _registry_lock(path):
         runs = _load_runs(path)
         kept: list[dict] = []
         removed = 0
         changed = False
         for entry in runs:
-            started = _started_at(entry)
-            age = current - started if started is not None else None
+            # Prefer monotonic age when both endpoints are monotonic.
+            if now_monotonic is not None and entry.get("started_monotonic") is not None:
+                age = now_monotonic - float(entry["started_monotonic"])
+            else:
+                started = _started_at(entry)
+                current = time.time() if now is None else now
+                age = current - started if started is not None else None
             if entry.get("status") in {"running", "blocked"} and age is not None and age > stale_after:
                 worktree_id = entry.get("orca_worktree_id") or _local_worktree_id(
                     str(entry.get("crew_id", ""))
@@ -630,6 +703,58 @@ def _poll(
     return "timeout", "timeout", ""
 
 
+def _run_premerge_sensors(
+    worktree_id: str,
+) -> tuple[Optional[dict], Optional[dict]]:
+    """Run verification sensors against the live student worktree.
+
+    ``dispatch_crew`` owns the student worktree lifecycle, so these checks must
+    happen before teardown. Running them later against the cached target would
+    verify the clean base rather than the submitted patch.
+    """
+    if "::" not in worktree_id:
+        return None, None
+    worktree_path = Path(worktree_id.split("::", 1)[1])
+    if not worktree_path.is_dir():
+        return None, None
+
+    verification: Optional[dict] = None
+    try:
+        from verify_gate import run_verify_gate
+
+        verification = run_verify_gate(
+            worktree_path,
+            flake_path=Path(__file__).resolve().parent,
+        )
+    except Exception as exc:  # pragma: no cover - defensive runtime boundary
+        log.exception("pre-merge verify failed for %s: %s", worktree_path, exc)
+        verification = {
+            "passed": False,
+            "skipped": False,
+            "failures": [{
+                "cmd": "(crew_premerge_verify)",
+                "exit": None,
+                "stderr": str(exc)[:1500],
+            }],
+            "ran": 0,
+        }
+
+    entire_review: Optional[dict] = None
+    try:
+        from src.entire_review import run_entire_review
+
+        entire_review = run_entire_review(str(worktree_path), base_branch="main")
+    except Exception as exc:  # pragma: no cover - defensive runtime boundary
+        log.exception("pre-merge Entire review failed for %s: %s", worktree_path, exc)
+        entire_review = {
+            "status": "error",
+            "findings": [],
+            "error": str(exc)[:1500],
+        }
+
+    return verification, entire_review
+
+
 def dispatch_crew(
     *,
     issue_number: int,
@@ -708,6 +833,9 @@ def dispatch_crew(
         "started_at": started_at,
     })
 
+    artifact_identity: Optional[dict[str, object]] = None
+    verification_result: Optional[dict] = None
+    entire_review_result: Optional[dict] = None
     try:
         terminal_status, fallback_reason, status_detail = _poll(
             crew_id,
@@ -738,8 +866,11 @@ def dispatch_crew(
                         report_text = candidate.read_text(encoding="utf-8")
                         status_identity = _artifact_identity(status_detail)
                         report_identity = _artifact_identity(report_text)
-                        if status_identity and report_identity and status_identity == report_identity:
+                        if status_identity and report_identity and _artifact_identities_match(
+                            status_identity, report_identity
+                        ):
                             report_path = candidate
+                            artifact_identity = report_identity
                         elif report_text.strip() and report_identity:
                             fallback_reason = "artifact_identity_mismatch"
                             terminal_status = "failed"
@@ -778,6 +909,24 @@ def dispatch_crew(
         fallback_reason = "supervisor_unexpected"
         report_path = None
 
+    # Verify the submitted patch while its disposable worktree is still alive.
+    # The bridge reuses these authoritative results after this function tears
+    # the worktree down; it must never silently verify the clean target base.
+    if terminal_status == "done" and report_path and worktree_id:
+        verification_result, entire_review_result = _run_premerge_sensors(worktree_id)
+        if artifact_identity and "::" in worktree_id:
+            try:
+                from src.entire_review import _get_changed_files
+                worktree_path = worktree_id.split("::", 1)[1]
+                artifact_identity = {
+                    **artifact_identity,
+                    "changed_files": _get_changed_files(worktree_path, "main"),
+                }
+            except Exception:
+                # The authoritative sensors have already run; missing optional
+                # file inventory must not turn a verified result into a crash.
+                pass
+
     # U10: persist the terminal state BEFORE teardown so a cleanup failure can
     # never mask or lose the outcome record. teardown_ok is then recorded as a
     # second update so failed cleanup stays visible without hiding the result.
@@ -792,6 +941,8 @@ def dispatch_crew(
             if report_path else None
         ),
         "capability": capability_record,
+        "verification": verification_result,
+        "entire_review": entire_review_result,
     })
     teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
@@ -803,4 +954,7 @@ def dispatch_crew(
         teardown_ok=teardown_ok,
         orca_worktree_id=worktree_id,
         capability=capability_record,
+        artifact_identity=artifact_identity,
+        verification=verification_result,
+        entire_review=entire_review_result,
     )

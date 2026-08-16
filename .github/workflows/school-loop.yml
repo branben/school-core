@@ -27,6 +27,12 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      orca_daemon:
+        description: "Orca daemon identity for this fleet node (used to key the per-daemon execute lock)."
+        required: false
+        default: "default"
+        type: string
 
 # Do not let two 30-minute Mac executions overlap. Keep the current run alive;
 # GitHub retains only one pending run, so the newest pending cycle wins.
@@ -40,11 +46,11 @@ permissions:
   contents: read
 
 env:
-  # SCHOOL_REPO: override with owner/repo if this workflow runs from
-  # a fork or a different repo.  The default "" lets the runner
-  # self-configure — populate_board_cache.py and the bridge both
-  # resolve the origin remote when SCHOOL_REPO is unset or empty.
-  SCHOOL_REPO: ""
+  # SCHOOL_REPO is the issue backlog consumed by this school-core pipeline.
+  # Keep the target explicit: this checkout hosts the orchestrator, while
+  # students work in fresh target-repo clones and never in the dirty developer
+  # checkout. Change deliberately if the pipeline is repointed elsewhere.
+  SCHOOL_REPO: "branben/sound-royale-ny"
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
@@ -128,7 +134,11 @@ jobs:
     # integration job. This is the same cross-workflow lock as ci.yml, so
     # issue execution and integration tests cannot mutate Orca state together.
     concurrency:
-      group: school-core-live-orca
+      # N6.3 (worst-day-ever): key the lock on the Orca daemon identity, not one
+      # global group. With a fleet of N daemons, each runs its own execute job
+      # without mutual lock-out; a single stalled job only blocks its own daemon,
+      # not the whole school. Set ORCA_DAEMON per self-hosted runner / fleet node.
+      group: school-core-live-orca-${{ inputs.orca_daemon || 'default' }}
       cancel-in-progress: false
     needs: gate
     runs-on: [self-hosted, omniroute]

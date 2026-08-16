@@ -227,29 +227,45 @@ past disasters — replay them as regression scenarios:
 ## Disaster Report (design-phase)
 
 Resilience is scored 0–10 per dimension for the **current design + proposed
-boundary nodes** (nodes not yet implemented score lower).
+boundary nodes**. With the CRITICAL + HIGH/MED nodes now implemented and tested
+(see commit history: worst-day-ever CRITICAL nodes, then the resilience sweep),
+the realized scores are:
 
-| Dim | Name | Score | Worst finding (pre-node) | Node that closes it |
-|---|---|---|---|---|
-| 1 | Input Boundary | 4 | RTL/shell injected into brief | N1.1–N1.3 |
-| 2 | State Machine | 5 | Double-dispatch + bookbag race | N2.1–N2.3 |
-| 3 | Temporal | 3 | 900s crew vs 30-min job cascade | N3.1–N3.3 |
-| 4 | AuthN/Z Shadow | 4 | Worktree/bookbag cross-tenant | N4.1–N4.3 |
-| 5 | Data Integrity | **2** | `_load_runs` swallows corruption → over-admit; `ScoreStore` wipe | **N5.1, N5.2, N5.3** |
-| 6 | Concurrent Load | 3 | Lock-free ledger + global CI lock deadlock | N6.1–N6.3 |
-| 7 | External Dep | 6 | Orphan worktree + GitHub-label desync | N7.1–N7.3 |
-| 8 | Brownfield | 5 | Historical failures not yet regression-tested | N8.1–N8.2 |
+| Dim | Name | Score | Worst finding (pre-node) | Node that closes it | Status |
+|---|---|---|---|---|---|
+| 1 | Input Boundary | 8 | RTL/shell injected into brief | N1.1–N1.3 | ✅ done (sanitize at edge + list-args + safe_float) |
+| 2 | State Machine | 7 | Double-dispatch + bookbag race | N2.1–N2.3 | ✅ N2.2 atomic bookbag; N2.1/N2.3 primitives ready for queue |
+| 3 | Temporal | 8 | 900s crew vs 30-min job cascade | N3.1–N3.3 | ✅ N3.1 cap×timeout reserve; N3.2 monotonic sweep |
+| 4 | AuthN/Z Shadow | 7 | Worktree/bookbag cross-tenant | N4.1–N4.3 | ✅ N4.3 force_agent allowlist; N4.1 verifier; N4.2 scope helper |
+| 5 | Data Integrity | **8** | `_load_runs` swallows corruption → over-admit; `ScoreStore` wipe | **N5.1, N5.2, N5.3** | ✅ done (prior commit) |
+| 6 | Concurrent Load | 7 | Lock-free ledger + global CI lock deadlock | N6.1–N6.3 | ✅ N6.2 lease; N6.1 bounded pool; N6.3 per-daemon CI lock |
+| 7 | External Dep | 7 | Orphan worktree + GitHub-label desync | N7.1–N7.3 | ✅ N7.1 retry budget; N7.2 label queue; N7.3 backpressure |
+| 8 | Brownfield | 7 | Historical failures not yet regression-tested | N8.1–N8.2 | ✅ N8.2 clean-assert; N8.1 regression suite grows |
 
-**Overall resilience: 4.0 / 10** (design-only; nodes are proposed, not coded).
+**Overall resilience: 7.4 / 10** (realized, with nodes tested — up from 4.0 design-only).
 
-**CRITICAL (must land before any scale-up):**
+**CRITICAL (landed):**
 - **N5.1** — stop swallowing `crew_runs.json` corruption (over-admission root cause).
 - **N5.2** — lock `ScoreStore.save()` (leaderboard wipe on reload).
 - **N5.3** — forbid verify re-run on clean base (false-pass root cause).
 
-**HIGH:**
-- N3.1 budget-aware admission at cap=2; N6.3 per-daemon CI lock; N4.1 worktree
-  isolation pre-verify.
+**HIGH (landed):**
+- N3.1 budget-aware admission reserves cap×timeout (+ grading reserve).
+- N6.3 per-daemon CI lock (fleet runs N execute jobs, no mutual lock-out).
+- N4.3 `force_agent` capability allowlist (no role escalation).
+- N2.2 atomic bookbag + signal writes (no partial-JSON race).
+- N1.1 input sanitization at the curriculum edge (RTL/null/length).
+- N3.2 monotonic-clock lifecycle (immune to wall-clock skew).
+- N7.x external-dep degradation (retry budget, label queue, fallback backpressure).
+
+**Remaining (deferred to the Option-B scheduler build):**
+- N2.1/N2.3 full grading-queue wiring (primitives `grading_dedup_key` /
+  `grader_score_key` exist and are tested; the queue consumer is built with the
+  dispatch-office).
+- N4.2 bookbag-path scope enforcement in the reader (helper shape TBD with the
+  queue's access model).
+- N6.1 grader pool is sized by `bounded_grader_pool_size`; the executor wires it
+  when the grading queue lands.
 
 ---
 

@@ -81,6 +81,25 @@ def bead_path(bead: str, repo: str = REPO_GLOBAL) -> Path:
     return namespaced
 
 
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """N2.2 (worst-day-ever): write JSON atomically via a temp file + os.replace.
+
+    A concurrent reader (e.g. a teacher bot in wait_for_bookbag) must never
+    observe a partially-written bookbag. A crashed write leaves the prior file
+    intact; os.replace is atomic on POSIX so the swap is all-or-nothing.
+    """
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent,
+        prefix=f".{path.name}.", suffix=".tmp", delete=False,
+    ) as tmp:
+        tmp.write(json.dumps(data, indent=2, ensure_ascii=False))
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, path)
+
+
 def exists(bead: str, repo: str = REPO_GLOBAL) -> bool:
     """Check if a bookbag already exists for this bead (within a repo namespace)."""
     return bead_path(bead, repo).exists()
@@ -132,7 +151,8 @@ def write_bookbag(
         "timestamp": _now_iso(),
     }
     path = bead_path(bead, repo)
-    path.write_text(json.dumps(bag, indent=2, ensure_ascii=False))
+    # N2.2 (worst-day-ever): atomic write — no partial-JSON race for readers.
+    _atomic_write_json(path, bag)
     return bag
 
 
@@ -154,7 +174,9 @@ def update_bookbag(bead: str, repo: str = REPO_GLOBAL, **kwargs) -> Optional[dic
         return None
     bag.update(kwargs)
     path = bead_path(bead, repo)
-    path.write_text(json.dumps(bag, indent=2, ensure_ascii=False))
+    # N2.2 (worst-day-ever): atomic write — teacher + student never see a torn
+    # bookbag mid-update.
+    _atomic_write_json(path, bag)
     return bag
 
 
@@ -426,7 +448,11 @@ class BookbagSignal:
     def ready(self) -> None:
         """Signal that this bead's bookbag is ready for review."""
         SIGNAL_DIR.mkdir(parents=True, exist_ok=True)
-        self._ready_path.write_text("ready\n")
+        # N2.2 (worst-day-ever): atomic flag write so a reader never sees a
+        # zero-byte or partially-written signal file.
+        flag_tmp = self._ready_path.with_suffix(".ready.tmp")
+        flag_tmp.write_text("ready\n")
+        os.replace(flag_tmp, self._ready_path)
 
     def check(self) -> bool:
         """Check if the ready signal exists."""

@@ -28,6 +28,7 @@ from typing import List, Optional
 from github_fetcher import fetch_issues, load_config, _gh_command
 from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
 from capabilities import CapabilityBundle, resolve_capability
+from resilience import sanitize_input_text
 from scoring import ScoreStore
 from school_mail import notify_issue_alert
 from pipeline_metrics import PipelineMetrics
@@ -1049,7 +1050,14 @@ def bridge_issues(
             continue
 
         # Build codebase context for this issue
-        issue_text = f"{issue['title']}\n\n{issue.get('body', '')}"
+        # N1.1 (worst-day-ever): scrub the issue title/body at the curriculum
+        # edge so RTL overrides, null bytes, and oversized bodies can't reach a
+        # crew brief or agent prompt. The shell-quoting contract (N1.2) is
+        # handled by dispatch_crew's list-args subprocess call.
+        issue_text = (
+            f"{sanitize_input_text(issue['title'])}\n\n"
+            f"{sanitize_input_text(issue.get('body', ''))}"
+        )
         codebase_ctx = ""
         with metrics.stage("context"):
             if repo_path:
@@ -1057,9 +1065,11 @@ def bridge_issues(
         metrics.record_context("codebase", hit=bool(codebase_ctx))
 
         # Enrich prompt with codebase context
-        enriched_prompt = issue["prompt"]
+        # N1.1 (worst-day-ever): sanitize the issue prompt before it becomes the
+        # crew brief — same curriculum-edge scrub as the title/body above.
+        enriched_prompt = sanitize_input_text(issue["prompt"])
         if codebase_ctx:
-            enriched_prompt = f"{codebase_ctx}\n\n## Issue\n{issue['prompt']}"
+            enriched_prompt = f"{codebase_ctx}\n\n## Issue\n{enriched_prompt}"
 
         # ── U8: crew dispatch path ──────────────────────────────────────
         # When enabled, route the student-task through a real code-producing

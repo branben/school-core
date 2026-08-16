@@ -303,6 +303,8 @@ def _run_two_judge_review(
     codebase_context: str = "",
     role: str = "reviewer",
     repo: str = REPO_GLOBAL,
+    repo_path: Optional[Path] = None,
+    preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: Optional[bool] = None,
 ) -> dict:
@@ -363,7 +365,7 @@ def _run_two_judge_review(
         orca = OrcaExecutionManager()  # Raises OrcaUnavailableError if Orca is down
         try:
             # Resolve repo path for language detection (cross-repo dispatch)
-            orca_repo_path = _resolve_repo_path(repo)
+            orca_repo_path = _resolve_repo_path(repo, explicit_path=repo_path)
             lang = CodeExtractor.language_for_domain(
                 task.get("domain", ""),
                 repo_path=orca_repo_path,
@@ -449,12 +451,38 @@ def _run_two_judge_review(
     build_findings: list = []
     verification_output: str = ""
     verify_strict = os.environ.get("VERIFY_GATE_STRICT") == "1"
-    if (
+    if preverified_verification is not None:
+        # A crew's verify result was produced against its disposable student
+        # worktree before teardown. Re-running here would inspect the clean
+        # cache checkout and can manufacture a repo_unresolved/gate_skipped
+        # veto. Preserve the authoritative sensor result instead.
+        vg = dict(preverified_verification)
+        verification_output = json.dumps(vg, indent=2)[:2000]
+        if vg.get("passed"):
+            build_findings.append(Finding(
+                section="build",
+                issue_class="verification_passed",
+                severity=Severity.LOW,
+                citation=f"ran={vg.get('ran', 0)} commands (premerge)",
+                description=f"Repo verify gate passed ({vg.get('ran', 0)} commands)",
+                suggestion="",
+            ))
+        else:
+            for failure in vg.get("failures", []) or [{"cmd": "(verify_gate)"}]:
+                build_findings.append(Finding(
+                    section="build",
+                    issue_class="verify_failed",
+                    severity=Severity.CRITICAL,
+                    citation=f"cmd: {failure.get('cmd', '')}",
+                    description=(failure.get("stderr") or "pre-merge verify gate failed")[:300],
+                    suggestion="Fix the failing verify command (typecheck/test/lint)",
+                ))
+    elif (
         task.get("domain") in executable_domains
         and os.environ.get("REVIEW_RUN_VERIFY_GATE", "1").strip().lower()
         not in ("0", "false", "no")
     ):
-        repo_path = _resolve_repo_path(repo)
+        repo_path = _resolve_repo_path(repo, explicit_path=repo_path)
         if pipeline_metrics is not None:
             pipeline_metrics.record_call("verify_gate")
             pipeline_metrics.record_verification(invocations=1)
@@ -927,6 +955,7 @@ def run_task(
     session_id: Optional[str] = None,
     skip_review: bool = False,
     repo: str = REPO_GLOBAL,
+    repo_path: Optional[Path] = None,
     ce_enabled: bool = False,
     complex_task: bool = False,
     dod_gate: bool = False,
@@ -936,6 +965,7 @@ def run_task(
     phase_drop_rate: float = 0.5,
     phase_seeds: Optional[list] = None,
     provided_student_output: Optional[str] = None,
+    preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: bool = False,
 ) -> dict:
@@ -975,6 +1005,12 @@ def run_task(
                   report.md content becomes the deliverable the teachers assess.
                   Invalid with ``isolated_phases`` (that path already produces a
                   response and returns early).
+        repo_path: Optional explicit checkout for cross-repository dispatch. This
+                  is the authoritative local candidate when the caller has already
+                  cloned or provisioned it; it avoids resolving only by repo slug.
+        preverified_verification: Optional verify-gate result produced against a
+                  disposable student worktree before teardown. When supplied, do
+                  not re-run the gate against the clean cached base.
     """
     if store is None:
         store = ScoreStore()
@@ -1047,7 +1083,24 @@ def run_task(
 
     # Determine the role: force_agent overrides domain mapping
     if force_agent:
-        role = force_agent
+        # N4.3 (worst-day-ever): a forced agent must be the capability's own
+        # resolved profile — it must NOT escalate to a higher-trust role. The
+        # allowlist anchor is the domain's canonical role; any other forced value
+        # is treated as an escalation and denied (falls back to the domain role
+        # instead of silently running with elevated privilege).
+        canonical_role = get_role_for_domain(domain)
+        # N4.3 (worst-day-ever): delegate the escalation check to the shared
+        # allowlist helper so the rule has one source of truth.
+        from resilience import force_agent_allowed
+        if force_agent_allowed(force_agent, canonical_role, lora_twin=f"lora-{domain}"):
+            role = force_agent
+        else:
+            sys.stderr.write(
+                f"[director] force_agent '{force_agent}' denied: not the "
+                f"capability profile for domain '{domain}' (expected "
+                f"'{canonical_role}'); falling back to domain role\n"
+            )
+            role = canonical_role
     else:
         role = get_role_for_domain(domain)
         # Prefer LoRA-tuned role if a trained adapter exists for this domain
@@ -1074,7 +1127,7 @@ def run_task(
     # Forward session_id so Layer 3 archival context fires (U1): the
     # orchestrator gates _archival_context on session_id (context_orchestrator
     # .py:78), so dropping it here keeps Layer 3 dead in the school-loop path.
-    repo_path = _resolve_repo_path(repo)
+    repo_path = _resolve_repo_path(repo, explicit_path=repo_path)
     if pipeline_metrics is not None:
         with pipeline_metrics.stage("context"):
             context_blob = enrich_prompt(
@@ -1353,6 +1406,8 @@ def run_task(
             codebase_context=context_blob or "",
             role="reviewer",
             repo=repo,
+            repo_path=repo_path,
+            preverified_verification=preverified_verification,
             pipeline_metrics=pipeline_metrics,
             synthesize_narratives=synthesize_narratives,
         )
@@ -1579,15 +1634,24 @@ def staff_list(vault_path: str = None, config_path: str = None) -> list:
     ]
 
 
-def _resolve_repo_path(repo: str) -> Optional[Path]:
-    """Resolve a repo slug to a cached clone path for Serena LSP context.
+def _resolve_repo_path(
+    repo: str,
+    *,
+    explicit_path: Optional[Path] = None,
+) -> Optional[Path]:
+    """Resolve the checkout for a task without silently crossing repositories.
 
-    Checks the repo_reader cache first; falls back to the current
-    checkout's root when the slug matches the framework's own repo.
-    Returns ``None`` if no clone exists (Serena gracefully skips).
-
-    Does NOT trigger a clone — this is read-only path resolution.
+    An explicit caller-provided checkout wins over slug lookup. This is needed
+    for bridge replays where the authoritative candidate is local-only and is
+    intentionally not present in the normal remote cache. Invalid explicit
+    paths fail closed instead of falling back to an unrelated repository.
     """
+    if explicit_path is not None:
+        candidate = Path(explicit_path).expanduser().resolve()
+        if candidate.exists() and (candidate / ".git").exists():
+            return candidate
+        return None
+
     if not repo or repo == REPO_GLOBAL:
         return None
 
