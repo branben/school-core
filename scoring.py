@@ -1,4 +1,6 @@
 import json
+import fcntl
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -126,25 +128,45 @@ class ScoreStore:
         self._difficulty_weights: Dict[str, Dict[str, float]] = {}
         self.load()
 
+    @contextmanager
+    def _scores_lock(self):
+        """Serialize score read/modify/write like the crew registry lock.
+
+        F6-concurrency / worst-day-ever N5.2: ScoreStore.save() previously did
+        open("w") + json.dump with NO lock, so two concurrent graders (the
+        concurrency-2+ goal) could torn-write scores.json; on reload the
+        JSONDecodeError re-seeded from SEED_AGENTS and WIPED the leaderboard.
+        This mirrors crew_dispatch._registry_lock (fcntl.flock).
+        """
+        lock_path = self.file_path.with_suffix(self.file_path.suffix + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
     def load(self) -> None:
         if not self.file_path.exists():
             # seed and save
             self.scores = {agent: {domain: float(val) for domain, val in domains.items()} for agent, domains in SEED_AGENTS.items()}
             self.save()
         else:
-            with self.file_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.scores = {}
-                self._difficulty_weights = {}
-                for agent, domains in data.items():
-                    self.scores[agent] = {}
-                    self._difficulty_weights[agent] = {}
-                    for key, val in domains.items():
-                        if key.startswith("_difficulty_"):
-                            domain_key = key[len("_difficulty_"):]
-                            self._difficulty_weights[agent][domain_key] = float(val)
-                        else:
-                            self.scores[agent][key] = float(val)
+            with self._scores_lock():
+                with self.file_path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+            self.scores = {}
+            self._difficulty_weights = {}
+            for agent, domains in data.items():
+                self.scores[agent] = {}
+                self._difficulty_weights[agent] = {}
+                for key, val in domains.items():
+                    if key.startswith("_difficulty_"):
+                        domain_key = key[len("_difficulty_"):]
+                        self._difficulty_weights[agent][domain_key] = float(val)
+                    else:
+                        self.scores[agent][key] = float(val)
 
     def save(self) -> None:
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,8 +176,36 @@ class ScoreStore:
             if agent in self._difficulty_weights:
                 for domain, weight in self._difficulty_weights[agent].items():
                     merged[agent][f"_difficulty_{domain}"] = weight
-        with self.file_path.open("w", encoding="utf-8") as f:
-            json.dump(merged, f, indent=4, sort_keys=True)
+        # Atomic write under the store lock: a temp file + os.replace, so a
+        # crashed writer can never leave a half-written scores.json behind.
+        import tempfile
+        import os
+        with self._scores_lock():
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.file_path.parent,
+                prefix=f".{self.file_path.name}.", suffix=".tmp", delete=False,
+            ) as temp:
+                json.dump(merged, temp, indent=4, sort_keys=True)
+                temp_path = Path(temp.name)
+            os.replace(temp_path, self.file_path)
+
+    def _save_unlocked(self) -> None:
+        """Persist without re-acquiring the store lock (caller holds it)."""
+        import tempfile
+        import os
+        merged = {}
+        for agent, domains in self.scores.items():
+            merged[agent] = dict(domains)
+            if agent in self._difficulty_weights:
+                for domain, weight in self._difficulty_weights[agent].items():
+                    merged[agent][f"_difficulty_{domain}"] = weight
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=self.file_path.parent,
+            prefix=f".{self.file_path.name}.", suffix=".tmp", delete=False,
+        ) as temp:
+            json.dump(merged, temp, indent=4, sort_keys=True)
+            temp_path = Path(temp.name)
+        os.replace(temp_path, self.file_path)
 
     def get_score(self, agent_name: str, domain: str) -> float:
         return self.scores.get(agent_name, {}).get(domain, self.scores.get(agent_name, {}).get("_default", 0.0))
@@ -168,11 +218,23 @@ class ScoreStore:
 
     # EMA score update — new score = 70% old + 30% task
     def update_score(self, agent_name: str, domain: str, task_score: float, difficulty_weight: float = 1.0) -> float:
-        old = self.get_score(agent_name, domain)
-        new = old * 0.7 + task_score * 0.3
-        new = max(0.0, min(100.0, new))
-        self.set_score(agent_name, domain, new)
-        self.set_difficulty_weight(agent_name, domain, difficulty_weight)
+        # F6-concurrency / worst-day-ever N5.2: the read-modify-write-save must
+        # be ONE critical section. The lock guards the file write, but without
+        # holding it across the get_score→compute→save the in-memory dict is
+        # shared and a concurrent caller would clobber our update (lost update).
+        # We hold _scores_lock for the whole RMW and persist via _save_unlocked
+        # (no re-entrant fcntl.flock on a fresh fd, which would deadlock).
+        with self._scores_lock():
+            old = self.get_score(agent_name, domain)
+            new = old * 0.7 + task_score * 0.3
+            new = max(0.0, min(100.0, new))
+            if agent_name not in self.scores:
+                self.scores[agent_name] = {}
+            self.scores[agent_name][domain] = new
+            if agent_name not in self._difficulty_weights:
+                self._difficulty_weights[agent_name] = {}
+            self._difficulty_weights[agent_name][domain] = max(0.0, min(2.0, float(difficulty_weight)))
+            self._save_unlocked()
         return new
 
     def set_difficulty_weight(self, agent_name: str, domain: str, weight: float) -> None:

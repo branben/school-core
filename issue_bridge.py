@@ -32,11 +32,15 @@ from scoring import ScoreStore
 from school_mail import notify_issue_alert
 from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
+from compound_learning import CompoundLearningStore
 from crew_admission import decide_admission
 from shadow_routing import load_shadow_history
+from scripts.ce_router import route_id_for
 from bridge_seams import (
+    build_evidence_join as _build_evidence_join,
     build_shadow_routing_packet as _build_shadow_routing_packet,
     observability_fields as _observability_fields,
+    outcome_fields as _outcome_fields,
     strict_gate_failure as _strict_gate_failure,
 )
 # U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
@@ -487,6 +491,25 @@ def _write_run_entries(path: Path, entries: list[dict]) -> None:
     os.replace(tmp, path)
 
 
+def _record_compound_observation(
+    *,
+    bead_id: str,
+    trigger: str,
+    evidence: dict,
+) -> Optional[dict]:
+    """Start the bounded post-bead learning loop without changing policy."""
+    try:
+        path = PROCESSED_FILE.parent / "compound_learning.json"
+        return CompoundLearningStore(path).observe(
+            bead_id=bead_id,
+            trigger=trigger,
+            evidence=evidence,
+        )
+    except Exception as exc:  # learning must not change task acceptance
+        sys.stderr.write(f"[issue_bridge] compound observation skipped: {exc}\n")
+        return None
+
+
 class RunBatch:
     """Accumulate one bridge cycle's run entries and flush them atomically.
 
@@ -669,6 +692,55 @@ def _run_verify_gate(
         return None  # Can't run → don't override adversarial review
 
 
+def _select_verification(
+    *,
+    crew_used: bool,
+    crew_premerge_verification: Optional[dict],
+    canonical_packet: Optional[object],
+    issue: dict,
+    repo_path: Optional[Path],
+    metrics: "PipelineMetrics",
+) -> Optional[dict]:
+    """Select the verify-gate result, enforcing the fc7.3 / worst-day-ever N5.3
+    invariant: a CREW run must reuse its live-worktree verification and NEVER
+    re-run the gate on the clean cached base (repo_path) after teardown.
+
+    Re-running on the base would produce a FALSE PASS — the student's diff is
+    gone, so the gate checks an empty tree. This function makes that contract
+    explicit and un-branchable: when `crew_used` is True, the only allowed
+    outcomes are (a) reuse the crew's pre-merge verification, or (b) a strict
+    gate failure if it is missing. `_run_verify_gate(repo_path, ...)` is reached
+    ONLY for the direct/manual (non-crew) path.
+
+    Returns a verify result dict, or None if no gate is applicable (direct path
+    with no verifiable project). A strict failure is a non-None dict with
+    passed=False.
+    """
+    if crew_used:
+        # Mandatory reuse. The cached repo_path is the clean base after teardown
+        # and MUST NOT be re-gated here.
+        metrics.record_call("verify_gate_reused")
+        with metrics.stage("verify"):
+            return crew_premerge_verification or _strict_gate_failure(
+                "crew pre-merge verification was unavailable after teardown"
+            )
+    if (
+        canonical_packet is not None
+        and getattr(canonical_packet, "is_authoritative", False)
+        and getattr(canonical_packet, "is_verification_authoritative", False)
+    ):
+        # The director already ran the authoritative build gate; reuse it.
+        metrics.record_call("verify_gate_reused")
+        with metrics.stage("verify"):
+            return getattr(canonical_packet, "verification", None)
+    # Direct/manual path only — here (and ONLY here) may we run the gate on the
+    # checkout. This branch is unreachable for crew runs by construction.
+    metrics.record_call("verify_gate")
+    metrics.record_verification(invocations=1)
+    with metrics.stage("verify"):
+        return _run_verify_gate(repo_path, issue)
+
+
 def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
     """Run `entire review` on the student's clone as a non-blocking sensor.
 
@@ -746,13 +818,40 @@ def _crew_enabled_from_env() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _crew_active_count(crew_runs_file) -> int:
-    """Count durable active crew claims without exposing paths or payloads."""
+def _quarantine_corrupt_registry(crew_runs_file) -> None:
+    """Move a corrupted registry aside so it can't silently re-trigger.
+
+    F6-concurrency / worst-day-ever N5.1: a truncated registry previously made
+    admission think ZERO crews were in flight, defeating the cap (over-admit).
+    We never swallow corruption — we quarantine it and let the caller fail CLOSED.
+    """
     try:
-        raw = json.loads(crew_runs_file.read_text()) if crew_runs_file.exists() else []
-        runs = raw if isinstance(raw, list) else []
-    except (OSError, json.JSONDecodeError):
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        corrupt = crew_runs_file.with_suffix(crew_runs_file.suffix + f".corrupt-{ts}")
+        crew_runs_file.replace(corrupt)
+        sys.stderr.write(
+            f"[issue_bridge] QUARANTINED corrupt crew registry {crew_runs_file} -> {corrupt}\n"
+        )
+    except OSError as e:
+        sys.stderr.write(f"[issue_bridge] failed to quarantine corrupt registry: {e}\n")
+
+
+def _crew_active_count(crew_runs_file) -> int:
+    """Count durable active crew claims without exposing paths or payloads.
+
+    F6-concurrency / worst-day-ever N5.1 (fail-closed): on a corrupted registry
+    we QUARANTINE it and return a value larger than any cap so admission DENIES
+    (assume everything is in flight) instead of the old behavior of returning 0
+    and over-admitting. A missing file is the only valid empty state.
+    """
+    if not crew_runs_file.exists():
         return 0
+    try:
+        raw = json.loads(crew_runs_file.read_text())
+    except json.JSONDecodeError:
+        _quarantine_corrupt_registry(crew_runs_file)
+        return sys.maxsize  # fail closed: behave as if fully saturated
+    runs = raw if isinstance(raw, list) else []
     return sum(1 for entry in runs if entry.get("status") in _CREW_ACTIVE_STATUSES)
 
 
@@ -766,12 +865,19 @@ def _crew_active_issue(crew_runs_file, issue_number: int) -> bool:
     and checkpointed, so a leftover active record means the crew may still
     hold the issue's worktree — starting a second crew would double-spawn.
     Skip the issue this cycle and let the stale sweep / next cycle reclaim it.
+
+    F6-concurrency / worst-day-ever N5.1 (fail-closed): a corrupted registry is
+    quarantined and treated as "this issue is active" so we SKIP rather than
+    risk a double-spawn. Only a missing file is a valid empty state.
     """
-    try:
-        raw = json.loads(crew_runs_file.read_text()) if crew_runs_file.exists() else []
-        runs = raw if isinstance(raw, list) else []
-    except (OSError, json.JSONDecodeError):
+    if not crew_runs_file.exists():
         return False
+    try:
+        raw = json.loads(crew_runs_file.read_text())
+    except json.JSONDecodeError:
+        _quarantine_corrupt_registry(crew_runs_file)
+        return True  # fail closed: skip the issue, avoid double-spawn
+    runs = raw if isinstance(raw, list) else []
     return any(
         int(entry.get("issue_number", -1)) == int(issue_number)
         and entry.get("status") in _CREW_ACTIVE_STATUSES
@@ -960,8 +1066,10 @@ def bridge_issues(
         # crew (FirstMate -> Orca) before the direct model path:
         #  - done → the crew's report.md becomes the student deliverable and
         #    flows through the normal review/scoring (no student model call).
-        #  - CrewUnavailableError (spawn failure) or non-done terminal status
-        #    (timeout/failed/blocked) → same-cycle fallback to the direct path;
+        #  - CrewUnavailableError (spawn failure) or a fast ordinary failed
+        #    status → same-cycle fallback to the direct path;
+        #  - timeout/blocked → bounded retry after teardown, avoiding a second
+        #    full-length attempt in the same supervisor window;
         #    the fallback_reason is recorded on the result.
         #  - Fallback itself fails → existing retry-once semantics carry.
         #  - An active crew record (interrupted prior cycle) skips the issue;
@@ -972,6 +1080,7 @@ def bridge_issues(
         crew_fallback_reason: Optional[str] = None
         crew_used = False
         crew_skip_reason: Optional[str] = None
+        defer_direct_fallback = False
 
         if crew_enabled and crew_capability is None:
             crew_skip_reason = "capability_resolution_failure"
@@ -1005,11 +1114,21 @@ def bridge_issues(
             continue
 
         if crew_enabled and crew_skip_reason is None:
+            # F6-concurrency (fc7.3 verify-contract repair): admission must
+            # count CREWS THAT ARE CURRENTLY IN FLIGHT, not a local int that is
+            # only incremented AFTER dispatch_crew() returns. dispatch_crew
+            # writes a `running` record to CREW_RUNS_FILE the moment it spawns
+            # (before the long poll), so reading the durable, lock-safe registry
+            # here makes admission reflect live in-flight crews. This is what
+            # keeps configured_cap honest once the loop dispatches more than one
+            # crew before any returns — the stale local counter would let every
+            # concurrent decision see `dispatched=0` and over-admit.
+            live_active = _crew_active_count(CREW_RUNS_FILE)
             admission = decide_admission(
-                dispatched=crew_dispatched,
+                dispatched=live_active,
                 configured_cap=crew_max_per_cycle,
                 runner_slots=runner_slots,
-                active_claims=_crew_active_count(CREW_RUNS_FILE),
+                active_claims=live_active,
                 remaining_seconds=cycle_budget_seconds - (time.monotonic() - cycle_started),
                 crew_timeout_seconds=CREW_DEFAULT_TIMEOUT,
                 retry_pressure=len(retries),
@@ -1028,7 +1147,11 @@ def bridge_issues(
             try:
                 crew_result = dispatch_crew(
                     issue_number=num,
-                    task_text=enriched_prompt,
+                    # The student has the actual checkout and can inspect it;
+                    # do not duplicate the potentially huge codebase context in
+                    # the Hermes launch brief. Keep enriched_prompt for the
+                    # director's review path below.
+                    task_text=issue["prompt"],
                     project_dir=repo_path or Path.cwd(),
                     cycle_session_id=cycle_session_id,
                     capability=crew_capability,
@@ -1057,15 +1180,36 @@ def bridge_issues(
                 )
                 crew_result = None
         elif crew_result is not None:
-            # Non-done terminal status (timeout/failed/blocked) → same-cycle
-            # direct fallback; the crew's own reason rides on the result.
+            # Fast ordinary failures can use the direct path, but a timeout or
+            # explicit blocked state must not launch a second full-length model
+            # attempt in the same cycle. That used to exceed the outer
+            # supervisor window and hid the original runtime failure. Preserve
+            # the crew evidence and let the existing retry-once path record a
+            # bounded retry after teardown.
             crew_fallback_reason = crew_result.fallback_reason or crew_result.status
+            defer_direct_fallback = crew_result.status in {"timeout", "blocked"}
+            action = "schedule bounded retry" if defer_direct_fallback else "direct fallback"
             sys.stderr.write(
-                f"[issue_bridge] #{num}: crew {crew_result.status} ({crew_fallback_reason}) — direct fallback\n"
+                f"[issue_bridge] #{num}: crew {crew_result.status} ({crew_fallback_reason}) — {action}\n"
             )
 
         if crew_fallback_reason:
             metrics.record_crew("fallback")
+
+        # Capture authoritative sensors before the bridge asks the director
+        # to review the report. These were run against the live student
+        # worktree by dispatch_crew, before teardown; the cached repo_path is
+        # only the clean base and must never replace them for a crew run.
+        crew_premerge_verification = (
+            getattr(crew_result, "verification", None)
+            if crew_result is not None and crew_result.status == "done"
+            else None
+        )
+        crew_premerge_entire = (
+            getattr(crew_result, "entire_review", None)
+            if crew_result is not None and crew_result.status == "done"
+            else None
+        )
 
         # Keep the direct review path on the same task role selected for the
         # crew. This prevents an A2A/readiness reroute from silently changing
@@ -1075,6 +1219,10 @@ def bridge_issues(
             or (crew_capability.task_role if crew_enabled and crew_capability else None)
         )
         try:
+            if defer_direct_fallback:
+                raise RuntimeError(
+                    f"crew {crew_result.status}: {crew_fallback_reason or crew_result.status}"
+                )
             with metrics.stage("student_generation"):
                 if crew_result is not None and crew_result.status == "done":
                     # The crew's report.md IS the student deliverable: substitution
@@ -1087,7 +1235,10 @@ def bridge_issues(
                         force_agent=dispatch_force_agent,
                         store=store,
                         session_id=cycle_session_id,
+                        repo=repo,
+                        repo_path=repo_path,
                         provided_student_output=deliverable,
+                        preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
                     )
                 else:
@@ -1098,6 +1249,8 @@ def bridge_issues(
                         force_agent=dispatch_force_agent,
                         store=store,
                         session_id=cycle_session_id,
+                        repo=repo,
+                        repo_path=repo_path,
                         pipeline_metrics=metrics,
                     )
         except Exception as e:
@@ -1120,10 +1273,28 @@ def bridge_issues(
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **_outcome_fields(
+                        status="retry",
+                        error=err,
+                        fallback_reason=crew_fallback_reason,
+                        retry_attempt=attempts,
+                    ),
                 })
                 try:
                     run_batch.append(
-                        {"issue": num, "status": "retry", "agent": None, "score": None, "trajectory": None},
+                        {
+                            "issue": num,
+                            "status": "retry",
+                            "agent": None,
+                            "score": None,
+                            "trajectory": None,
+                            **_outcome_fields(
+                                status="retry",
+                                error=err,
+                                fallback_reason=crew_fallback_reason,
+                                retry_attempt=attempts,
+                            ),
+                        },
                     )
                 except Exception as e_rec:
                     sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
@@ -1146,10 +1317,28 @@ def bridge_issues(
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
                 "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                **_outcome_fields(
+                    status="error",
+                    error=err,
+                    fallback_reason=crew_fallback_reason,
+                    retry_attempt=attempts,
+                ),
             })
             try:
                 run_batch.append(
-                    {"issue": num, "status": "error", "agent": None, "score": None, "trajectory": None},
+                    {
+                        "issue": num,
+                        "status": "error",
+                        "agent": None,
+                        "score": None,
+                        "trajectory": None,
+                        **_outcome_fields(
+                            status="error",
+                            error=err,
+                            fallback_reason=crew_fallback_reason,
+                            retry_attempt=attempts,
+                        ),
+                    },
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
@@ -1190,6 +1379,18 @@ def bridge_issues(
                     f"combined={_review.get('combined_score')}"
                 )
                 sys.stderr.write(f"[issue_bridge] #{num}: {_reject_reason} — school-failed\n")
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                rejection_observation = _record_compound_observation(
+                    bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
+                    trigger="bead_failed",
+                    evidence={"outcome": rejection_outcome},
+                )
                 # Score store reflects the director's designed penalty
                 # (task_score is min(40, combined) for a rejection).
                 evaluate_and_update(task_result, task_result.get("task_score", 0.0), store=store)
@@ -1206,6 +1407,10 @@ def bridge_issues(
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    "compound_observation_id": (
+                        rejection_observation or {}
+                    ).get("observation_id"),
+                    **rejection_outcome,
                 })
                 try:
                     run_batch.append(
@@ -1218,6 +1423,10 @@ def bridge_issues(
                             "trajectory": task_result.get("trajectory"),
                             "capability": task_result.get("capability"),
                             "teacher_evidence": task_result.get("teacher_evidence"),
+                            "compound_observation_id": (
+                                rejection_observation or {}
+                            ).get("observation_id"),
+                            **rejection_outcome,
                         },
                     )
                 except Exception as e_rec:
@@ -1236,21 +1445,17 @@ def bridge_issues(
             # NEW: run the code before the critic speaks (campus.md #3).
             # Compile/typecheck/test failures become CRITICAL findings fed
             # into the adversarial reviewer, so broken code can't pass review.
-            if (
-                canonical_packet is not None
-                and canonical_packet.is_authoritative
-                and canonical_packet.is_verification_authoritative
-            ):
-                # The director already ran the authoritative build gate. Reuse
-                # its evidence instead of paying for a second checkout/shell.
-                metrics.record_call("verify_gate_reused")
-                with metrics.stage("verify"):
-                    verify_result = canonical_packet.verification
-            else:
-                metrics.record_call("verify_gate")
-                metrics.record_verification(invocations=1)
-                with metrics.stage("verify"):
-                    verify_result = _run_verify_gate(repo_path, issue)
+            # _select_verification enforces the fc7.3 / worst-day-ever N5.3
+            # invariant: a CREW run reuses its live-worktree verification and
+            # never re-gates the clean base after teardown (false pass).
+            verify_result = _select_verification(
+                crew_used=crew_used,
+                crew_premerge_verification=crew_premerge_verification,
+                canonical_packet=canonical_packet,
+                issue=issue,
+                repo_path=repo_path,
+                metrics=metrics,
+            )
             if verify_result:
                 gate_metrics = verify_result.get("telemetry") or {}
                 metrics.record_verification(
@@ -1273,9 +1478,16 @@ def bridge_issues(
             # on the result + durable record, but never override the verdict —
             # the adversarial (two-judge) review below remains the semantic
             # gate.
-            metrics.record_call("entire")
-            with metrics.stage("entire"):
-                entire_review = _run_entire_sensor(repo_path)
+            if crew_used:
+                # Same lifecycle rule as verification: do not inspect the clean
+                # base after the student's worktree has been torn down.
+                metrics.record_call("entire_reused")
+                with metrics.stage("entire"):
+                    entire_review = crew_premerge_entire
+            else:
+                metrics.record_call("entire")
+                with metrics.stage("entire"):
+                    entire_review = _run_entire_sensor(repo_path)
             entire_summary = None
             if entire_review:
                 entire_summary = {
@@ -1411,6 +1623,76 @@ def bridge_issues(
                 critical_findings=critical_findings,
                 retry_count=retries.get(num, 0),
             )
+            outcome = _outcome_fields(
+                status="success",
+                task_result=task_result,
+                review=review_evidence,
+                entire=entire_summary,
+                verification={
+                    **verification,
+                    **(verify_result or {}),
+                },
+                fallback_reason=crew_fallback_reason,
+                retry_attempt=retries.get(num, 0),
+            )
+            project_gate = (
+                "pass" if verify_result and verify_result.get("passed")
+                else "skipped" if verify_skipped
+                else "fail" if verify_result else "unavailable"
+            )
+            artifact_identity = (
+                getattr(crew_result, "artifact_identity", None) or {}
+                if crew_result is not None
+                else {}
+            )
+            evidence_join = _build_evidence_join(
+                control={
+                    "route_id": task_result.get("route_id") or route_id_for(
+                        task_result.get("bead") or issue.get("bd_id")
+                    ),
+                    "bd_id": issue.get("bd_id"),
+                    "plan_id": issue.get("plan_id"),
+                    "plan_unit": issue.get("plan_unit"),
+                    "wayfinder_id": issue.get("wayfinder_id"),
+                    "knowledge_anchor": issue.get("knowledge_anchor"),
+                    "primary_workflow": task_result.get("primary_workflow"),
+                    "chosen_skill": task_result.get("chosen_skill"),
+                },
+                runtime={
+                    "dispatcher": "firstmate" if crew_used else "direct-orca",
+                    "cycle_session_id": cycle_session_id,
+                    "firstmate_crew_id": crew_result.crew_id if crew_result else None,
+                    "orca_worktree_id": crew_result.orca_worktree_id if crew_result else None,
+                    "hermes_session_id": task_result.get("hermes_session_id"),
+                },
+                artifact={
+                    "repository": repo,
+                    "base_ref": artifact_identity.get("base"),
+                    "branch": artifact_identity.get("branch"),
+                    "commit": artifact_identity.get("commit"),
+                    "changed_files": artifact_identity.get("changed_files"),
+                    "trajectory_ref": task_result.get("trajectory"),
+                    "bookbag_ref": task_result.get("bookbag"),
+                    "report_ref": str(crew_result.report_path) if crew_result and crew_result.report_path else None,
+                },
+                verification={
+                    "project_gate": project_gate,
+                    "project_gate_reason": ((verify_result or {}).get("failures") or [{}])[0].get("stderr"),
+                    "entire_status": entire_summary.get("status") if entire_summary else None,
+                    "entire_finding_count": entire_summary.get("findings", 0) if entire_summary else 0,
+                    "entire_findings": (entire_review or {}).get("findings", []) if entire_review else [],
+                },
+                judgment={
+                    **review_evidence,
+                    "score": review_evidence.get("combined_score", combined_score),
+                },
+                outcome=outcome,
+            )
+            compound_observation = _record_compound_observation(
+                bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
+                trigger="bead_completed",
+                evidence=evidence_join,
+            )
             results.append({
                 "issue_number": num,
                 "title": issue["title"],
@@ -1433,6 +1715,11 @@ def bridge_issues(
                 "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 "shadow_routing": shadow_routing,
                 "pipeline_metrics": metrics.snapshot(),
+                "evidence_join": evidence_join,
+                "compound_observation_id": (
+                    compound_observation or {}
+                ).get("observation_id"),
+                **outcome,
             })
             try:
                 run_batch.append(
@@ -1467,6 +1754,11 @@ def bridge_issues(
                         "crew_used": crew_used,
                         "crew_fallback_reason": crew_fallback_reason,
                         "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                        "evidence_join": evidence_join,
+                        "compound_observation_id": (
+                            compound_observation or {}
+                        ).get("observation_id"),
+                        **outcome,
                     },
                     metrics=metrics,
                 )
@@ -1486,6 +1778,13 @@ def bridge_issues(
             err = task_result.get("error")
             attempts = retries.get(num, 0) + 1
             if attempts < RETRY_LIMIT:
+                outcome = _outcome_fields(
+                    status="retry",
+                    task_result=task_result,
+                    error=err,
+                    fallback_reason=crew_fallback_reason,
+                    retry_attempt=attempts,
+                )
                 # Transient failure — schedule a retry on the next cycle.
                 retries[num] = attempts
                 results.append({
@@ -1500,6 +1799,7 @@ def bridge_issues(
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **outcome,
                 })
                 try:
                     run_batch.append(
@@ -1511,6 +1811,7 @@ def bridge_issues(
                             "trajectory": task_result.get("trajectory"),
                             "capability": task_result.get("capability"),
                             "teacher_evidence": task_result.get("teacher_evidence"),
+                            **outcome,
                         },
                     )
                 except Exception as e_rec:
@@ -1524,6 +1825,13 @@ def bridge_issues(
             else:
                 # Retry budget exhausted — final failure: school-failed + processed.
                 retries.pop(num, None)
+                outcome = _outcome_fields(
+                    status=task_result.get("status", "error"),
+                    task_result=task_result,
+                    error=err,
+                    fallback_reason=crew_fallback_reason,
+                    retry_attempt=attempts,
+                )
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],
@@ -1537,6 +1845,7 @@ def bridge_issues(
                     "crew_used": crew_used,
                     "crew_fallback_reason": crew_fallback_reason,
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **outcome,
                 })
                 try:
                     run_batch.append(
@@ -1548,6 +1857,7 @@ def bridge_issues(
                             "trajectory": task_result.get("trajectory"),
                             "capability": task_result.get("capability"),
                             "teacher_evidence": task_result.get("teacher_evidence"),
+                            **outcome,
                         },
                     )
                 except Exception as e_rec:
