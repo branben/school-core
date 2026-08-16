@@ -310,8 +310,8 @@ class OrcaExecutionManager:
     # Total timeout = max_turns * HERMES_TIMEOUT_PER_TURN_MS, so a 5-turn
     # medium task gets 5 * 120s = 600s instead of the old flat 120s that
     # killed multi-turn students mid-generation.
-    HERMES_TIMEOUT_PER_TURN_MS = 120000
-    _TURNS = {"easy": 1, "medium": 16, "hard": 16, "diploma": 20}
+    HERMES_TIMEOUT_PER_TURN_MS = 90000   # 90 s; 8 diploma turns = 720 s < crew cap
+    _TURNS = {"easy": 1, "medium": 3, "hard": 5, "diploma": 8}  # matches docstring line ~1002
     POLL_INTERVAL = 0.5  # seconds between output checks
 
     # Shell prompt pattern: user@hostname path %
@@ -437,7 +437,7 @@ class OrcaExecutionManager:
         Returns the path of the existing (rediscovered) or newly created
         worktree.
         """
-        existing = self._find_worktree_by_prefix(name)
+        existing = self._find_worktree_by_prefix(name, repo_path=repo_path)
         if existing:
             return existing
         # PRUNE stale admin entries before creating. If a prior serve
@@ -454,8 +454,15 @@ class OrcaExecutionManager:
             pass
         return self.create_worktree(name, repo_path=repo_path)
 
-    def _find_worktree_by_prefix(self, prefix: str) -> Optional[str]:
-        """Return the path of an existing worktree for a persistent role.
+    def _find_worktree_by_prefix(
+        self, prefix: str, repo_path: Optional[Path] = None
+    ) -> Optional[str]:
+        """Return an existing worktree for a persistent role.
+
+        When ``repo_path`` is supplied, the worktree must belong to that
+        registered Orca repository. A same-named worktree in another repo is
+        not a valid rediscovery candidate; returning it was the source of the
+        teacher target-binding bug.
 
         Tolerant match: the canonical name is ``teacher-<role>``
         (``teacher-cto``), and reboot suffixes like ``teacher-cto-4`` or
@@ -464,6 +471,24 @@ class OrcaExecutionManager:
         zombie-spray source). Unrelated names (``teacher-cto-backup``,
         ``protonic``) are deliberately NOT matched.
         """
+        target_repo_id: Optional[str] = None
+        if repo_path is not None:
+            try:
+                repo_listing = self._run_orca(["repo", "list"], timeout=15)
+                repos = repo_listing.get(
+                    "repos", repo_listing.get("repositories", [])
+                )
+                for repo in repos if isinstance(repos, list) else []:
+                    if (
+                        isinstance(repo, dict)
+                        and Path(str(repo.get("path", ""))).resolve()
+                        == Path(repo_path).resolve()
+                    ):
+                        target_repo_id = str(repo.get("id") or "") or None
+                        break
+            except Exception:
+                return None
+
         try:
             listing = self._run_orca(["worktree", "list"], timeout=15)
         except Exception:
@@ -497,6 +522,18 @@ class OrcaExecutionManager:
                     else:
                         matched = False
                 if matched:
+                    if repo_path is not None:
+                        wt_repo_id = str(
+                            wt.get("repoId")
+                            or wt.get("projectHostSetupId")
+                            or ""
+                        ) or None
+                        # A target-scoped lookup fails closed when Orca cannot
+                        # prove the repository binding. It is safer to create
+                        # or report a missing teacher than to reuse the wrong
+                        # repo's persistent worktree.
+                        if not target_repo_id or wt_repo_id != target_repo_id:
+                            continue
                     p = wt.get("path") or ""
                     wt_id = wt.get("id", "")
                     if "::" in wt_id:
