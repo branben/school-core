@@ -767,10 +767,20 @@ def dispatch_crew(
     blocked_grace: float = DEFAULT_BLOCKED_GRACE,
     metadata_timeout: float = 5.0,
     metadata_poll_interval: float = 0.1,
+    fleet_worktree_id: Optional[str] = None,
     now_fn: Callable[[], float] = time.time,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> CrewResult:
-    """Spawn, poll, collect, and clean up one code-producing FirstMate task."""
+    """Spawn, poll, collect, and clean up one code-producing FirstMate task.
+
+    ``fleet_worktree_id`` is the logical fleet slot (e.g. ``wt-1``) the dispatch
+    office leased for this crew. It is recorded in the durable ``running`` entry
+    so ``FleetRegistry.assign_worktree`` can treat the slot as occupied for the
+    crew's whole async lifecycle — not just the synchronous spawn window. Without
+    this, the fleet lease (released right after spawn) leaves no durable trace,
+    and ``assign_worktree`` reassigns the same logical slot to the next crew
+    (N6.2 regression: parallel assignments must see the slot held).
+    """
 
     crew_id = _crew_id(cycle_session_id, issue_number)
     sweep_stale_runs(now=now_fn(), path=CREW_RUNS_FILE)
@@ -829,6 +839,7 @@ def dispatch_crew(
         "issue_number": issue_number,
         "status": "running",
         "orca_worktree_id": worktree_id,
+        "fleet_worktree_id": fleet_worktree_id,
         "capability": capability_record,
         "started_at": started_at,
     })

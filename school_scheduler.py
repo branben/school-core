@@ -104,29 +104,39 @@ class FleetRegistry:
     def daemons(self) -> list[str]:
         return list(self._state.get("daemons", {}).keys())
 
-    def assign_worktree(self, lease_file: Path) -> tuple[Optional[str], Optional[str]]:
+    def assign_worktree(
+        self, lease_file: Path, crew_runs_file: Optional[Path] = None
+    ) -> tuple[Optional[str], Optional[str]]:
         """Pick the least-loaded daemon's free worktree.
 
         Returns (worktree_id, daemon_id) or (None, None) if every worktree is
-        leased. Tracks in-flight assignments in-memory (the durable mutual
-        exclusion is the worktree_lease file, honored by the caller).
+        occupied. A worktree is considered occupied if (a) its transient lease is
+        held by the caller, OR (b) a durable crew registry record with
+        ``fleet_worktree_id == wt`` is currently ``running``/``blocked`` — i.e. a
+        crew's async execution still owns the logical slot even though the
+        synchronous spawn lease was already released (N6.2: parallel assignments
+        to the same worktree must see it held and get the next free slot).
         """
+        occupied = _occupied_fleet_worktrees(crew_runs_file)
         best: tuple[Optional[str], Optional[str], int] = (None, None, 10**9)
         with self._lock:
             for daemon_id, info in self._state.get("daemons", {}).items():
                 capacity = int(info.get("capacity", 1))
                 worktrees = info.get("worktrees", [])
-                # count currently-leased worktrees for this daemon
+                # count currently-occupied worktrees for this daemon
                 leased = 0
+                free_wt = None
                 for wt in worktrees:
-                    if _lease_held(lease_file, wt):
+                    if _lease_held(lease_file, wt) or wt in occupied:
                         leased += 1
+                    elif free_wt is None:
+                        free_wt = wt  # first actually-free worktree (not just first in list)
                 free = max(0, capacity - leased)
-                if free <= 0:
+                if free <= 0 or free_wt is None:
                     continue
                 # least-loaded first; tie-break by first free worktree
                 if leased < best[2]:
-                    best = (worktrees[0], daemon_id, leased)
+                    best = (free_wt, daemon_id, leased)
         return best[0], best[1]
 
     def describe(self) -> dict:
@@ -151,6 +161,33 @@ def _lease_held(lease_file: Path, worktree_id: str) -> bool:
     return False
 
 
+def _occupied_fleet_worktrees(crew_runs_file: Optional[Path]) -> set[str]:
+    """Worktree ids (logical fleet slots) currently owned by an in-flight crew.
+
+    Reads the durable crew registry for ``running``/``blocked`` records that carry
+    a ``fleet_worktree_id`` (recorded by dispatch_crew). This is the durable view
+    that survives the synchronous spawn lease being released, so assign_worktree
+    can keep a slot occupied for the crew's whole async execution (N6.2).
+    """
+    if crew_runs_file is None or not crew_runs_file.exists():
+        return set()
+    try:
+        runs = json.loads(crew_runs_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return set()
+    if not isinstance(runs, list):
+        return set()
+    occupied: set[str] = set()
+    for entry in runs:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("status") in ("running", "blocked"):
+            wt = entry.get("fleet_worktree_id")
+            if isinstance(wt, str) and wt:
+                occupied.add(wt)
+    return occupied
+
+
 class DispatchOffice:
     """Fans a single issue out to an available Orca worktree in the fleet."""
 
@@ -158,9 +195,13 @@ class DispatchOffice:
         self,
         fleet_file: Path = DEFAULT_FLEET_FILE,
         lease_file: Optional[Path] = None,
+        crew_runs_file: Optional[Path] = None,
     ) -> None:
         self.fleet = FleetRegistry(fleet_file)
         self.lease_file = lease_file or (Path(__file__).resolve().parent / "data" / "worktree_leases.json")
+        # Durable crew registry used to keep fleet slots occupied for the crew's
+        # whole async execution (N6.2). Defaults to crew_dispatch's registry.
+        self.crew_runs_file = crew_runs_file or CREW_RUNS_FILE
 
     def dispatch(
         self,
@@ -205,7 +246,9 @@ class DispatchOffice:
             return DispatchOutcome(skip_reason=admission.reason)
 
         # 2) Fleet assignment — least-loaded available worktree.
-        worktree_id, daemon_id = self.fleet.assign_worktree(self.lease_file)
+        worktree_id, daemon_id = self.fleet.assign_worktree(
+            self.lease_file, self.crew_runs_file
+        )
         if worktree_id is None:
             return DispatchOutcome(skip_reason="no_free_worktree")
 
@@ -227,6 +270,7 @@ class DispatchOffice:
                 repo=repo,
                 crew_timeout_seconds=crew_timeout_seconds,
                 retry_budget_limit=retry_budget_limit,
+                worktree_id=worktree_id,
                 dispatch_crew_fn=dispatch_crew_fn,
             )
             outcome.worktree_id = worktree_id
@@ -246,6 +290,7 @@ class DispatchOffice:
         repo,
         crew_timeout_seconds,
         retry_budget_limit,
+        worktree_id=None,
         dispatch_crew_fn=None,
     ) -> DispatchOutcome:
         budget = RetryBudget(retry_budget_limit)
@@ -262,6 +307,7 @@ class DispatchOffice:
                     cycle_session_id=cycle_session_id,
                     capability=capability,
                     timeout=crew_timeout_seconds,
+                    fleet_worktree_id=worktree_id,
                 )
                 # On a finished crew, the grading job is enqueued by the caller
                 # (issue_bridge.process_issues) AFTER run_task, where the full
