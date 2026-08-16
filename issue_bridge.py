@@ -1133,9 +1133,22 @@ def bridge_issues(
             # keeps configured_cap honest once the loop dispatches more than one
             # crew before any returns — the stale local counter would let every
             # concurrent decision see `dispatched=0` and over-admit.
+            # Option-B dispatch office: lock-safe admission + fleet assignment
+            # + worktree lease + spawn, reusing the existing dispatch_crew seam.
+            # At cap=1 this is behavior-identical to the prior inline path.
+            # live_active reflects in-flight crews so the office's lock-safe
+            # admission (decide_admission) stays honest under concurrency.
             live_active = _crew_active_count(CREW_RUNS_FILE)
-            admission = decide_admission(
-                dispatched=live_active,
+            from school_scheduler import get_dispatch_office
+            _outcome = get_dispatch_office().dispatch(
+                issue_number=num,
+                task_text=issue["prompt"],
+                project_dir=repo_path or Path.cwd(),
+                cycle_session_id=cycle_session_id,
+                capability=crew_capability,
+                domain=issue["domain"],
+                difficulty=issue["difficulty"],
+                repo=repo,
                 configured_cap=crew_max_per_cycle,
                 runner_slots=runner_slots,
                 active_claims=live_active,
@@ -1143,42 +1156,32 @@ def bridge_issues(
                 crew_timeout_seconds=CREW_DEFAULT_TIMEOUT,
                 retry_pressure=len(retries),
                 retry_pressure_limit=retry_pressure_limit,
+                dispatch_crew_fn=dispatch_crew,
             )
-            if not admission.admitted:
-                crew_skip_reason = admission.reason
+            if _outcome.skip_reason is not None:
+                crew_skip_reason = _outcome.skip_reason
                 crew_fallback_reason = crew_skip_reason
                 sys.stderr.write(
                     f"[issue_bridge] #{num}: crew admission denied ({crew_skip_reason}) — direct path\n"
                 )
-
-        if crew_enabled and crew_skip_reason is None:
-            metrics.record_crew("spawn")
-            crew_dispatched += 1
-            try:
-                crew_result = dispatch_crew(
-                    issue_number=num,
-                    # The student has the actual checkout and can inspect it;
-                    # do not duplicate the potentially huge codebase context in
-                    # the Hermes launch brief. Keep enriched_prompt for the
-                    # director's review path below.
-                    task_text=issue["prompt"],
-                    project_dir=repo_path or Path.cwd(),
-                    cycle_session_id=cycle_session_id,
-                    capability=crew_capability,
-                )
-                metrics.record_crew("poll")
-                if crew_result.teardown_ok:
-                    metrics.record_crew("teardown")
-            except CrewUnavailableError as e:
-                crew_fallback_reason = "spawn_failure"
-                sys.stderr.write(
-                    f"[issue_bridge] #{num}: crew spawn failed ({e}) — direct fallback\n"
-                )
-            except Exception as e:
-                crew_fallback_reason = "crew_unexpected"
-                sys.stderr.write(
-                    f"[issue_bridge] #{num}: crew dispatch raised ({e}) — direct fallback\n"
-                )
+            else:
+                metrics.record_crew("spawn")
+                crew_dispatched += 1
+                crew_result = _outcome.crew_result
+                if crew_result is not None:
+                    metrics.record_crew("poll")
+                    if crew_result.teardown_ok:
+                        metrics.record_crew("teardown")
+                    if crew_result.status != "done":
+                        crew_fallback_reason = (
+                            _outcome.fallback_reason
+                            or crew_result.fallback_reason
+                            or crew_result.status
+                        )
+                elif _outcome.fallback_reason is not None:
+                    # office attempted spawn but it failed (retry budget exhausted
+                    # or unexpected error) — preserve the fallback reason.
+                    crew_fallback_reason = _outcome.fallback_reason
 
         deliverable: Optional[str] = None
         if crew_result is not None and crew_result.status == "done":

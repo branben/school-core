@@ -78,19 +78,32 @@ one teacher watching one whiteboard.
 
 ## 3. The two new components
 
-### 3.1 Dispatch Office (`school_scheduler.py`, NEW)
-- Owns the **admission decision** using the *existing* lock-safe
-  `_crew_active_count(CREW_RUNS_FILE)` (already concurrency-correct from the
-  fc7.3 repair). `dispatch_crew` writes a `running` record on spawn, so a
+### 3.1 Dispatch Office (`school_scheduler.py`) — IMPLEMENTED
+
+> Status: landed as of this slice. The dispatch office + fleet registry exist
+> and are tested (`tests/test_school_scheduler.py`, 7 tests). Both new
+> components (§3.1 + §3.2) are now in place; the topology is wired end-to-end
+> (dispatch → grading queue → consumer) and ready for the cap-raise step.
+
+- `DispatchOffice.dispatch(...)` owns the **admission decision** using the
+  *existing* lock-safe `decide_admission` + `_crew_active_count(CREW_RUNS_FILE)`
+  (the fc7.3 repair). `dispatch_crew` writes a `running` record on spawn, so a
   concurrent decision observes in-flight crews and `configured_cap` holds.
-- Maps an issue → a **capability/role** (reuses `resolve_capability`) → an
-  **available Orca worktree** in the fleet (round-robin / least-loaded across
-  daemons). FirstMate already targets a specific Orca backend per spawn.
-- Bounded by **fleet capacity**, not the old `CREW_MAX_PER_CYCLE` serial cap.
-  `CREW_MAX_PER_CYCLE` becomes "max in-flight per scheduler cycle," safe to
-  raise because admission is lock-safe.
-- On crew `done`: enqueues a **grading job** (bookbag path + verification
-  + report) to the grading queue; does NOT grade inline.
+- **Fleet registry** (`FleetRegistry`, `data/fleet.json`): default is one local
+  daemon with one worktree; add daemon entries (endpoint + worktrees +
+  capacity) to scale to N **without code change**. Assignment is
+  least-loaded-first with round-robin tie-break.
+- **Worktree lease** (N6.2) + **isolation pre-verify** (N4.1) guard the chosen
+  worktree so two crews never share one; a **retry budget** (N7.1) bounds spawn
+  failures.
+- Bounded by the **existing `CREW_MAX_PER_CYCLE`** (still 1). The office does
+  NOT raise it; raising cap is the separate, gated step. At cap=1 the office is
+  behavior-identical to the prior inline dispatch — `issue_bridge.process_issues`
+  now delegates to `get_dispatch_office().dispatch(...)` and keeps all
+  downstream run_task / fallback / grading logic untouched.
+- On crew `done`, the grading job is enqueued by `process_issues` (after
+  `run_task`, where the full `review_packet`/`task_score` exist) — not by the
+  office, to avoid a key-deduped empty job shadowing the rich one.
 
 ### 3.2 Grading Department (`school_grader.py` + queue) — IMPLEMENTED
 
