@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 from shadow_routing import build_shadow_evidence
+from failure_taxonomy import normalize_outcome
+from evidence_join import build_evidence_join
 
 
 def observability_fields(task_result: dict) -> dict:
@@ -58,6 +60,30 @@ def build_shadow_routing_packet(
     )
 
 
+def outcome_fields(
+    *,
+    status: str,
+    task_result: Optional[dict] = None,
+    error: Any = None,
+    verification: Optional[dict] = None,
+    review: Optional[dict] = None,
+    entire: Optional[dict] = None,
+    fallback_reason: Optional[str] = None,
+    retry_attempt: int = 0,
+) -> dict:
+    """Expose the canonical lifecycle/quality taxonomy at the bridge seam."""
+    return normalize_outcome(
+        status=status,
+        task_result=task_result,
+        error=error,
+        verification=verification,
+        review=review,
+        entire=entire,
+        fallback_reason=fallback_reason,
+        retry_attempt=retry_attempt,
+    )
+
+
 def strict_gate_failure(reason: str) -> dict:
     """Build the VERIFY_GATE_STRICT escalation verdict."""
     return {
@@ -78,7 +104,9 @@ def strict_gate_failure(reason: str) -> dict:
 
 
 __all__ = [
+    "build_evidence_join",
     "build_shadow_routing_packet",
     "observability_fields",
+    "outcome_fields",
     "strict_gate_failure",
 ]

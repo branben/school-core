@@ -239,11 +239,17 @@ def _policy_route(task_shape: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def route_id_for(bead: Optional[str]) -> Optional[str]:
+    """Return the stable route identity for a persisted bookbag bead."""
+    return f"route-{bead}" if bead else None
+
+
 def route_decision(
     task_shape: Dict[str, Any],
     bead: Optional[str] = None,
     repo: str = "__global__",
     bookbag_writer: Optional[Callable[..., Any]] = None,
+    evidence_join: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """Choose a skill and (optionally) log it to the bookbag for traceability.
 
@@ -267,16 +273,20 @@ def route_decision(
             "label": str,
             "task_shape": dict,
             "logged": bool,               # True if a bookbag write happened
+            "evidence_join": dict | None,  # additive cross-layer references
         }
     """
     policy = _policy_route(task_shape)
     chosen = policy["primary_workflow"]
+    route_id = route_id_for(bead)
     result = {
+        "route_id": route_id,
         "chosen_skill": chosen,
         "label": SKILL_LABELS.get(chosen, chosen),
         "task_shape": task_shape,
         **policy,
         "logged": False,
+        "evidence_join": evidence_join,
     }
 
     if bead and bookbag_writer is not None:
@@ -284,6 +294,7 @@ def route_decision(
             written = bookbag_writer(
                 bead,
                 repo,
+                route_id=route_id,
                 chosen_skill=chosen,
                 chosen_skill_label=result["label"],
                 primary_workflow=result["primary_workflow"],
@@ -291,6 +302,7 @@ def route_decision(
                 discarded_overlays=result["discarded_overlays"],
                 curiosity_required=result["curiosity_required"],
                 human_gate_required=result["human_gate_required"],
+                **({"evidence_join": evidence_join} if evidence_join is not None else {}),
             )
             # Bookbag writers use None to report that no artifact was written
             # (for example, a missing bead or lock timeout). Do not claim a
