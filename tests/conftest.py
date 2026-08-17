@@ -62,6 +62,15 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     activity_log._default_log = None
     decision_log._default_log = None
 
+    # Isolate crew_runs.json so tests that exercise dispatch_crew /
+    # issue_bridge paths never pollute the real data/crew_runs.json.
+    # Tests that need a specific path still pass it explicitly via monkeypatch.
+    import crew_dispatch
+    import issue_bridge
+
+    monkeypatch.setattr(crew_dispatch, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
+    monkeypatch.setattr(issue_bridge, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
+
     # Bulletproof scores isolation: any ScoreStore() created WITHOUT an
     # explicit file_path (e.g. mcp_server's module-level store, director
     # fallbacks, autonomous_loop) is redirected to tmp. An explicitly passed

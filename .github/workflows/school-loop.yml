@@ -171,10 +171,14 @@ jobs:
       # infra, so by the time the bridge runs the crew path is expected live.
       CREW_ENABLED: "1"
       # Crew runs poll for minutes (CREW_TIMEOUT_SECONDS default 900s) and the
-      # job is under a 30-min timeout — cap serial crew dispatches per cycle.
-      # Default is 1; raise only if the cycle budget allows more than one
-      # crew run within the job timeout.
-      CREW_MAX_PER_CYCLE: "1"
+      # job is under a 30-min timeout. With 4-parallel students, each crew
+      # needs ~720s (diploma 8 turns × 90s/turn) and the cycle budget must
+      # accommodate all 4 running concurrently. CREW_MAX_PER_CYCLE caps how
+      # many crews the bridge dispatches per cycle; CREW_RUNNER_SLOTS caps how
+      # many run concurrently on this runner.
+      CREW_MAX_PER_CYCLE: "4"
+      CREW_RUNNER_SLOTS: "4"
+      CREW_CYCLE_BUDGET_SECONDS: "3600"
       # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
       # bridge. The workflow preflight below already hard-fails missing Nix or
       # verifyShell; this flag additionally escalates an internal/direct gate
@@ -303,8 +307,7 @@ jobs:
             echo "checkpoint: no state changes to commit"
           else
             git commit -m "chore: checkpoint board state (sanitized) [skip ci]" \
-              && git pull --rebase --autostash origin board-publish \
-              && git push origin HEAD:board-publish \
+              && git push --force-with-lease origin HEAD:board-publish \
               && echo "checkpoint: pushed $(git rev-parse --short HEAD) to board-publish" \
               || echo "::warning::checkpoint commit/push failed (self-heals next cycle)"
           fi
@@ -339,8 +342,11 @@ jobs:
 
       - name: Pull latest committed board state
         # The `execute` job (Mac) may have committed fresh data/* in the same
-        # cycle — pull it so the board reflects the newest execution results.
-        run: git pull --rebase --autostash origin board-publish
+        # cycle and force-pushed to board-publish. Reset to it directly so we
+        # don't hit a rebase conflict from the diverged option-b commits on
+        # board-publish. Board-publish is a linear force-pushed target, so
+        # reset --hard is safe here.
+        run: git fetch origin board-publish && git reset --hard origin/board-publish
 
       - name: Populate issue cache from GitHub
         run: python populate_board_cache.py
@@ -387,4 +393,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f board-url.txt 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "chore: publish board [skip ci]" && git pull --rebase --autostash origin board-publish && git push origin HEAD:board-publish)
+          git commit -m "chore: publish board [skip ci]" && git push --force-with-lease origin HEAD:board-publish
