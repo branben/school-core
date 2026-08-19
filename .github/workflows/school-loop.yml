@@ -217,6 +217,25 @@ jobs:
       # through Orca directly today, so a missing provider token must not
       # block issue processing — the doctor still prints the WARN so the
       # token gap stays visible.
+
+      # Gateway preflight: BOTH transports (OmniRoute /v1 and A2A /a2a) are
+      # served by one process on localhost:20128. When it is down, every model
+      # call fails, _a2a_poll burns its 120s deadline per attempt, retry
+      # pressure accumulates until the crew denies admission, and the job
+      # grinds until timeout-minutes kills it. Measured: 62 of 63 runs
+      # cancelled at ~31min having processed ONE issue (run 32290180356 —
+      # "A2A fallback failed: [Errno 61] Connection refused").
+      #
+      # This probe costs ~0.1s and converts that 30-minute silent grind into an
+      # immediate, alerting failure. Deliberately NOT continue-on-error: a dead
+      # gateway means this cycle cannot do useful work, and `cancelled` is a
+      # far worse signal than `failure`. The hosted `loop` job still publishes
+      # committed board state, so a red execute does not take down the board.
+      - name: Gateway preflight (OmniRoute + A2A liveness)
+        env:
+          OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+        run: .venv/bin/python gateway_preflight.py
+
       - name: FirstMate crew preflight (fm_doctor)
         env:
           # Auth is a WARN here: a missing provider token must not block issue
