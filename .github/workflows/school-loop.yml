@@ -170,15 +170,33 @@ jobs:
       # issue. fm_doctor (preflight below) already hard-fails missing crew
       # infra, so by the time the bridge runs the crew path is expected live.
       CREW_ENABLED: "1"
-      # Crew runs poll for minutes (CREW_TIMEOUT_SECONDS default 900s) and the
-      # job is under a 30-min timeout. With 4-parallel students, each crew
-      # needs ~720s (diploma 8 turns × 90s/turn) and the cycle budget must
-      # accommodate all 4 running concurrently. CREW_MAX_PER_CYCLE caps how
-      # many crews the bridge dispatches per cycle; CREW_RUNNER_SLOTS caps how
-      # many run concurrently on this runner.
-      CREW_MAX_PER_CYCLE: "4"
-      CREW_RUNNER_SLOTS: "4"
-      CREW_CYCLE_BUDGET_SECONDS: "3600"
+      # Budget arithmetic — these three numbers MUST be internally consistent
+      # with `timeout-minutes: 30` (1800s) above, or admission control lies to
+      # itself and the job gets killed instead of self-throttling.
+      #
+      # crew_admission.decide_admission() requires:
+      #     crew_timeout_seconds * effective_cap + reserve  <=  remaining
+      # with CREW_TIMEOUT_SECONDS=900 and reserve=30:
+      #     cap=1 ->  930s      cap=2 -> 1830s
+      #     cap=3 -> 2730s      cap=4 -> 3630s
+      #
+      # A 1800s job minus ~200s of startup (checkout + venv rebuild + Orca
+      # registration + preflights, measured on run 32290180356) leaves ~1600s
+      # usable. So ONLY cap=1 can actually complete inside this job. cap=2
+      # already needs 1830s > 1800s — it can never finish, regardless of budget.
+      #
+      # The previous values (cap=4, budget=3600) were unsatisfiable in two ways:
+      # the budget exceeded the job timeout, so issue_bridge.py:1182 computed
+      # remaining_seconds against an hour it never had and admitted crews the
+      # job could not finish; and cap=4 needed 3630s, which no 30-min job can
+      # provide. Raising timeout-minutes to fit cap=4 would mean a ~65-min job
+      # on a */5 cron — six-deep overlap on one Mac. Correct fix is to make the
+      # numbers honest and keep cycles short.
+      CREW_MAX_PER_CYCLE: "1"
+      CREW_RUNNER_SLOTS: "1"
+      # Match the code default (issue_bridge.py:1028) and the job timeout, so
+      # the budget can never promise time GitHub will not grant.
+      CREW_CYCLE_BUDGET_SECONDS: "1800"
       # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
       # bridge. The workflow preflight below already hard-fails missing Nix or
       # verifyShell; this flag additionally escalates an internal/direct gate
@@ -193,11 +211,32 @@ jobs:
       # No actions/setup-python here: on this self-hosted runner the action's
       # tool-cache defaults to /Users/runner (a GitHub-hosted path) and fails
       # with EACCES. Use the machine's system Python + a workspace-local venv.
-      - name: Set up Python (venv)
+      # Reuse the venv across runs when requirements.txt is unchanged. Measured
+      # cost of the unconditional rebuild on run 32290180356: pip work spanned
+      # 19:00:55 -> 19:01:41 (~46s of install) inside a ~2min step, on every
+      # single 5-minute cycle. On a SELF-HOSTED runner the workspace persists
+      # between runs, so actions/cache is unnecessary overhead — a stamp file
+      # comparing the requirements hash is cheaper and has no cache-key skew.
+      #
+      # Rebuild triggers: venv missing, python missing inside it, or the
+      # requirements hash changed. Anything unexpected falls through to a full
+      # rebuild, so a corrupt venv self-heals rather than failing every cycle.
+      - name: Set up Python (venv, cached on requirements hash)
         run: |
-          /usr/bin/python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
+          set -euo pipefail
+          REQ_HASH="$(shasum -a 256 requirements.txt | cut -d' ' -f1)"
+          STAMP=".venv/.requirements.sha256"
+          if [ -x .venv/bin/python ] && [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$REQ_HASH" ]; then
+            echo "venv up to date for requirements.txt ${REQ_HASH:0:12} — reusing"
+          else
+            echo "venv stale or missing — rebuilding"
+            rm -rf .venv
+            /usr/bin/python3 -m venv .venv
+            .venv/bin/python -m pip install --upgrade pip
+            .venv/bin/pip install -r requirements.txt
+            printf '%s' "$REQ_HASH" > "$STAMP"
+          fi
+          .venv/bin/python -c "import sys; print('python', sys.version.split()[0])"
 
       # The checkout lives under ~/actions-runner/_work/... — a path Orca has
       # never seen. `orca terminal create` (no selector) resolves the CURRENT
