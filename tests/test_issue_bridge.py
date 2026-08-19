@@ -199,6 +199,69 @@ class TestBridgeIssues:
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_success_is_checkpointed_before_loop_end(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store
+    ):
+        """A success must be persisted as soon as GitHub is mutated.
+
+        REGRESSION: ``_save_processed`` runs after the whole issue loop
+        (issue_bridge.py:1990). The School Loop job has a 30-minute
+        ``timeout-minutes`` and a 5-minute cron, and 68% of real runs were
+        cancelled mid-flight. When the job dies inside the loop, that final
+        save never executes — so an issue whose GitHub state was ALREADY
+        mutated (closed, labelled, PR opened) is not recorded as processed and
+        gets re-fetched and re-dispatched on the next cycle. Issue #65 was
+        processed three times this way and still carries both ``school-done``
+        and ``school-failed``.
+
+        The rejection path already checkpoints immediately
+        (issue_bridge.py:1506). The success path must do the same, so progress
+        is crash-safe rather than dependent on reaching the end of the loop.
+
+        We simulate the cancellation by making the SECOND issue raise, which
+        aborts the loop before the trailing ``_save_processed``. The first
+        issue's success must still be on disk.
+        """
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = [
+            {"issue_number": 10, "title": "First — succeeds", "body": "",
+             "domain": "debugging", "difficulty": "medium", "prompt": "fix this",
+             "category": "bug", "state": "ready-for-agent"},
+            {"issue_number": 11, "title": "Second — kills the run", "body": "",
+             "domain": "debugging", "difficulty": "medium", "prompt": "boom",
+             "category": "bug", "state": "ready-for-agent"},
+        ]
+
+        def _task(*args, **kwargs):
+            # director.run_task is called positionally in the bridge; the issue
+            # prompt distinguishes the two issues.
+            if "boom" in repr(args) + repr(kwargs):
+                raise KeyboardInterrupt("simulated job cancellation")
+            return {
+                "status": "success", "agent": "foundry-coder-7b",
+                "domain": "debugging", "difficulty": "medium",
+                "prompt": "fix this", "response": "ok",
+            }
+
+        mock_task.side_effect = _task
+
+        with pytest.raises(KeyboardInterrupt):
+            bridge_issues("user/test", store=store)
+
+        # The loop never reached its trailing _save_processed, but issue 10's
+        # GitHub state was already mutated — so it MUST be on disk.
+        assert is_processed(10), (
+            "issue 10 completed and was closed on GitHub but was not "
+            "checkpointed; a cancelled job will re-dispatch it next cycle"
+        )
+        assert not is_processed(11), "issue 11 never completed"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
     def test_capability_failure_skips_crew_and_uses_direct_fallback(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         monkeypatch.setattr("issue_bridge._resolve_crew_capability", lambda *args, **kwargs: None)
@@ -1408,7 +1471,7 @@ class TestSchoolComment:
                 "findings": [{"section": "a"}, {"section": "b"}],
             },
             verify_skipped=False,
-            entire_summary={"status": "pass", "findings": 0},
+            entire_review={"status": "pass", "findings": 0},
             combined_score=89.7,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1418,7 +1481,7 @@ class TestSchoolComment:
         assert "Adversarial review: GOOD" in comment
         assert "2 finding(s)" in comment
         assert "Verify gate: PASS (1 command(s))" in comment
-        assert "Pre-merge check: pass (0 finding(s))" in comment
+        assert "Pre-merge check: pass (no findings)" in comment
         assert "Crew: not used (direct path)" in comment
         # ELI5 block at the bottom
         assert comment.strip().endswith(
@@ -1442,7 +1505,7 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 1},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "pass", "findings": 0},
+            entire_review={"status": "pass", "findings": 0},
             combined_score=89.7,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1465,14 +1528,18 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 1},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "fail", "findings": 3},
+            entire_review={"status": "fail", "findings": [
+                {"severity": "LOW", "file": "a.py", "line": 1},
+                {"severity": "LOW", "file": "b.py", "line": 2},
+                {"severity": "LOW", "file": "c.py", "line": 3},
+            ]},
             combined_score=89.7,
             crew_used=False, crew_fallback_reason=None,
         )
         assert "**Bookbag**" in comment
         assert "instance field" in comment  # output excerpt used
         assert "Blockers: 1" in comment
-        assert "Pre-merge check: fail (3 finding(s))" in comment
+        assert "Pre-merge check: fail (3 finding(s), none blocking)" in comment
 
     def test_crew_fallback_and_skipped_verify_rendered(self):
         comment = _build_school_comment(
@@ -1480,7 +1547,7 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 0},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=True,
-            entire_summary=None,
+            entire_review=None,
             combined_score=89.7,
             crew_used=False, crew_fallback_reason="spawn timed out",
         )
@@ -1499,7 +1566,7 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 1},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "pass", "findings": 0},
+            entire_review={"status": "pass", "findings": 0},
             combined_score=89.7,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1532,7 +1599,7 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 1},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "pass", "findings": 0},
+            entire_review={"status": "pass", "findings": 0},
             combined_score=89.5,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1578,7 +1645,7 @@ class TestSchoolComment:
             verification={"verdict": "FAIL", "score": 20.0, "ran": 1},
             adversarial_review={"verdict": "FAIL", "score": 10.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "fail", "findings": 1},
+            entire_review={"status": "fail", "findings": 1},
             combined_score=35.0,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1597,7 +1664,7 @@ class TestSchoolComment:
             verification={"verdict": "PASS", "score": 90.0, "ran": 1},
             adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
             verify_skipped=False,
-            entire_summary={"status": "pass", "findings": 0},
+            entire_review={"status": "pass", "findings": 0},
             combined_score=89.7,
             crew_used=False, crew_fallback_reason=None,
         )
@@ -1637,7 +1704,7 @@ class TestSchoolComment:
                                verification={"verdict": "PASS", "score": 90.0, "ran": 1},
                                adversarial_review={"verdict": "GOOD", "score": 88.0, "findings": []},
                                verify_skipped=False,
-                               entire_summary={"status": "pass", "findings": 0},
+                               entire_review={"status": "pass", "findings": 0},
                                combined_score=89.7,
                                crew_used=False, crew_fallback_reason=None,
                            ))

@@ -55,6 +55,7 @@ from crew_dispatch import (
     dispatch_crew as dispatch_crew,
     sweep_stale_runs as sweep_stale_runs,
 )
+from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
@@ -250,7 +251,7 @@ def _build_school_comment(
     verification: dict,
     adversarial_review: dict,
     verify_skipped: bool,
-    entire_summary: Optional[dict],
+    entire_review: Optional[dict],
     combined_score: float,
     crew_used: bool,
     crew_fallback_reason: Optional[str],
@@ -299,10 +300,34 @@ def _build_school_comment(
         if ran is not None:
             verify_line += f" ({ran} command(s))"
 
-    if entire_summary:
-        e_status = entire_summary.get("status") or "n/a"
-        e_findings = entire_summary.get("findings") or 0
-        entire_line = f"- Pre-merge check: {e_status} ({e_findings} finding(s))"
+    if entire_review:
+        e_status = entire_review.get("status") or "n/a"
+        raw_findings = entire_review.get("findings") or []
+        # `findings` arrives in two shapes: the raw entire-review list of
+        # finding dicts, and the flattened summary shape built at the crew
+        # seam (see _build_entire_summary) where it is already a count.
+        # Accept both — a pre-counted int must not crash the close comment,
+        # which is the last step before the issue is marked done.
+        if isinstance(raw_findings, int):
+            findings = []
+            e_findings = raw_findings
+        else:
+            findings = raw_findings
+            e_findings = len(findings)
+        if e_findings:
+            blocking = [f for f in findings if f.get("severity") in ("CRITICAL", "HIGH")]
+            if blocking:
+                blocking_md = " · ".join(
+                    f"{f['severity']}: {f['file']}:{f['line']}" for f in blocking
+                )
+                entire_line = (
+                    f"- Pre-merge check: {e_status} ({e_findings} finding(s), "
+                    f"blocking: {blocking_md})"
+                )
+            else:
+                entire_line = f"- Pre-merge check: {e_status} ({e_findings} finding(s), none blocking)"
+        else:
+            entire_line = f"- Pre-merge check: {e_status} (no findings)"
     else:
         entire_line = "- Pre-merge check: not run"
 
@@ -766,6 +791,7 @@ def _run_adversarial_review(
     task_result: dict,
     issue: dict,
     codebase_ctx: str,
+    entire_findings: Optional[list] = None,
 ) -> dict:
     """Run adversarial review on a successful task result.
 
@@ -787,7 +813,8 @@ def _run_adversarial_review(
                 "body": issue.get("body", ""),
                 "domain": issue["domain"],
                 "difficulty": issue["difficulty"],
-                "prompt": issue["prompt"],
+                "prompt": issue.get("prompt", ""),
+                "entire_findings": entire_findings or [],
             },
             codebase_context=codebase_ctx,
             lens_types=list(LensType),
@@ -1473,6 +1500,10 @@ def bridge_issues(
                 except Exception as e_notify:
                     sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
                 retries.pop(num, None)
+                # Mark the issue as processed so it doesn't get re-fetched and
+                # re-attempted on subsequent cycles. The rejection verdict is
+                # final — retry-once semantics apply to transient failures only.
+                mark_processed(num)
                 processed.add(num)
                 continue
 
@@ -1549,6 +1580,8 @@ def bridge_issues(
                         task_result=task_result,
                         issue=issue,
                         codebase_ctx=codebase_ctx,
+                        entire_findings=(entire_review or {}).get("findings")
+                        if entire_review else None,
                     )
 
             # Merge verify-gate failures into the review as CRITICAL findings.
@@ -1798,16 +1831,62 @@ def bridge_issues(
                 )
             except Exception as e_rec:
                 sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+            # B1: Attempt PR creation on the target repo before closing the issue.
+            # If it fails for any reason, fall back to close+label and log loudly.
+            # The school's verdict stands regardless of GitHub API hiccups.
+            pr_url = None
+            pr_error = None
+            try:
+                pr_url = create_pr_for_issue(
+                    issue=issue,
+                    task_result=task_result,
+                    repo=repo,
+                    review_evidence=review_evidence,
+                    verify_result=verify_result,
+                    entire_review=entire_review,
+                    combined_score=combined_score,
+                )
+                if pr_url:
+                    _gh_command([
+                        "issue", "comment", str(num), "--repo", repo,
+                        "--body", f"PR created: {pr_url}",
+                    ])
+                    sys.stderr.write(f"[issue_bridge] PR created for #{num}: {pr_url}\n")
+                else:
+                    pr_error = "pr_creator returned None"
+                    sys.stderr.write(
+                        f"[issue_bridge] PR creation returned None for #{num} — "
+                        f"falling back to issue close only\n"
+                    )
+            except Exception as e:
+                pr_error = str(e)
+                sys.stderr.write(
+                    f"[issue_bridge] PR creation failed for #{num}: {pr_error} — "
+                    f"falling back to issue close only\n"
+                )
             _mark_github_issue(
                 repo, num, "success", score=combined_score,
                 comment=_build_school_comment(
                     issue, task_result, verification, adversarial_review,
-                    verify_skipped, entire_summary, combined_score,
+                    verify_skipped, entire_review, combined_score,
                     crew_used, crew_fallback_reason,
                 ),
             )
+            # Surface PR result on the last results entry for downstream observability.
+            if results and results[-1].get("issue_number") == num:
+                results[-1]["pr_url"] = pr_url
+                results[-1]["pr_error"] = pr_error
             retries.pop(num, None)
             processed.add(num)
+            # Checkpoint immediately, mirroring the rejection path above.
+            # GitHub has already been mutated at this point (issue closed +
+            # labelled, PR possibly opened), so the durable record must not
+            # depend on reaching the trailing _save_processed after the loop:
+            # the School Loop job carries a 30-minute timeout against a 5-minute
+            # cron, and a mid-loop cancellation would otherwise lose this
+            # success and re-dispatch the same issue on the next cycle.
+            mark_processed(num)
+            _save_retries(retries)
         else:
             err = task_result.get("error")
             attempts = retries.get(num, 0) + 1

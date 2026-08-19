@@ -51,71 +51,111 @@ class TestBranchName:
 
 
 # ── Create PR for Issue (mocked gh CLI) ───────────────────────────────────
+#
+# NOTE: pr_creator was rewritten to commit via the GitHub API instead of a
+# local checkout. The flow is now:
+#   _resolve_base_branch  -> _gh(["repo","view",...])          (gh)
+#   _resolve_base_sha     -> _gh(["api", .../commits/<b>])     (gh)
+#   _create_or_reuse_branch -> _gh_api(POST git/refs)          (gh api)
+#   read branch ref, read tree, blob -> tree -> commit -> ref  (gh api)
+#   gh pr create                                               (gh)
+# Tests therefore patch `_gh` (the renamed low-level runner) and `_gh_api`
+# separately, rather than the old single `_gh_command` seam.
 
 class TestCreatePR:
-    @patch("pr_creator._gh_command")
-    def test_dry_run_returns_fake_url(self, mock_gh):
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_dry_run_returns_fake_url(self, mock_gh, mock_api):
         issue = {"issue_number": 1, "title": "Test", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('hello')", "agent": "foundry-coder-7b"}
         url = create_pr_for_issue(issue, task_result, "user/test", dry_run=True)
         assert url == "https://github.com/user/test/pull/0"
         mock_gh.assert_not_called()
+        mock_api.assert_not_called()
 
-    @patch("pr_creator._gh_command")
-    def test_empty_response_returns_none(self, mock_gh):
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_empty_response_returns_none(self, mock_gh, mock_api):
         issue = {"issue_number": 1, "title": "Test", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "", "agent": "test"}
         url = create_pr_for_issue(issue, task_result, "user/test")
         assert url is None
         mock_gh.assert_not_called()
+        mock_api.assert_not_called()
 
-    @patch("pr_creator._gh_command")
-    def test_branch_creation_failure_returns_none(self, mock_gh):
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_branch_creation_failure_returns_none(self, mock_gh, mock_api):
+        # base branch + base sha resolve fine, then the ref POST fails.
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),  # repo view
-            None,  # branch creation fails
+            "abc123\n",                             # base sha
         ]
+        mock_api.return_value = None                # POST git/refs fails
         issue = {"issue_number": 5, "title": "Fix crash", "domain": "debugging", "difficulty": "medium"}
         task_result = {"response": "def fix(): pass", "agent": "foundry-coder-7b"}
         url = create_pr_for_issue(issue, task_result, "user/test")
         assert url is None
-        assert mock_gh.call_count == 2
 
-    @patch("pr_creator._gh_command")
-    def test_successful_pr_creation(self, mock_gh, tmp_path):
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_successful_pr_creation(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
-            json.dumps({"defaultBranch": "main"}),  # repo view
-            '{"ref": "refs/heads/school/issue-10-fix-the-thing"}',  # create ref
-            "https://github.com/user/test/pull/42",  # pr create
+            json.dumps({"defaultBranch": "main"}),          # repo view
+            "basesha123\n",                                 # base sha
+            "https://github.com/user/test/pull/42",         # gh pr create
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # create ref
+            {"object": {"sha": "branchsha456"}},                  # read branch ref
+            {"sha": "treesha789"},                                # read tree
+            {"sha": "blobsha111"},                                # create blob
+            {"sha": "newtree222"},                                # create tree
+            {"sha": "newcommit333"},                              # create commit
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # update ref
         ]
         issue = {"issue_number": 10, "title": "Fix the thing", "domain": "debugging", "difficulty": "medium"}
         task_result = {"response": "def fix(): return 42\n", "agent": "foundry-coder-7b"}
         url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
         assert url == "https://github.com/user/test/pull/42"
-        assert mock_gh.call_count == 3
 
-    @patch("pr_creator._gh_command")
-    def test_pr_creation_uses_correct_args(self, mock_gh, tmp_path):
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_pr_creation_uses_correct_args(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
-            json.dumps({"defaultBranch": "main"}),  # repo view
-            '{"ref": "refs/heads/school/issue-15-add-feature"}',  # create ref
-            "https://github.com/user/test/pull/99",  # pr create
+            json.dumps({"defaultBranch": "main"}),          # repo view
+            "basesha123\n",                                 # base sha
+            "https://github.com/user/test/pull/99",         # gh pr create
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-15-add-feature"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "treesha789"},
+            {"sha": "blobsha111"},
+            {"sha": "newtree222"},
+            {"sha": "newcommit333"},
+            {"ref": "refs/heads/school/issue-15-add-feature"},
         ]
         issue = {"issue_number": 15, "title": "Add feature", "domain": "code-implementation", "difficulty": "easy"}
         task_result = {"response": "# new feature\nprint('done')", "agent": "owl-alpha"}
         url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
         assert url == "https://github.com/user/test/pull/99"
-        # Verify pr create was called with correct args
-        pr_call = mock_gh.call_args_list[2]
-        pr_args = pr_call[0][0]
+
+        # The LAST _gh call is `gh pr create` — assert its args carry repo + label.
+        pr_args = mock_gh.call_args_list[-1][0][0]
+        assert "pr" in pr_args and "create" in pr_args
         assert "--repo" in pr_args
         assert "user/test" in pr_args[pr_args.index("--repo") + 1]
         assert "--label" in pr_args
         assert "school-automated" in pr_args[pr_args.index("--label") + 1]
 
-    @patch("pr_creator._gh_command")
-    def test_handles_repo_view_failure(self, mock_gh):
-        mock_gh.return_value = None  # repo view fails
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_handles_repo_view_failure(self, mock_gh, mock_api):
+        # Every gh call fails; _resolve_base_branch falls back, and the
+        # subsequent API work cannot proceed, so no PR URL is returned.
+        mock_gh.return_value = None
+        mock_api.return_value = None
         issue = {"issue_number": 20, "title": "Broken", "domain": "debugging", "difficulty": "hard"}
         task_result = {"response": "# output", "agent": "foundry-coder-7b"}
         url = create_pr_for_issue(issue, task_result, "user/test")
