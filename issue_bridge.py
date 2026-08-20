@@ -1910,6 +1910,15 @@ def bridge_issues(
                     verify_result=verify_result,
                     entire_review=entire_review,
                     combined_score=combined_score,
+                    # B3: surface the crew artifact so a reader can check the
+                    # branch/commit/base handshake (crew_dispatch.py:860-910)
+                    # without leaving GitHub. None on the direct path.
+                    crew_used=crew_used,
+                    artifact_path=(
+                        str(getattr(crew_result, "report_path", None))
+                        if crew_used and getattr(crew_result, "report_path", None)
+                        else None
+                    ),
                 )
                 if pr_url:
                     _gh_command([

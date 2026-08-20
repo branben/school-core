@@ -203,6 +203,122 @@ def _updateRef(repo: str, branch: str, sha: str) -> bool:
 # ── PR creation ──────────────────────────────────────────────────────────────
 
 
+def build_pr_body(
+    issue: dict,
+    response_text: str,
+    agent: str,
+    review_evidence: Optional[dict] = None,
+    verify_result: Optional[dict] = None,
+    entire_review: Optional[dict] = None,
+    combined_score: float = 0.0,
+    artifact_path: Optional[str] = None,
+    crew_used: bool = False,
+) -> str:
+    """Render the PR body carrying the full acceptance evidence chain (B3).
+
+    Extracted from ``create_pr_for_issue`` so the rendering is directly
+    testable: the caller short-circuits on ``dry_run`` before the body is ever
+    built, which made the body untestable through the public entry point.
+
+    Two evidence lines matter beyond the raw judge verdicts:
+
+    ACCEPTANCE STATUS — "CTO PASS / COO PASS" is NOT the verdict. Live run
+    32319064467 produced ``CTO=PASS (79), COO=PASS (82) -> REJECTED``: a CRITICAL
+    finding vetoed it (director.py:618), and since ca400aa an unparseable judge
+    also blocks acceptance while still reporting ``verdict=PASS``. A reader
+    seeing two PASSes would conclude the opposite of what happened, so the
+    verdict has to be stated rather than inferred.
+
+    ARTIFACT PATH — the crew path's entire output is a ``report.md`` whose
+    branch/commit/base identity must match the status detail
+    (crew_dispatch.py:860-910). Surfacing the path is what lets a human check
+    that handshake without leaving GitHub. Omitted entirely on the direct path
+    rather than rendered empty, so the PR never advertises an artifact it has no.
+    """
+    num = issue["issue_number"]
+    title = issue.get("title", "")
+
+    cto_verdict = "n/a"
+    coo_verdict = "n/a"
+    score = combined_score
+    accepted: Optional[bool] = None
+    if review_evidence:
+        cto_verdict = review_evidence.get("cto_verdict", "n/a") or "n/a"
+        coo_verdict = review_evidence.get("coo_verdict", "n/a") or "n/a"
+        score = review_evidence.get("combined_score", combined_score)
+        if "accepted" in review_evidence:
+            accepted = bool(review_evidence["accepted"])
+
+    if verify_result:
+        v_verdict = verify_result.get("verdict", "n/a") or "n/a"
+        v_ran = verify_result.get("ran", 0)
+        verify_md = f"{v_verdict} ({v_ran} command(s))"
+    else:
+        verify_md = "not run"
+
+    if entire_review:
+        e_status = entire_review.get("status", "n/a") or "n/a"
+        raw_findings = entire_review.get("findings") or []
+        # `findings` arrives either as a list of dicts or already counted.
+        if isinstance(raw_findings, int):
+            e_findings: list = []
+            e_count = raw_findings
+        else:
+            e_findings = list(raw_findings)
+            e_count = len(e_findings)
+        if e_count:
+            blocking = [
+                f for f in e_findings
+                if isinstance(f, dict) and f.get("severity") in ("CRITICAL", "HIGH")
+            ]
+            if blocking:
+                blocking_md = "\n".join(
+                    f"- **{f['severity']}**: `{f.get('file')}:{f.get('line')}` — "
+                    f"{f.get('message', '')[:150]}"
+                    for f in blocking
+                )
+                entire_md = (
+                    f"{e_status} ({e_count} finding(s))\n"
+                    f"### Blocking findings\n{blocking_md}"
+                )
+            else:
+                entire_md = f"{e_status} ({e_count} finding(s), none blocking)"
+        else:
+            entire_md = f"{e_status} (no findings)"
+    else:
+        entire_md = "not run"
+
+    if accepted is True:
+        acceptance_md = "**ACCEPTED** — both judges passed and no veto fired"
+    elif accepted is False:
+        acceptance_md = (
+            "**REJECTED** — see findings below; note that a CRITICAL finding or "
+            "an unparseable judge vetoes acceptance even when both verdicts read PASS"
+        )
+    else:
+        acceptance_md = "not recorded"
+
+    body = (
+        f"## Automated PR for #{num}: {title}\n\n"
+        f"_Created by Agent School — agent: {agent}_\n\n"
+        f"### Domain\n"
+        f"{issue.get('domain', '_default')} ({issue.get('difficulty', 'medium')})\n\n"
+        f"### Task Output\n"
+        f"```python\n{response_text[:800]}\n```\n"
+        + ("..." if len(response_text) > 800 else "") + "\n\n"
+        f"### Acceptance Evidence\n\n"
+        f"- **Acceptance:** {acceptance_md}\n"
+        f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — score {score:.0f}\n"
+        f"- **Verify gate:** {verify_md}\n"
+        f"- **Pre-merge check (Entire):** {entire_md}\n"
+        f"- **Path:** {'crew' if crew_used else 'direct'}\n"
+    )
+    # Only on the crew path: a direct-path PR must not advertise an artifact.
+    if crew_used and artifact_path:
+        body += f"- **Artifact:** `{artifact_path}`\n"
+    return body
+
+
 def create_pr_for_issue(
     issue: dict,
     task_result: dict,
@@ -212,6 +328,8 @@ def create_pr_for_issue(
     entire_review: Optional[dict] = None,
     combined_score: float = 0.0,
     work_dir: Optional[str] = None,
+    artifact_path: Optional[str] = None,
+    crew_used: bool = False,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -319,55 +437,16 @@ def create_pr_for_issue(
     # 3. Build PR body — carry the full acceptance evidence chain so a human
     #    reviewing the PR can see WHY the school accepted this, not just that
     #    it did. Without this, the PR is an evidence-free artifact.
-    cto_verdict = "n/a"
-    coo_verdict = "n/a"
-    score = combined_score
-    if review_evidence:
-        cto_verdict = review_evidence.get("cto_verdict", "n/a") or "n/a"
-        coo_verdict = review_evidence.get("coo_verdict", "n/a") or "n/a"
-        score = review_evidence.get("combined_score", combined_score)
-
-    if verify_result:
-        v_verdict = verify_result.get("verdict", "n/a") or "n/a"
-        v_ran = verify_result.get("ran", 0)
-        verify_md = f"{v_verdict} ({v_ran} command(s))"
-    else:
-        verify_md = "not run"
-
-    if entire_review:
-        e_status = entire_review.get("status", "n/a") or "n/a"
-        e_findings = entire_review.get("findings") or []
-        e_count = len(e_findings)
-        if e_count:
-            blocking = [f for f in e_findings if f.get("severity") in ("CRITICAL", "HIGH")]
-            if blocking:
-                blocking_md = "\n".join(
-                    f"- **{f['severity']}**: `{f['file']}:{f['line']}` — {f.get('message', '')[:150]}"
-                    for f in blocking
-                )
-                entire_md = (
-                    f"{e_status} ({e_count} finding(s))\n"
-                    f"### Blocking findings\n{blocking_md}"
-                )
-            else:
-                entire_md = f"{e_status} ({e_count} finding(s), none blocking)"
-        else:
-            entire_md = f"{e_status} (no findings)"
-    else:
-        entire_md = "not run"
-
-    pr_body = (
-        f"## Automated PR for #{num}: {title}\n\n"
-        f"_Created by Agent School — agent: {agent}_\n\n"
-        f"### Domain\n"
-        f"{issue.get('domain', '_default')} ({issue.get('difficulty', 'medium')})\n\n"
-        f"### Task Output\n"
-        f"```python\n{response_text[:800]}\n```\n"
-        + ("..." if len(response_text) > 800 else "") + "\n\n"
-        f"### Acceptance Evidence\n\n"
-        f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — score {score:.0f}\n"
-        f"- **Verify gate:** {verify_md}\n"
-        f"- **Pre-merge check (Entire):** {entire_md}\n"
+    pr_body = build_pr_body(
+        issue=issue,
+        response_text=response_text,
+        agent=agent,
+        review_evidence=review_evidence,
+        verify_result=verify_result,
+        entire_review=entire_review,
+        combined_score=combined_score,
+        artifact_path=artifact_path,
+        crew_used=crew_used,
     )
 
     # 4. Open PR.
