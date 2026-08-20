@@ -352,6 +352,22 @@ def build_pr_body(
                 "- **Commit reachability:** not determined (the probe could not "
                 "run) — treat the cited SHA as unverified.\n"
             )
+        # The crew's actual diff, captured before teardown (bead school-core-3um).
+        # The commit cannot survive its disposable clone, so this patch is the
+        # only durable record of what the crew really changed — and it is NOT
+        # what this PR's content was built from. Say both plainly.
+        patch_path = (review_evidence or {}).get("patch_path")
+        if patch_path:
+            body += (
+                f"- **Crew diff (captured):** `{patch_path}` — the real change "
+                "the crew made, preserved as a patch because its commit does not "
+                "survive worktree teardown.\n"
+            )
+        elif reachable is False:
+            body += (
+                "- ⚠️ **No crew diff was captured** — the crew's work is not "
+                "preserved anywhere. Treat this PR as carrying no crew output.\n"
+            )
     return body
 
 

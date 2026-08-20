@@ -232,6 +232,47 @@ class TestPrBodyFlagsUnreachableCommit:
         assert "does NOT resolve" not in body
 
 
+class TestPrBodySurfacesCapturedPatch:
+    """The captured crew diff must be findable, and its absence must be loud.
+
+    A patch nobody knows about is no better than a lost commit.
+    """
+
+    def test_captured_patch_is_surfaced(self):
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": False,
+                "patch_path": "fm-loop-123-342/changes.patch",
+            },
+        )
+        assert "changes.patch" in body, "the captured crew diff is not discoverable"
+        assert "Crew diff" in body
+
+    def test_missing_patch_with_dead_commit_is_flagged(self):
+        """Commit gone AND no patch = the work is truly lost. Say so."""
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": False,
+            },
+        )
+        assert "No crew diff was captured" in body
+        assert "carrying no crew output" in body
+
+    def test_direct_path_never_mentions_a_patch(self):
+        body = _captured_body(crew_used=False, review_evidence={
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "combined_score": 90.0, "accepted": True,
+            "patch_path": "x/changes.patch",
+        })
+        assert "Crew diff" not in body
+
+
 class TestPrBodyArtifactPath:
     def test_crew_artifact_path_is_surfaced(self):
         """B3: 'artifact path if crew path'."""

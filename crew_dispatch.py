@@ -552,6 +552,104 @@ def _orca_remove(worktree_id: str) -> bool:
     return True
 
 
+# Upper bound on a captured crew patch. A runaway diff must not be held in
+# memory unbounded nor committed to a PR. Matches the spirit of
+# MAX_REPORT_BYTES: an oversized artifact is a failure, not a large success.
+MAX_PATCH_BYTES = 2_000_000
+
+# Refs come from model-authored status text, so they are untrusted input and must
+# never reach a git argument unvalidated. Conservative allowlist: hex shas,
+# branch/tag names, and `owner/branch@sha` as emitted in `base=` lines.
+_SAFE_REF_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._/@-]{0,200}$")
+
+
+def capture_crew_patch(
+    worktree_path: Path,
+    base: str,
+    destination: Path,
+) -> Optional[Path]:
+    """Capture the crew's diff as a patch file, or return None.
+
+    THE PROBLEM THIS SOLVES: 54 crews emitted valid ``done: commit=<sha>`` lines
+    and every one of those commits is now unreachable. The crew works inside a
+    disposable clone that is reset between runs and a worktree that is deleted on
+    teardown, so the branch ref vanishes and the commit is orphaned. The work was
+    real and good; nothing preserved it.
+
+    MUST be called BEFORE teardown_worktree.
+
+    SUPERVISOR-SIDE BY DESIGN. The reviewed alternative was to instruct the agent
+    to write its own patch. This runs ``git diff`` from the supervisor instead,
+    because agent compliance is exactly the failure mode this system already has:
+    the artifact handshake asks agents to emit a parseable identity block and
+    #342 emitted nothing at all. A supervisor-side capture has no compliance
+    dependency — if the worktree has changes, the patch exists.
+
+    A PATCH, NOT A BRANCH HANDOFF. Two premises were refuted in review: the crew
+    worktree does NOT share an object store with any persistent clone
+    (``issue_bridge`` calls ``repo_reader.clone_repo``, a separate clone), and
+    that clone is ``git clone --depth 1`` and verified shallow, so fetching from
+    it can graft history and the ``base=`` sha may not exist there. A patch is
+    text and has neither dependency.
+
+    EMPTY IS A FAILURE, NOT A SUCCESS. Returns None — and writes nothing — when
+    the diff is empty. ``pr_creator``'s only emptiness guard catches blob-creation
+    failure, not an empty diff, so a silently-empty capture would produce a PR
+    with no diff that nothing vetoes. That would be worse than today's honest
+    loss, so an empty capture must be loud and must leave no 0-byte file behind
+    for a later reader to mistake for preserved work.
+    """
+    if not _SAFE_REF_RE.match(base or ""):
+        log.warning("refusing unsafe base ref for patch capture: %r", base)
+        return None
+    if not worktree_path.is_dir():
+        log.warning("worktree missing, cannot capture patch: %s", worktree_path)
+        return None
+    try:
+        proc = _run(
+            [
+                "git", "-C", str(worktree_path),
+                "diff", "--binary", f"{base}...HEAD",
+            ],
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("patch capture failed for %s: %s", worktree_path, exc)
+        return None
+    if proc.returncode != 0:
+        log.warning(
+            "git diff failed in %s (base=%s): %s",
+            worktree_path, base, (proc.stderr or "").strip()[:200],
+        )
+        return None
+
+    patch = proc.stdout or ""
+    if not patch.strip():
+        # Loud, and no file written. An empty patch that looks like an artifact
+        # is how a green PR with no diff gets shipped.
+        log.warning(
+            "crew produced NO diff against %s — nothing to preserve. Not writing "
+            "an empty patch; an empty artifact must never read as success.",
+            base,
+        )
+        return None
+    if len(patch.encode("utf-8", "replace")) > MAX_PATCH_BYTES:
+        log.warning(
+            "captured patch exceeds MAX_PATCH_BYTES (%d) — refusing to preserve "
+            "an unbounded diff", MAX_PATCH_BYTES,
+        )
+        return None
+
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(patch, encoding="utf-8")
+    except OSError as exc:
+        log.warning("could not write patch to %s: %s", destination, exc)
+        return None
+    log.info("captured crew patch (%d bytes) -> %s", len(patch), destination)
+    return destination
+
+
 def _record_artifact_reachability(
     crew_id: str,
     artifact_identity: Optional[dict],
@@ -1101,11 +1199,30 @@ def dispatch_crew(
         "entire_review": entire_review_result,
     })
     # Probe reachability while the worktree STILL EXISTS — its clone is deleted
-    # by the teardown on the next line, and probing afterwards would report every
-    # commit unreachable regardless of whether the work was real. Additive only:
+    # by the teardown below, and probing afterwards would report every commit
+    # unreachable regardless of whether the work was real. Additive only:
     # this writes commit_reachable and never touches status/fallback_reason, so
     # an orphaned commit cannot downgrade a crew that genuinely finished.
     _record_artifact_reachability(crew_id, artifact_identity, worktree_id)
+    # Preserve the WORK, not just the record (bead school-core-3um). The commit
+    # itself cannot survive — the disposable clone is reset between runs — so
+    # capture the diff as text into the task dir, which outlives teardown
+    # alongside report.md. Supervisor-side on purpose: no agent compliance
+    # required. An empty capture returns None and writes nothing, so a failed
+    # capture can never masquerade as preserved work.
+    patch_path: Optional[Path] = None
+    if worktree_id and "::" in worktree_id and artifact_identity:
+        base_ref = str(artifact_identity.get("base") or "").split("@")[-1] or "main"
+        patch_path = capture_crew_patch(
+            worktree_path=Path(worktree_id.split("::", 1)[1]),
+            base=base_ref,
+            destination=_task_dir(crew_id) / "changes.patch",
+        )
+        _update_run(crew_id, {
+            "patch_path": (
+                str(patch_path.relative_to(DATA_DIR)) if patch_path else None
+            ),
+        })
     teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(
