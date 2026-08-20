@@ -160,3 +160,95 @@ class TestCreatePR:
         task_result = {"response": "# output", "agent": "foundry-coder-7b"}
         url = create_pr_for_issue(issue, task_result, "user/test")
         assert url is None
+
+
+# ── Guards: blob-failure vs diff-emptiness are distinct faults ──────────────
+
+
+class TestCreatePRGuards:
+    """The tree-builder must abort on a no-op commit (every entry matches the
+    base tree) — a different fault from blob creation failing.
+
+    The read-tree call (mock_api index 2) is the base tree. To exercise the
+    diff-emptiness guard we return a real ``tree`` list there and have the blob
+    POST (index 3) hand back the SAME sha the base already holds.
+    """
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_empty_change_is_rejected(self, mock_gh, mock_api, tmp_path):
+        base_sha = "sameblob000"
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+            "https://github.com/user/test/pull/8",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-8-noop"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "basetree999", "tree": [
+                {"path": "school-output/debugging/8/output.py",
+                 "mode": "100644", "type": "blob", "sha": base_sha},
+            ]},
+            {"sha": base_sha},
+            {"sha": "newtree222"},
+            {"sha": "newcommit333"},
+            {"ref": "refs/heads/school/issue-8-noop"},
+        ]
+        issue = {"issue_number": 8, "title": "Noop", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('identical')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
+        assert url is None
+        called_paths = [
+            c.kwargs.get("json", {}).get("message")
+            for c in mock_api.call_args_list
+            if c.args and c.args[0] == "POST" and "commits" in c.args[1]
+        ]
+        assert not called_paths, "a no-op commit was created"
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_real_change_still_commits(self, mock_gh, mock_api, tmp_path):
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+            "https://github.com/user/test/pull/9",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-9-real"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "basetree999", "tree": [
+                {"path": "school-output/debugging/9/output.py",
+                 "mode": "100644", "type": "blob", "sha": "oldblob111"},
+            ]},
+            {"sha": "newblob444"},
+            {"sha": "newtree222"},
+            {"sha": "newcommit333"},
+            {"ref": "refs/heads/school/issue-9-real"},
+        ]
+        issue = {"issue_number": 9, "title": "Real", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('changed')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
+        assert url == "https://github.com/user/test/pull/9"
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_unreadable_base_tree_fails_open(self, mock_gh, mock_api, tmp_path):
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+            "https://github.com/user/test/pull/10",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-10-unk"},
+            {"object": {"sha": "branchsha456"}},
+            None,
+            {"sha": "newblob444"},
+            {"sha": "newtree222"},
+            {"sha": "newcommit333"},
+            {"ref": "refs/heads/school/issue-10-unk"},
+        ]
+        issue = {"issue_number": 10, "title": "Unknown", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('ok')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
+        assert url == "https://github.com/user/test/pull/10"

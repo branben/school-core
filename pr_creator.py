@@ -471,10 +471,38 @@ def create_pr_for_issue(
         message = f"school: task output for #{num} ({domain})"
         sys.stderr.write(f"[pr_creator] committing {path} to branch '{branch}'\n")
 
-    # Filter out any entries where blob creation failed.
+    # Filter out any entries where blob creation failed (an infra fault: the
+    # GitHub blob POST returned no SHA). If none survive, there is nothing to
+    # commit and we must abort — but this is a distinct fault from the
+    # empty-change case handled below.
     entries = [e for e in entries if e["sha"]]
     if not entries:
         sys.stderr.write("[pr_creator] blob creation failed — aborting\n")
+        return None
+
+    # Diff-emptiness guard: the blob(s) were created, yet every entry is
+    # byte-for-byte identical to what is already in the base tree. The
+    # resulting commit would change nothing — a no-op PR that looks merged but
+    # fixes nothing. This is a DIFFERENT fault from blob creation failing:
+    # here the content exists, it just matches the base, so we must catch it
+    # on its own terms rather than letting it masquerade as a real change.
+    # Fail OPEN when we cannot trust the base tree (unreadable or truncated):
+    # if we cannot prove the change is empty, we let it through.
+    base_obj = branch_tree if isinstance(branch_tree, dict) else {}
+    base_entries = (
+        {e["path"]: (e.get("mode"), e.get("type"), e.get("sha"))
+         for e in base_obj.get("tree", [])}
+        if not base_obj.get("truncated")
+        else {}
+    )
+    if entries and all(
+        base_entries.get(e["path"]) == (e.get("mode"), e.get("type"), e["sha"])
+        for e in entries
+    ):
+        sys.stderr.write(
+            "[pr_creator] resulting commit would change nothing — every entry "
+            "matches the base tree; aborting\n"
+        )
         return None
 
     tree_sha = _treeSha(repo, base_tree, entries)
