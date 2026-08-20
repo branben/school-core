@@ -471,6 +471,49 @@ def create_pr_for_issue(
         message = f"school: task output for #{num} ({domain})"
         sys.stderr.write(f"[pr_creator] committing {path} to branch '{branch}'\n")
 
+    # B8 Phase 2 — MIDDLE option. When the crew was used, its real diff was
+    # captured to a .patch file before worktree teardown (capture_crew_patch in
+    # crew_dispatch.py:572). Ship that patch as a *blob in the tree* so it is
+    # reviewable on GitHub without applying it to the codebase. The captured
+    # patch uses `git diff --binary`, so it can carry binary hunks; we commit
+    # it verbatim and never interpret it, preserving that. The PR body's
+    # disclaimer (build_pr_body, ~line 355) already states this patch is NOT
+    # what the PR content was built from, so no body edit is needed. If the
+    # file cannot be read (or is empty), we proceed without it rather than
+    # failing the whole PR — the body still names the path when it is known.
+    if crew_used and patch_path:
+        patch_file = Path(patch_path)
+        try:
+            patch_bytes = patch_file.read_bytes()
+        except OSError as exc:
+            sys.stderr.write(
+                f"[pr_creator] cannot read crew patch '{patch_path}': {exc} "
+                f"— committing without it\n"
+            )
+            patch_bytes = b""
+        if patch_bytes:
+            # git diff --binary encodes binary hunks as ASCII base85, so the
+            # patch text is valid UTF-8 and decodes losslessly here.
+            blob_sha = _blobSha(repo, patch_bytes.decode("utf-8", "replace"))
+            if not blob_sha:
+                # Same infra-fault class as a normal blob POST returning no SHA.
+                sys.stderr.write(
+                    "[pr_creator] crew patch blob creation failed — aborting\n"
+                )
+                return None
+            patch_repo_path = f"school-output/{issue.get('domain', '_default')}/{num}/changes.patch"
+            entries.append({
+                "path": patch_repo_path,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            })
+            message = f"{message} (with captured crew diff)"
+            sys.stderr.write(
+                f"[pr_creator] committing crew patch {patch_repo_path} "
+                f"to branch '{branch}'\n"
+            )
+
     # Filter out any entries where blob creation failed (an infra fault: the
     # GitHub blob POST returned no SHA). If none survive, there is nothing to
     # commit and we must abort — but this is a distinct fault from the

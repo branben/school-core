@@ -252,3 +252,132 @@ class TestCreatePRGuards:
         task_result = {"response": "print('ok')\n", "agent": "owl-alpha"}
         url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
         assert url == "https://github.com/user/test/pull/10"
+
+
+# ── B8 Phase 2 (MIDDLE): ship the captured .patch as a tree blob ──────────
+
+
+class TestCreatePRCrewPatch:
+    """When crew_used and patch_path are set, create_pr_for_issue must commit
+    the captured diff as an EXTRA blob in the tree (path
+    school-output/<domain>/<num>/changes.patch) so it is reviewable on GitHub
+    without being applied to the codebase. The patch is treated purely as
+    bytes/text — never interpreted — so binary hunks survive (git diff
+    --binary). This reuses the single-blob path (_blobSha) and does NOT touch
+    the PR body disclaimer (build_pr_body already states the patch is NOT what
+    the PR was built from).
+    """
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_crew_patch_is_committed_as_blob(self, mock_gh, mock_api, tmp_path):
+        # Write a real .patch file (binary-safe: git diff --binary is ASCII).
+        patch = tmp_path / "changes.patch"
+        patch.write_text(
+            "diff --git a/x b/x\nindex 111..222 100644\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n- old\n+ new\n",
+            encoding="utf-8",
+        )
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+            "https://github.com/user/test/pull/11",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-11-crew"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "basetree789"},                    # read branch tree
+            {"sha": "outblob111"},                     # output.py blob
+            {"sha": "patchblob222"},                   # crew patch blob
+            {"sha": "newtree333"},
+            {"sha": "newcommit444"},
+            {"ref": "refs/heads/school/issue-11-crew"},
+        ]
+        issue = {"issue_number": 11, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('done')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(
+            issue, task_result, "user/test",
+            crew_used=True, patch_path=str(patch), work_dir=str(tmp_path),
+        )
+        assert url == "https://github.com/user/test/pull/11"
+
+        # The tree POST must carry BOTH the output.py entry and the patch blob.
+        # _gh_api is called as (method, path, body), so the body dict is args[2].
+        tree_post = next(
+            c for c in mock_api.call_args_list
+            if c.args and c.args[0] == "POST" and "trees" in c.args[1]
+        )
+        entries = tree_post.args[2]["tree"]
+        paths = {e["path"] for e in entries}
+        assert "school-output/debugging/11/output.py" in paths
+        patch_entry = next(
+            e for e in entries if e["path"].endswith("changes.patch")
+        )
+        assert patch_entry["type"] == "blob"
+        assert patch_entry["sha"] == "patchblob222"
+        assert patch_entry["mode"] == "100644"
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_no_patch_when_not_crew_or_missing(self, mock_gh, mock_api, tmp_path):
+        # crew_used but patch_path is None (e.g. capture returned None).
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+            "https://github.com/user/test/pull/12",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-12-crew"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "basetree789"},
+            {"sha": "outblob111"},
+            {"sha": "newtree333"},
+            {"sha": "newcommit444"},
+            {"ref": "refs/heads/school/issue-12-crew"},
+        ]
+        issue = {"issue_number": 12, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('done')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(
+            issue, task_result, "user/test",
+            crew_used=True, patch_path=None, work_dir=str(tmp_path),
+        )
+        assert url == "https://github.com/user/test/pull/12"
+
+        tree_post = next(
+            c for c in mock_api.call_args_list
+            if c.args and c.args[0] == "POST" and "trees" in c.args[1]
+        )
+        paths = {e["path"] for e in tree_post.args[2]["tree"]}
+        assert not any(p.endswith("changes.patch") for p in paths)
+
+    @patch("pr_creator._gh_api")
+    @patch("pr_creator._gh")
+    def test_patch_blob_failure_aborts(self, mock_gh, mock_api, tmp_path):
+        # The patch file exists, but the blob POST for it returns None
+        # (infra fault). The whole PR must abort rather than ship without the
+        # captured diff.
+        patch = tmp_path / "changes.patch"
+        patch.write_text("diff --git a/x b/x\n", encoding="utf-8")
+        mock_gh.side_effect = [
+            json.dumps({"defaultBranch": "main"}),
+            "basesha123\n",
+        ]
+        mock_api.side_effect = [
+            {"ref": "refs/heads/school/issue-13-crew"},
+            {"object": {"sha": "branchsha456"}},
+            {"sha": "basetree789"},
+            {"sha": "outblob111"},   # output.py blob OK
+            None,                    # crew patch blob FAILS
+        ]
+        issue = {"issue_number": 13, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
+        task_result = {"response": "print('done')\n", "agent": "owl-alpha"}
+        url = create_pr_for_issue(
+            issue, task_result, "user/test",
+            crew_used=True, patch_path=str(patch), work_dir=str(tmp_path),
+        )
+        assert url is None
+        # No commit was ever attempted — the function returned at the patch blob guard.
+        commit_calls = [
+            c for c in mock_api.call_args_list
+            if c.args and c.args[0] == "POST" and "commits" in c.args[1]
+        ]
+        assert not commit_calls
