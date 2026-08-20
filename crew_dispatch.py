@@ -689,6 +689,56 @@ def _spawn(
     ], timeout=SPAWN_TIMEOUT_SECONDS, env=env)
 
 
+def commit_is_reachable(sha: str, repo_path: Path) -> Optional[bool]:
+    """Does ``sha`` resolve to a real commit object in ``repo_path``?
+
+    Returns True / False / None, where None means "could not determine" — the
+    repo is missing, not a repo, or git failed. Collapsing None into False would
+    let a tooling failure read as evidence the crew's work was lost, the same
+    UNKNOWN-as-verdict trap fixed in the review gates.
+
+    WHY THIS EXISTS: 54 crews emitted ``done: ... commit=<sha>`` lines whose
+    objects do not exist anywhere — not in either primary clone, not in the
+    crew's own clone. The crew's disposable clone is reset between runs (its
+    reflog shows repeated ``reset: moving to b0075d74…``) and the worktree is
+    deleted, so the branch ref vanishes and the commit is orphaned. The SHA was
+    real when written and unreachable minutes later.
+
+    A record asserting an unverifiable hash is worse than one admitting it has
+    no evidence, because a reader will trust the hash.
+    """
+    candidate = (sha or "").strip()
+    # Reject anything that is not a plausible hex object name BEFORE shelling
+    # out: `sha` arrives from model-authored status text, so it is untrusted
+    # input and must never reach a subprocess argument unvalidated.
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", candidate):
+        return False
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_path), "cat-file", "-t", candidate],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode == 0:
+        return proc.stdout.strip() == "commit"
+    # Distinguish "git ran and said no" from "git could not look".
+    # Exact wordings observed on macOS git:
+    #   missing dir  -> "fatal: cannot change to '<path>': No such file or directory"
+    #   not a repo   -> "fatal: not a git repository (or any of the parent directories)"
+    stderr = (proc.stderr or "").lower()
+    if (
+        "cannot change to" in stderr
+        or "not a git repository" in stderr
+        or "does not exist" in stderr
+    ):
+        return None
+    return False
+
+
 def _poll(
     crew_id: str,
     *,
