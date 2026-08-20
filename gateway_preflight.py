@@ -42,7 +42,15 @@ DEFAULT_GATEWAY_URL = os.environ.get(
 
 # Deliberately short. A preflight is allowed to be wrong-but-fast; a hung
 # preflight is strictly worse than no preflight.
-DEFAULT_TIMEOUT_SECONDS = 5
+#
+# 20s, not 5s: measured a 17.5s FIRST response on a freshly-started gateway
+# (Next.js compiles the route on first hit), then 0.02s steady-state on the
+# next three probes. A 5s budget therefore fails a healthy-but-cold gateway,
+# which is exactly the state right after a reboot or a restart — the moment
+# this check matters most. 20s still fails ~90x faster than the 30-minute
+# grind it replaces, and a genuinely dead gateway refuses the connection
+# immediately (ECONNREFUSED) rather than consuming the budget.
+DEFAULT_TIMEOUT_SECONDS = 20
 
 
 class GatewayDown(RuntimeError):

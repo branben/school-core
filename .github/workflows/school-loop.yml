@@ -241,8 +241,35 @@ jobs:
       # The checkout lives under ~/actions-runner/_work/... — a path Orca has
       # never seen. `orca terminal create` (no selector) resolves the CURRENT
       # worktree from cwd, so register the checkout with Orca first. Idempotent.
+      #
+      # REPAIR THE PRECONDITION, don't tolerate its absence. This step used to
+      # fail outright with {"code":"runtime_unavailable"} whenever the Orca
+      # runtime was down — which is its state after every reboot, logout, or
+      # app-close. The runner has a LaunchAgent and OmniRoute has two; Orca has
+      # none, so a human had to run `orca open` by hand or this job failed every
+      # 5 minutes forever.
+      #
+      # `orca open` is the right repair (verified: returns ok=true in 0.5s with
+      # the SAME runtimeId when a runtime is already up, so it is idempotent and
+      # defers to a GUI instance instead of fighting it). A KeepAlive
+      # `orca serve` LaunchAgent was REJECTED: the GUI app owns *:6768, so a
+      # second runtime hits EADDRINUSE and respawn-loops forever whenever Orca
+      # is open interactively — and an EADDRINUSE loop is indistinguishable from
+      # a bad-config loop in the log, permanently masking real faults.
+      # (Credit: phymora refuted the LaunchAgent plan by actually attempting the
+      # second bind rather than reasoning about it.)
+      #
+      # Still fails loud if the repair itself fails — no `|| true`, no
+      # ::warning:: downgrade. A gateway/runtime we cannot bring up must stop
+      # the cycle, not yield a green run that did no work.
       - name: Register checkout with Orca
-        run: orca repo add --path "$PWD" --json
+        run: |
+          set -euo pipefail
+          if ! orca status --json >/dev/null 2>&1; then
+            echo "Orca runtime unreachable — launching it (idempotent)"
+            orca open --json >/dev/null
+          fi
+          orca repo add --path "$PWD" --json
 
       # FirstMate crew preflight: diagnose a broken crew setup (missing
       # persistent clone, Orca daemon down, FM_HOME backend drift, hermes
