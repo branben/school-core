@@ -48,6 +48,12 @@ CREW_RUNS_FILE = Path(
     os.environ.get("CREW_RUNS_FILE", str(Path(__file__).parent / "data/crew_runs.json"))
 ).expanduser()
 DEFAULT_TIMEOUT = float(os.environ.get("CREW_TIMEOUT_SECONDS", "900"))
+# Startup deadline for a crew that has produced NO recognised status verb yet.
+# Spawn + worktree create + first agent append is seconds, not minutes, so 120s
+# is generous. Deliberately far below DEFAULT_TIMEOUT: this only bounds SILENCE,
+# never work. See _poll's docstring — every difficulty (diploma = 8 turns x 90s
+# = 720s) still gets the full timeout once the crew speaks once.
+DEFAULT_STARTUP_GRACE = float(os.environ.get("CREW_STARTUP_GRACE_SECONDS", "120"))
 # FirstMate can spend longer than a normal subprocess startup while Orca
 # provisions a worktree/terminal. Keep this separate from the crew's total
 # work timeout so slow provisioning does not masquerade as a spawn failure.
@@ -691,15 +697,41 @@ def _poll(
     blocked_grace: float,
     now_fn: Callable[[], float],
     sleep_fn: Callable[[float], None],
+    startup_grace: float = DEFAULT_STARTUP_GRACE,
 ) -> tuple[str, Optional[str], str]:
+    """Wait for a crew's terminal status.
+
+    STARTUP GRACE (``spawn_silent``): a crew that has not produced ANY recognised
+    status verb within ``startup_grace`` seconds is declared dead immediately.
+
+    Why this is needed: ``_read_status_detail`` returns ``None`` both when the
+    status file is missing and when it holds no recognised verb, and this loop
+    otherwise treats ``None`` exactly like ``working`` — so a crew whose spawn
+    silently failed, or that died before its first append, is indistinguishable
+    from one doing useful work. Both consume the full timeout. Issue #342 burned
+    ~16 minutes that way on the first crew admission that ever succeeded.
+
+    The grace window is deliberately NARROWER than ``timeout`` and only applies
+    BEFORE the first sign of life. Once the crew speaks even once, the full
+    deadline governs, so long legitimate work is unaffected — a diploma task
+    needs 8 turns x 90s = 720s and must still be allowed to finish.
+
+    Deliberately NOT solved by lowering CREW_TIMEOUT_SECONDS: every difficulty
+    already fits inside 900s (diploma ~750s with spawn overhead), so the ceiling
+    is not the problem. Cutting it to catch silent failures would forbid the
+    school's hardest difficulty. Fail fast on silence; stay patient with work.
+    """
     started = now_fn()
     blocked_at: Optional[float] = None
+    spoke = False
     poll_sleep = poll_interval if poll_interval > 0 else min(max(timeout, 0.1), 0.1)
     max_attempts = max(1, int(max(timeout, 0.0) / max(poll_sleep, 0.1)) + 2)
     attempts = 0
     while now_fn() - started <= timeout and attempts < max_attempts:
         attempts += 1
         status, detail = _read_status_detail(_status_path(crew_id))
+        if status is not None:
+            spoke = True
         if status in {"done", "failed"}:
             return status, None, detail
         if status in {"blocked", "needs-decision"}:
@@ -708,6 +740,11 @@ def _poll(
                 return "blocked", "blocked", detail
         elif status == "resolved":
             blocked_at = None
+        # A crew that has never spoken is not "working" — it is missing. Cut it
+        # loose at the startup deadline instead of reserving the whole cycle
+        # budget for a process that may not exist.
+        if not spoke and now_fn() - started >= startup_grace:
+            return "timeout", "spawn_silent", detail
         # working, paused, resolved, unknown, and absent status all remain live.
         sleep_fn(poll_sleep)
     return "timeout", "timeout", ""
