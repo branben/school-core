@@ -113,6 +113,58 @@ class TestAuditResidue:
         assert over.ok is False, "one over the limit must fail"
 
 
+class TestCliIsAdvisory:
+    """The CI entry point must warn, never fail the cycle.
+
+    Residue is a slow leak. Killing a run over a stale worktree would trade a
+    real problem (no issues processed) for a cosmetic one. Note this is the
+    OPPOSITE call from gateway_preflight, which exits 1 — a dead gateway means
+    the cycle cannot do useful work at all.
+    """
+
+    def test_exits_zero_when_bloated(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "worktree_bloat_guard.audit_live",
+            lambda: BloatReport(
+                ok=False, findings=["48 terminals in one worktree (w)"],
+                terminal_count=48, worktree_count=22,
+            ),
+        )
+        import worktree_bloat_guard as g
+
+        assert g.main() == 0, "bloat must not fail the cycle"
+        out = capsys.readouterr().out
+        assert "::warning::" in out, "breach must surface in the run summary"
+        assert "48 terminals" in out
+
+    def test_exits_zero_and_warns_when_unknown(self, monkeypatch, capsys):
+        """An unreachable daemon must not read as clean."""
+        monkeypatch.setattr(
+            "worktree_bloat_guard.audit_live",
+            lambda: BloatReport(ok=None, detail="orca daemon unreachable"),
+        )
+        import worktree_bloat_guard as g
+
+        assert g.main() == 0
+        out = capsys.readouterr().out
+        assert "::warning::" in out
+        assert "could not run" in out, (
+            "UNKNOWN must be reported as unknown, not silently as OK"
+        )
+
+    def test_exits_zero_and_is_quiet_when_clean(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "worktree_bloat_guard.audit_live",
+            lambda: BloatReport(ok=True, terminal_count=0, worktree_count=12),
+        )
+        import worktree_bloat_guard as g
+
+        assert g.main() == 0
+        out = capsys.readouterr().out
+        assert "::warning::" not in out, "a clean audit must not emit warnings"
+        assert "OK" in out
+
+
 class TestAuditNeverBreaksTheCaller:
     def test_inspection_failure_reports_unknown_not_ok(self):
         """A broken audit must not silently become a passing audit.

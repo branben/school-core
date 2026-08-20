@@ -302,6 +302,25 @@ jobs:
           OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
         run: .venv/bin/python gateway_preflight.py
 
+      - name: Worktree/terminal residue audit (advisory)
+        # ADVISORY (always exits 0) — deliberately unlike the gateway preflight
+        # above, which exits 1. A dead gateway means the cycle CANNOT do useful
+        # work, so failing fast beats a 30-minute grind. Residue is the opposite:
+        # a slow leak that does not block work, so dropping a cycle over a stale
+        # worktree would trade a real problem for a cosmetic one.
+        #
+        # Observed 2026-08-19 (the reason this exists): Orca had accumulated 51
+        # terminals — 48 stacked inside ONE worktree — and 11 suffix-sprayed
+        # teacher clones (teacher-cto-...-2 through -6). None were flagged
+        # `orphaned`, so nothing in Orca would ever reap them; the pile only
+        # grows. Root cause was teacher.py's own docstring demonstrating
+        # create_worktree() (auto-suffixes) instead of
+        # create_worktree_persistent() (rediscovers by prefix).
+        #
+        # A ::warning:: surfaces the breach in the run summary so it is caught by
+        # a check instead of noticed by a human hours later.
+        run: .venv/bin/python worktree_bloat_guard.py
+
       - name: FirstMate crew preflight (fm_doctor)
         env:
           # Auth is a WARN here: a missing provider token must not block issue

@@ -168,3 +168,63 @@ def audit_residue(
         worktree_count=len(worktrees),
         spray=spray,
     )
+
+
+def _orca_json(args: list[str]) -> dict:
+    """Run an `orca <args> --json` command and return its ``result`` object."""
+    import json
+    import subprocess
+
+    out = subprocess.run(
+        ["orca", *args, "--json"],
+        capture_output=True,
+        text=True,
+        timeout=90,
+    ).stdout
+    return json.loads(out).get("result", {}) or {}
+
+
+def audit_live() -> BloatReport:
+    """Audit the running Orca daemon. Never raises; UNKNOWN when unreachable."""
+    return audit_residue(
+        list_terminals=lambda: _orca_json(["terminal", "list"]).get("terminals") or [],
+        list_worktrees=lambda: _orca_json(["worktree", "list"]).get("worktrees") or [],
+    )
+
+
+def main() -> int:
+    """CLI entry point for the CI preflight.
+
+    ADVISORY BY DESIGN — always exits 0. Residue is a slow leak, not a reason to
+    drop a cycle: killing a run because a stale worktree exists would trade a
+    real problem (no issues processed) for a cosmetic one. Emits a GitHub
+    ``::warning::`` so the breach is visible in the run summary without turning
+    the board red.
+
+    This is the opposite call from gateway_preflight.py, which exits 1 — a dead
+    gateway means the cycle CANNOT do useful work, so failing fast is strictly
+    better than a 30-minute grind. Bloat does not block work; it accumulates.
+    """
+    report = audit_live()
+
+    if report.ok is None:
+        # UNKNOWN, not clean. Say so rather than implying a pass.
+        print(f"::warning::worktree/terminal audit could not run: {report.detail}")
+        return 0
+
+    if report.ok:
+        print(report.as_text())
+        return 0
+
+    print(
+        f"::warning::worktree/terminal bloat: {report.terminal_count} terminal(s), "
+        f"{report.worktree_count} worktree(s)"
+    )
+    for finding in report.findings:
+        print(f"::warning::  {finding}")
+    print(report.as_text())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
