@@ -363,6 +363,25 @@ jobs:
         run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
       - name: Sanitize + commit board state (durable, PII-free)
+        # Runs even when the job is CANCELLED or FAILED. Without this condition
+        # the step defaults to success(), and the 30-minute timeout discarded
+        # every data/* mutation from the cycle.
+        #
+        # Measured cost of that: run 32330426471 admitted a crew for the FIRST
+        # time — issue #342 ran ~16 minutes of real crew work — then the job was
+        # cancelled and data/crew_runs.json kept NO record of it (newest entries
+        # are Aug-13 fixtures). dispatch_crew had written a durable `running`
+        # record at crew_dispatch.py:847; it died with the runner's workspace.
+        #
+        # Same durability class as 83deae8 (success path checkpointed only after
+        # the loop), one layer out: that loss was in Python, this one is in the
+        # step condition. Fixing the inner layer did not fix the outer one.
+        #
+        # always() rather than success() || cancelled(): state written before a
+        # FAILURE is just as real. A crew that spawned and then crashed the
+        # bridge still produced a genuine record, and persisting it is what stops
+        # the next cycle re-dispatching blind.
+        if: always()
         # "STATE IN GIT" durability axis: scrub home paths out of the runtime
         # JSON, then commit data/* so board state survives disk death. PII
         # never reaches the public repo. pull --rebase makes the push
