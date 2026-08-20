@@ -362,6 +362,27 @@ jobs:
       - name: Run bridge loop (executes issues)
         run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
+      - name: Crew ledger reconciliation audit (advisory)
+        # N10 / bead school-core-1u9. ADVISORY (always exits 0) and runs with
+        # if: always() — deliberately, for two separate reasons.
+        #
+        # WHY always(): a CANCELLED job is exactly when records are lost (that is
+        # what 5cc4ae0 fixed), so an audit that skips on cancellation goes blind
+        # in the only case that matters. Without this condition it inherits
+        # success() and never runs on the failure it exists to detect.
+        #
+        # WHY end-of-cycle and not preflight: the ledger is written DURING the
+        # cycle. A preflight audit reports the PREVIOUS cycle's damage one tick
+        # late and attributes it to the wrong run.
+        #
+        # WHY advisory: an unreconciled ledger means the work happened and was
+        # not recorded — a bookkeeping loss. Unlike the gateway preflight (which
+        # exits 1 because a dead gateway means no work is possible), killing the
+        # cycle here would trade a reporting problem for a work stoppage.
+        if: always()
+        run: |
+          .venv/bin/python crew_ledger_reconcile.py
+
       - name: Sanitize + commit board state (durable, PII-free)
         # Runs even when the job is CANCELLED or FAILED. Without this condition
         # the step defaults to success(), and the 30-minute timeout discarded

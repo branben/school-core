@@ -62,6 +62,51 @@ def _step(name_fragment: str) -> dict:
     )
 
 
+class TestReconcileAuditWiring:
+    """N10's CI wiring (bead school-core-1u9). Placement AND polarity matter.
+
+    A future agent could plausibly "tidy" either property and silently blind the
+    boundary, so both are pinned.
+    """
+
+    def test_audit_is_wired_at_all(self):
+        """A boundary nobody calls is not a boundary.
+
+        Learned three times in one session: db83c9f needed 7ab03e3, 19d5758
+        needed 68d7290. Ship the probe and the caller together.
+        """
+        step = _step("reconciliation audit")
+        assert "crew_ledger_reconcile" in str(step.get("run", "")), (
+            "the step exists but does not invoke crew_ledger_reconcile.py"
+        )
+
+    def test_audit_runs_even_when_cancelled(self):
+        """A cancelled job is exactly when records are lost.
+
+        Without always() the step inherits success() and never runs on the very
+        failure it exists to detect — the same hole 5cc4ae0 closed one layer up.
+        """
+        cond = str(_step("reconciliation audit").get("if", "")).lower()
+        assert "always()" in cond, (
+            "the reconciliation audit skips on cancellation, blinding it in the "
+            "only case that loses records"
+        )
+
+    def test_audit_runs_after_the_bridge_loop(self):
+        """End-of-cycle, not preflight: the ledger is written DURING the cycle.
+
+        A preflight audit asserts the PREVIOUS cycle's state, reporting damage
+        one tick late and attributing it to the wrong run.
+        """
+        names = [(s.get("name") or "").lower() for s in _execute_steps()]
+        bridge = next(i for i, n in enumerate(names) if "bridge loop" in n)
+        audit = next(i for i, n in enumerate(names) if "reconciliation audit" in n)
+        assert audit > bridge, (
+            "the audit runs BEFORE the bridge loop — it would assert the "
+            "previous cycle's state and blame the wrong run"
+        )
+
+
 class TestBoardStateSurvivesCancellation:
     def test_commit_step_runs_even_when_cancelled(self):
         """REGRESSION: #342's crew record was lost to a cancelled job.
