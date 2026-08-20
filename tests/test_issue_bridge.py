@@ -56,7 +56,7 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
         return None
     monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
     # Reset the per-process label memoization so each test starts fresh.
-    monkeypatch.setattr("issue_bridge._LABELS_ENSURED", False)
+    monkeypatch.setattr("issue_bridge._LABELS_ENSURED", set())
     # Hermetic retry counter — never touch the real data/retry_issues.json.
     monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retry_issues.json")
     # Hermetic processed-set too — the live data/processed_issues.json already

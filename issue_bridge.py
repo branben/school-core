@@ -190,23 +190,32 @@ def _save_retries(retries: dict[int, int]) -> None:
         sys.stderr.write(f"[issue_bridge] Failed to save retry issues: {e}\n")
 
 
-_LABELS_ENSURED = False
+_LABELS_ENSURED: set[str] = set()
 
 
 def _ensure_school_labels(repo: str) -> None:
     """Create the Agent School lifecycle labels if they don't exist yet.
 
-    Memoized per process (labels are repo-wide; checking once per bridge run
-    avoids a ``label list`` round trip for every issue). Non-fatal: label-API
-    failures must never crash the bridge. ``gh`` resolves the repo from the
-    current checkout when ``repo`` is empty.
+    Memoized PER REPO (labels are repo-wide, so one check per repo per bridge
+    run avoids a round trip for every issue — but the bridge is multi-repo, so
+    the memo must be keyed by repo or later repos get skipped entirely).
+    Non-fatal: label-API failures must never crash the bridge. ``gh`` resolves
+    the repo from the current checkout when ``repo`` is empty.
+
+    The enumeration MUST NOT be page-limited. ``gh label list`` returns 30
+    labels by default; sound-royale-ny has 43 and the school-* labels sort past
+    that cutoff, so a bare list reported them missing, the create then failed
+    with "already exists", and the verdict update failed with
+    "'school-failed' not found" — losing a completed two-judge review
+    (live run 32319064467).
     """
-    global _LABELS_ENSURED
-    if _LABELS_ENSURED:
+    if repo in _LABELS_ENSURED:
         return
     try:
         existing: set[str] = set()
-        out = _gh_command(["label", "list", "--repo", repo, "--json", "name"])
+        out = _gh_command([
+            "label", "list", "--repo", repo, "--json", "name", "--limit", "500",
+        ])
         if out:
             try:
                 existing = {lbl.get("name") for lbl in json.loads(out)}
@@ -218,7 +227,7 @@ def _ensure_school_labels(repo: str) -> None:
                     "label", "create", name, "--repo", repo,
                     "--color", color, "--description", desc,
                 ])
-        _LABELS_ENSURED = True
+        _LABELS_ENSURED.add(repo)
     except Exception as e:
         sys.stderr.write(f"[issue_bridge] Failed to ensure school labels: {e}\n")
 
