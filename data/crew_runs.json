@@ -327,5 +327,117 @@
     "fallback_reason": null,
     "report_path": "fm-live-smoke-20260813-123807-700001/report.md",
     "teardown_ok": true
+  },
+  {
+    "crew_id": "fm-loop-20260820-094513-342",
+    "issue_number": 342,
+    "status": "timeout",
+    "fleet_worktree_id": "wt-1",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "schema_version": 1
+    },
+    "started_at": "2026-08-20T09:45:44.837249+00:00",
+    "started_monotonic": 48.926238416,
+    "orca_worktree_present": true,
+    "fallback_reason": "spawn_silent",
+    "report_path": null,
+    "verification": null,
+    "entire_review": null,
+    "teardown_ok": true
+  },
+  {
+    "crew_id": "fm-loop-20260820-094513-341",
+    "issue_number": 341,
+    "status": "timeout",
+    "fleet_worktree_id": "wt-1",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "schema_version": 1
+    },
+    "started_at": "2026-08-20T09:48:34.341675+00:00",
+    "started_monotonic": 215.444635416,
+    "orca_worktree_present": true,
+    "fallback_reason": "spawn_silent",
+    "report_path": null,
+    "verification": null,
+    "entire_review": null,
+    "teardown_ok": true
   }
 ]
