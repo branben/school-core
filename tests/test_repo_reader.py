@@ -209,44 +209,101 @@ class TestCloneRepo:
 
 
 # --- force_fresh must not orphan live crew worktrees (B8 fix) ---
+#
+# The durable crew-worktree link is the WORKTREE's own `.git` file under
+# ~/orca/workspaces/<repo_dir>/<crew>/.git (content:
+# `gitdir: <clone>/.git/worktrees/<name>`). The clone-side `.git/worktrees/`
+# admin dir is a deletable derivative and must NOT be the detection signal.
 
 
-def _fake_clone_layout(base: Path, repo_slug: str, *, with_worktree: bool):
-    """Create a minimal on-disk clone at the cache path for *repo_slug*.
+def _fake_workspace_layout(
+    base: Path, repo_slug: str, *, with_worktree: bool, orphaned: bool = False
+):
+    """Build a fake clone + Orca workspace tree for *repo_slug*.
 
-    No real git required: _has_live_worktrees only inspects the
-    <repo>/.git/worktrees/<name> directory tree on disk.
+    No real git required. The workspace dir is named by the repo slug with
+    "/" -> "__" (matching clone_repo's cache-subdir convention). A crew dir
+    carries a `.git` file whose `gitdir:` points back into the clone's
+    `.git/worktrees/<crew>` — the real, durable link.
+
+    When *orphaned* is True, the clone's `.git/worktrees` admin dir is NOT
+    created (simulating the real bug where rmtree already deleted it while the
+    worktree dir still exists). The guard must still detect the live crew.
     """
-    repo_path = base / repo_slug.replace("/", "__")
-    repo_path.mkdir(parents=True)
-    (repo_path / ".git").mkdir()
+    repo_dir = repo_slug.replace("/", "__")
+    clone_path = base / "cache" / repo_dir
+    clone_path.mkdir(parents=True)
+    (clone_path / ".git").mkdir()
+
+    ws_root = base / "workspaces" / repo_dir
     if with_worktree:
-        wt = repo_path / ".git" / "worktrees"
-        wt.mkdir()
-        (wt / "crew-abc").mkdir()  # a registered (attached) worktree
-    return repo_path
+        crew_dir = ws_root / "fm-fm-loop-x-1"
+        crew_dir.mkdir(parents=True)
+        (crew_dir / ".git").write_text(
+            f"gitdir: {clone_path}/.git/worktrees/fm-fm-loop-x-1\n"
+        )
+        if not orphaned:
+            # Admin dir exists too (normal attached state).
+            (clone_path / ".git" / "worktrees").mkdir(parents=True)
+            (clone_path / ".git" / "worktrees" / "fm-fm-loop-x-1").mkdir()
+    return clone_path, ws_root
 
 
 class TestHasLiveWorktrees:
-    def test_true_when_worktree_attached(self, tmp_path):
-        rp = _fake_clone_layout(tmp_path, "owner/repo", with_worktree=True)
-        assert repo_reader._has_live_worktrees(rp) is True
+    def test_true_when_worktree_attached(self, tmp_path, monkeypatch):
+        clone_path, _ = _fake_workspace_layout(
+            tmp_path, "owner/repo", with_worktree=True
+        )
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        assert repo_reader._has_live_worktrees(clone_path) is True
 
-    def test_false_when_no_worktrees_dir(self, tmp_path):
-        rp = _fake_clone_layout(tmp_path, "owner/repo", with_worktree=False)
-        assert repo_reader._has_live_worktrees(rp) is False
+    def test_true_when_worktree_orphaned_admin_dir_gone(self, tmp_path, monkeypatch):
+        # The real bug: clone-side `.git/worktrees/<name>` was deleted by a
+        # prior rmtree, but the worktree dir (with its .git) still exists.
+        clone_path, _ = _fake_workspace_layout(
+            tmp_path, "owner/repo", with_worktree=True, orphaned=True
+        )
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        assert repo_reader._has_live_worktrees(clone_path) is True
 
-    def test_false_when_worktrees_dir_empty(self, tmp_path):
-        rp = _fake_clone_layout(tmp_path, "owner/repo", with_worktree=False)
-        (rp / ".git" / "worktrees").mkdir()  # exists but no entries
-        assert repo_reader._has_live_worktrees(rp) is False
+    def test_false_when_no_workspace_dir(self, tmp_path, monkeypatch):
+        clone_path, _ = _fake_workspace_layout(
+            tmp_path, "owner/repo", with_worktree=False
+        )
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        assert repo_reader._has_live_worktrees(clone_path) is False
+
+    def test_false_when_workspace_empty(self, tmp_path, monkeypatch):
+        clone_path, ws_root = _fake_workspace_layout(
+            tmp_path, "owner/repo", with_worktree=False
+        )
+        ws_root.mkdir(parents=True)  # exists but no crew dirs
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        assert repo_reader._has_live_worktrees(clone_path) is False
+
+    def test_false_when_gitdir_points_at_other_clone(self, tmp_path, monkeypatch):
+        clone_path, ws_root = _fake_workspace_layout(
+            tmp_path, "owner/repo", with_worktree=False
+        )
+        ws_root.mkdir(parents=True)
+        other = tmp_path / "cache" / "other__repo"
+        other.mkdir(parents=True)
+        (other / ".git").mkdir()
+        crew_dir = ws_root / "fm-fm-loop-x-2"
+        crew_dir.mkdir(parents=True)
+        (crew_dir / ".git").write_text(
+            f"gitdir: {other}/.git/worktrees/fm-fm-loop-x-2\n"
+        )
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        # The only worktree points at a DIFFERENT clone -> not live for this one.
+        assert repo_reader._has_live_worktrees(clone_path) is False
 
 
 class TestCloneRepoForceFresh:
     """force_fresh=True normally rmtree's the cached clone and re-clones. That
-    must NOT happen while live crew worktrees are attached — it would orphan
-    them (their .git link points into the deleted clone). In that case
-    force_fresh is downgraded to a safe `git pull --ff-only` refresh.
+    must NOT happen while live crew worktrees are attached (their .git link
+    points back into the deleted clone). In that case force_fresh is downgraded
+    to a safe `git pull --ff-only` refresh.
     """
 
     @patch("repo_reader.subprocess.run")
@@ -256,7 +313,8 @@ class TestCloneRepoForceFresh:
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(repo_reader, "CACHE_DIR", tmp_path / "cache")
-        rp = _fake_clone_layout(tmp_path / "cache", "owner/repo", with_worktree=True)
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        rp, _ = _fake_workspace_layout(tmp_path, "owner/repo", with_worktree=True)
 
         result = clone_repo("owner/repo", force_fresh=True)
 
@@ -278,7 +336,8 @@ class TestCloneRepoForceFresh:
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(repo_reader, "CACHE_DIR", tmp_path / "cache")
-        rp = _fake_clone_layout(tmp_path / "cache", "owner/repo", with_worktree=False)
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        rp, _ = _fake_workspace_layout(tmp_path, "owner/repo", with_worktree=False)
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="", stderr=""
         )
@@ -301,7 +360,8 @@ class TestCloneRepoForceFresh:
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(repo_reader, "CACHE_DIR", tmp_path / "cache")
-        rp = _fake_clone_layout(tmp_path / "cache", "owner/repo", with_worktree=True)
+        monkeypatch.setattr(repo_reader, "WORKSPACES_DIR", tmp_path / "workspaces")
+        rp, _ = _fake_workspace_layout(tmp_path, "owner/repo", with_worktree=True)
 
         result = clone_repo("owner/repo", force_fresh=False)
 

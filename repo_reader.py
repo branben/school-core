@@ -26,6 +26,16 @@ from repo_default import default_repo
 # Override with AGENT_SCHOOL_CACHE_DIR if you need an explicit location.
 _CACHE_SLUG = os.environ.get("AGENT_SCHOOL_CACHE_DIR") or default_repo().replace("/", "__")
 CACHE_DIR = Path.home() / ".cache" / _CACHE_SLUG / "repos"
+
+# Orca registers crew worktrees under ~/orca/workspaces/<repo_as_dir>/ (the dir
+# name is the repo slug with "/" -> "__", matching CACHE_DIR's repo subdir).
+# Each crew dir carries a `.git` file of the form
+# `gitdir: <clone>/.git/worktrees/<name>` — that `.git` file is the durable
+# link; the clone-side `worktrees/<name>` admin dir is a deletable derivative
+# (this guard exists precisely because rmtree'ing the clone deletes it).
+WORKSPACES_DIR = Path(
+    os.environ.get("AGENT_SCHOOL_WORKSPACES_DIR") or Path.home() / "orca" / "workspaces"
+)
 MAX_FILE_CHARS = 2000
 MAX_FILES = 5
 MAX_TOTAL_CHARS = 10000
@@ -63,23 +73,51 @@ def _git(repo_path: Path, *args, timeout: int = 30) -> str:
 
 
 def _has_live_worktrees(repo_path: Path) -> bool:
-    """Return True if any git worktree is still attached to *repo_path*.
+    """Return True if any crew worktree is still attached to *repo_path*.
 
     Crews are dispatched as worktrees of this shared clone (Orca's
-    ``worktree create --repo <clone>`` is the standard ``git worktree add``
-    contract, and git registers every attached worktree under
-    ``<repo>/.git/worktrees/<name>`` — the same path ``orca_executor`` itself
-    treats as authoritative for worktree state). Deleting the clone while one
-    is live orphans the worktree: its ``.git`` link points back into the
-    clone we just removed, so the crew loses its cwd and can no longer append
-    its status file. This check is repo-scoped (each clone has its own
-    ``.git/worktrees``) and fully decoupled from crew bookkeeping.
+    ``worktree create --repo <clone>``). The durable link is NOT the clone's
+    ``<repo>/.git/worktrees/<name>`` admin dir — that is a deletable derivative
+    that ``shutil.rmtree(repo_path)`` destroys, so checking it there returns
+    False the moment a prior re-clone/teardown touched it (and cannot detect an
+    already-orphaned crew). The authoritative link is the worktree's OWN
+    ``.git`` file, living at ``~/orca/workspaces/<repo_as_dir>/<crew>/.git``,
+    whose content is ``gitdir: <clone>/.git/worktrees/<name>``.
+
+    We therefore INVERT the lookup: scan the worktree root for this repo and
+    resolve each child's ``gitdir:`` back to *repo_path*. This is repo-scoped
+    (the workspace dir is named by repo), robust to the clone-side admin dir
+    being deleted (we read the still-present worktree ``.git``), and survives
+    even when the registry thinks nothing is active but the dir is still on
+    disk. Deleting the clone while any such worktree exists orphans it — the
+    crew loses its cwd and can no longer append its status file.
     """
-    wt_dir = repo_path / ".git" / "worktrees"
-    if not wt_dir.is_dir():
+    # repo_path.name is the repo slug with "/" -> "__" (e.g. owner__repo),
+    # which is exactly how Orca names the workspace subdir.
+    ws_root = WORKSPACES_DIR / repo_path.name
+    if not ws_root.is_dir():
         return False
-    # A registered worktree is a subdirectory entry; an empty dir means none.
-    return any(p.is_dir() for p in wt_dir.iterdir())
+    clone_git = (repo_path / ".git").resolve()
+    for child in ws_root.iterdir():
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        gitfile = child / ".git"
+        if not gitfile.is_file():
+            continue
+        try:
+            line = gitfile.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if not line.startswith("gitdir:"):
+            continue
+        target = Path(line[len("gitdir:"):].strip())
+        try:
+            target.resolve().relative_to(clone_git)
+            return True
+        except (ValueError, OSError):
+            # Points at a different clone (or a dangling/unresolvable link).
+            continue
+    return False
 
 
 def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
