@@ -91,6 +91,7 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
             "base": "main@def456",
             "changed_files": [],
         },
+        patch_path=None,
     )
     spawn_args, spawn_kwargs = calls[0]
     args = spawn_args

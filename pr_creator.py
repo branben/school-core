@@ -213,6 +213,7 @@ def build_pr_body(
     combined_score: float = 0.0,
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
+    patch_path: Optional[str] = None,
 ) -> str:
     """Render the PR body carrying the full acceptance evidence chain (B3).
 
@@ -356,7 +357,10 @@ def build_pr_body(
         # The commit cannot survive its disposable clone, so this patch is the
         # only durable record of what the crew really changed — and it is NOT
         # what this PR's content was built from. Say both plainly.
-        patch_path = (review_evidence or {}).get("patch_path")
+        # Prefer the dedicated `patch_path` argument (B8 Phase 2: the bridge
+        # forwards it from CrewResult); fall back to the legacy review_evidence
+        # key so direct renderer callers keep working.
+        patch_path = patch_path or (review_evidence or {}).get("patch_path")
         if patch_path:
             body += (
                 f"- **Crew diff (captured):** `{patch_path}` — the real change "
@@ -382,6 +386,7 @@ def create_pr_for_issue(
     work_dir: Optional[str] = None,
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
+    patch_path: Optional[str] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -499,6 +504,7 @@ def create_pr_for_issue(
         combined_score=combined_score,
         artifact_path=artifact_path,
         crew_used=crew_used,
+        patch_path=patch_path,
     )
 
     # 4. Open PR.

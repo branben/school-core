@@ -1962,6 +1962,15 @@ def bridge_issues(
                         if crew_used and getattr(crew_result, "report_path", None)
                         else None
                     ),
+                    # B8 Phase 2 (bead school-core-3um): forward the crew's
+                    # captured diff path from CrewResult into the PR body. The
+                    # commit cannot survive worktree teardown, so the patch is
+                    # the only durable record of what the crew changed.
+                    patch_path=(
+                        str(getattr(crew_result, "patch_path", None))
+                        if crew_used and getattr(crew_result, "patch_path", None)
+                        else None
+                    ),
                 )
                 if pr_url:
                     _gh_command([

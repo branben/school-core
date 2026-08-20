@@ -30,6 +30,8 @@ Why each gap matters, concretely:
 from unittest.mock import patch
 
 import pr_creator
+from crew_dispatch import CrewResult
+from pathlib import Path
 
 
 def _base_kwargs(**over):
@@ -239,15 +241,24 @@ class TestPrBodySurfacesCapturedPatch:
     """
 
     def test_captured_patch_is_surfaced(self):
-        body = _captured_body(
-            crew_used=True,
-            review_evidence={
-                "cto_verdict": "PASS", "coo_verdict": "PASS",
-                "combined_score": 90.0, "accepted": True,
-                "commit_reachable": False,
-                "patch_path": "fm-loop-123-342/changes.patch",
-            },
+        """The captured crew diff reaches the body through the REAL boundary:
+        CrewResult.patch_path -> issue_bridge extracts it -> build_pr_body's
+        dedicated patch_path arg. This was previously a synthetic review_evidence
+        dict that production never populated (a green test over a dead channel).
+        """
+        crew_result = CrewResult(
+            crew_id="fm-loop-123-342-77",
+            status="done",
+            patch_path=Path("fm-loop-123-342/changes.patch"),
         )
+        # Mirrors issue_bridge.py:1965 — the bridge pulls patch_path off the
+        # CrewResult and forwards it as a dedicated parameter.
+        patch_path = (
+            str(getattr(crew_result, "patch_path", None))
+            if crew_result and getattr(crew_result, "patch_path", None)
+            else None
+        )
+        body = _captured_body(crew_used=True, patch_path=patch_path)
         assert "changes.patch" in body, "the captured crew diff is not discoverable"
         assert "Crew diff" in body
 

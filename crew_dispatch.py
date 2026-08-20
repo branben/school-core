@@ -93,6 +93,12 @@ class CrewResult:
     artifact_identity: Optional[dict[str, object]] = None
     verification: Optional[dict] = None
     entire_review: Optional[dict] = None
+    # B8 Phase 2 (bead school-core-3um): the crew's real diff, captured before
+    # worktree teardown as text in the task dir (alongside report.md). The commit
+    # itself cannot survive the disposable clone, so this patch is the only
+    # durable record of what the crew actually changed. Carried here so the
+    # bridge can forward it into the PR body instead of re-reading the ledger.
+    patch_path: Optional[Path] = None
 
 
 class CrewUnavailableError(RuntimeError):
@@ -1236,4 +1242,5 @@ def dispatch_crew(
         artifact_identity=artifact_identity,
         verification=verification_result,
         entire_review=entire_review_result,
+        patch_path=patch_path,
     )
