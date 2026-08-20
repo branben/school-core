@@ -73,8 +73,29 @@ _ARTIFACT_FIELD_RE = re.compile(
     r"[*_]*\s*([^\s]+)"
 )
 
+# Status-file verbs. Restricted to the SIX verbs the crew prompt documents
+# (crew_dispatch.py:393) and _poll consumes (crew_dispatch.py:937-944):
+#   working | blocked | needs-decision | resolved | done | failed
+# Anything else is NOT a status verb. The previous pattern
+#   ^\s*([A-Za-z][A-Za-z0-9_-]*)(?:\s+\[[^\]]*\])?\s*:
+# matched ANY identifier before a colon, which caused two bugs:
+#   (1) a real `done:`/`working:` line followed by a cleanup line such as
+#       `original_done: done:` was read as verb "original_done" — never
+#       terminal — so finished crews kept getting polled; and
+#   (2) any stray `note: x` line was mistaken for a live verb instead of
+#       being ignored.
+# NOTE: `spawn_silent` and `timeout` are _poll RETURN CODES (lines 949/952),
+# not status-file verbs — they are intentionally absent here. A file never
+# contains them, and matching them would wrongly drop `needs-decision` /
+# `resolved` crews into the "no recognised verb" path.
+# A leading timestamp (full ISO-8601 or a bare HH:MM:SS[Z]) is optional and is
+# NOT the verb: crews (or a wrapping supervisor) may prefix each line with one.
 _STATUS_RE = re.compile(
-    r"^\s*([A-Za-z][A-Za-z0-9_-]*)(?:\s+\[[^\]]*\])?\s*:"
+    r"^\s*"
+    r"(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+|"
+    r"\d{2}:\d{2}:\d{2}Z?\s+)?"
+    r"(?P<verb>working|blocked|needs-decision|resolved|done|failed)"
+    r"(?:\s+\[[^\]]*\])?\s*:"
 )
 _META_RE = re.compile(r"^([^=]+)=(.*)$")
 
@@ -195,7 +216,7 @@ def _read_status_detail(path: Path) -> tuple[Optional[str], str]:
     for line in reversed(lines):
         match = _STATUS_RE.match(line)
         if match:
-            return match.group(1).lower(), line[match.end():].strip()
+            return match.group("verb").lower(), line[match.end():].strip()
     return None, ""
 
 

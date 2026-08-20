@@ -1092,3 +1092,149 @@ def test_stale_entry_is_retained_when_cleanup_fails(monkeypatch, tmp_path):
     runs = json.loads(path.read_text())
     assert runs[0]["crew_id"] == "old"
     assert runs[0]["cleanup_failed"] is True
+
+
+# ── Status verb regex (B8 fix: restrict to the six documented verbs) ─────────
+
+
+class TestStatusVerbRegex:
+    """_STATUS_RE must accept ONLY the six documented status-file verbs and an
+    OPTIONAL leading timestamp. Any other identifier before a colon is NOT a
+    status verb — the old pattern matched `[A-Za-z][A-Za-z0-9_-]*:` and caused
+    (1) finished crews with a cleanup line like `original_done: done:` to be
+    read as verb "original_done" and re-polled forever, and (2) stray
+    `note: x` lines to be mistaken for a live verb. `spawn_silent`/`timeout`
+    are _poll return codes, never file verbs, so they must NOT match either.
+    """
+
+    @staticmethod
+    def _write_status(monkeypatch, tmp_path, crew_id, text):
+        configure_paths(monkeypatch, tmp_path)
+        p = crew_dispatch.STATE_DIR / f"{crew_id}.status"
+        p.write_text(text)
+        return p
+
+    def test_each_documented_verb_is_recognised(self, monkeypatch, tmp_path):
+        configure_paths(monkeypatch, tmp_path)
+        for verb in ("working", "blocked", "needs-decision", "resolved", "done", "failed"):
+            cid = f"fm-loop-x-{verb}"
+            (crew_dispatch.STATE_DIR / f"{cid}.status").write_text(f"{verb}: payload here\n")
+            assert crew_dispatch._read_status_detail(
+                crew_dispatch.STATE_DIR / f"{cid}.status"
+            )[0] == verb
+
+    def test_original_done_cleanup_shape_resolves_to_done(self, monkeypatch, tmp_path):
+        # Bug (1): a finished crew whose status file ends with a supervisor
+        # cleanup line like `original_done: done:` must read as `done`, not
+        # `original_done`. The verb is the LAST recognised verb in the file.
+        cid = "fm-loop-20260811-120000-1"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "working: building\n"
+            "done: branch=x commit=y base=z\n"
+            "original_done: done:\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+        # The detail is the payload of the matched (final) verb line.
+        assert detail.startswith("branch=x")
+
+    def test_timestamped_full_iso_is_stripped(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-iso"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "2026-08-11T21:40:39Z done: branch=x commit=y base=z\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+        assert detail.startswith("branch=x")
+
+    def test_timestamped_bare_hhmmss_is_stripped(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-hms"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "21:40:39Z working: still going\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "working"
+        assert detail == "still going"
+
+    def test_leading_timestamp_with_microseconds(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-us"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "2026-08-11 21:40:39.123456 done: ok\n",
+        )
+        status, _ = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+
+    def test_non_verb_identifier_does_not_match(self, monkeypatch, tmp_path):
+        # Bug (2): a stray `note: x` (or any other identifier) is NOT a status
+        # verb, so the file reads as "no recognised verb".
+        cid = "fm-loop-x-note"
+        self._write_status(monkeypatch, tmp_path, cid, "note: will revisit\n")
+        assert crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )[0] is None
+
+    def test_poll_return_codes_are_not_file_verbs(self, monkeypatch, tmp_path):
+        # `spawn_silent` and `timeout` are _poll return codes, never written to
+        # a status file. If a file ever literally contained them, they must NOT
+        # be read back as status verbs.
+        configure_paths(monkeypatch, tmp_path)
+        for verb in ("spawn_silent", "timeout"):
+            cid = f"fm-loop-x-{verb}"
+            (crew_dispatch.STATE_DIR / f"{cid}.status").write_text(f"{verb}: x\n")
+            assert crew_dispatch._read_status_detail(
+                crew_dispatch.STATE_DIR / f"{cid}.status"
+            )[0] is None
+
+    def test_first_recognised_verb_wins_when_earlier_is_noise(self, monkeypatch, tmp_path):
+        # A non-verb line followed by a real verb: the real verb is found.
+        cid = "fm-loop-x-mix"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "note: preamble\n"
+            "working: started\n",
+        )
+        status, _ = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "working"
+
+
+class TestStatusPollBugOneOriginalDone:
+    """End-to-end at the poll level: a finished crew whose file carries the
+    `original_done: done:` cleanup line must be detected terminal (done), not
+    re-polled. Uses a frozen clock so _poll returns the moment it sees `done`.
+    """
+
+    def test_original_done_shape_is_terminal(self, monkeypatch, tmp_path):
+        configure_paths(monkeypatch, tmp_path)
+        clock = FakeClock()
+        crew_id = "fm-loop-20260811-120000-2"
+        (crew_dispatch.STATE_DIR / f"{crew_id}.status").write_text(
+            "working: building\n"
+            "done: branch=x commit=y base=z\n"
+            "original_done: done:\n"
+        )
+        status, reason, detail = crew_dispatch._poll(
+            crew_id=crew_id,
+            timeout=100,
+            poll_interval=10,
+            startup_grace=30,
+            blocked_grace=30,
+            now_fn=clock.now,
+            sleep_fn=clock.sleep,
+        )
+        assert status == "done"
+        assert reason is None
+        assert detail.startswith("branch=x")
