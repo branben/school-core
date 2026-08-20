@@ -552,6 +552,54 @@ def _orca_remove(worktree_id: str) -> bool:
     return True
 
 
+def _record_artifact_reachability(
+    crew_id: str,
+    artifact_identity: Optional[dict],
+    worktree_id: Optional[str],
+) -> Optional[bool]:
+    """Record whether the crew's cited commit actually resolves.
+
+    MUST be called BEFORE teardown_worktree. The commit lives in the disposable
+    worktree's clone, which is reset between runs and deleted on teardown — so
+    probing afterwards would report every commit unreachable and prove nothing
+    about whether the work was real.
+
+    ADDITIVE ONLY. This never writes ``status`` or ``fallback_reason``: U10
+    (see the checkpoint below) makes the terminal outcome authoritative, and an
+    unreachable commit must not silently downgrade a crew that genuinely
+    finished. The reachability answer is its own field so a reader can see both
+    "the crew completed" and "its commit no longer resolves" — which is the true
+    state of every one of the 54 done-crews found on disk.
+
+    Returns the tri-state so callers can log it; None means "not determined"
+    (no identity cited, no worktree, or git could not look). Never raises:
+    recording the outcome matters more than probing it.
+    """
+    reachable: Optional[bool] = None
+    try:
+        commit = (artifact_identity or {}).get("commit")
+        if commit and worktree_id and "::" in worktree_id:
+            worktree_path = Path(worktree_id.split("::", 1)[1])
+            reachable = commit_is_reachable(str(commit), worktree_path)
+        if reachable is False:
+            log.warning(
+                "%s: cited commit %s does NOT resolve in its own worktree "
+                "clone — the work is not preserved anywhere. Recording the "
+                "outcome as-is; the record must not claim evidence it cannot "
+                "produce.",
+                crew_id,
+                commit,
+            )
+        _update_run(crew_id, {"commit_reachable": reachable})
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning(
+            "%s: reachability probe failed (%s); outcome record is unaffected",
+            crew_id,
+            exc,
+        )
+    return reachable
+
+
 def teardown_worktree(worktree_id: Optional[str]) -> bool:
     if not worktree_id:
         return False
@@ -1052,6 +1100,12 @@ def dispatch_crew(
         "verification": verification_result,
         "entire_review": entire_review_result,
     })
+    # Probe reachability while the worktree STILL EXISTS — its clone is deleted
+    # by the teardown on the next line, and probing afterwards would report every
+    # commit unreachable regardless of whether the work was real. Additive only:
+    # this writes commit_reachable and never touches status/fallback_reason, so
+    # an orphaned commit cannot downgrade a crew that genuinely finished.
+    _record_artifact_reachability(crew_id, artifact_identity, worktree_id)
     teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(

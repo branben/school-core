@@ -175,6 +175,63 @@ class TestPrBodyFlagsUnreviewedWork:
         assert "UNREVIEWED" not in body
 
 
+class TestPrBodyFlagsUnreachableCommit:
+    """A cited SHA that does not resolve must be called out.
+
+    54 crews emitted `done: commit=<sha>` lines whose objects are orphaned by
+    worktree teardown. A reader trusts a hash, so an unverifiable one is worse
+    than none. crew_dispatch probes before teardown; this surfaces the answer.
+    """
+
+    def test_unreachable_commit_is_flagged(self):
+        body = _captured_body(
+            crew_used=True,
+            artifact_path="data/crew/x/report.md",
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": False,
+            },
+        )
+        assert "does NOT resolve" in body, (
+            "PR advertises a commit that no longer exists with no warning"
+        )
+        assert "not treat the commit as evidence" in body.lower()
+
+    def test_undetermined_reachability_says_so(self):
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": None,
+            },
+        )
+        assert "not determined" in body.lower()
+
+    def test_reachable_commit_adds_no_warning(self):
+        """A guard that fires on healthy runs gets ignored."""
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": True,
+            },
+        )
+        assert "does NOT resolve" not in body
+        assert "not determined" not in body.lower()
+
+    def test_direct_path_never_mentions_commit_reachability(self):
+        """The direct path cites no crew commit, so the field is meaningless."""
+        body = _captured_body(crew_used=False, review_evidence={
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "combined_score": 90.0, "accepted": True,
+            "commit_reachable": False,
+        })
+        assert "does NOT resolve" not in body
+
+
 class TestPrBodyArtifactPath:
     def test_crew_artifact_path_is_surfaced(self):
         """B3: 'artifact path if crew path'."""

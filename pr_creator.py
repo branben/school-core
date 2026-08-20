@@ -335,6 +335,23 @@ def build_pr_body(
     # Only on the crew path: a direct-path PR must not advertise an artifact.
     if crew_used and artifact_path:
         body += f"- **Artifact:** `{artifact_path}`\n"
+    # A cited commit that does not resolve is worse than no commit at all,
+    # because a reader trusts the hash. crew_dispatch probes reachability BEFORE
+    # teardown and records a tri-state; surface False loudly and None honestly.
+    if crew_used:
+        reachable = (review_evidence or {}).get("commit_reachable")
+        if reachable is False:
+            body += (
+                "- ⚠️ **The crew's commit does NOT resolve.** Its branch lived in "
+                "a disposable worktree that has been torn down, so the cited SHA "
+                "is orphaned and the content of this PR was NOT taken from it. "
+                "Do not treat the commit as evidence.\n"
+            )
+        elif reachable is None:
+            body += (
+                "- **Commit reachability:** not determined (the probe could not "
+                "run) — treat the cited SHA as unverified.\n"
+            )
     return body
 
 
