@@ -82,6 +82,12 @@ class ReviewResult:
     confidence: float = 0.0
     difficulty: str = "medium"  # Used by .score for calibrated severity weights
     coevolution: Optional["CoevolutionReport"] = None  # Verification-co-evolution report, set by review_with_coevolution()
+    # True when the judge's raw output could not be parsed. Such a result is
+    # INCONCLUSIVE, not an approval: it carries verdict=PASS and no findings
+    # only because there is nothing to report, and callers gating on acceptance
+    # MUST NOT count it as a passing vote. See tests/test_lens_parse_fail_open.py
+    # (live run 32319064467 logged lens_parse_failed twice while COO scored 100).
+    parse_failed: bool = False
 
     @property
     def gaps(self) -> list[str]:
@@ -554,14 +560,20 @@ class AdversarialReviewer:
                 "lens_parse_failed",
                 extra={"lens": lens_name, "raw_len": len(raw), "raw": raw[:2000], "error": str(e)},
             )
-            return ReviewResult(verdict=Verdict.PASS, findings=[], lens_used=lens_name, difficulty=difficulty)
+            return ReviewResult(
+                verdict=Verdict.PASS, findings=[], lens_used=lens_name,
+                difficulty=difficulty, parse_failed=True,
+            )
 
         if data is None:
             logger.warning(
                 "lens_parse_failed",
                 extra={"lens": lens_name, "raw_len": len(raw), "raw": raw[:2000]},
             )
-            return ReviewResult(verdict=Verdict.PASS, findings=[], lens_used=lens_name, difficulty=difficulty)
+            return ReviewResult(
+                verdict=Verdict.PASS, findings=[], lens_used=lens_name,
+                difficulty=difficulty, parse_failed=True,
+            )
 
         findings = []
         string_count = 0

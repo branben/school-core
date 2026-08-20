@@ -615,12 +615,23 @@ def _run_two_judge_review(
     has_critical = any(
         getattr(f, "severity", None) == Severity.CRITICAL for f in all_findings
     )
+    # A judge whose raw output could not be parsed is INCONCLUSIVE, not
+    # approving. adversarial_reviewer's parse-failure branches return
+    # verdict=PASS with no findings, which is indistinguishable from a real
+    # approval — so a broken judge would actively vote to accept work nobody
+    # reviewed. Live run 32319064467 logged lens_parse_failed twice while COO
+    # scored 100 on the same issue. Never count that as a pass.
+    parse_failed = bool(
+        getattr(cto_result, "parse_failed", False)
+        or getattr(coo_result, "parse_failed", False)
+    )
     accepted = (
         cto_verdict == "PASS"
         and coo_verdict == "PASS"
         and cto_result.score >= 50
         and coo_result.score >= 50
         and not has_critical
+        and not parse_failed
     )
     combined_score = (cto_result.score + coo_result.score) / 2.0
 
