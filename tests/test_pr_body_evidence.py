@@ -108,6 +108,34 @@ class TestPrBodyAcceptanceStatus:
         )
 
 
+class TestPrBodyFlagsUnreviewedWork:
+    """A crashed review must be visible to whoever decides to merge.
+
+    _run_adversarial_review fails closed (review_failed=True) and omits its
+    score, so the review component silently falls back to the execution score.
+    The combined number then looks fully earned even though the check never ran.
+    """
+
+    def test_review_failure_is_surfaced(self):
+        body = _captured_body(review_evidence={
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "combined_score": 72.0, "accepted": True,
+            "review_failed": True, "error": "model unreachable",
+        })
+        assert "DID NOT RUN" in body, (
+            "PR body hides that the adversarial review crashed — a reviewer "
+            "would read the score as earned"
+        )
+        assert "model unreachable" in body, "the failure reason was dropped"
+        assert "UNREVIEWED" in body
+
+    def test_healthy_review_adds_no_warning(self):
+        """A guard that fires when nothing is wrong gets ignored."""
+        body = _captured_body()
+        assert "DID NOT RUN" not in body
+        assert "UNREVIEWED" not in body
+
+
 class TestPrBodyArtifactPath:
     def test_crew_artifact_path_is_surfaced(self):
         """B3: 'artifact path if crew path'."""

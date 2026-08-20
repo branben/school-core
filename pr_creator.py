@@ -298,6 +298,18 @@ def build_pr_body(
     else:
         acceptance_md = "not recorded"
 
+    # An inconclusive review must be visible to whoever decides to merge. When
+    # _run_adversarial_review crashes it fails closed (review_failed=True) and
+    # omits its score, so the review component silently falls back to the
+    # execution score — the number looks earned when the check never ran.
+    if review_evidence and review_evidence.get("review_failed"):
+        acceptance_md += (
+            "\n  - ⚠️ **The adversarial review DID NOT RUN** "
+            f"(`{str(review_evidence.get('error', 'unknown'))[:160]}`). "
+            "Its score contribution fell back to the execution score. "
+            "Treat this as UNREVIEWED, not approved."
+        )
+
     body = (
         f"## Automated PR for #{num}: {title}\n\n"
         f"_Created by Agent School — agent: {agent}_\n\n"

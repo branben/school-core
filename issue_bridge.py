@@ -875,9 +875,30 @@ def _run_adversarial_review(
         return review_result.to_dict()
     except Exception as e:
         sys.stderr.write(f"[issue_bridge] Adversarial review failed, falling back: {e}\n")
+        # FAIL CLOSED, second instance of the pattern fixed in ca400aa.
+        #
+        # This previously returned {"verdict": "PASS", "score": 50.0}: a crashed
+        # review substituted a PASSING verdict and a fabricated mid-range score.
+        # That score is not inert — the caller computes
+        #   review_score  = adversarial_review.get("score", execution_score)
+        #   combined_score = execution*0.5 + review*0.3 + heuristic*0.2
+        # so a review that never ran donated 50.0 at 30% weight toward
+        # acceptance, and "PASS" was byte-identical to a real approval.
+        #
+        # Three deliberate choices:
+        #  1. review_failed=True makes "the reviewer crashed" machine-readably
+        #     distinct from "the reviewer approved".
+        #  2. The verdict is NOT flipped to FAIL. The work may be fine and only
+        #     the checker broken; manufacturing a false rejection destroys signal
+        #     as surely as manufacturing a false approval.
+        #  3. `score` is OMITTED rather than set. The caller's
+        #     .get("score", execution_score) default then contributes the real
+        #     execution score instead of an invented number — 0.0 would be a
+        #     false rejection dressed as caution, 50.0 was the bug, absent is
+        #     the honest answer.
         return {
             "verdict": "PASS",
-            "score": 50.0,
+            "review_failed": True,
             "findings": [],
             "lens_used": "fallback",
             "confidence": 0.0,
@@ -1722,7 +1743,18 @@ def bridge_issues(
             sys.stderr.write(
                 f"[issue_bridge] Verification: {verification['verdict']} "
                 f"(exec={execution_score}, review={review_score}, "
-                f"heuristic={heuristic_score:.1f}, combined={combined_score:.1f})\n"
+                f"heuristic={heuristic_score:.1f}, combined={combined_score:.1f})"
+                # Surface an inconclusive review in the same line a human reads
+                # for the score. Without this the combined score looks fully
+                # earned even when the review never ran (see
+                # _run_adversarial_review's fail-closed block).
+                + (
+                    f" [REVIEW DID NOT RUN: {adversarial_review.get('error', 'unknown')[:120]}"
+                    " — review component fell back to the execution score]"
+                    if adversarial_review.get("review_failed")
+                    else ""
+                )
+                + "\n"
             )
 
             task_result["adversarial_review"] = adversarial_review
