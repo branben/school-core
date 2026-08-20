@@ -85,6 +85,12 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         fallback_reason=None,
         teardown_ok=True,
         orca_worktree_id="repo::/tmp/crew-worktree",
+        artifact_identity={
+            "branch": "fm/task-42",
+            "commit": "abc123",
+            "base": "main@def456",
+            "changed_files": [],
+        },
     )
     spawn_args, spawn_kwargs = calls[0]
     args = spawn_args
