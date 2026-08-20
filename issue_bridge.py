@@ -193,6 +193,50 @@ def _save_retries(retries: dict[int, int]) -> None:
 _LABELS_ENSURED: set[str] = set()
 
 
+def _order_crew_first(issues: list, is_crew_eligible) -> list:
+    """Stable-partition ``issues`` so crew-eligible ones are offered first.
+
+    WHY: the crew has never completed a real issue, and the cause is ordering,
+    not budget. ``crew_admission.decide_admission`` needs
+    ``crew_timeout(900) * cap(1) + reserve(30) = 930s`` remaining, but the
+    admission check lives inside the per-issue loop and the loop ran in plain
+    fetch order. Measured on live run 32319064467: the direct path costs ~634s
+    per issue, so two issues burned 21 minutes and the first crew check landed
+    1351s into an 1800s job with only 449s left — denied, every time.
+
+    Offering the crew-eligible issue first puts the check at ~83s elapsed with
+    ~1717s remaining: enough for a diploma task (720s) plus ~787s of grading
+    headroom. No timeout inflation, no capability cut.
+
+    The partition is STABLE: issue order carries retry/priority intent
+    elsewhere in the bridge, so only the eligible/ineligible split moves.
+
+    ``is_crew_eligible`` may raise — capability resolution legitimately fails
+    ("No role found for score 24.13" in that same run). A raising probe means
+    "treat as ineligible", never "drop the issue": losing an issue here would
+    silently starve it forever.
+
+    NOTE: this fixes ADMISSION only. A second blocker sits behind it — the
+    artifact handshake at crew_dispatch.py:860-910 has rejected every real
+    issue that reached "done" (artifact_evidence_missing,
+    artifact_identity_mismatch). This reordering gets us to that experiment.
+    """
+    eligible: list = []
+    rest: list = []
+    for issue in issues:
+        try:
+            hit = bool(is_crew_eligible(issue))
+        except Exception as e:
+            sys.stderr.write(
+                f"[issue_bridge] crew-eligibility probe failed for "
+                f"#{issue.get('issue_number')}: {type(e).__name__}: {e} — "
+                "treating as direct-path\n"
+            )
+            hit = False
+        (eligible if hit else rest).append(issue)
+    return eligible + rest
+
+
 def _ensure_school_labels(repo: str) -> None:
     """Create the Agent School lifecycle labels if they don't exist yet.
 
@@ -1078,6 +1122,18 @@ def bridge_issues(
     # issue; this also gives all issues in a cycle a consistent baseline.
     shadow_history = load_shadow_history(PROCESSED_FILE.parent / "last_run.json")
     run_batch = RunBatch(PROCESSED_FILE.parent / "last_run.json")
+
+    # Offer crew-eligible issues FIRST. The admission check lives inside the
+    # loop below and needs 930s remaining (crew_timeout 900 * cap 1 + reserve
+    # 30); the direct path costs ~634s per issue, so in fetch order the crew was
+    # never reachable — live run 32319064467 denied it on every issue with
+    # insufficient_cycle_time. Crew-first puts the check near cycle start with
+    # ~1717s available. Stable partition, so retry/priority intent is preserved.
+    if crew_enabled:
+        issues = _order_crew_first(
+            issues,
+            lambda i: _resolve_crew_capability(i, store, force_agent) is not None,
+        )
 
     for issue in issues:
         num = issue["issue_number"]
