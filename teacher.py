@@ -22,7 +22,14 @@ Usage:
 
     # Or from conductor.py (principal):
     mgr = OrcaExecutionManager()
-    path = mgr.create_worktree("teacher-cto")
+    # NOTE: create_worktree_persistent, NOT create_worktree. The plain form
+    # auto-suffixes when the name is taken (teacher-cto-2, -3, …) and that
+    # suffix spray is the zombie-worktree pressure — 11 sprayed teacher
+    # worktrees and 51 terminals were cleaned up on 2026-08-19 because this
+    # example previously demonstrated the wrong call. The persistent form
+    # rediscovers by prefix and prunes stale admin entries.
+    # See worktree_bloat_guard.py (N9) for the boundary that now detects this.
+    path = mgr.create_worktree_persistent("teacher-cto")
     handle = mgr.create_terminal(title="teacher-cto")
     mgr._run_orca(["terminal", "send", "--terminal", handle,
                    "--text", 'python3 -c "from teacher import TeacherWorktree; '
