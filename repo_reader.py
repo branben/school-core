@@ -62,6 +62,26 @@ def _git(repo_path: Path, *args, timeout: int = 30) -> str:
         return ""
 
 
+def _has_live_worktrees(repo_path: Path) -> bool:
+    """Return True if any git worktree is still attached to *repo_path*.
+
+    Crews are dispatched as worktrees of this shared clone (Orca's
+    ``worktree create --repo <clone>`` is the standard ``git worktree add``
+    contract, and git registers every attached worktree under
+    ``<repo>/.git/worktrees/<name>`` — the same path ``orca_executor`` itself
+    treats as authoritative for worktree state). Deleting the clone while one
+    is live orphans the worktree: its ``.git`` link points back into the
+    clone we just removed, so the crew loses its cwd and can no longer append
+    its status file. This check is repo-scoped (each clone has its own
+    ``.git/worktrees``) and fully decoupled from crew bookkeeping.
+    """
+    wt_dir = repo_path / ".git" / "worktrees"
+    if not wt_dir.is_dir():
+        return False
+    # A registered worktree is a subdirectory entry; an empty dir means none.
+    return any(p.is_dir() for p in wt_dir.iterdir())
+
+
 def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     """Get or create a cached clone of a GitHub repo.
 
@@ -71,9 +91,18 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     clean depth-1 clone — required for dispatch so a student never starts from
     a contaminated base tree.
 
+    SAFETY (B8 fix): when ``force_fresh=True`` would discard a clone that still
+    has live crew worktrees attached, we MUST NOT delete it — that orphans the
+    crews (see ``_has_live_worktrees``). In that case force_fresh is downgraded
+    to a safe ``git pull --ff-only`` refresh so the worktrees keep a valid
+    ``.git`` linkage. The dispatch that requested force_fresh is itself about to
+    spawn a crew, so a pristine re-clone is impossible anyway; the refreshed
+    base is the safe fallback.
+
     Args:
         repo_slug: ``owner/repo`` to clone.
-        force_fresh: If True, remove the cache dir and re-clone from origin.
+        force_fresh: If True, remove the cache dir and re-clone from origin
+            — UNLESS live worktrees are attached, in which case refresh instead.
 
     Returns:
         Path to the clone, or None on failure.
@@ -82,9 +111,24 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     repo_path = CACHE_DIR / repo_slug.replace("/", "__")
 
     if force_fresh and repo_path.exists():
-        # Discard any cached clone (may carry uncommitted/diverged state) so the
-        # student starts from a clean base tree. Clone lands in the stable
-        # cache path (not a throwaway temp dir) so it can be reused/swept.
+        # The shared clone may have live crew worktrees attached (see
+        # _has_live_worktrees). rmtree-ing it would orphan them — the crew
+        # loses its cwd and can no longer append status. When crews are active
+        # we MUST NOT delete the clone. Downgrade force_fresh to a safe refresh
+        # (git pull --ff-only) so the worktrees keep a valid .git linkage, and
+        # let dispatch proceed from the refreshed base.
+        if _has_live_worktrees(repo_path):
+            sys.stderr.write(
+                f"[repo_reader] force_fresh requested for {repo_slug} but live "
+                f"worktrees are attached to {repo_path} — skipping rmtree to "
+                f"avoid orphaning active crews; refreshing instead\n"
+            )
+            _git(repo_path, "pull", "--ff-only")
+            return repo_path
+        # No live worktrees: discard any cached clone (may carry
+        # uncommitted/diverged state) so the student starts from a clean base
+        # tree. Clone lands in the stable cache path (not a throwaway temp dir)
+        # so it can be reused/swept.
         shutil.rmtree(repo_path, ignore_errors=True)
 
     if repo_path.exists() and (repo_path / ".git").exists():
