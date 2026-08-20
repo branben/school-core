@@ -1520,10 +1520,21 @@ def bridge_issues(
                 canonical_packet is not None and canonical_packet.is_authoritative
             ) or bool(_review.get("cto_verdict") or _review.get("coo_verdict"))
             if _reviewed and _review.get("accepted") is False:
+                # `combined` is a QUALITY figure, not the gate. ReviewResult.score
+                # is 100 minus difficulty-weighted findings penalties
+                # (adversarial_reviewer.py:102-117), while the verdict is FAIL iff
+                # a CRITICAL/HIGH finding exists. So a high score beside a FAIL
+                # verdict is arithmetically correct and NOT a contradiction —
+                # #341 logged `cto=FAIL coo=FAIL combined=82.0`, which reads as
+                # incoherent unless the score is labelled. Acceptance itself
+                # already ignores the score when a verdict is FAIL
+                # (director.py:628-635), so the defect was purely presentational.
                 _reject_reason = (
                     f"two-judge review rejected: cto={_review.get('cto_verdict')} "
                     f"coo={_review.get('coo_verdict')} "
-                    f"combined={_review.get('combined_score')}"
+                    f"quality_score={_review.get('combined_score')}"
+                    "/100 (quality only — the verdict is the gate; FAIL fires on "
+                    "any CRITICAL/HIGH finding regardless of score)"
                 )
                 sys.stderr.write(f"[issue_bridge] #{num}: {_reject_reason} — school-failed\n")
                 rejection_outcome = _outcome_fields(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -103,11 +105,42 @@ class RoleLoader:
         return role
 
     def get_role(self, agent_score: float, domain: str | None = None) -> Role:
+        """Resolve the lane for ``agent_score``, clamping to the lowest on a miss.
+
+        The gates are integer-bounded and adjacent with no overlap:
+
+            student   0 - 24    (config/roles/student.yaml:26-27)
+            teacher  25 - 74    (config/roles/teacher.yaml:29-30)
+            faculty  75 - 100   (config/roles/faculty.yaml:30-31)
+
+        Scores are FLOATS (averaged review scores), so every value in the open
+        intervals (24, 25) and (74, 75) matched no lane and this raised. Live run
+        32330426471 hit exactly that on issue #338 — "No role found for score
+        24.13" — which aborted capability resolution and dropped the issue to the
+        direct path.
+
+        Clamping to ROLE_NAMES[0] rather than raising, because student IS the
+        bottom/remedial lane by design (student.yaml:21-22: "Cannot solve after 2
+        attempts -> escalate to Teacher"); a low score is meant to route DOWN,
+        not to abort dispatch.
+
+        Clamping DOWN specifically: an unmatched score must never be promoted.
+        Falling back to the lowest lane can only under-assign capability, which
+        is recoverable via the documented escalation path — whereas defaulting to
+        the nearest or highest lane would hand work to an unqualified-for-it lane
+        silently. Widening a gate would fix 24.13 and leave 74.x to be
+        rediscovered; this closes the whole class.
+        """
         for role_name in ROLE_NAMES:
             role = self.load_role(role_name)
             if role.gate_min <= agent_score <= role.gate_max:
                 return role
-        raise ValueError(f"No role found for score {agent_score}")
+        sys.stderr.write(
+            f"[role_loader] score {agent_score} matched no lane gate "
+            f"(gaps exist at the integer boundaries); clamping to "
+            f"'{ROLE_NAMES[0]}' — never promoting on a miss\n"
+        )
+        return self.load_role(ROLE_NAMES[0])
 
     def get_role_definition(self, role_name: str) -> dict:
         if role_name not in self._definitions:

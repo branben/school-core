@@ -320,7 +320,14 @@ def build_pr_body(
         + ("..." if len(response_text) > 800 else "") + "\n\n"
         f"### Acceptance Evidence\n\n"
         f"- **Acceptance:** {acceptance_md}\n"
-        f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — score {score:.0f}\n"
+        # Label the score as QUALITY, not a gate. ReviewResult.score is 100 minus
+        # difficulty-weighted findings penalties (adversarial_reviewer.py:102-117)
+        # while the verdict is FAIL iff a CRITICAL/HIGH finding exists — so a high
+        # score can sit beside a FAIL verdict and be arithmetically correct.
+        # Live #341 logged `cto=FAIL coo=FAIL combined=82.0`; unlabelled, a reader
+        # draws the opposite conclusion from the verdict.
+        f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — "
+        f"quality {score:.0f}/100 _(quality only; the verdict is the gate)_\n"
         f"- **Verify gate:** {verify_md}\n"
         f"- **Pre-merge check (Entire):** {entire_md}\n"
         f"- **Path:** {'crew' if crew_used else 'direct'}\n"

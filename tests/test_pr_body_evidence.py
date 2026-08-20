@@ -108,6 +108,45 @@ class TestPrBodyAcceptanceStatus:
         )
 
 
+class TestScoreIsLabelledAsQualityNotGate:
+    """A bare score beside a FAIL verdict misleads the reader.
+
+    ReviewResult.score is 100 minus difficulty-weighted findings penalties
+    (adversarial_reviewer.py:102-117); the verdict is FAIL iff a CRITICAL/HIGH
+    finding exists. Both are correct, and they can point opposite ways — live
+    #341 logged `cto=FAIL coo=FAIL combined=82.0`. Acceptance already ignores
+    the score when a verdict is FAIL (director.py:628-635), so the only defect
+    is presentational: the number must be labelled.
+    """
+
+    def test_score_is_labelled_quality(self):
+        body = _captured_body()
+        assert "quality" in body.lower(), (
+            "the review score is printed bare; a reader sees 82 next to FAIL and "
+            "draws the opposite conclusion from the verdict"
+        )
+
+    def test_body_says_the_verdict_is_the_gate(self):
+        body = _captured_body()
+        assert "verdict is the gate" in body.lower(), (
+            "nothing tells the reader which of score/verdict is authoritative"
+        )
+
+    def test_high_quality_with_fail_verdict_is_not_contradictory(self):
+        """The #341 shape must render coherently."""
+        body = _captured_body(review_evidence={
+            "cto_verdict": "FAIL", "coo_verdict": "FAIL",
+            "combined_score": 82.0, "accepted": False,
+        })
+        assert "FAIL" in body
+        assert "82" in body
+        assert "quality" in body.lower(), (
+            "the #341 shape (both judges FAIL, score 82) still renders as an "
+            "unlabelled contradiction"
+        )
+        assert "reject" in body.lower(), "acceptance status lost"
+
+
 class TestPrBodyFlagsUnreviewedWork:
     """A crashed review must be visible to whoever decides to merge.
 
