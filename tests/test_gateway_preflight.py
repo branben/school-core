@@ -30,7 +30,12 @@ import urllib.error
 
 import pytest
 
-from gateway_preflight import GatewayDown, check_gateway, require_gateway
+from gateway_preflight import (
+    GatewayDown,
+    check_gateway,
+    check_gateway_with_warmup,
+    require_gateway,
+)
 
 
 class TestCheckGateway:
@@ -108,3 +113,106 @@ class TestRequireGateway:
             "gateway_preflight.check_gateway", lambda **kw: (True, "HTTP 200")
         )
         require_gateway()  # must not raise
+
+
+class TestWarmupRetry:
+    """Cold-start tolerance without taxing the happy path.
+
+    Measured on the live gateway (2026-08-20): probe1 12.31s, probe2 0.030s,
+    probe3 0.033s. A cron firing during that first compile loses its whole
+    preflight budget and kills a cycle that would have worked seconds later.
+    The fix must distinguish "cold and compiling" from "dead" rather than
+    widening the budget, because every widening slows the dead case — the one
+    case this module exists to catch fast.
+    """
+
+    def test_cold_then_warm_is_healthy(self, monkeypatch):
+        """First probe times out (compiling), second answers -> healthy."""
+        calls = []
+
+        def _cold_then_warm(url, timeout):
+            calls.append(timeout)
+            if len(calls) == 1:
+                raise TimeoutError("timed out")
+            return 200, "ok"
+
+        monkeypatch.setattr("gateway_preflight._probe", _cold_then_warm)
+        slept = []
+        ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
+
+        assert ok is True, "a healthy-but-cold gateway must not be reported down"
+        assert len(calls) == 2, "must retry exactly once, not loop"
+        assert slept == [10], "must pause once between probes"
+        # The detail has to preserve the first failure or the log hides the race.
+        assert "warmup retry" in detail
+        assert "timed out" in detail
+
+    def test_refused_twice_attempts_only_one_probe(self, monkeypatch):
+        """ECONNREFUSED is not a cold start: fail fast, never sleep.
+
+        A compiling gateway has already accepted the socket; a refused
+        connection means there is no listener. Retrying it only burns the
+        warmup sleep for a guaranteed second failure.
+        """
+        calls = []
+
+        def _refused(url, timeout):
+            calls.append(timeout)
+            raise urllib.error.URLError(
+                ConnectionRefusedError(61, "Connection refused")
+            )
+
+        monkeypatch.setattr("gateway_preflight._probe", _refused)
+        slept = []
+        ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
+
+        assert ok is False
+        assert len(calls) == 1, "refused must NOT be retried"
+        assert slept == [], "refused must not pay the warmup sleep"
+        assert "refused" in detail.lower()
+
+    def test_healthy_first_probe_never_sleeps(self, monkeypatch):
+        """The green path must stay ~0.03s: one probe, no sleep."""
+        calls = []
+
+        def _healthy(url, timeout):
+            calls.append(timeout)
+            return 200, "ok"
+
+        monkeypatch.setattr("gateway_preflight._probe", _healthy)
+        slept = []
+        ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
+
+        assert ok is True
+        assert len(calls) == 1, "a healthy gateway must not pay a retry probe"
+        assert slept == [], "a healthy gateway must not pay the warmup sleep"
+        assert detail == "HTTP 200", "green detail must stay clean"
+
+    def test_sleep_is_injectable_and_timeout_per_probe(self, monkeypatch):
+        """The suite must never really sleep, and each probe keeps the short budget.
+
+        Guards the same invariant as test_probe_timeout_is_bounded_and_down: a
+        retry must repeat the probe, NOT sum the budget into one long hang.
+        """
+        calls = []
+
+        def _always_timeout(url, timeout):
+            calls.append(timeout)
+            raise TimeoutError("timed out")
+
+        monkeypatch.setattr("gateway_preflight._probe", _always_timeout)
+
+        def _boom(_seconds):  # real time.sleep would make the suite slow
+            raise AssertionError("sleep_fn was not injected")
+
+        monkeypatch.setattr("gateway_preflight.time.sleep", _boom)
+
+        slept = []
+        ok, detail = check_gateway_with_warmup(
+            timeout=5, warmup_sleep=0.25, sleep_fn=slept.append
+        )
+
+        assert ok is False
+        assert calls == [5, 5], "each probe gets the full short timeout, not the sum"
+        assert slept == [0.25], "warmup_sleep must be honoured via the injected fn"
+        assert "warmup retry also failed" in detail

@@ -22,17 +22,23 @@ Design notes:
   timeout; a preflight that hangs defeats its own purpose.
 * **Auth failures count as down.** A reachable-but-unauthorized gateway (401 or
   403) produces the same grind as an absent one, so it is not "healthy".
-* **No retries.** This is a liveness question, not a work attempt. Retrying here
-  would reintroduce the delay we are trying to eliminate.
+* **No retries on the happy path.** This is a liveness question, not a work
+  attempt. A healthy gateway answers in ~0.03s and must never pay a retry cost.
+* **One warmup retry, on a retryable failure only.** A cold gateway compiles the
+  route on first hit and can exceed the probe budget; a dead one refuses
+  instantly. Those are different states and the probe must not conflate them.
+  See :func:`check_gateway_with_warmup`.
 """
 
 from __future__ import annotations
 
+import errno
 import json
 import os
+import time
 import urllib.error
 import urllib.request
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 # Default probe target. Mirrors executor.OMNIROUTE_BASE's host:port — the same
 # process serves /v1 and /a2a, so one probe covers both transports.
@@ -50,7 +56,19 @@ DEFAULT_GATEWAY_URL = os.environ.get(
 # this check matters most. 20s still fails ~90x faster than the 30-minute
 # grind it replaces, and a genuinely dead gateway refuses the connection
 # immediately (ECONNREFUSED) rather than consuming the budget.
+#
+# 20s is NOT raised to cover a slower cold start. Cold start is compile time and
+# varies with machine load, so any fixed budget is a guess that eventually loses
+# the race — and every increase makes the genuinely-dead case proportionally
+# slower to detect, which is the one case this module exists to make fast.
+# ``check_gateway_with_warmup`` handles cold starts by retrying instead, which
+# costs nothing on a healthy gateway.
 DEFAULT_TIMEOUT_SECONDS = 20
+
+# Pause between the first failed probe and the warmup retry. Only ever paid on a
+# path that was already going to fail, so it buys cold-start tolerance without
+# taxing a green cycle.
+DEFAULT_WARMUP_SLEEP_SECONDS = 10
 
 
 class GatewayDown(RuntimeError):
@@ -78,34 +96,117 @@ def _probe(url: str, timeout: int) -> Tuple[int, str]:
         return e.code, str(e.reason)
 
 
+def _is_connection_refused(exc: BaseException) -> bool:
+    """True when *exc* means nothing is listening on the port.
+
+    A refused connection is NOT a cold start: a compiling gateway has already
+    accepted the socket and is simply slow to answer, whereas ECONNREFUSED means
+    there is no listener at all. Retrying the latter only burns the warmup sleep,
+    so the two must be distinguished — ``check_gateway`` collapses both into a
+    single ``unreachable:`` string, which is fine for reporting but useless for
+    deciding whether a retry is worthwhile.
+    """
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ConnectionRefusedError):
+            return True
+        if getattr(current, "errno", None) == errno.ECONNREFUSED:
+            return True
+        # urllib wraps the OSError in URLError.reason; __cause__ covers
+        # explicit re-raises.
+        nxt = getattr(current, "reason", None)
+        if not isinstance(nxt, BaseException):
+            nxt = current.__cause__
+        current = nxt if isinstance(nxt, BaseException) else None
+    return False
+
+
+def _probe_outcome(url: str, timeout: int) -> Tuple[bool, str, bool]:
+    """Return ``(healthy, detail, retryable)`` for a single probe.
+
+    ``retryable`` is True only for failures a warmup retry could plausibly fix:
+    a timeout or a transport hiccup. Connection-refused and HTTP-level answers
+    (401/403/5xx) are decided answers, not warmup states.
+    """
+    try:
+        status, reason = _probe(url, timeout)
+    except urllib.error.URLError as e:
+        return False, f"unreachable: {e.reason}", not _is_connection_refused(e)
+    except TimeoutError as e:
+        return False, f"probe timed out after {timeout}s: {e}", True
+    except OSError as e:
+        return False, f"unreachable: {e}", not _is_connection_refused(e)
+    except Exception as e:  # unexpected transport shape — still a failure
+        return False, f"probe error: {type(e).__name__}: {e}", False
+
+    if 200 <= status < 300:
+        return True, f"HTTP {status}", False
+    if status in (401, 403):
+        # Reachable but unauthorized is NOT healthy: every model call will fail
+        # exactly as it does when the process is absent. Warmup cannot fix
+        # credentials, so this is never retryable.
+        return (
+            False,
+            f"HTTP {status} {reason} — gateway reachable but not authorized",
+            False,
+        )
+    return False, f"HTTP {status} {reason}", False
+
+
 def check_gateway(
     url: Optional[str] = None,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> Tuple[bool, str]:
     """Return ``(healthy, detail)`` for the gateway.
 
-    Never raises: a preflight that explodes is just another failure mode to
-    handle at the call site. ``detail`` is short and log-ready.
+    Single probe, no retry — see :func:`check_gateway_with_warmup` for the
+    cold-start-tolerant wrapper. Never raises: a preflight that explodes is just
+    another failure mode to handle at the call site. ``detail`` is short and
+    log-ready.
     """
     target = url or DEFAULT_GATEWAY_URL
-    try:
-        status, reason = _probe(target, timeout)
-    except urllib.error.URLError as e:
-        return False, f"unreachable: {e.reason}"
-    except TimeoutError as e:
-        return False, f"probe timed out after {timeout}s: {e}"
-    except OSError as e:
-        return False, f"unreachable: {e}"
-    except Exception as e:  # unexpected transport shape — still a failure
-        return False, f"probe error: {type(e).__name__}: {e}"
+    healthy, detail, _ = _probe_outcome(target, timeout)
+    return healthy, detail
 
-    if 200 <= status < 300:
-        return True, f"HTTP {status}"
-    if status in (401, 403):
-        # Reachable but unauthorized is NOT healthy: every model call will fail
-        # exactly as it does when the process is absent.
-        return False, f"HTTP {status} {reason} — gateway reachable but not authorized"
-    return False, f"HTTP {status} {reason}"
+
+def check_gateway_with_warmup(
+    url: Optional[str] = None,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    warmup_sleep: float = DEFAULT_WARMUP_SLEEP_SECONDS,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Tuple[bool, str]:
+    """Like :func:`check_gateway`, with ONE retry for a cold gateway.
+
+    THE RACE THIS CLOSES: the gateway compiles its route on first hit (measured
+    17.5s cold, then 0.02-0.03s steady-state). A cron that fires during warmup
+    spends the whole preflight budget on that first compile and reports a healthy
+    gateway as down, killing a cycle that would have worked seconds later.
+
+    WHY RETRY RATHER THAN A BIGGER BUDGET: cold start is compile time and scales
+    with machine load, so a fixed budget is a guess that eventually loses; and
+    raising it slows detection of the genuinely-dead case this module exists to
+    catch fast. A retry is paid ONLY on a failing path.
+
+    COST CONTRACT:
+      * healthy first probe  -> exactly one probe, NO sleep (~0.03s)
+      * refused / 4xx / 5xx  -> exactly one probe, NO sleep (decided answer)
+      * timeout or hiccup    -> two probes with one ``warmup_sleep`` between
+
+    Each probe gets the full short ``timeout`` independently; the budget is never
+    summed into one long hang.
+    """
+    target = url or DEFAULT_GATEWAY_URL
+    healthy, detail, retryable = _probe_outcome(target, timeout)
+    if healthy or not retryable:
+        return healthy, detail
+
+    sleep_fn(warmup_sleep)
+    healthy, retry_detail, _ = _probe_outcome(target, timeout)
+    if healthy:
+        return True, f"{retry_detail} (after warmup retry; first probe: {detail})"
+    return False, f"{retry_detail} (warmup retry also failed; first probe: {detail})"
 
 
 def require_gateway(
@@ -132,8 +233,11 @@ def main() -> int:
 
     Exit 0 when healthy, 1 when not. Prints one line either way so the CI log
     says what happened without needing the exception text.
+
+    Uses the warmup-tolerant check: this is the path a cron fires, so it is
+    exactly where a cold gateway must not be mistaken for a dead one.
     """
-    healthy, detail = check_gateway()
+    healthy, detail = check_gateway_with_warmup()
     payload = {"gateway": DEFAULT_GATEWAY_URL, "healthy": healthy, "detail": detail}
     print(json.dumps(payload))
     if not healthy:
