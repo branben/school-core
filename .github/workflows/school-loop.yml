@@ -194,6 +194,7 @@ jobs:
       # numbers honest and keep cycles short.
       CREW_MAX_PER_CYCLE: "1"
       CREW_RUNNER_SLOTS: "1"
+      MAX_ISSUES_PER_CYCLE: "2"
       # Match the code default (issue_bridge.py:1028) and the job timeout, so
       # the budget can never promise time GitHub will not grant.
       CREW_CYCLE_BUDGET_SECONDS: "1800"
