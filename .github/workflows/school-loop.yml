@@ -151,6 +151,10 @@ jobs:
       # The secret that unlocks model calls — REQUIRED (execution fails loudly
       # without it). Same wiring as CI's integration job.
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # Model API key for the spawned agent — Hermes needs this to make LLM calls.
+      # Without it, the agent starts, gets 402, exits silently (no status file).
+      # The spawned agent uses this key via the school-core gateway to reach Nous.
+      OPENROUTER_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
       # AgentMail key for school-failed / retry-pending alerts. The bridge
       # degrades gracefully (no crash, no alert) when unset.
       AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
