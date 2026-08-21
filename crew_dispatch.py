@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 import time
@@ -797,6 +798,77 @@ def sweep_stale_runs(
     return removed
 
 
+def _read_dotenv_value(path: Path, name: str) -> str:
+    """Best-effort read of a ``NAME=VALUE`` line from a dotenv file.
+
+    Dependency-free (the project does not use python-dotenv). Skips comments
+    and blank lines; strips optional surrounding quotes.
+    """
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+def _read_yaml_openrouter_key(path: Path) -> str:
+    """Best-effort extraction of an OpenRouter key from a Hermes config.yaml.
+
+    Hermes persists provider keys under ~/.hermes/config.yaml. We do NOT pull
+    in a YAML parser; a couple of tolerant regex scans cover the documented
+    shapes (a top-level ``OPENROUTER_API_KEY:`` and a nested
+    ``openrouter:``/``api_key:`` block). Returns "" when nothing matches.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    m = re.search(r"^OPENROUTER_API_KEY:\s*\"?([^\"\n]+)\"?", text, re.MULTILINE)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"openrouter:.*?api_key:\s*\"?([^\"\n]+)\"?", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def _openrouter_api_key() -> str:
+    """Resolve ``OPENROUTER_API_KEY`` for the spawned crew agent.
+
+    The bridge process carries the key in its environment, but it is lost by
+    the time the spawned Hermes starts (the spawn crosses a process boundary
+    and/or fm-spawn.sh rebuilds the child env). We forward it explicitly so
+    the crew can reach OpenRouter.
+
+    Source order: live ``os.environ`` -> the repo ``.env`` (the project's
+    secrets store, alongside ``OMNIROUTE_API_KEY``) -> Hermes ``config.yaml``
+    if the key was persisted there. Returns "" when nowhere found.
+    """
+    key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    if key:
+        return key
+    key = _read_dotenv_value(
+        Path(__file__).resolve().parent / ".env", "OPENROUTER_API_KEY"
+    )
+    if key:
+        return key
+    cfg = Path.home() / ".hermes" / "config.yaml"
+    if cfg.is_file():
+        key = _read_yaml_openrouter_key(cfg)
+        if key:
+            return key
+    return ""
+
+
 def _spawn(
     crew_id: str,
     project_dir: Path,
@@ -830,8 +902,27 @@ def _spawn(
     # (replacing them with the real brief path and opinput binary). The
     # placeholders MUST stay bare — a leading '$' makes bash try to expand
     # "$__BRIEF__" as an undefined variable, which resolves to the empty
-    # string and leaves the wrapper with no brief, so the agent never starts.
+    # string and leaves the wrapper with no brief (observed 2026-08-18).
     harness = f'{wrapper} "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+
+    # --- API-key injection ----------------------------------------------------
+    # fm-spawn.sh forwards only FM_* variables into the pane; everything else
+    # from the bridge's os.environ (including OPENROUTER_API_KEY) is dropped
+    # at the pane boundary. The pane is a fresh shell, so without the key
+    # Hermes has no credential for its first model call and the crew sits
+    # silent until startup_grace fires. Prepend the key to the launch command
+    # as an export; shlex.quote keeps it shell-safe. The key is only ever set
+    # in the bridge's environment, never committed.
+    #
+    # Source the key from the bridge's live os.environ, then fall back to the
+    # repo .env and Hermes config.yaml (_openrouter_api_key). Sourcing ONLY
+    # from os.environ silently no-ops whenever school-core runs as a separate
+    # process that did not inherit the bridge's environment — which is exactly
+    # the "present in the bridge, lost by spawn time" failure. The multi-source
+    # resolver restores it.
+    key = _openrouter_api_key()
+    if key:
+        harness = f"export OPENROUTER_API_KEY={shlex.quote(key)}; {harness}"
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
     # polls for status. fm-spawn falls back to its OWN clone root when

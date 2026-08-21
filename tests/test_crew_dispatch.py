@@ -179,7 +179,90 @@ def test_spawn_harness_uses_bare_placeholders_not_dollar_prefixed(
     )
 
 
-def test_artifact_identity_normalizes_markdown_wrappers():
+def test_openrouter_key_resolves_from_environ(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "env-key-1")
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    assert crew_dispatch._openrouter_api_key() == "env-key-1"
+
+
+def test_openrouter_key_falls_back_to_dotenv(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(
+        crew_dispatch, "_read_dotenv_value",
+        lambda path, name: "dotenv-key-2" if name == "OPENROUTER_API_KEY" else "",
+    )
+    assert crew_dispatch._openrouter_api_key() == "dotenv-key-2"
+
+
+def test_openrouter_key_returns_empty_when_nowhere(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
+    assert crew_dispatch._openrouter_api_key() == ""
+
+
+def test_spawn_harness_exports_openrouter_key_when_resolvable(
+    monkeypatch, tmp_path
+):
+    """When the key is resolvable, _spawn must embed
+    `export OPENROUTER_API_KEY=...` at the front of the harness command, because
+    fm-spawn.sh drops non-FM_* env vars at the pane boundary — the only channel
+    that survives is the command string itself. Without this, the spawned
+    Hermes has no credential and the crew sits silent.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "secret-key-xyz")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-key",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert harness.startswith("export OPENROUTER_API_KEY="), (
+        "harness did not export OPENROUTER_API_KEY — spawned Hermes would "
+        "have no credential"
+    )
+    assert "secret-key-xyz" in harness
+    # The wrapper + brief substitution must still be intact after the prefix.
+    assert "__BRIEF__" in harness
+    assert "__OPINPUT__" in harness
+
+
+def test_spawn_harness_omits_openrouter_export_when_key_missing(
+    monkeypatch, tmp_path
+):
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-nokey",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert "OPENROUTER_API_KEY" not in harness, (
+        "harness should not leak an OPENROUTER_API_KEY export when none "
+        "is resolvable"
+    )
     status = "done: branch=fm/task-58 commit=abc123 base=main@def456"
     report = (
         "- branch: `fm/task-58`\n"
