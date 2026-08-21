@@ -826,7 +826,12 @@ def _spawn(
         else Path.home() / ".local/bin/hermes-fm-wrapper"
     )
     wrapper = os.environ.get("FM_WRAPPER", str(default_wrapper))
-    harness = f'{wrapper} "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
+    # fm-spawn.sh substitutes the bare tokens __BRIEF__/__OPINPUT__ itself
+    # (replacing them with the real brief path and opinput binary). The
+    # placeholders MUST stay bare — a leading '$' makes bash try to expand
+    # "$__BRIEF__" as an undefined variable, which resolves to the empty
+    # string and leaves the wrapper with no brief, so the agent never starts.
+    harness = f'{wrapper} "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
     # polls for status. fm-spawn falls back to its OWN clone root when

@@ -138,6 +138,47 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert str(tmp_path) not in json.dumps(runs[-1])
 
 
+def test_spawn_harness_uses_bare_placeholders_not_dollar_prefixed(
+    monkeypatch, tmp_path
+):
+    """The harness template must contain the BARE tokens __OPINPUT__ and
+    __BRIEF__ — fm-spawn.sh substitutes them. A leading '$' (
+    "$__BRIEF__") makes bash expand an undefined variable to the empty string,
+    so the wrapper receives no brief and the agent never starts (Phymora,
+    crew_dispatch.py:829). Lock the fix: the harness must contain neither
+    "$__OPINPUT__" nor "$__BRIEF__", and must still contain the bare tokens.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        captured["env"] = kwargs.get("env")
+        # Never actually spawn; return a neutral success-shaped process.
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-1",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert "__OPINPUT__" in harness
+    assert "__BRIEF__" in harness
+    # The regression guard: no '$' glued to either placeholder.
+    assert "$__OPINPUT__" not in harness, (
+        "harness still dollar-prefixes __OPINPUT__ — bash would expand it "
+        "to empty and the agent would never start"
+    )
+    assert "$__BRIEF__" not in harness, (
+        "harness still dollar-prefixes __BRIEF__ — bash would expand it to "
+        "empty and the wrapper would get no brief"
+    )
+
+
 def test_artifact_identity_normalizes_markdown_wrappers():
     status = "done: branch=fm/task-58 commit=abc123 base=main@def456"
     report = (
