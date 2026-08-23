@@ -63,33 +63,65 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runner_online: ${{ steps.check.outputs.runner_online }}
+      status: ${{ steps.check.outputs.status }}
     steps:
       - name: Check school-core-mac runner liveness
         id: check
         env:
-          # The runners API needs repo-admin scope; the default GITHUB_TOKEN
-          # gets 403. RUNNER_ADMIN_TOKEN holds the repo owner's gh token.
-          # HARDENING REQUIRED: replace with a fine-grained PAT scoped to
-          # this repo with ONLY "Administration: Read".
           GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
         run: |
-          # Guard the API call: a missing/expired RUNNER_ADMIN_TOKEN must degrade
-          # to "runner offline" (skip execution) — never fail the gate, because
-          # the hosted `loop` job publishes committed board state even when
-          # execute is skipped. A token misconfig must not take down the board.
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
-            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length' 2>/dev/null || true)
-          ONLINE=${ONLINE:-0}
-          case "$ONLINE" in
-            ''|*[!0-9]*) ONLINE=0 ;;
-          esac
-          if [ "$ONLINE" -ge 1 ]; then
-            echo "runner_online=true" >> "$GITHUB_OUTPUT"
-            echo "school-core-mac online — execution job will run"
-          else
+            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length' 2>/dev/null) || API_FAILED=true
+          if [ "${API_FAILED:-}" = "true" ]; then
             echo "runner_online=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::school-core-mac offline or unverifiable (check RUNNER_ADMIN_TOKEN) — skipping issue execution this cycle"
+            echo "status=unverifiable" >> "$GITHUB_OUTPUT"
+            echo "::warning::school-core-mac liveness unverifiable (RUNNER_ADMIN_TOKEN missing/invalid) — skipping issue execution this cycle"
+          else
+            ONLINE=${ONLINE:-0}
+            case "$ONLINE" in
+              ''|*[!0-9]*) ONLINE=0 ;;
+            esac
+            if [ "$ONLINE" -ge 1 ]; then
+              echo "runner_online=true" >> "$GITHUB_OUTPUT"
+              echo "status=online" >> "$GITHUB_OUTPUT"
+              echo "school-core-mac online — execution job will run"
+            else
+              echo "runner_online=false" >> "$GITHUB_OUTPUT"
+              echo "status=offline" >> "$GITHUB_OUTPUT"
+              echo "::warning::school-core-mac offline — skipping issue execution this cycle"
+            fi
           fi
+
+  # WHY THIS JOB EXISTS: The `gate` job above MUST succeed when the runner is
+  # offline — both `loop` (board publishing) and `pipeline-alert` depend on its
+  # success. Without that, a sleeping Mac takes down the board and suppresses
+  # the alert. The red signal for a blocked cycle comes from THIS job instead,
+  # which fails without being a dependency of either downstream job.
+  #
+  # HARDENING REQUIRED: RUNNER_ADMIN_TOKEN currently holds the repo owner's
+  # gh token. Replace with a fine-grained PAT scoped to this repo with ONLY
+  # "Administration: Read" — a full personal token in CI secrets on a public
+  # repo is over-scoped, and rotating the gh token would silently break the
+  # liveness check.
+  gate-blocked:
+    # Signals a blocked cycle WITHOUT breaking the board publisher.
+    # `loop` depends on `gate` (which succeeds), NOT on this job — so the board
+    # stays up. But `gh run list` shows red because this job fails.
+    name: BLOCKED — runner not online
+    needs: gate
+    runs-on: ubuntu-latest
+    if: always() && needs.gate.outputs.runner_online == 'false'
+    continue-on-error: false
+    steps:
+      - name: Fail the run
+        run: |
+          STATUS="${{ needs.gate.outputs.status }}"
+          if [ "$STATUS" = "unverifiable" ]; then
+            echo "::error::BLOCKED: runner liveness unverifiable (RUNNER_ADMIN_TOKEN) — issue execution skipped"
+          else
+            echo "::error::BLOCKED: runner offline — issue execution skipped"
+          fi
+          exit 1
 
   pipeline-alert:
     # Separate from `gate`: a checkout or AgentMail failure must never make
@@ -97,7 +129,7 @@ jobs:
     name: alert if school loop is blocked
     needs: gate
     runs-on: ubuntu-latest
-    if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'false'
+    if: always() && needs.gate.outputs.runner_online == 'false'
     continue-on-error: true
     steps:
       - name: Check out notification code
@@ -108,19 +140,27 @@ jobs:
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_SCHOOL_INBOX: vault-synthesis@agentmail.to
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GATE_STATUS: ${{ needs.gate.outputs.status }}
         run: |
           # Best-effort: this job is isolated and cannot block board publishing.
           python - <<'PY'
           import os
           from school_mail import notify_pipeline_alert
 
+          # Read the status output from the gate's check step (set before the Fail gate step exits 1)
+          status = os.environ.get("GATE_STATUS", "offline")
+          if status == "unverifiable":
+              reason = "The self-hosted runner liveness is unverifiable (RUNNER_ADMIN_TOKEN missing/invalid)."
+          else:
+              reason = "The self-hosted runner is offline (API succeeded, 0 runners online)."
+
           ok = notify_pipeline_alert(
               component="school-core-mac runner",
-              reason="The self-hosted runner is offline or the liveness token is missing/invalid.",
+              reason=reason,
               repo=os.environ.get("GITHUB_REPOSITORY", "__global__"),
               run_url=os.environ.get("RUN_URL", ""),
           )
-          print(f"notify_pipeline_alert -> {ok}")
+          print(f"notify_pipeline_alert -> {ok}, status={status}")
           PY
 
   execute:
@@ -456,9 +496,9 @@ jobs:
             echo "checkpoint: no state changes to commit"
           else
             git commit -m "chore: checkpoint board state (sanitized) [skip ci]" \
-              && git push --force-with-lease origin HEAD:board-publish \
+              && { git push --force-with-lease origin HEAD:board-publish 2>/tmp/cp-stderr.txt; } \
               && echo "checkpoint: pushed $(git rev-parse --short HEAD) to board-publish" \
-              || echo "::warning::checkpoint commit/push failed (self-heals next cycle)"
+              || { echo "::warning::checkpoint commit/push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
           fi
 
   loop:
