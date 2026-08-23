@@ -489,6 +489,14 @@ jobs:
           # modified-but-unstaged and the board lost the cycle. `find` only
           # adds real files, so a missing trajectories/ dir or an empty
           # consolidation tree can never kill the checkpoint.
+          # 2026-08-23: board-publish is rewritten by the hosted `loop` job
+          # (force-push from ubuntu-latest each cycle). Committing our
+          # main-based HEAD on top of it without syncing first guarantees a
+          # non-fast-forward rejection ("stale info") EVERY cycle — six days
+          # of invisible checkpoint losses until stderr capture exposed it.
+          # Sync onto the live branch tip BEFORE staging, so this push is a
+          # clean fast-forward relative to what loop last wrote.
+          git fetch origin board-publish && git reset --hard origin/board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
           find data/sessions/consolidation -name '*.yaml' -exec git add -f {} + 2>/dev/null || true
