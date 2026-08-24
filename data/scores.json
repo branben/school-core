@@ -42,10 +42,6 @@
         "_default": 30.0,
         "python-coding": 35.0
     },
-    "openhands": {
-        "_difficulty_code-implementation": 1.0,
-        "code-implementation": 2.799
-    },
     "owl-alpha": {
         "_default": 25.0,
         "agentic-coding": 30.0
