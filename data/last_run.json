@@ -834,7 +834,7 @@
     "fallback_reason": "spawn_silent",
     "next_action": "retry_same",
     "retry_attempt": 1,
-    "timestamp": "2026-08-24T05:26:22.310051+00:00"
+    "timestamp": "2026-08-24T06:04:25.703151+00:00"
   },
   {
     "issue": 341,
@@ -849,6 +849,6 @@
     "fallback_reason": "spawn_silent",
     "next_action": "retry_same",
     "retry_attempt": 1,
-    "timestamp": "2026-08-24T05:28:34.417892+00:00"
+    "timestamp": "2026-08-24T06:06:38.900218+00:00"
   }
 ]
