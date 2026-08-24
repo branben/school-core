@@ -81,7 +81,7 @@ fi
 # Hermes turn immediately and returns a bounded process result to FirstMate.
 # Capture the exit code: it feeds the deterministic terminal handshake below.
 set +e
-"$HERMES" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
+"$HERMES" -p "$PROFILE" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
   --query "$INPUT" --yolo --quiet --max-turns "$MAX_TURNS"
 HERMES_EXIT=$?
 set -e
