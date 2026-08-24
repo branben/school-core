@@ -179,39 +179,39 @@ def test_spawn_harness_uses_bare_placeholders_not_dollar_prefixed(
     )
 
 
-def test_openrouter_key_resolves_from_environ(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "env-key-1")
+def test_omniroute_key_resolves_from_environ(monkeypatch):
+    monkeypatch.setenv("OMNIROUTE_API_KEY", "env-key-1")
     monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
-    assert crew_dispatch._openrouter_api_key() == "env-key-1"
+    assert crew_dispatch._omniroute_api_key() == "env-key-1"
 
 
-def test_openrouter_key_falls_back_to_dotenv(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+def test_omniroute_key_falls_back_to_dotenv(monkeypatch):
+    monkeypatch.delenv("OMNIROUTE_API_KEY", raising=False)
     monkeypatch.setattr(
         crew_dispatch, "_read_dotenv_value",
-        lambda path, name: "dotenv-key-2" if name == "OPENROUTER_API_KEY" else "",
+        lambda path, name: "dotenv-key-2" if name == "OMNIROUTE_API_KEY" else "",
     )
-    assert crew_dispatch._openrouter_api_key() == "dotenv-key-2"
+    assert crew_dispatch._omniroute_api_key() == "dotenv-key-2"
 
 
-def test_openrouter_key_returns_empty_when_nowhere(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+def test_omniroute_key_returns_empty_when_nowhere(monkeypatch):
+    monkeypatch.delenv("OMNIROUTE_API_KEY", raising=False)
     monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
-    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
-    assert crew_dispatch._openrouter_api_key() == ""
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_omniroute_key", lambda *a, **k: "")
+    assert crew_dispatch._omniroute_api_key() == ""
 
 
-def test_spawn_harness_exports_openrouter_key_when_resolvable(
+def test_spawn_harness_exports_omniroute_key_when_resolvable(
     monkeypatch, tmp_path
 ):
     """When the key is resolvable, _spawn must embed
-    `export OPENROUTER_API_KEY=...` at the front of the harness command, because
+    `export OMNIROUTE_API_KEY=...` at the front of the harness command, because
     fm-spawn.sh drops non-FM_* env vars at the pane boundary — the only channel
     that survives is the command string itself. Without this, the spawned
     Hermes has no credential and the crew sits silent.
     """
     configure_paths(monkeypatch, tmp_path)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "secret-key-xyz")
+    monkeypatch.setenv("OMNIROUTE_API_KEY", "secret-key-xyz")
     captured = {}
 
     def fake_run(args, **kwargs):
@@ -227,8 +227,8 @@ def test_spawn_harness_exports_openrouter_key_when_resolvable(
     )
 
     harness = captured["args"][captured["args"].index("--harness") + 1]
-    assert harness.startswith("export OPENROUTER_API_KEY="), (
-        "harness did not export OPENROUTER_API_KEY — spawned Hermes would "
+    assert harness.startswith("export OMNIROUTE_API_KEY="), (
+        "harness did not export OMNIROUTE_API_KEY — spawned Hermes would "
         "have no credential"
     )
     assert "secret-key-xyz" in harness
@@ -237,13 +237,13 @@ def test_spawn_harness_exports_openrouter_key_when_resolvable(
     assert "__OPINPUT__" in harness
 
 
-def test_spawn_harness_omits_openrouter_export_when_key_missing(
+def test_spawn_harness_omits_omniroute_export_when_key_missing(
     monkeypatch, tmp_path
 ):
     configure_paths(monkeypatch, tmp_path)
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OMNIROUTE_API_KEY", raising=False)
     monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
-    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_omniroute_key", lambda *a, **k: "")
     captured = {}
 
     def fake_run(args, **kwargs):
