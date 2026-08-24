@@ -2004,6 +2004,83 @@ class TestRetryOnce:
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("issue_bridge._mark_github_issue")
+    def test_persisted_counter_accumulates_across_fresh_checkouts(
+        self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """B12 regression: the counter must survive a fresh checkout per cycle.
+
+        Models the real workflow shape: each cycle runs in a fresh checkout of
+        `main` (retry file = {}), and the durable state comes from whatever was
+        checkpointed to board-publish — which the workflow now SEEDS back into
+        the worktree before the bridge runs (school-loop.yml, seed step).
+
+        Fails if the seed is {} (the pre-fix behavior): attempts recomputes to 1
+        forever, RETRY_LIMIT stays unreachable, school-failed never fires.
+        """
+        persisted = tmp_path / "board-publish-retry_issues.json"
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+
+        # ── Cycle 1: fresh checkout of main ({}), failure → retry persisted ──
+        mock_fetch.return_value = self._issue(75)
+        mock_task.return_value = {"status": "error", "error": "gateway hiccup"}
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "retry"
+        assert results[0]["retry_attempt"] == 1
+        # "Checkpoint": the counter lands on board-publish.
+        persisted.write_text((tmp_path / "retries.json").read_text())
+        assert json.loads(persisted.read_text()) == {"75": 1}
+
+        # ── Cycle 2: ANOTHER fresh checkout of main — retry file is {} again,
+        #    then the workflow seeds it from the board-publish copy. ──
+        main_state = tmp_path / "retries.json"
+        main_state.unlink()                      # actions/checkout@v4 of main
+        assert not main_state.exists()
+        main_state.write_text(persisted.read_text())  # ← the B12 seed step
+        assert _load_retries() == {75: 1}             # bridge reads seeded state
+
+        results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "error"            # terminal, NOT retry
+        assert results[0]["retry_attempt"] == RETRY_LIMIT  # accumulated to 2
+        assert is_processed(75)                            # processed set updated
+        assert _load_retries() == {}                       # popped on terminal
+        mock_mark.assert_called_once()
+        assert mock_mark.call_args[0][1] == 75
+        assert mock_mark.call_args[0][2] == "error"  # school-failed label path
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
+    def test_empty_seed_never_accumulates_documents_b12_defect(
+        self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """Documents the defect: seeding from main's {} keeps attempts at 1.
+
+        Same two-cycle shape as above, but cycle 2 gets NO board-publish seed —
+        exactly what happened for 12+ hours ({"342":1,"341":1} frozen). The
+        second failure must come back as `retry` with attempt still 1 and no
+        school-fired sync; if this ever starts asserting `error`, the workflow
+        seed regressed or issue_bridge arithmetic changed.
+        """
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        mock_fetch.return_value = self._issue(76)
+        mock_task.return_value = {"status": "error", "error": "still down"}
+
+        bridge_issues("user/test", store=store)              # cycle 1 → retry
+        (tmp_path / "retries.json").unlink()                 # fresh checkout of main
+        # NO seed step: file stays absent → _load_retries() == {}
+        assert _load_retries() == {}
+
+        results = bridge_issues("user/test", store=store)    # cycle 2
+        assert results[0]["status"] == "retry"               # stuck at attempt 1
+        assert results[0]["retry_attempt"] == 1
+        assert not is_processed(76)
+        mock_mark.assert_not_called()                        # school-failed never fires
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("issue_bridge._mark_github_issue")
     @patch("issue_bridge.notify_issue_alert")
     def test_exception_path_notifies_retry_then_school_failed(
         self, mock_notify, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
