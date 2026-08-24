@@ -820,19 +820,20 @@ def _read_dotenv_value(path: Path, name: str) -> str:
     return ""
 
 
-def _read_yaml_openrouter_key(path: Path) -> str:
-    """Best-effort extraction of an OpenRouter key from a Hermes config.yaml.
+def _read_yaml_omniroute_key(path: Path) -> str:
+    """Best-effort extraction of an OmniRoute key from a Hermes config.yaml.
 
     Hermes persists provider keys under ~/.hermes/config.yaml. We do NOT pull
     in a YAML parser; a couple of tolerant regex scans cover the documented
-    shapes (a top-level ``OPENROUTER_API_KEY:`` and a nested
-    ``openrouter:``/``api_key:`` block). Returns "" when nothing matches.
+    shapes (a top-level ``OMNIROUTE_API_KEY:`` and a nested
+    ``openrouter:``/``api_key:`` block — the latter because some users store
+    the key there under the openrouter provider block). Returns "" when nothing matches.
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
-    m = re.search(r"^OPENROUTER_API_KEY:\s*\"?([^\"\n]+)\"?", text, re.MULTILINE)
+    m = re.search(r"^OMNIROUTE_API_KEY:\s*\"?([^\"\n]+)\"?", text, re.MULTILINE)
     if m:
         return m.group(1).strip()
     m = re.search(r"openrouter:.*?api_key:\s*\"?([^\"\n]+)\"?", text, re.DOTALL)
@@ -841,29 +842,29 @@ def _read_yaml_openrouter_key(path: Path) -> str:
     return ""
 
 
-def _openrouter_api_key() -> str:
-    """Resolve ``OPENROUTER_API_KEY`` for the spawned crew agent.
+def _omniroute_api_key() -> str:
+    """Resolve ``OMNIROUTE_API_KEY`` for the spawned crew agent.
 
     The bridge process carries the key in its environment, but it is lost by
     the time the spawned Hermes starts (the spawn crosses a process boundary
     and/or fm-spawn.sh rebuilds the child env). We forward it explicitly so
-    the crew can reach OpenRouter.
+    the crew can reach OmniRoute at localhost:20128.
 
     Source order: live ``os.environ`` -> the repo ``.env`` (the project's
-    secrets store, alongside ``OMNIROUTE_API_KEY``) -> Hermes ``config.yaml``
-    if the key was persisted there. Returns "" when nowhere found.
+    secrets store) -> Hermes ``config.yaml`` if the key was persisted there.
+    Returns "" when nowhere found.
     """
-    key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    key = (os.environ.get("OMNIROUTE_API_KEY") or "").strip()
     if key:
         return key
     key = _read_dotenv_value(
-        Path(__file__).resolve().parent / ".env", "OPENROUTER_API_KEY"
+        Path(__file__).resolve().parent / ".env", "OMNIROUTE_API_KEY"
     )
     if key:
         return key
     cfg = Path.home() / ".hermes" / "config.yaml"
     if cfg.is_file():
-        key = _read_yaml_openrouter_key(cfg)
+        key = _read_yaml_omniroute_key(cfg)
         if key:
             return key
     return ""
@@ -915,14 +916,14 @@ def _spawn(
     # in the bridge's environment, never committed.
     #
     # Source the key from the bridge's live os.environ, then fall back to the
-    # repo .env and Hermes config.yaml (_openrouter_api_key). Sourcing ONLY
+    # repo .env and Hermes config.yaml (_omniroute_api_key). Sourcing ONLY
     # from os.environ silently no-ops whenever school-core runs as a separate
     # process that did not inherit the bridge's environment — which is exactly
     # the "present in the bridge, lost by spawn time" failure. The multi-source
     # resolver restores it.
-    key = _openrouter_api_key()
+    key = _omniroute_api_key()
     if key:
-        harness = f"export OPENROUTER_API_KEY={shlex.quote(key)}; {harness}"
+        harness = f"export OMNIROUTE_API_KEY={shlex.quote(key)}; {harness}"
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
     # polls for status. fm-spawn falls back to its OWN clone root when
