@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
+    "title": "feat: add audit_retries.py — health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -498,8 +498,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -627,8 +627,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -756,8 +756,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -792,7 +792,7 @@
           "severity": "HIGH",
           "issue_class": "runtime_failure",
           "citation": "exit_code=1",
-          "description": "SyntaxError: invalid character '\u2014' (U+2014)"
+          "description": "SyntaxError: invalid character '—' (U+2014)"
         }
       ],
       "routing_feedback": {
@@ -856,7 +856,7 @@
     "status": "school-failed",
     "agent": "openhands",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260824_150414_854961--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -884,8 +884,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1002,5 +1002,78 @@
     "next_action": "retry_same",
     "retry_attempt": 1,
     "timestamp": "2026-08-24T15:56:40.004741+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "data/trajectories/20260824_163255_761659--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T16:33:25.905911+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T16:36:26.047753+00:00"
   }
 ]
