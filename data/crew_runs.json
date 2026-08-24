@@ -329,54 +329,7 @@
     "teardown_ok": true
   },
   {
-    "crew_id": "fm-loop-20260824-205108-204",
-    "issue_number": 204,
-    "status": "timeout",
-    "fleet_worktree_id": "wt-1",
-    "capability": {
-      "version": "1.0.0",
-      "domain": "git-operations",
-      "difficulty": "medium",
-      "score": 0.0,
-      "school_role": "Student",
-      "task_role": "executor",
-      "profile": "student-executor",
-      "skills": [
-        "Conventional Commits"
-      ],
-      "allowed_tools": [
-        "shell",
-        "git",
-        "build"
-      ],
-      "gate_min": 0,
-      "gate_max": 24,
-      "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
-      ],
-      "hermes_toolsets": [
-        "file",
-        "memory",
-        "skills",
-        "terminal",
-        "todo"
-      ],
-      "schema_version": 1
-    },
-    "started_at": "2026-08-24T20:51:19.151916+00:00",
-    "started_monotonic": 17.544934083,
-    "orca_worktree_present": true,
-    "fallback_reason": "silent_agent",
-    "spawn_stderr": "SpawnError: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode. warning: <home>/.hermes/school-core-fm-config/data/fm-loop-20260824-205108-204/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches notice: fm-loop-20260824-205108-204 ships mode=local-only while the standing posture for branben__sound-royale-ny is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state",
-    "report_path": null,
-    "verification": null,
-    "entire_review": null,
-    "commit_reachable": null,
-    "teardown_ok": true
-  },
-  {
-    "crew_id": "fm-loop-20260824-205108-203",
+    "crew_id": "fm-loop-20260824-212141-203",
     "issue_number": 203,
     "status": "timeout",
     "fleet_worktree_id": "wt-1",
@@ -422,11 +375,11 @@
       ],
       "schema_version": 1
     },
-    "started_at": "2026-08-24T20:53:58.222367+00:00",
-    "started_monotonic": 178.960710666,
+    "started_at": "2026-08-24T21:23:35.549951+00:00",
+    "started_monotonic": 128.084203791,
     "orca_worktree_present": true,
     "fallback_reason": "silent_agent",
-    "spawn_stderr": "SpawnError: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode. warning: <home>/.hermes/school-core-fm-config/data/fm-loop-20260824-205108-203/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches notice: fm-loop-20260824-205108-203 ships mode=local-only while the standing posture for branben__sound-royale-ny is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state",
+    "spawn_stderr": "SpawnError: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode. warning: <home>/.hermes/school-core-fm-config/data/fm-loop-20260824-212141-203/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches notice: fm-loop-20260824-212141-203 ships mode=local-only while the standing posture for branben__sound-royale-ny is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state",
     "report_path": null,
     "verification": null,
     "entire_review": null,
