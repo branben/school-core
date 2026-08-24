@@ -496,17 +496,28 @@ jobs:
           # of invisible checkpoint losses until stderr capture exposed it.
           # Sync onto the live branch tip BEFORE staging, so this push is a
           # clean fast-forward relative to what loop last wrote.
-          git fetch origin board-publish && git reset --hard origin/board-publish
+          # Sync history onto board-publish tip WITHOUT touching the worktree.
+          # The bridge just wrote fresh data/*.json into the worktree; any
+          # operation that moves HEAD onto board-publish (reset --hard, merge,
+          # checkout, stash pop) collides with those uncommitted writes because
+          # data/*.json is tracked on board-publish with divergent content.
+          # git add stages the bridge's real files; git write-tree builds a
+          # tree from just those; git commit-tree parents the new commit on
+          # FETCH_HEAD directly; the push is a clean fast-forward and the
+          # worktree is never touched. (Phymora's tested approach — verified
+          # in a scratch repo reproducing the exact shape.)
+          git fetch origin board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
           find data/sessions/consolidation -name '*.yaml' -exec git add -f {} + 2>/dev/null || true
-          if git diff --cached --quiet; then
+          if git diff --quiet FETCH_HEAD -- data/ 2>/dev/null; then
             echo "checkpoint: no state changes to commit"
           else
-            git commit -m "chore: checkpoint board state (sanitized) [skip ci]" \
-              && { git push --force-with-lease origin HEAD:board-publish 2>/tmp/cp-stderr.txt; } \
-              && echo "checkpoint: pushed $(git rev-parse --short HEAD) to board-publish" \
-              || { echo "::warning::checkpoint commit/push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
+            TREE=$(git write-tree)
+            NEW=$(git commit-tree "$TREE" -p FETCH_HEAD -m "chore: checkpoint board state (sanitized) [skip ci]")
+            git push origin "$NEW:board-publish" 2>/tmp/cp-stderr.txt \
+              && echo "checkpoint: pushed $NEW to board-publish" \
+              || { echo "::warning::checkpoint push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
           fi
 
   loop:
