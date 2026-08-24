@@ -967,6 +967,74 @@ def test_blocked_grace_expires_as_blocked(monkeypatch, tmp_path):
     assert result.fallback_reason == "blocked"
 
 
+def test_silent_agent_recorded_with_spawn_stderr(monkeypatch, tmp_path):
+    """B9: a crew that spawns cleanly (returncode 0) but produces no status
+    file within startup_grace is a *silent agent*, not a generic spawn
+    failure. The record must carry fallback_reason='silent_agent' and the
+    spawn-time stderr so the silence is traceable instead of a mystery.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        crew_dispatch, "_spawn",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=["fm-spawn.sh"], returncode=0, stdout="",
+            stderr="hermes: 402 Payment Required from openrouter\nno model access",
+        ),
+    )
+    monkeypatch.setattr(crew_dispatch, "_read_meta_until_available", lambda *a, **k: {})
+    monkeypatch.setattr(
+        crew_dispatch, "_poll",
+        lambda *a, **k: ("timeout", "spawn_silent", ""),
+    )
+    monkeypatch.setattr(crew_dispatch, "teardown_worktree", lambda _=None: True)
+
+    result = dispatch_crew(
+        issue_number=342,
+        task_text="Silent",
+        project_dir=tmp_path,
+        cycle_session_id="loop-20260823-120000",
+        timeout=1,
+        poll_interval=0,
+    )
+    assert result.status == "timeout"
+    assert result.fallback_reason == "silent_agent"
+
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    record = runs[-1]
+    assert record["status"] == "timeout"
+    assert record["fallback_reason"] == "silent_agent"
+    # The spawn stderr is attached (redacted + capped like spawn_failure).
+    assert "spawn_stderr" in record
+    assert record["spawn_stderr"]
+    assert "402" in record["spawn_stderr"]
+
+
+def test_spawn_failure_still_uses_spawn_failure_reason(monkeypatch, tmp_path):
+    """Regression guard: a non-zero spawn returncode raises (does not get
+    relabelled as 'silent_agent' — that path is only for a clean spawn that
+    then goes quiet). The ledger record still uses 'spawn_failure'.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        crew_dispatch, "_spawn",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=["fm-spawn.sh"], returncode=1, stdout="",
+            stderr="fm-spawn: no launch template",
+        ),
+    )
+    with pytest.raises(crew_dispatch.CrewUnavailableError):
+        dispatch_crew(
+            issue_number=343,
+            task_text="Broken spawn",
+            project_dir=tmp_path,
+            cycle_session_id="loop-20260823-120001",
+            timeout=1,
+            poll_interval=0,
+        )
+    runs = json.loads((tmp_path / "crew_runs.json").read_text())
+    assert runs[-1]["fallback_reason"] == "spawn_failure"
+
+
 def test_blocked_then_resolved_continues_to_done(monkeypatch, tmp_path):
     configure_paths(monkeypatch, tmp_path)
     clock = FakeClock()

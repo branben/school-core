@@ -329,64 +329,7 @@
     "teardown_ok": true
   },
   {
-    "crew_id": "fm-loop-20260824-141455-342",
-    "issue_number": 342,
-    "status": "timeout",
-    "fleet_worktree_id": "wt-1",
-    "capability": {
-      "version": "1.0.0",
-      "domain": "code-implementation",
-      "difficulty": "medium",
-      "score": 40.56134999999999,
-      "school_role": "Teacher",
-      "task_role": "coder",
-      "profile": "student-coder",
-      "skills": [
-        "YAGNI",
-        "KISS",
-        "Compile-Before-Critic",
-        "Nix-Verify-Shell",
-        "DRY",
-        "TDD Chicago School",
-        "TDD London School",
-        "Use Case"
-      ],
-      "allowed_tools": [
-        "python",
-        "testing",
-        "git"
-      ],
-      "gate_min": 25,
-      "gate_max": 74,
-      "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
-      ],
-      "hermes_toolsets": [
-        "clarify",
-        "delegation",
-        "engram",
-        "file",
-        "memory",
-        "serena",
-        "skills",
-        "terminal",
-        "todo"
-      ],
-      "schema_version": 1
-    },
-    "started_at": "2026-08-24T14:16:00.761216+00:00",
-    "started_monotonic": 94.917927166,
-    "orca_worktree_present": true,
-    "fallback_reason": "spawn_silent",
-    "report_path": null,
-    "verification": null,
-    "entire_review": null,
-    "commit_reachable": null,
-    "teardown_ok": true
-  },
-  {
-    "crew_id": "fm-loop-20260824-141455-341",
+    "crew_id": "fm-loop-20260824-150400-341",
     "issue_number": 341,
     "status": "timeout",
     "fleet_worktree_id": "wt-1",
@@ -432,10 +375,11 @@
       ],
       "schema_version": 1
     },
-    "started_at": "2026-08-24T14:19:35.152268+00:00",
-    "started_monotonic": 303.445716458,
+    "started_at": "2026-08-24T15:07:24.735126+00:00",
+    "started_monotonic": 210.3495835,
     "orca_worktree_present": true,
-    "fallback_reason": "spawn_silent",
+    "fallback_reason": "silent_agent",
+    "spawn_stderr": "SpawnError: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode. warning: <home>/.hermes/school-core-fm-config/data/fm-loop-20260824-150400-341/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches notice: fm-loop-20260824-150400-341 ships mode=local-only while the standing posture for branben__sound-royale-ny is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state",
     "report_path": null,
     "verification": null,
     "entire_review": null,

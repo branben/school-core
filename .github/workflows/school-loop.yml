@@ -253,6 +253,36 @@ jobs:
         with:
           persist-credentials: true
 
+      # B12: seed durable loop state from board-publish BEFORE the bridge runs.
+      # This job checks out `main`, where data/retry_issues.json is {} — but the
+      # checkpoint step below commits updated counters to `board-publish`. So
+      # every cycle read {} fresh, attempts recomputed to 1 forever, RETRY_LIMIT
+      # was unreachable, and failed issues re-dispatched unboundedly (observed:
+      # {"342":1,"341":1} frozen across 12+ board-publish commits). Path-scoped
+      # `git checkout <ref> -- <paths>` restores file contents into the worktree
+      # WITHOUT moving HEAD or touching any other file, so:
+      #   * issue_bridge reads seeded counters at startup (_load_retries), and
+      #   * the later commit-tree checkpoint is unaffected — it stages whatever
+      #     is in the worktree via `git add -f` + `git write-tree` and parents on
+      #     FETCH_HEAD (the board-publish tip we fetch there), never on this
+      #     job's main-based HEAD. Seeded files are simply overwritten by the
+      #     bridge's own writes before staging; if the bridge dies early, the
+      #     seeded content matches FETCH_HEAD and `git diff --quiet FETCH_HEAD`
+      #     correctly reports no state changes to commit.
+      # processed_issues.json and last_run.json are seeded too: they are written
+      # to board-publish by the same checkpoint, so seeding them gives the bridge
+      # accurate suppression/journal state instead of main's stale copies. No
+      # side effects: mark_processed() still writes through the same paths, and
+      # sanitize_data.py runs after this step on the seeded files.
+      - name: Seed retry/board state from board-publish
+        run: |
+          git fetch origin board-publish
+          git checkout origin/board-publish -- \
+            data/retry_issues.json \
+            data/processed_issues.json \
+            data/last_run.json || \
+            echo "::warning::board-publish seed skipped (branch or state files missing)"
+
       # No actions/setup-python here: on this self-hosted runner the action's
       # tool-cache defaults to /Users/runner (a GitHub-hosted path) and fails
       # with EACCES. Use the machine's system Python + a workspace-local venv.

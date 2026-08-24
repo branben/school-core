@@ -1155,10 +1155,18 @@ def dispatch_crew(
     _write_capability_file(crew_id, capability)
     started_at = datetime.now(timezone.utc).isoformat()
     capability_record = _capability_payload(capability)
+    # B9 silent-agent diagnostic: capture the agent's spawn-time stderr so a
+    # crew that launches cleanly (returncode 0) but writes no status file can
+    # be traced. Empty until _spawn returns.
+    spawn_stderr = ""
     try:
         if capability is not None and not capability.hermes_toolsets:
             raise CrewUnavailableError("capability policy has no Hermes toolsets")
         result = _spawn(crew_id, project_dir, capability)
+        # B9: keep the agent's spawn-time stderr even on the success path.
+        # A returncode-0 spawn with no later status file is the silent-agent
+        # signature; without this capture the silence is untraceable.
+        spawn_stderr = (result.stderr or "").strip()
     except (CrewUnavailableError, OSError, subprocess.TimeoutExpired) as exc:
         spawn_error = _safe_spawn_error(exc)
         _record_run({
@@ -1222,6 +1230,12 @@ def dispatch_crew(
             now_fn=now_fn,
             sleep_fn=sleep_fn,
         )
+        # B9: a crew that spawned without error yet produced no status file
+        # within startup_grace is a *silent agent*, not a generic spawn
+        # failure. Rename the code so it is distinguishable in the ledger;
+        # its spawn-time stderr is attached to the record below.
+        if fallback_reason == "spawn_silent":
+            fallback_reason = "silent_agent"
         report_path: Optional[Path] = None
         if terminal_status == "done":
             candidate = _task_dir(crew_id) / "report.md"
@@ -1310,6 +1324,13 @@ def dispatch_crew(
     _update_run(crew_id, {
         "status": terminal_status,
         "fallback_reason": fallback_reason,
+        # B9: attach the agent's spawn-time stderr when it went silent, so the
+        # silence is traceable. Redacted + capped like spawn_failure's error.
+        "spawn_stderr": (
+            _safe_spawn_error(spawn_stderr)
+            if fallback_reason == "silent_agent" and spawn_stderr
+            else None
+        ),
         # Keep the durable registry portable: callers still receive the
         # absolute runtime Path, but the checkpointable record stores only a
         # path relative to FM_DATA.

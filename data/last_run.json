@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
+    "title": "feat: add audit_retries.py — health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -498,8 +498,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -627,8 +627,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -756,8 +756,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
+        "Cannot solve after 2 attempts → escalate to Teacher",
+        "Task difficulty exceeds gate → escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -792,7 +792,7 @@
           "severity": "HIGH",
           "issue_class": "runtime_failure",
           "citation": "exit_code=1",
-          "description": "SyntaxError: invalid character '\u2014' (U+2014)"
+          "description": "SyntaxError: invalid character '—' (U+2014)"
         }
       ],
       "routing_feedback": {
@@ -850,5 +850,127 @@
     "next_action": "retry_same",
     "retry_attempt": 1,
     "timestamp": "2026-08-24T14:21:59.939068+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "openhands",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "data/trajectories/20260824_150414_854961--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-24T15:07:16.169212+00:00",
+      "agent": "openhands",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "openhands",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000001",
+    "lifecycle": "failed",
+    "quality": 1.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-24T15:07:16.196943+00:00"
+  },
+  {
+    "issue": 341,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T15:09:30.814161+00:00"
   }
 ]
