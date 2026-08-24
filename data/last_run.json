@@ -834,7 +834,7 @@
     "fallback_reason": "spawn_silent",
     "next_action": "retry_same",
     "retry_attempt": 1,
-    "timestamp": "2026-08-24T11:50:37.624145+00:00"
+    "timestamp": "2026-08-24T12:21:10.574841+00:00"
   },
   {
     "issue": 341,
@@ -844,11 +844,11 @@
     "trajectory": null,
     "lifecycle": "retry",
     "quality": 0.0,
-    "failure_edge": "none",
-    "failure_mode": "none",
-    "fallback_reason": "spawn_silent",
+    "failure_edge": "runtime",
+    "failure_mode": "timeout",
+    "fallback_reason": "timeout",
     "next_action": "retry_same",
     "retry_attempt": 1,
-    "timestamp": "2026-08-24T11:52:49.315873+00:00"
+    "timestamp": "2026-08-24T12:36:41.953453+00:00"
   }
 ]
