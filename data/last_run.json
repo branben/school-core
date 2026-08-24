@@ -1439,5 +1439,20 @@
     "next_action": "retry_same",
     "retry_attempt": 1,
     "timestamp": "2026-08-24T21:54:20.715865+00:00"
+  },
+  {
+    "issue": 202,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T22:19:23.965934+00:00"
   }
 ]
