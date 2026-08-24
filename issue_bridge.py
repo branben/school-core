@@ -158,6 +158,9 @@ CREW_ENABLED_DEFAULT = False
 # Per-cycle cap on crew dispatches (each crew run polls for minutes and the
 # job is under a 30-min timeout). Default 1.
 CREW_MAX_PER_CYCLE_DEFAULT = 1
+# Max issues processed per cycle. Caps the budget so the crew is reached
+# before time runs out. Must match MAX_ISSUES_PER_CYCLE in school-loop.yml.
+MAX_ISSUES_PER_CYCLE_DEFAULT = 2
 # Crew statuses that mean "still active — do not start a second one this cycle".
 _CREW_ACTIVE_STATUSES = {"running", "blocked"}
 
@@ -1093,6 +1096,9 @@ def bridge_issues(
         from repo_default import default_repo
         repo = default_repo()
     issues = fetch_issues(repo, labels)
+    max_issues_per_cycle = int(
+        os.environ.get("MAX_ISSUES_PER_CYCLE", str(MAX_ISSUES_PER_CYCLE_DEFAULT))
+    )
     processed = _load_processed()
     retries = _load_retries()
     results = []
@@ -1156,10 +1162,16 @@ def bridge_issues(
             lambda i: _resolve_crew_capability(i, store, force_agent) is not None,
         )
 
+    issue_count = 0
     for issue in issues:
         num = issue["issue_number"]
         metrics = PipelineMetrics()
         if num in processed:
+            continue
+        # MAX_ISSUES_PER_CYCLE: cap issues per cycle so the budget is not
+        # consumed before the crew is reached. Must match school-loop.yml.
+        issue_count += 1
+        if issue_count > max_issues_per_cycle:
             continue
 
         # Build codebase context for this issue
@@ -1960,6 +1972,15 @@ def bridge_issues(
                     artifact_path=(
                         str(getattr(crew_result, "report_path", None))
                         if crew_used and getattr(crew_result, "report_path", None)
+                        else None
+                    ),
+                    # B8 Phase 2 (bead school-core-3um): forward the crew's
+                    # captured diff path from CrewResult into the PR body. The
+                    # commit cannot survive worktree teardown, so the patch is
+                    # the only durable record of what the crew changed.
+                    patch_path=(
+                        str(getattr(crew_result, "patch_path", None))
+                        if crew_used and getattr(crew_result, "patch_path", None)
                         else None
                     ),
                 )

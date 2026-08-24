@@ -85,6 +85,13 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         fallback_reason=None,
         teardown_ok=True,
         orca_worktree_id="repo::/tmp/crew-worktree",
+        artifact_identity={
+            "branch": "fm/task-42",
+            "commit": "abc123",
+            "base": "main@def456",
+            "changed_files": [],
+        },
+        patch_path=None,
     )
     spawn_args, spawn_kwargs = calls[0]
     args = spawn_args
@@ -131,7 +138,131 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
     assert str(tmp_path) not in json.dumps(runs[-1])
 
 
-def test_artifact_identity_normalizes_markdown_wrappers():
+def test_spawn_harness_uses_bare_placeholders_not_dollar_prefixed(
+    monkeypatch, tmp_path
+):
+    """The harness template must contain the BARE tokens __OPINPUT__ and
+    __BRIEF__ — fm-spawn.sh substitutes them. A leading '$' (
+    "$__BRIEF__") makes bash expand an undefined variable to the empty string,
+    so the wrapper receives no brief and the agent never starts (Phymora,
+    crew_dispatch.py:829). Lock the fix: the harness must contain neither
+    "$__OPINPUT__" nor "$__BRIEF__", and must still contain the bare tokens.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        captured["env"] = kwargs.get("env")
+        # Never actually spawn; return a neutral success-shaped process.
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-1",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert "__OPINPUT__" in harness
+    assert "__BRIEF__" in harness
+    # The regression guard: no '$' glued to either placeholder.
+    assert "$__OPINPUT__" not in harness, (
+        "harness still dollar-prefixes __OPINPUT__ — bash would expand it "
+        "to empty and the agent would never start"
+    )
+    assert "$__BRIEF__" not in harness, (
+        "harness still dollar-prefixes __BRIEF__ — bash would expand it to "
+        "empty and the wrapper would get no brief"
+    )
+
+
+def test_openrouter_key_resolves_from_environ(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "env-key-1")
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    assert crew_dispatch._openrouter_api_key() == "env-key-1"
+
+
+def test_openrouter_key_falls_back_to_dotenv(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(
+        crew_dispatch, "_read_dotenv_value",
+        lambda path, name: "dotenv-key-2" if name == "OPENROUTER_API_KEY" else "",
+    )
+    assert crew_dispatch._openrouter_api_key() == "dotenv-key-2"
+
+
+def test_openrouter_key_returns_empty_when_nowhere(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
+    assert crew_dispatch._openrouter_api_key() == ""
+
+
+def test_spawn_harness_exports_openrouter_key_when_resolvable(
+    monkeypatch, tmp_path
+):
+    """When the key is resolvable, _spawn must embed
+    `export OPENROUTER_API_KEY=...` at the front of the harness command, because
+    fm-spawn.sh drops non-FM_* env vars at the pane boundary — the only channel
+    that survives is the command string itself. Without this, the spawned
+    Hermes has no credential and the crew sits silent.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "secret-key-xyz")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-key",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert harness.startswith("export OPENROUTER_API_KEY="), (
+        "harness did not export OPENROUTER_API_KEY — spawned Hermes would "
+        "have no credential"
+    )
+    assert "secret-key-xyz" in harness
+    # The wrapper + brief substitution must still be intact after the prefix.
+    assert "__BRIEF__" in harness
+    assert "__OPINPUT__" in harness
+
+
+def test_spawn_harness_omits_openrouter_export_when_key_missing(
+    monkeypatch, tmp_path
+):
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(crew_dispatch, "_read_dotenv_value", lambda *a, **k: "")
+    monkeypatch.setattr(crew_dispatch, "_read_yaml_openrouter_key", lambda *a, **k: "")
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_dispatch._spawn(
+        crew_id="fm-loop-x-nokey",
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+    assert "OPENROUTER_API_KEY" not in harness, (
+        "harness should not leak an OPENROUTER_API_KEY export when none "
+        "is resolvable"
+    )
     status = "done: branch=fm/task-58 commit=abc123 base=main@def456"
     report = (
         "- branch: `fm/task-58`\n"
@@ -1085,3 +1216,149 @@ def test_stale_entry_is_retained_when_cleanup_fails(monkeypatch, tmp_path):
     runs = json.loads(path.read_text())
     assert runs[0]["crew_id"] == "old"
     assert runs[0]["cleanup_failed"] is True
+
+
+# ── Status verb regex (B8 fix: restrict to the six documented verbs) ─────────
+
+
+class TestStatusVerbRegex:
+    """_STATUS_RE must accept ONLY the six documented status-file verbs and an
+    OPTIONAL leading timestamp. Any other identifier before a colon is NOT a
+    status verb — the old pattern matched `[A-Za-z][A-Za-z0-9_-]*:` and caused
+    (1) finished crews with a cleanup line like `original_done: done:` to be
+    read as verb "original_done" and re-polled forever, and (2) stray
+    `note: x` lines to be mistaken for a live verb. `spawn_silent`/`timeout`
+    are _poll return codes, never file verbs, so they must NOT match either.
+    """
+
+    @staticmethod
+    def _write_status(monkeypatch, tmp_path, crew_id, text):
+        configure_paths(monkeypatch, tmp_path)
+        p = crew_dispatch.STATE_DIR / f"{crew_id}.status"
+        p.write_text(text)
+        return p
+
+    def test_each_documented_verb_is_recognised(self, monkeypatch, tmp_path):
+        configure_paths(monkeypatch, tmp_path)
+        for verb in ("working", "blocked", "needs-decision", "resolved", "done", "failed"):
+            cid = f"fm-loop-x-{verb}"
+            (crew_dispatch.STATE_DIR / f"{cid}.status").write_text(f"{verb}: payload here\n")
+            assert crew_dispatch._read_status_detail(
+                crew_dispatch.STATE_DIR / f"{cid}.status"
+            )[0] == verb
+
+    def test_original_done_cleanup_shape_resolves_to_done(self, monkeypatch, tmp_path):
+        # Bug (1): a finished crew whose status file ends with a supervisor
+        # cleanup line like `original_done: done:` must read as `done`, not
+        # `original_done`. The verb is the LAST recognised verb in the file.
+        cid = "fm-loop-20260811-120000-1"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "working: building\n"
+            "done: branch=x commit=y base=z\n"
+            "original_done: done:\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+        # The detail is the payload of the matched (final) verb line.
+        assert detail.startswith("branch=x")
+
+    def test_timestamped_full_iso_is_stripped(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-iso"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "2026-08-11T21:40:39Z done: branch=x commit=y base=z\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+        assert detail.startswith("branch=x")
+
+    def test_timestamped_bare_hhmmss_is_stripped(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-hms"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "21:40:39Z working: still going\n",
+        )
+        status, detail = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "working"
+        assert detail == "still going"
+
+    def test_leading_timestamp_with_microseconds(self, monkeypatch, tmp_path):
+        cid = "fm-loop-x-us"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "2026-08-11 21:40:39.123456 done: ok\n",
+        )
+        status, _ = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "done"
+
+    def test_non_verb_identifier_does_not_match(self, monkeypatch, tmp_path):
+        # Bug (2): a stray `note: x` (or any other identifier) is NOT a status
+        # verb, so the file reads as "no recognised verb".
+        cid = "fm-loop-x-note"
+        self._write_status(monkeypatch, tmp_path, cid, "note: will revisit\n")
+        assert crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )[0] is None
+
+    def test_poll_return_codes_are_not_file_verbs(self, monkeypatch, tmp_path):
+        # `spawn_silent` and `timeout` are _poll return codes, never written to
+        # a status file. If a file ever literally contained them, they must NOT
+        # be read back as status verbs.
+        configure_paths(monkeypatch, tmp_path)
+        for verb in ("spawn_silent", "timeout"):
+            cid = f"fm-loop-x-{verb}"
+            (crew_dispatch.STATE_DIR / f"{cid}.status").write_text(f"{verb}: x\n")
+            assert crew_dispatch._read_status_detail(
+                crew_dispatch.STATE_DIR / f"{cid}.status"
+            )[0] is None
+
+    def test_first_recognised_verb_wins_when_earlier_is_noise(self, monkeypatch, tmp_path):
+        # A non-verb line followed by a real verb: the real verb is found.
+        cid = "fm-loop-x-mix"
+        self._write_status(
+            monkeypatch, tmp_path, cid,
+            "note: preamble\n"
+            "working: started\n",
+        )
+        status, _ = crew_dispatch._read_status_detail(
+            crew_dispatch.STATE_DIR / f"{cid}.status"
+        )
+        assert status == "working"
+
+
+class TestStatusPollBugOneOriginalDone:
+    """End-to-end at the poll level: a finished crew whose file carries the
+    `original_done: done:` cleanup line must be detected terminal (done), not
+    re-polled. Uses a frozen clock so _poll returns the moment it sees `done`.
+    """
+
+    def test_original_done_shape_is_terminal(self, monkeypatch, tmp_path):
+        configure_paths(monkeypatch, tmp_path)
+        clock = FakeClock()
+        crew_id = "fm-loop-20260811-120000-2"
+        (crew_dispatch.STATE_DIR / f"{crew_id}.status").write_text(
+            "working: building\n"
+            "done: branch=x commit=y base=z\n"
+            "original_done: done:\n"
+        )
+        status, reason, detail = crew_dispatch._poll(
+            crew_id=crew_id,
+            timeout=100,
+            poll_interval=10,
+            startup_grace=30,
+            blocked_grace=30,
+            now_fn=clock.now,
+            sleep_fn=clock.sleep,
+        )
+        assert status == "done"
+        assert reason is None
+        assert detail.startswith("branch=x")

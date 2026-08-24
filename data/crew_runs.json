@@ -329,7 +329,7 @@
     "teardown_ok": true
   },
   {
-    "crew_id": "fm-loop-20260820-094513-342",
+    "crew_id": "fm-loop-20260824-043114-342",
     "issue_number": 342,
     "status": "timeout",
     "fleet_worktree_id": "wt-1",
@@ -375,17 +375,18 @@
       ],
       "schema_version": 1
     },
-    "started_at": "2026-08-20T09:45:44.837249+00:00",
-    "started_monotonic": 48.926238416,
+    "started_at": "2026-08-24T04:31:22.647065+00:00",
+    "started_monotonic": 13.011423041,
     "orca_worktree_present": true,
     "fallback_reason": "spawn_silent",
     "report_path": null,
     "verification": null,
     "entire_review": null,
+    "commit_reachable": null,
     "teardown_ok": true
   },
   {
-    "crew_id": "fm-loop-20260820-094513-341",
+    "crew_id": "fm-loop-20260824-043114-341",
     "issue_number": 341,
     "status": "timeout",
     "fleet_worktree_id": "wt-1",
@@ -431,13 +432,14 @@
       ],
       "schema_version": 1
     },
-    "started_at": "2026-08-20T09:48:34.341675+00:00",
-    "started_monotonic": 215.444635416,
+    "started_at": "2026-08-24T04:33:35.171542+00:00",
+    "started_monotonic": 145.587867625,
     "orca_worktree_present": true,
     "fallback_reason": "spawn_silent",
     "report_path": null,
     "verification": null,
     "entire_review": null,
+    "commit_reachable": null,
     "teardown_ok": true
   }
 ]

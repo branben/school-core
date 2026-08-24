@@ -63,33 +63,65 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runner_online: ${{ steps.check.outputs.runner_online }}
+      status: ${{ steps.check.outputs.status }}
     steps:
       - name: Check school-core-mac runner liveness
         id: check
         env:
-          # The runners API needs repo-admin scope; the default GITHUB_TOKEN
-          # gets 403. RUNNER_ADMIN_TOKEN holds the repo owner's gh token.
-          # HARDENING REQUIRED: replace with a fine-grained PAT scoped to
-          # this repo with ONLY "Administration: Read".
           GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
         run: |
-          # Guard the API call: a missing/expired RUNNER_ADMIN_TOKEN must degrade
-          # to "runner offline" (skip execution) — never fail the gate, because
-          # the hosted `loop` job publishes committed board state even when
-          # execute is skipped. A token misconfig must not take down the board.
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \
-            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length' 2>/dev/null || true)
-          ONLINE=${ONLINE:-0}
-          case "$ONLINE" in
-            ''|*[!0-9]*) ONLINE=0 ;;
-          esac
-          if [ "$ONLINE" -ge 1 ]; then
-            echo "runner_online=true" >> "$GITHUB_OUTPUT"
-            echo "school-core-mac online — execution job will run"
-          else
+            --jq '[.runners[] | select(.name == "school-core-mac" and .status == "online")] | length' 2>/dev/null) || API_FAILED=true
+          if [ "${API_FAILED:-}" = "true" ]; then
             echo "runner_online=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::school-core-mac offline or unverifiable (check RUNNER_ADMIN_TOKEN) — skipping issue execution this cycle"
+            echo "status=unverifiable" >> "$GITHUB_OUTPUT"
+            echo "::warning::school-core-mac liveness unverifiable (RUNNER_ADMIN_TOKEN missing/invalid) — skipping issue execution this cycle"
+          else
+            ONLINE=${ONLINE:-0}
+            case "$ONLINE" in
+              ''|*[!0-9]*) ONLINE=0 ;;
+            esac
+            if [ "$ONLINE" -ge 1 ]; then
+              echo "runner_online=true" >> "$GITHUB_OUTPUT"
+              echo "status=online" >> "$GITHUB_OUTPUT"
+              echo "school-core-mac online — execution job will run"
+            else
+              echo "runner_online=false" >> "$GITHUB_OUTPUT"
+              echo "status=offline" >> "$GITHUB_OUTPUT"
+              echo "::warning::school-core-mac offline — skipping issue execution this cycle"
+            fi
           fi
+
+  # WHY THIS JOB EXISTS: The `gate` job above MUST succeed when the runner is
+  # offline — both `loop` (board publishing) and `pipeline-alert` depend on its
+  # success. Without that, a sleeping Mac takes down the board and suppresses
+  # the alert. The red signal for a blocked cycle comes from THIS job instead,
+  # which fails without being a dependency of either downstream job.
+  #
+  # HARDENING REQUIRED: RUNNER_ADMIN_TOKEN currently holds the repo owner's
+  # gh token. Replace with a fine-grained PAT scoped to this repo with ONLY
+  # "Administration: Read" — a full personal token in CI secrets on a public
+  # repo is over-scoped, and rotating the gh token would silently break the
+  # liveness check.
+  gate-blocked:
+    # Signals a blocked cycle WITHOUT breaking the board publisher.
+    # `loop` depends on `gate` (which succeeds), NOT on this job — so the board
+    # stays up. But `gh run list` shows red because this job fails.
+    name: BLOCKED — runner not online
+    needs: gate
+    runs-on: ubuntu-latest
+    if: always() && needs.gate.outputs.runner_online == 'false'
+    continue-on-error: false
+    steps:
+      - name: Fail the run
+        run: |
+          STATUS="${{ needs.gate.outputs.status }}"
+          if [ "$STATUS" = "unverifiable" ]; then
+            echo "::error::BLOCKED: runner liveness unverifiable (RUNNER_ADMIN_TOKEN) — issue execution skipped"
+          else
+            echo "::error::BLOCKED: runner offline — issue execution skipped"
+          fi
+          exit 1
 
   pipeline-alert:
     # Separate from `gate`: a checkout or AgentMail failure must never make
@@ -97,7 +129,7 @@ jobs:
     name: alert if school loop is blocked
     needs: gate
     runs-on: ubuntu-latest
-    if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'false'
+    if: always() && needs.gate.outputs.runner_online == 'false'
     continue-on-error: true
     steps:
       - name: Check out notification code
@@ -108,19 +140,27 @@ jobs:
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
           AGENTMAIL_SCHOOL_INBOX: vault-synthesis@agentmail.to
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GATE_STATUS: ${{ needs.gate.outputs.status }}
         run: |
           # Best-effort: this job is isolated and cannot block board publishing.
           python - <<'PY'
           import os
           from school_mail import notify_pipeline_alert
 
+          # Read the status output from the gate's check step (set before the Fail gate step exits 1)
+          status = os.environ.get("GATE_STATUS", "offline")
+          if status == "unverifiable":
+              reason = "The self-hosted runner liveness is unverifiable (RUNNER_ADMIN_TOKEN missing/invalid)."
+          else:
+              reason = "The self-hosted runner is offline (API succeeded, 0 runners online)."
+
           ok = notify_pipeline_alert(
               component="school-core-mac runner",
-              reason="The self-hosted runner is offline or the liveness token is missing/invalid.",
+              reason=reason,
               repo=os.environ.get("GITHUB_REPOSITORY", "__global__"),
               run_url=os.environ.get("RUN_URL", ""),
           )
-          print(f"notify_pipeline_alert -> {ok}")
+          print(f"notify_pipeline_alert -> {ok}, status={status}")
           PY
 
   execute:
@@ -146,11 +186,15 @@ jobs:
       contents: write
       issues: write
     if: always() && needs.gate.result == 'success' && needs.gate.outputs.runner_online == 'true'
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       # The secret that unlocks model calls — REQUIRED (execution fails loudly
       # without it). Same wiring as CI's integration job.
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # Model API key for the spawned agent — Hermes needs this to make LLM calls.
+      # Without it, the agent starts, gets 402, exits silently (no status file).
+      # The spawned agent uses this key via the school-core gateway to reach Nous.
+      OPENROUTER_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
       # AgentMail key for school-failed / retry-pending alerts. The bridge
       # degrades gracefully (no crash, no alert) when unset.
       AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
@@ -171,7 +215,7 @@ jobs:
       # infra, so by the time the bridge runs the crew path is expected live.
       CREW_ENABLED: "1"
       # Budget arithmetic — these three numbers MUST be internally consistent
-      # with `timeout-minutes: 30` (1800s) above, or admission control lies to
+      # with `timeout-minutes: 60` (3600s) above, or admission control lies to
       # itself and the job gets killed instead of self-throttling.
       #
       # crew_admission.decide_admission() requires:
@@ -194,9 +238,10 @@ jobs:
       # numbers honest and keep cycles short.
       CREW_MAX_PER_CYCLE: "1"
       CREW_RUNNER_SLOTS: "1"
+      MAX_ISSUES_PER_CYCLE: "2"
       # Match the code default (issue_bridge.py:1028) and the job timeout, so
       # the budget can never promise time GitHub will not grant.
-      CREW_CYCLE_BUDGET_SECONDS: "1800"
+      CREW_CYCLE_BUDGET_SECONDS: "3600"
       # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
       # bridge. The workflow preflight below already hard-fails missing Nix or
       # verifyShell; this flag additionally escalates an internal/direct gate
@@ -362,6 +407,27 @@ jobs:
       - name: Run bridge loop (executes issues)
         run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
+      - name: Crew ledger reconciliation audit (advisory)
+        # N10 / bead school-core-1u9. ADVISORY (always exits 0) and runs with
+        # if: always() — deliberately, for two separate reasons.
+        #
+        # WHY always(): a CANCELLED job is exactly when records are lost (that is
+        # what 5cc4ae0 fixed), so an audit that skips on cancellation goes blind
+        # in the only case that matters. Without this condition it inherits
+        # success() and never runs on the failure it exists to detect.
+        #
+        # WHY end-of-cycle and not preflight: the ledger is written DURING the
+        # cycle. A preflight audit reports the PREVIOUS cycle's damage one tick
+        # late and attributes it to the wrong run.
+        #
+        # WHY advisory: an unreconciled ledger means the work happened and was
+        # not recorded — a bookkeeping loss. Unlike the gateway preflight (which
+        # exits 1 because a dead gateway means no work is possible), killing the
+        # cycle here would trade a reporting problem for a work stoppage.
+        if: always()
+        run: |
+          .venv/bin/python crew_ledger_reconcile.py
+
       - name: Sanitize + commit board state (durable, PII-free)
         # Runs even when the job is CANCELLED or FAILED. Without this condition
         # the step defaults to success(), and the 30-minute timeout discarded
@@ -423,16 +489,35 @@ jobs:
           # modified-but-unstaged and the board lost the cycle. `find` only
           # adds real files, so a missing trajectories/ dir or an empty
           # consolidation tree can never kill the checkpoint.
+          # 2026-08-23: board-publish is rewritten by the hosted `loop` job
+          # (force-push from ubuntu-latest each cycle). Committing our
+          # main-based HEAD on top of it without syncing first guarantees a
+          # non-fast-forward rejection ("stale info") EVERY cycle — six days
+          # of invisible checkpoint losses until stderr capture exposed it.
+          # Sync onto the live branch tip BEFORE staging, so this push is a
+          # clean fast-forward relative to what loop last wrote.
+          # Sync history onto board-publish tip WITHOUT touching the worktree.
+          # The bridge just wrote fresh data/*.json into the worktree; any
+          # operation that moves HEAD onto board-publish (reset --hard, merge,
+          # checkout, stash pop) collides with those uncommitted writes because
+          # data/*.json is tracked on board-publish with divergent content.
+          # git add stages the bridge's real files; git write-tree builds a
+          # tree from just those; git commit-tree parents the new commit on
+          # FETCH_HEAD directly; the push is a clean fast-forward and the
+          # worktree is never touched. (Phymora's tested approach — verified
+          # in a scratch repo reproducing the exact shape.)
+          git fetch origin board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
           find data/sessions/consolidation -name '*.yaml' -exec git add -f {} + 2>/dev/null || true
-          if git diff --cached --quiet; then
+          if git diff --quiet FETCH_HEAD -- data/ 2>/dev/null; then
             echo "checkpoint: no state changes to commit"
           else
-            git commit -m "chore: checkpoint board state (sanitized) [skip ci]" \
-              && git push --force-with-lease origin HEAD:board-publish \
-              && echo "checkpoint: pushed $(git rev-parse --short HEAD) to board-publish" \
-              || echo "::warning::checkpoint commit/push failed (self-heals next cycle)"
+            TREE=$(git write-tree)
+            NEW=$(git commit-tree "$TREE" -p FETCH_HEAD -m "chore: checkpoint board state (sanitized) [skip ci]")
+            git push origin "$NEW:board-publish" 2>/tmp/cp-stderr.txt \
+              && echo "checkpoint: pushed $NEW to board-publish" \
+              || { echo "::warning::checkpoint push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
           fi
 
   loop:

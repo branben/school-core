@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py — health report for retry_issues.json",
+    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -498,8 +498,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -627,8 +627,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -756,8 +756,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -792,7 +792,7 @@
           "severity": "HIGH",
           "issue_class": "runtime_failure",
           "citation": "exit_code=1",
-          "description": "SyntaxError: invalid character '—' (U+2014)"
+          "description": "SyntaxError: invalid character '\u2014' (U+2014)"
         }
       ],
       "routing_feedback": {
@@ -820,5 +820,35 @@
     "crew_fallback_reason": null,
     "teardown_ok": true,
     "timestamp": "2026-08-12T23:05:52.686351+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "spawn_silent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T04:33:27.491348+00:00"
+  },
+  {
+    "issue": 341,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "spawn_silent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T04:35:40.056606+00:00"
   }
 ]

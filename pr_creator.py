@@ -213,6 +213,7 @@ def build_pr_body(
     combined_score: float = 0.0,
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
+    patch_path: Optional[str] = None,
 ) -> str:
     """Render the PR body carrying the full acceptance evidence chain (B3).
 
@@ -335,6 +336,42 @@ def build_pr_body(
     # Only on the crew path: a direct-path PR must not advertise an artifact.
     if crew_used and artifact_path:
         body += f"- **Artifact:** `{artifact_path}`\n"
+    # A cited commit that does not resolve is worse than no commit at all,
+    # because a reader trusts the hash. crew_dispatch probes reachability BEFORE
+    # teardown and records a tri-state; surface False loudly and None honestly.
+    if crew_used:
+        reachable = (review_evidence or {}).get("commit_reachable")
+        if reachable is False:
+            body += (
+                "- ⚠️ **The crew's commit does NOT resolve.** Its branch lived in "
+                "a disposable worktree that has been torn down, so the cited SHA "
+                "is orphaned and the content of this PR was NOT taken from it. "
+                "Do not treat the commit as evidence.\n"
+            )
+        elif reachable is None:
+            body += (
+                "- **Commit reachability:** not determined (the probe could not "
+                "run) — treat the cited SHA as unverified.\n"
+            )
+        # The crew's actual diff, captured before teardown (bead school-core-3um).
+        # The commit cannot survive its disposable clone, so this patch is the
+        # only durable record of what the crew really changed — and it is NOT
+        # what this PR's content was built from. Say both plainly.
+        # Prefer the dedicated `patch_path` argument (B8 Phase 2: the bridge
+        # forwards it from CrewResult); fall back to the legacy review_evidence
+        # key so direct renderer callers keep working.
+        patch_path = patch_path or (review_evidence or {}).get("patch_path")
+        if patch_path:
+            body += (
+                f"- **Crew diff (captured):** `{patch_path}` — the real change "
+                "the crew made, preserved as a patch because its commit does not "
+                "survive worktree teardown.\n"
+            )
+        elif reachable is False:
+            body += (
+                "- ⚠️ **No crew diff was captured** — the crew's work is not "
+                "preserved anywhere. Treat this PR as carrying no crew output.\n"
+            )
     return body
 
 
@@ -349,6 +386,7 @@ def create_pr_for_issue(
     work_dir: Optional[str] = None,
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
+    patch_path: Optional[str] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -433,10 +471,81 @@ def create_pr_for_issue(
         message = f"school: task output for #{num} ({domain})"
         sys.stderr.write(f"[pr_creator] committing {path} to branch '{branch}'\n")
 
-    # Filter out any entries where blob creation failed.
+    # B8 Phase 2 — MIDDLE option. When the crew was used, its real diff was
+    # captured to a .patch file before worktree teardown (capture_crew_patch in
+    # crew_dispatch.py:572). Ship that patch as a *blob in the tree* so it is
+    # reviewable on GitHub without applying it to the codebase. The captured
+    # patch uses `git diff --binary`, so it can carry binary hunks; we commit
+    # it verbatim and never interpret it, preserving that. The PR body's
+    # disclaimer (build_pr_body, ~line 355) already states this patch is NOT
+    # what the PR content was built from, so no body edit is needed. If the
+    # file cannot be read (or is empty), we proceed without it rather than
+    # failing the whole PR — the body still names the path when it is known.
+    if crew_used and patch_path:
+        patch_file = Path(patch_path)
+        try:
+            patch_bytes = patch_file.read_bytes()
+        except OSError as exc:
+            sys.stderr.write(
+                f"[pr_creator] cannot read crew patch '{patch_path}': {exc} "
+                f"— committing without it\n"
+            )
+            patch_bytes = b""
+        if patch_bytes:
+            # git diff --binary encodes binary hunks as ASCII base85, so the
+            # patch text is valid UTF-8 and decodes losslessly here.
+            blob_sha = _blobSha(repo, patch_bytes.decode("utf-8", "replace"))
+            if not blob_sha:
+                # Same infra-fault class as a normal blob POST returning no SHA.
+                sys.stderr.write(
+                    "[pr_creator] crew patch blob creation failed — aborting\n"
+                )
+                return None
+            patch_repo_path = f"school-output/{issue.get('domain', '_default')}/{num}/changes.patch"
+            entries.append({
+                "path": patch_repo_path,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            })
+            message = f"{message} (with captured crew diff)"
+            sys.stderr.write(
+                f"[pr_creator] committing crew patch {patch_repo_path} "
+                f"to branch '{branch}'\n"
+            )
+
+    # Filter out any entries where blob creation failed (an infra fault: the
+    # GitHub blob POST returned no SHA). If none survive, there is nothing to
+    # commit and we must abort — but this is a distinct fault from the
+    # empty-change case handled below.
     entries = [e for e in entries if e["sha"]]
     if not entries:
         sys.stderr.write("[pr_creator] blob creation failed — aborting\n")
+        return None
+
+    # Diff-emptiness guard: the blob(s) were created, yet every entry is
+    # byte-for-byte identical to what is already in the base tree. The
+    # resulting commit would change nothing — a no-op PR that looks merged but
+    # fixes nothing. This is a DIFFERENT fault from blob creation failing:
+    # here the content exists, it just matches the base, so we must catch it
+    # on its own terms rather than letting it masquerade as a real change.
+    # Fail OPEN when we cannot trust the base tree (unreadable or truncated):
+    # if we cannot prove the change is empty, we let it through.
+    base_obj = branch_tree if isinstance(branch_tree, dict) else {}
+    base_entries = (
+        {e["path"]: (e.get("mode"), e.get("type"), e.get("sha"))
+         for e in base_obj.get("tree", [])}
+        if not base_obj.get("truncated")
+        else {}
+    )
+    if entries and all(
+        base_entries.get(e["path"]) == (e.get("mode"), e.get("type"), e["sha"])
+        for e in entries
+    ):
+        sys.stderr.write(
+            "[pr_creator] resulting commit would change nothing — every entry "
+            "matches the base tree; aborting\n"
+        )
         return None
 
     tree_sha = _treeSha(repo, base_tree, entries)
@@ -466,6 +575,7 @@ def create_pr_for_issue(
         combined_score=combined_score,
         artifact_path=artifact_path,
         crew_used=crew_used,
+        patch_path=patch_path,
     )
 
     # 4. Open PR.

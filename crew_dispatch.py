@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 import time
@@ -73,8 +74,29 @@ _ARTIFACT_FIELD_RE = re.compile(
     r"[*_]*\s*([^\s]+)"
 )
 
+# Status-file verbs. Restricted to the SIX verbs the crew prompt documents
+# (crew_dispatch.py:393) and _poll consumes (crew_dispatch.py:937-944):
+#   working | blocked | needs-decision | resolved | done | failed
+# Anything else is NOT a status verb. The previous pattern
+#   ^\s*([A-Za-z][A-Za-z0-9_-]*)(?:\s+\[[^\]]*\])?\s*:
+# matched ANY identifier before a colon, which caused two bugs:
+#   (1) a real `done:`/`working:` line followed by a cleanup line such as
+#       `original_done: done:` was read as verb "original_done" — never
+#       terminal — so finished crews kept getting polled; and
+#   (2) any stray `note: x` line was mistaken for a live verb instead of
+#       being ignored.
+# NOTE: `spawn_silent` and `timeout` are _poll RETURN CODES (lines 949/952),
+# not status-file verbs — they are intentionally absent here. A file never
+# contains them, and matching them would wrongly drop `needs-decision` /
+# `resolved` crews into the "no recognised verb" path.
+# A leading timestamp (full ISO-8601 or a bare HH:MM:SS[Z]) is optional and is
+# NOT the verb: crews (or a wrapping supervisor) may prefix each line with one.
 _STATUS_RE = re.compile(
-    r"^\s*([A-Za-z][A-Za-z0-9_-]*)(?:\s+\[[^\]]*\])?\s*:"
+    r"^\s*"
+    r"(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+|"
+    r"\d{2}:\d{2}:\d{2}Z?\s+)?"
+    r"(?P<verb>working|blocked|needs-decision|resolved|done|failed)"
+    r"(?:\s+\[[^\]]*\])?\s*:"
 )
 _META_RE = re.compile(r"^([^=]+)=(.*)$")
 
@@ -93,6 +115,12 @@ class CrewResult:
     artifact_identity: Optional[dict[str, object]] = None
     verification: Optional[dict] = None
     entire_review: Optional[dict] = None
+    # B8 Phase 2 (bead school-core-3um): the crew's real diff, captured before
+    # worktree teardown as text in the task dir (alongside report.md). The commit
+    # itself cannot survive the disposable clone, so this patch is the only
+    # durable record of what the crew actually changed. Carried here so the
+    # bridge can forward it into the PR body instead of re-reading the ledger.
+    patch_path: Optional[Path] = None
 
 
 class CrewUnavailableError(RuntimeError):
@@ -189,7 +217,7 @@ def _read_status_detail(path: Path) -> tuple[Optional[str], str]:
     for line in reversed(lines):
         match = _STATUS_RE.match(line)
         if match:
-            return match.group(1).lower(), line[match.end():].strip()
+            return match.group("verb").lower(), line[match.end():].strip()
     return None, ""
 
 
@@ -552,6 +580,152 @@ def _orca_remove(worktree_id: str) -> bool:
     return True
 
 
+# Upper bound on a captured crew patch. A runaway diff must not be held in
+# memory unbounded nor committed to a PR. Matches the spirit of
+# MAX_REPORT_BYTES: an oversized artifact is a failure, not a large success.
+MAX_PATCH_BYTES = 2_000_000
+
+# Refs come from model-authored status text, so they are untrusted input and must
+# never reach a git argument unvalidated. Conservative allowlist: hex shas,
+# branch/tag names, and `owner/branch@sha` as emitted in `base=` lines.
+_SAFE_REF_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._/@-]{0,200}$")
+
+
+def capture_crew_patch(
+    worktree_path: Path,
+    base: str,
+    destination: Path,
+) -> Optional[Path]:
+    """Capture the crew's diff as a patch file, or return None.
+
+    THE PROBLEM THIS SOLVES: 54 crews emitted valid ``done: commit=<sha>`` lines
+    and every one of those commits is now unreachable. The crew works inside a
+    disposable clone that is reset between runs and a worktree that is deleted on
+    teardown, so the branch ref vanishes and the commit is orphaned. The work was
+    real and good; nothing preserved it.
+
+    MUST be called BEFORE teardown_worktree.
+
+    SUPERVISOR-SIDE BY DESIGN. The reviewed alternative was to instruct the agent
+    to write its own patch. This runs ``git diff`` from the supervisor instead,
+    because agent compliance is exactly the failure mode this system already has:
+    the artifact handshake asks agents to emit a parseable identity block and
+    #342 emitted nothing at all. A supervisor-side capture has no compliance
+    dependency — if the worktree has changes, the patch exists.
+
+    A PATCH, NOT A BRANCH HANDOFF. Two premises were refuted in review: the crew
+    worktree does NOT share an object store with any persistent clone
+    (``issue_bridge`` calls ``repo_reader.clone_repo``, a separate clone), and
+    that clone is ``git clone --depth 1`` and verified shallow, so fetching from
+    it can graft history and the ``base=`` sha may not exist there. A patch is
+    text and has neither dependency.
+
+    EMPTY IS A FAILURE, NOT A SUCCESS. Returns None — and writes nothing — when
+    the diff is empty. ``pr_creator``'s only emptiness guard catches blob-creation
+    failure, not an empty diff, so a silently-empty capture would produce a PR
+    with no diff that nothing vetoes. That would be worse than today's honest
+    loss, so an empty capture must be loud and must leave no 0-byte file behind
+    for a later reader to mistake for preserved work.
+    """
+    if not _SAFE_REF_RE.match(base or ""):
+        log.warning("refusing unsafe base ref for patch capture: %r", base)
+        return None
+    if not worktree_path.is_dir():
+        log.warning("worktree missing, cannot capture patch: %s", worktree_path)
+        return None
+    try:
+        proc = _run(
+            [
+                "git", "-C", str(worktree_path),
+                "diff", "--binary", f"{base}...HEAD",
+            ],
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("patch capture failed for %s: %s", worktree_path, exc)
+        return None
+    if proc.returncode != 0:
+        log.warning(
+            "git diff failed in %s (base=%s): %s",
+            worktree_path, base, (proc.stderr or "").strip()[:200],
+        )
+        return None
+
+    patch = proc.stdout or ""
+    if not patch.strip():
+        # Loud, and no file written. An empty patch that looks like an artifact
+        # is how a green PR with no diff gets shipped.
+        log.warning(
+            "crew produced NO diff against %s — nothing to preserve. Not writing "
+            "an empty patch; an empty artifact must never read as success.",
+            base,
+        )
+        return None
+    if len(patch.encode("utf-8", "replace")) > MAX_PATCH_BYTES:
+        log.warning(
+            "captured patch exceeds MAX_PATCH_BYTES (%d) — refusing to preserve "
+            "an unbounded diff", MAX_PATCH_BYTES,
+        )
+        return None
+
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(patch, encoding="utf-8")
+    except OSError as exc:
+        log.warning("could not write patch to %s: %s", destination, exc)
+        return None
+    log.info("captured crew patch (%d bytes) -> %s", len(patch), destination)
+    return destination
+
+
+def _record_artifact_reachability(
+    crew_id: str,
+    artifact_identity: Optional[dict],
+    worktree_id: Optional[str],
+) -> Optional[bool]:
+    """Record whether the crew's cited commit actually resolves.
+
+    MUST be called BEFORE teardown_worktree. The commit lives in the disposable
+    worktree's clone, which is reset between runs and deleted on teardown — so
+    probing afterwards would report every commit unreachable and prove nothing
+    about whether the work was real.
+
+    ADDITIVE ONLY. This never writes ``status`` or ``fallback_reason``: U10
+    (see the checkpoint below) makes the terminal outcome authoritative, and an
+    unreachable commit must not silently downgrade a crew that genuinely
+    finished. The reachability answer is its own field so a reader can see both
+    "the crew completed" and "its commit no longer resolves" — which is the true
+    state of every one of the 54 done-crews found on disk.
+
+    Returns the tri-state so callers can log it; None means "not determined"
+    (no identity cited, no worktree, or git could not look). Never raises:
+    recording the outcome matters more than probing it.
+    """
+    reachable: Optional[bool] = None
+    try:
+        commit = (artifact_identity or {}).get("commit")
+        if commit and worktree_id and "::" in worktree_id:
+            worktree_path = Path(worktree_id.split("::", 1)[1])
+            reachable = commit_is_reachable(str(commit), worktree_path)
+        if reachable is False:
+            log.warning(
+                "%s: cited commit %s does NOT resolve in its own worktree "
+                "clone — the work is not preserved anywhere. Recording the "
+                "outcome as-is; the record must not claim evidence it cannot "
+                "produce.",
+                crew_id,
+                commit,
+            )
+        _update_run(crew_id, {"commit_reachable": reachable})
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning(
+            "%s: reachability probe failed (%s); outcome record is unaffected",
+            crew_id,
+            exc,
+        )
+    return reachable
+
+
 def teardown_worktree(worktree_id: Optional[str]) -> bool:
     if not worktree_id:
         return False
@@ -624,6 +798,77 @@ def sweep_stale_runs(
     return removed
 
 
+def _read_dotenv_value(path: Path, name: str) -> str:
+    """Best-effort read of a ``NAME=VALUE`` line from a dotenv file.
+
+    Dependency-free (the project does not use python-dotenv). Skips comments
+    and blank lines; strips optional surrounding quotes.
+    """
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+def _read_yaml_openrouter_key(path: Path) -> str:
+    """Best-effort extraction of an OpenRouter key from a Hermes config.yaml.
+
+    Hermes persists provider keys under ~/.hermes/config.yaml. We do NOT pull
+    in a YAML parser; a couple of tolerant regex scans cover the documented
+    shapes (a top-level ``OPENROUTER_API_KEY:`` and a nested
+    ``openrouter:``/``api_key:`` block). Returns "" when nothing matches.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    m = re.search(r"^OPENROUTER_API_KEY:\s*\"?([^\"\n]+)\"?", text, re.MULTILINE)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"openrouter:.*?api_key:\s*\"?([^\"\n]+)\"?", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+def _openrouter_api_key() -> str:
+    """Resolve ``OPENROUTER_API_KEY`` for the spawned crew agent.
+
+    The bridge process carries the key in its environment, but it is lost by
+    the time the spawned Hermes starts (the spawn crosses a process boundary
+    and/or fm-spawn.sh rebuilds the child env). We forward it explicitly so
+    the crew can reach OpenRouter.
+
+    Source order: live ``os.environ`` -> the repo ``.env`` (the project's
+    secrets store, alongside ``OMNIROUTE_API_KEY``) -> Hermes ``config.yaml``
+    if the key was persisted there. Returns "" when nowhere found.
+    """
+    key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    if key:
+        return key
+    key = _read_dotenv_value(
+        Path(__file__).resolve().parent / ".env", "OPENROUTER_API_KEY"
+    )
+    if key:
+        return key
+    cfg = Path.home() / ".hermes" / "config.yaml"
+    if cfg.is_file():
+        key = _read_yaml_openrouter_key(cfg)
+        if key:
+            return key
+    return ""
+
+
 def _spawn(
     crew_id: str,
     project_dir: Path,
@@ -653,7 +898,31 @@ def _spawn(
         else Path.home() / ".local/bin/hermes-fm-wrapper"
     )
     wrapper = os.environ.get("FM_WRAPPER", str(default_wrapper))
-    harness = f'{wrapper} "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
+    # fm-spawn.sh substitutes the bare tokens __BRIEF__/__OPINPUT__ itself
+    # (replacing them with the real brief path and opinput binary). The
+    # placeholders MUST stay bare — a leading '$' makes bash try to expand
+    # "$__BRIEF__" as an undefined variable, which resolves to the empty
+    # string and leaves the wrapper with no brief (observed 2026-08-18).
+    harness = f'{wrapper} "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+
+    # --- API-key injection ----------------------------------------------------
+    # fm-spawn.sh forwards only FM_* variables into the pane; everything else
+    # from the bridge's os.environ (including OPENROUTER_API_KEY) is dropped
+    # at the pane boundary. The pane is a fresh shell, so without the key
+    # Hermes has no credential for its first model call and the crew sits
+    # silent until startup_grace fires. Prepend the key to the launch command
+    # as an export; shlex.quote keeps it shell-safe. The key is only ever set
+    # in the bridge's environment, never committed.
+    #
+    # Source the key from the bridge's live os.environ, then fall back to the
+    # repo .env and Hermes config.yaml (_openrouter_api_key). Sourcing ONLY
+    # from os.environ silently no-ops whenever school-core runs as a separate
+    # process that did not inherit the bridge's environment — which is exactly
+    # the "present in the bridge, lost by spawn time" failure. The multi-source
+    # resolver restores it.
+    key = _openrouter_api_key()
+    if key:
+        harness = f"export OPENROUTER_API_KEY={shlex.quote(key)}; {harness}"
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
     # polls for status. fm-spawn falls back to its OWN clone root when
@@ -687,6 +956,56 @@ def _spawn(
         "--mode", "local-only", "--yolo", "on", "--backend", "orca",
         "--harness", harness,
     ], timeout=SPAWN_TIMEOUT_SECONDS, env=env)
+
+
+def commit_is_reachable(sha: str, repo_path: Path) -> Optional[bool]:
+    """Does ``sha`` resolve to a real commit object in ``repo_path``?
+
+    Returns True / False / None, where None means "could not determine" — the
+    repo is missing, not a repo, or git failed. Collapsing None into False would
+    let a tooling failure read as evidence the crew's work was lost, the same
+    UNKNOWN-as-verdict trap fixed in the review gates.
+
+    WHY THIS EXISTS: 54 crews emitted ``done: ... commit=<sha>`` lines whose
+    objects do not exist anywhere — not in either primary clone, not in the
+    crew's own clone. The crew's disposable clone is reset between runs (its
+    reflog shows repeated ``reset: moving to b0075d74…``) and the worktree is
+    deleted, so the branch ref vanishes and the commit is orphaned. The SHA was
+    real when written and unreachable minutes later.
+
+    A record asserting an unverifiable hash is worse than one admitting it has
+    no evidence, because a reader will trust the hash.
+    """
+    candidate = (sha or "").strip()
+    # Reject anything that is not a plausible hex object name BEFORE shelling
+    # out: `sha` arrives from model-authored status text, so it is untrusted
+    # input and must never reach a subprocess argument unvalidated.
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", candidate):
+        return False
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_path), "cat-file", "-t", candidate],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode == 0:
+        return proc.stdout.strip() == "commit"
+    # Distinguish "git ran and said no" from "git could not look".
+    # Exact wordings observed on macOS git:
+    #   missing dir  -> "fatal: cannot change to '<path>': No such file or directory"
+    #   not a repo   -> "fatal: not a git repository (or any of the parent directories)"
+    stderr = (proc.stderr or "").lower()
+    if (
+        "cannot change to" in stderr
+        or "not a git repository" in stderr
+        or "does not exist" in stderr
+    ):
+        return None
+    return False
 
 
 def _poll(
@@ -1002,6 +1321,31 @@ def dispatch_crew(
         "verification": verification_result,
         "entire_review": entire_review_result,
     })
+    # Probe reachability while the worktree STILL EXISTS — its clone is deleted
+    # by the teardown below, and probing afterwards would report every commit
+    # unreachable regardless of whether the work was real. Additive only:
+    # this writes commit_reachable and never touches status/fallback_reason, so
+    # an orphaned commit cannot downgrade a crew that genuinely finished.
+    _record_artifact_reachability(crew_id, artifact_identity, worktree_id)
+    # Preserve the WORK, not just the record (bead school-core-3um). The commit
+    # itself cannot survive — the disposable clone is reset between runs — so
+    # capture the diff as text into the task dir, which outlives teardown
+    # alongside report.md. Supervisor-side on purpose: no agent compliance
+    # required. An empty capture returns None and writes nothing, so a failed
+    # capture can never masquerade as preserved work.
+    patch_path: Optional[Path] = None
+    if worktree_id and "::" in worktree_id and artifact_identity:
+        base_ref = str(artifact_identity.get("base") or "").split("@")[-1] or "main"
+        patch_path = capture_crew_patch(
+            worktree_path=Path(worktree_id.split("::", 1)[1]),
+            base=base_ref,
+            destination=_task_dir(crew_id) / "changes.patch",
+        )
+        _update_run(crew_id, {
+            "patch_path": (
+                str(patch_path.relative_to(DATA_DIR)) if patch_path else None
+            ),
+        })
     teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(
@@ -1015,4 +1359,5 @@ def dispatch_crew(
         artifact_identity=artifact_identity,
         verification=verification_result,
         entire_review=entire_review_result,
+        patch_path=patch_path,
     )

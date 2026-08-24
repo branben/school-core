@@ -30,6 +30,8 @@ Why each gap matters, concretely:
 from unittest.mock import patch
 
 import pr_creator
+from crew_dispatch import CrewResult
+from pathlib import Path
 
 
 def _base_kwargs(**over):
@@ -173,6 +175,113 @@ class TestPrBodyFlagsUnreviewedWork:
         body = _captured_body()
         assert "DID NOT RUN" not in body
         assert "UNREVIEWED" not in body
+
+
+class TestPrBodyFlagsUnreachableCommit:
+    """A cited SHA that does not resolve must be called out.
+
+    54 crews emitted `done: commit=<sha>` lines whose objects are orphaned by
+    worktree teardown. A reader trusts a hash, so an unverifiable one is worse
+    than none. crew_dispatch probes before teardown; this surfaces the answer.
+    """
+
+    def test_unreachable_commit_is_flagged(self):
+        body = _captured_body(
+            crew_used=True,
+            artifact_path="data/crew/x/report.md",
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": False,
+            },
+        )
+        assert "does NOT resolve" in body, (
+            "PR advertises a commit that no longer exists with no warning"
+        )
+        assert "not treat the commit as evidence" in body.lower()
+
+    def test_undetermined_reachability_says_so(self):
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": None,
+            },
+        )
+        assert "not determined" in body.lower()
+
+    def test_reachable_commit_adds_no_warning(self):
+        """A guard that fires on healthy runs gets ignored."""
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": True,
+            },
+        )
+        assert "does NOT resolve" not in body
+        assert "not determined" not in body.lower()
+
+    def test_direct_path_never_mentions_commit_reachability(self):
+        """The direct path cites no crew commit, so the field is meaningless."""
+        body = _captured_body(crew_used=False, review_evidence={
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "combined_score": 90.0, "accepted": True,
+            "commit_reachable": False,
+        })
+        assert "does NOT resolve" not in body
+
+
+class TestPrBodySurfacesCapturedPatch:
+    """The captured crew diff must be findable, and its absence must be loud.
+
+    A patch nobody knows about is no better than a lost commit.
+    """
+
+    def test_captured_patch_is_surfaced(self):
+        """The captured crew diff reaches the body through the REAL boundary:
+        CrewResult.patch_path -> issue_bridge extracts it -> build_pr_body's
+        dedicated patch_path arg. This was previously a synthetic review_evidence
+        dict that production never populated (a green test over a dead channel).
+        """
+        crew_result = CrewResult(
+            crew_id="fm-loop-123-342-77",
+            status="done",
+            patch_path=Path("fm-loop-123-342/changes.patch"),
+        )
+        # Mirrors issue_bridge.py:1965 — the bridge pulls patch_path off the
+        # CrewResult and forwards it as a dedicated parameter.
+        patch_path = (
+            str(getattr(crew_result, "patch_path", None))
+            if crew_result and getattr(crew_result, "patch_path", None)
+            else None
+        )
+        body = _captured_body(crew_used=True, patch_path=patch_path)
+        assert "changes.patch" in body, "the captured crew diff is not discoverable"
+        assert "Crew diff" in body
+
+    def test_missing_patch_with_dead_commit_is_flagged(self):
+        """Commit gone AND no patch = the work is truly lost. Say so."""
+        body = _captured_body(
+            crew_used=True,
+            review_evidence={
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "combined_score": 90.0, "accepted": True,
+                "commit_reachable": False,
+            },
+        )
+        assert "No crew diff was captured" in body
+        assert "carrying no crew output" in body
+
+    def test_direct_path_never_mentions_a_patch(self):
+        body = _captured_body(crew_used=False, review_evidence={
+            "cto_verdict": "PASS", "coo_verdict": "PASS",
+            "combined_score": 90.0, "accepted": True,
+            "patch_path": "x/changes.patch",
+        })
+        assert "Crew diff" not in body
 
 
 class TestPrBodyArtifactPath:

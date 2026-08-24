@@ -11,7 +11,7 @@
     "coder": {
         "_difficulty_code-implementation": 1.0,
         "_difficulty_python-testing": 1.0,
-        "code-implementation": 30.26257304999999,
+        "code-implementation": 40.56134999999999,
         "python-testing": 23.347759035929997
     },
     "foundry-coder-0.5b": {
@@ -41,10 +41,6 @@
     "north-coding": {
         "_default": 30.0,
         "python-coding": 35.0
-    },
-    "openhands": {
-        "_difficulty_code-implementation": 1.0,
-        "code-implementation": 3.5549999999999997
     },
     "owl-alpha": {
         "_default": 25.0,
