@@ -96,7 +96,8 @@ _STATUS_RE = re.compile(
     r"(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\s+|"
     r"\d{2}:\d{2}:\d{2}Z?\s+)?"
     r"(?P<verb>working|blocked|needs-decision|resolved|done|failed)"
-    r"(?:\s+\[[^\]]*\])?\s*:"
+    r"(?:\s+\[[^\]]*\])?\s*:",
+    re.I,
 )
 _META_RE = re.compile(r"^([^=]+)=(.*)$")
 
