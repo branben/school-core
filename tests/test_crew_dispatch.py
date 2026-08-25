@@ -1430,3 +1430,55 @@ class TestStatusPollBugOneOriginalDone:
         assert status == "done"
         assert reason is None
         assert detail.startswith("branch=x")
+
+
+def test_spawn_harness_exports_supervision_paths(monkeypatch, tmp_path):
+    """The harness must export FM_STATUS_FILE and FM_REPORT_FILE into the pane.
+
+    fm-spawn.sh hands the launch command to the crew's pane as literal typed
+    text and forwards only the FM_* vars in its own hand-built prefix
+    (fm-spawn.sh:2591); FM_STATUS_FILE is absent from that list and appears
+    nowhere in firstmate's bin/. Setting it via ``env=`` reaches fm-spawn.sh's
+    process environment but NOT the pane, so the wrapper's status-write block
+    -- gated on ``[[ -n "${FM_STATUS_FILE:-}" ]]`` (hermes-fm-wrapper:97) --
+    was silently skipped for every crew ever dispatched: 0 of 366 produced the
+    wrapper's ``hermes-exit-`` post-mortem line.
+
+    Lock the export-prefix fix, and lock the ORDER: the key export must remain
+    outermost so test_spawn_harness_exports_omniroute_key_when_resolvable's
+    startswith() assertion keeps holding.
+    """
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setenv("OMNIROUTE_API_KEY", "sk-test-key")
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+
+    crew_id = "fm-loop-20260824-999999-777"
+    crew_dispatch._spawn(
+        crew_id=crew_id,
+        project_dir=tmp_path / "proj",
+        capability=None,
+    )
+
+    harness = captured["args"][captured["args"].index("--harness") + 1]
+
+    assert "FM_STATUS_FILE=" in harness, (
+        "harness does not export FM_STATUS_FILE — the wrapper cannot write its "
+        "terminal status line and every crew reads as silent_agent"
+    )
+    assert "FM_REPORT_FILE=" in harness, (
+        "harness does not export FM_REPORT_FILE — the wrapper cannot locate the "
+        "report path"
+    )
+    assert crew_id in harness, (
+        "exported status path does not name this crew — the wrapper would write "
+        "to another crew's status file"
+    )
+    assert harness.startswith("export OMNIROUTE_API_KEY="), (
+        "key export is no longer outermost; this breaks the existing key guard"
+    )

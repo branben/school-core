@@ -921,9 +921,39 @@ def _spawn(
     # process that did not inherit the bridge's environment — which is exactly
     # the "present in the bridge, lost by spawn time" failure. The multi-source
     # resolver restores it.
+    # --- Supervision-path injection (same pane-boundary problem as the key) ---
+    # FM_STATUS_FILE / FM_REPORT_FILE are set in the `env=` dict below, which
+    # reaches fm-spawn.sh's PROCESS environment — but NOT the crew's pane.
+    # fm-spawn.sh hands the launch command to the pane as literal typed text
+    # (fm-spawn.sh:2638 spawn_send_literal) and forwards only the FM_* vars in
+    # its own hand-built prefix at fm-spawn.sh:2591; FM_STATUS_FILE is absent
+    # from that list, and the string appears nowhere in firstmate's bin/ (it is
+    # school-core's own convention). So the wrapper saw it EMPTY and skipped its
+    # entire status-write block, which is gated on
+    # `[[ -n "${FM_STATUS_FILE:-}" ]]` (hermes-fm-wrapper:97).
+    #
+    # EVIDENCE: 0 of 366 dispatched crews ever produced the wrapper's
+    # `failed: hermes-exit-<code>-no-terminal-status` post-mortem line, while a
+    # direct wrapper invocation with the variable set produces it immediately.
+    # The 122 crews that DID write status files read the path out of the brief
+    # prose instead (brief.md names it; fm-brief.sh:179 templates it in) — which
+    # is why the split was 122/244 rather than all-or-nothing: it tracked whether
+    # the model followed a path buried in text, not any transport property.
+    #
+    # This runs BEFORE the key injection below so the key export stays the
+    # OUTERMOST prefix: test_spawn_harness_exports_omniroute_key_when_resolvable
+    # asserts harness.startswith("export OMNIROUTE_API_KEY="), and prepending
+    # after it would turn that guard red for a reason unrelated to the key.
+    harness = (
+        f"export FM_STATUS_FILE={shlex.quote(str(_status_path(crew_id)))} "
+        f"FM_REPORT_FILE={shlex.quote(str(_task_dir(crew_id) / 'report.md'))}; "
+        f"{harness}"
+    )
+
     key = _omniroute_api_key()
     if key:
         harness = f"export OMNIROUTE_API_KEY={shlex.quote(key)}; {harness}"
+
     # Export FM_HOME (and its state/data subdirs) so fm-spawn resolves the
     # same config/data/state directories this module writes briefs into and
     # polls for status. fm-spawn falls back to its OWN clone root when
