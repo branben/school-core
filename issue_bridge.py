@@ -615,6 +615,14 @@ class RunBatch:
         metrics: Optional[PipelineMetrics] = None,
     ) -> None:
         self._pending.append(_prepare_run_entry(entry, metrics))
+        # Flush immediately to prevent data loss on mid-cycle failures.
+        # Previously deferred to a single batch flush after the issue loop;
+        # any timeout/crash between append and flush silently lost records
+        # (brandonbennett-420).
+        try:
+            self.flush()
+        except Exception:
+            pass  # non-fatal; entry stays in _pending for the next flush
 
     def flush(self) -> None:
         """Append pending entries with one atomic read/modify/replace."""
@@ -2111,6 +2119,8 @@ def bridge_issues(
                             **outcome,
                         },
                     )
+                    # Flush per-record to prevent data loss on mid-cycle failures
+                    run_batch.flush()
                 except Exception as e_rec:
                     sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
                 _mark_github_issue(repo, num, "error")
@@ -2122,17 +2132,7 @@ def bridge_issues(
                     sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
                 processed.add(num)
 
-    # Flush the append-only journal once after all issue outcomes are queued.
-    # Retry, processed, score, and crew checkpoints retain their existing
-    # boundaries; only last_run.json is batched here. Preserve the legacy
-    # non-fatal write behavior if the journal is temporarily unavailable.
-    try:
-        run_batch.flush()
-    except Exception as e_rec:
-        sys.stderr.write(
-            f"[issue_bridge] Failed to flush run batch at {run_batch.path}: "
-            f"{type(e_rec).__name__}: {e_rec}\n"
-        )
+    # Flush removed: batch-flush is now per-record
     _save_retries(retries)
     _save_processed(processed)
     return results
