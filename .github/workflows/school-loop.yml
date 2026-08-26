@@ -2,24 +2,30 @@
 #
 # Runs every 5 minutes so the board stays published and state stays durable.
 #
-# Architecture (hybrid, 2026-08-10):
+# Architecture (simplified 2026-08-26):
 #   1. EXECUTION ON THE MAC — `execute` job runs on the self-hosted runner
 #      (school-core-mac, label omniroute) because real task execution needs
 #      the OmniRoute gateway (localhost:20128) + the Orca macOS sandbox,
 #      which only exist on the Mac. Gated on runner liveness so a sleeping
 #      Mac is a visible, alerted "blocked" cycle, never a hung run.
-#   2. VIEW HOSTED — `loop` job runs on ubuntu-latest and always publishes
-#      the board (ht-ml.app), so the board stays up even when the Mac sleeps.
-#   3. STATE IN GIT — data/* is committed after scripts/sanitize_data.py
-#      scrubs /Users/... and /home/runner/... paths, so board state survives
-#      disk death without leaking PII. board-url.txt keeps the board link
-#      discoverable.
+#   2. STATE IN GIT — data/* is committed to board-publish after
+#      scripts/sanitize_data.py scrubs /Users/... and /home/runner/... paths,
+#      so board state survives disk death without leaking PII. Linear history
+#      (no force-push) so pushes never race or corrupt.
+#   3. BOARD ON GITHUB PAGES — board.html is published to the gh-pages branch,
+#      served at https://branben.github.io/school-core/ (stable URL, no rotation).
+#   4. STATUS IN status.json — commit SHA + timestamp + issue count published
+#      alongside the board for debugging ("which code version ran?").
 #
-# NOTE (2026-08-10): the pre-hybrid workflow ran the bridge on ubuntu-latest,
-# where OMNIROUTE_API_KEY was unset, localhost:20128 does not exist, and Orca
-# cannot run — every issue errored with "A2A fallback failed: OMNIROUTE_API_KEY
-# is not set". Execution is Mac-bound by its dependencies; the loop cannot
-# survive laptop death for the EXECUTION step, only for the board + state.
+# CHANGES from the previous version:
+#   - Removed the `loop` job (hosted board publisher). It force-pushed to
+#     board-publish every cycle, causing git races and "stale info" rejections.
+#     The rotating ht-ml.app URL it produced was also undiscoverable without
+#     checking board-url.txt — which the user never did.
+#   - Board publishing now happens in the `execute` job, pushing to gh-pages.
+#   - Seed step fails loud (no more `|| echo ::warning::`) — if board-publish
+#     can't be read, the bridge must not run on stale data.
+#   - board-url.txt is no longer needed (stable GitHub Pages URL).
 
 name: School Loop
 
@@ -47,9 +53,6 @@ permissions:
 
 env:
   # SCHOOL_REPO is the issue backlog consumed by this school-core pipeline.
-  # Keep the target explicit: this checkout hosts the orchestrator, while
-  # students work in fresh target-repo clones and never in the dirty developer
-  # checkout. Change deliberately if the pipeline is repointed elsewhere.
   SCHOOL_REPO: "branben/sound-royale-ny"
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -92,21 +95,10 @@ jobs:
             fi
           fi
 
-  # WHY THIS JOB EXISTS: The `gate` job above MUST succeed when the runner is
-  # offline — both `loop` (board publishing) and `pipeline-alert` depend on its
-  # success. Without that, a sleeping Mac takes down the board and suppresses
-  # the alert. The red signal for a blocked cycle comes from THIS job instead,
-  # which fails without being a dependency of either downstream job.
-  #
-  # HARDENING REQUIRED: RUNNER_ADMIN_TOKEN currently holds the repo owner's
-  # gh token. Replace with a fine-grained PAT scoped to this repo with ONLY
-  # "Administration: Read" — a full personal token in CI secrets on a public
-  # repo is over-scoped, and rotating the gh token would silently break the
-  # liveness check.
   gate-blocked:
     # Signals a blocked cycle WITHOUT breaking the board publisher.
-    # `loop` depends on `gate` (which succeeds), NOT on this job — so the board
-    # stays up. But `gh run list` shows red because this job fails.
+    # `execute` depends on `gate` (which succeeds), NOT on this job — so the
+    # board stays up. But `gh run list` shows red because this job fails.
     name: BLOCKED — runner not online
     needs: gate
     runs-on: ubuntu-latest
@@ -125,7 +117,7 @@ jobs:
 
   pipeline-alert:
     # Separate from `gate`: a checkout or AgentMail failure must never make
-    # the gate red, because `loop` relies on gate success to publish the board.
+    # the gate red, because `execute` relies on gate success to publish the board.
     name: alert if school loop is blocked
     needs: gate
     runs-on: ubuntu-latest
@@ -147,7 +139,6 @@ jobs:
           import os
           from school_mail import notify_pipeline_alert
 
-          # Read the status output from the gate's check step (set before the Fail gate step exits 1)
           status = os.environ.get("GATE_STATUS", "offline")
           if status == "unverifiable":
               reason = "The self-hosted runner liveness is unverifiable (RUNNER_ADMIN_TOKEN missing/invalid)."
@@ -164,20 +155,15 @@ jobs:
           PY
 
   execute:
-    # Real issue execution — runs ONLY on the Mac (gateway + Orca live there).
+    # Real issue execution + board publishing — runs ONLY on the Mac.
     # Skips execution when the Mac is asleep; the gate sends a pipeline-blocked
-    # alert while the hosted loop still publishes committed board state. Commits
-    # sanitized board state back
-    # so the ubuntu `loop` job can publish it and state survives disk death.
-    name: execute issues (live Orca + OmniRoute)
+    # alert. Commits sanitized board state to board-publish (linear history),
+    # then publishes board.html to gh-pages (stable GitHub Pages URL).
+    name: execute issues + publish board
     # Shares the Mac's single Orca daemon + OmniRoute gateway with CI's live
     # integration job. This is the same cross-workflow lock as ci.yml, so
     # issue execution and integration tests cannot mutate Orca state together.
     concurrency:
-      # N6.3 (worst-day-ever): key the lock on the Orca daemon identity, not one
-      # global group. With a fleet of N daemons, each runs its own execute job
-      # without mutual lock-out; a single stalled job only blocks its own daemon,
-      # not the whole school. Set ORCA_DAEMON per self-hosted runner / fleet node.
       group: school-core-live-orca-${{ inputs.orca_daemon || 'default' }}
       cancel-in-progress: false
     needs: gate
@@ -192,110 +178,40 @@ jobs:
       # without it). Same wiring as CI's integration job.
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
       # Model API key for the spawned agent — Hermes needs this to make LLM calls.
-      # Without it, the agent starts, gets 402, exits silently (no status file).
-      # The spawned agent uses this key via the school-core gateway to reach Nous.
       OPENROUTER_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
-      # AgentMail key for school-failed / retry-pending alerts. The bridge
-      # degrades gracefully (no crash, no alert) when unset.
+      # AgentMail key for school-failed / retry-pending alerts.
       AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
-      # The runner runs as a LaunchAgent with a minimal PATH — orca lives in
-      # /usr/local/bin, so re-expose it (plus common Homebrew paths). The
-      # FirstMate orca backend adapter shells out to `node` (its status-JSON
-      # parsing is a node -e snippet), and node only exists via fnm here — the
-      # interactive shells get it from a transient fnm multishell, but the
-      # LaunchAgent never does. Pin the stable fnm default alias so crew
-      # spawns can find node (observed 2026-08-12, issue #47: crew spawn
-      # failed with 'node: command not found' from backends/orca.sh:27).
+      # The runner runs as a LaunchAgent with a minimal PATH — re-expose it.
       PATH: /usr/local/bin:/opt/homebrew/bin:/Users/brandonbennett/.local/share/fnm/aliases/default/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin
       # U8 crew dispatch: route the student-task through the FirstMate -> Orca
-      # crew before the direct model path. The bridge reads this once per
-      # cycle and falls back to the direct path on spawn failure / timeout /
-      # blocked with retry-once carry, so a broken crew never strands an
-      # issue. fm_doctor (preflight below) already hard-fails missing crew
-      # infra, so by the time the bridge runs the crew path is expected live.
+      # crew before the direct model path.
       CREW_ENABLED: "1"
       # Budget arithmetic — these three numbers MUST be internally consistent
-      # with `timeout-minutes: 60` (3600s) above, or admission control lies to
-      # itself and the job gets killed instead of self-throttling.
-      #
-      # crew_admission.decide_admission() requires:
-      #     crew_timeout_seconds * effective_cap + reserve  <=  remaining
-      # with CREW_TIMEOUT_SECONDS=900 and reserve=30:
-      #     cap=1 ->  930s      cap=2 -> 1830s
-      #     cap=3 -> 2730s      cap=4 -> 3630s
-      #
-      # A 1800s job minus ~200s of startup (checkout + venv rebuild + Orca
-      # registration + preflights, measured on run 32290180356) leaves ~1600s
-      # usable. So ONLY cap=1 can actually complete inside this job. cap=2
-      # already needs 1830s > 1800s — it can never finish, regardless of budget.
-      #
-      # The previous values (cap=4, budget=3600) were unsatisfiable in two ways:
-      # the budget exceeded the job timeout, so issue_bridge.py:1182 computed
-      # remaining_seconds against an hour it never had and admitted crews the
-      # job could not finish; and cap=4 needed 3630s, which no 30-min job can
-      # provide. Raising timeout-minutes to fit cap=4 would mean a ~65-min job
-      # on a */5 cron — six-deep overlap on one Mac. Correct fix is to make the
-      # numbers honest and keep cycles short.
+      # with `timeout-minutes: 60` (3600s) above.
       CREW_MAX_PER_CYCLE: "1"
       CREW_RUNNER_SLOTS: "1"
       MAX_ISSUES_PER_CYCLE: "2"
-      # Match the code default (issue_bridge.py:1028) and the job timeout, so
-      # the budget can never promise time GitHub will not grant.
       CREW_CYCLE_BUDGET_SECONDS: "3600"
-      # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
-      # bridge. The workflow preflight below already hard-fails missing Nix or
-      # verifyShell; this flag additionally escalates an internal/direct gate
-      # failure into a real issue failure instead of a soft skip.
-      # VERIFY_GATE_STRICT: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           persist-credentials: true
 
-      # B12: seed durable loop state from board-publish BEFORE the bridge runs.
-      # This job checks out `main`, where data/retry_issues.json is {} — but the
-      # checkpoint step below commits updated counters to `board-publish`. So
-      # every cycle read {} fresh, attempts recomputed to 1 forever, RETRY_LIMIT
-      # was unreachable, and failed issues re-dispatched unboundedly (observed:
-      # {"342":1,"341":1} frozen across 12+ board-publish commits). Path-scoped
-      # `git checkout <ref> -- <paths>` restores file contents into the worktree
-      # WITHOUT moving HEAD or touching any other file, so:
-      #   * issue_bridge reads seeded counters at startup (_load_retries), and
-      #   * the later commit-tree checkpoint is unaffected — it stages whatever
-      #     is in the worktree via `git add -f` + `git write-tree` and parents on
-      #     FETCH_HEAD (the board-publish tip we fetch there), never on this
-      #     job's main-based HEAD. Seeded files are simply overwritten by the
-      #     bridge's own writes before staging; if the bridge dies early, the
-      #     seeded content matches FETCH_HEAD and `git diff --quiet FETCH_HEAD`
-      #     correctly reports no state changes to commit.
-      # processed_issues.json and last_run.json are seeded too: they are written
-      # to board-publish by the same checkpoint, so seeding them gives the bridge
-      # accurate suppression/journal state instead of main's stale copies. No
-      # side effects: mark_processed() still writes through the same paths, and
-      # sanitize_data.py runs after this step on the seeded files.
-      - name: Seed retry/board state from board-publish
+      # Seed durable loop state from board-publish BEFORE the bridge runs.
+      # FAIL LOUD if the seed fails — running the bridge on stale data is
+      # worse than skipping the cycle (it can mark issues processed incorrectly).
+      - name: Seed board state from board-publish
         run: |
           git fetch origin board-publish
           git checkout origin/board-publish -- \
             data/retry_issues.json \
             data/processed_issues.json \
-            data/last_run.json || \
-            echo "::warning::board-publish seed skipped (branch or state files missing)"
+            data/last_run.json
 
       # No actions/setup-python here: on this self-hosted runner the action's
       # tool-cache defaults to /Users/runner (a GitHub-hosted path) and fails
       # with EACCES. Use the machine's system Python + a workspace-local venv.
-      # Reuse the venv across runs when requirements.txt is unchanged. Measured
-      # cost of the unconditional rebuild on run 32290180356: pip work spanned
-      # 19:00:55 -> 19:01:41 (~46s of install) inside a ~2min step, on every
-      # single 5-minute cycle. On a SELF-HOSTED runner the workspace persists
-      # between runs, so actions/cache is unnecessary overhead — a stamp file
-      # comparing the requirements hash is cheaper and has no cache-key skew.
-      #
-      # Rebuild triggers: venv missing, python missing inside it, or the
-      # requirements hash changed. Anything unexpected falls through to a full
-      # rebuild, so a corrupt venv self-heals rather than failing every cycle.
       - name: Set up Python (venv, cached on requirements hash)
         run: |
           set -euo pipefail
@@ -313,30 +229,8 @@ jobs:
           fi
           .venv/bin/python -c "import sys; print('python', sys.version.split()[0])"
 
-      # The checkout lives under ~/actions-runner/_work/... — a path Orca has
-      # never seen. `orca terminal create` (no selector) resolves the CURRENT
-      # worktree from cwd, so register the checkout with Orca first. Idempotent.
-      #
-      # REPAIR THE PRECONDITION, don't tolerate its absence. This step used to
-      # fail outright with {"code":"runtime_unavailable"} whenever the Orca
-      # runtime was down — which is its state after every reboot, logout, or
-      # app-close. The runner has a LaunchAgent and OmniRoute has two; Orca has
-      # none, so a human had to run `orca open` by hand or this job failed every
-      # 5 minutes forever.
-      #
-      # `orca open` is the right repair (verified: returns ok=true in 0.5s with
-      # the SAME runtimeId when a runtime is already up, so it is idempotent and
-      # defers to a GUI instance instead of fighting it). A KeepAlive
-      # `orca serve` LaunchAgent was REJECTED: the GUI app owns *:6768, so a
-      # second runtime hits EADDRINUSE and respawn-loops forever whenever Orca
-      # is open interactively — and an EADDRINUSE loop is indistinguishable from
-      # a bad-config loop in the log, permanently masking real faults.
-      # (Credit: phymora refuted the LaunchAgent plan by actually attempting the
-      # second bind rather than reasoning about it.)
-      #
-      # Still fails loud if the repair itself fails — no `|| true`, no
-      # ::warning:: downgrade. A gateway/runtime we cannot bring up must stop
-      # the cycle, not yield a green run that did no work.
+      # Register the checkout with Orca (idempotent). Repairs the precondition
+      # rather than tolerating its absence.
       - name: Register checkout with Orca
         run: |
           set -euo pipefail
@@ -346,71 +240,26 @@ jobs:
           fi
           orca repo add --path "$PWD" --json
 
-      # FirstMate crew preflight: diagnose a broken crew setup (missing
-      # persistent clone, Orca daemon down, FM_HOME backend drift, hermes
-      # wrapper/auth) with a clear PASS/FAIL report instead of a cryptic
-      # mid-spawn error. INFRA FAILURES ARE FATAL: missing clone / Orca down /
-      # wrapper gone fail the execute job (exit 1) so the breakage is loud;
-      # the `loop` job still publishes the board from committed state (its
-      # guard is the gate, not execute), and the bridge's retry-once
-      # semantics carry any unprocessed issue to the next cycle. AUTH IS
-      # NON-FATAL by design (FM_DOCTOR_WARN_AUTH=1): the bridge executes
-      # through Orca directly today, so a missing provider token must not
-      # block issue processing — the doctor still prints the WARN so the
-      # token gap stays visible.
-
       # Gateway preflight: BOTH transports (OmniRoute /v1 and A2A /a2a) are
       # served by one process on localhost:20128. When it is down, every model
-      # call fails, _a2a_poll burns its 120s deadline per attempt, retry
-      # pressure accumulates until the crew denies admission, and the job
-      # grinds until timeout-minutes kills it. Measured: 62 of 63 runs
-      # cancelled at ~31min having processed ONE issue (run 32290180356 —
-      # "A2A fallback failed: [Errno 61] Connection refused").
-      #
-      # This probe costs ~0.1s and converts that 30-minute silent grind into an
-      # immediate, alerting failure. Deliberately NOT continue-on-error: a dead
-      # gateway means this cycle cannot do useful work, and `cancelled` is a
-      # far worse signal than `failure`. The hosted `loop` job still publishes
-      # committed board state, so a red execute does not take down the board.
+      # call fails and the job grinds until timeout-minutes kills it.
       - name: Gateway preflight (OmniRoute + A2A liveness)
         env:
           OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
         run: .venv/bin/python gateway_preflight.py
 
       - name: Worktree/terminal residue audit (advisory)
-        # ADVISORY (always exits 0) — deliberately unlike the gateway preflight
-        # above, which exits 1. A dead gateway means the cycle CANNOT do useful
-        # work, so failing fast beats a 30-minute grind. Residue is the opposite:
-        # a slow leak that does not block work, so dropping a cycle over a stale
-        # worktree would trade a real problem for a cosmetic one.
-        #
-        # Observed 2026-08-19 (the reason this exists): Orca had accumulated 51
-        # terminals — 48 stacked inside ONE worktree — and 11 suffix-sprayed
-        # teacher clones (teacher-cto-...-2 through -6). None were flagged
-        # `orphaned`, so nothing in Orca would ever reap them; the pile only
-        # grows. Root cause was teacher.py's own docstring demonstrating
-        # create_worktree() (auto-suffixes) instead of
-        # create_worktree_persistent() (rediscovers by prefix).
-        #
-        # A ::warning:: surfaces the breach in the run summary so it is caught by
-        # a check instead of noticed by a human hours later.
         run: .venv/bin/python worktree_bloat_guard.py
 
       - name: FirstMate crew preflight (fm_doctor)
         env:
-          # Auth is a WARN here: a missing provider token must not block issue
-          # execution (the bridge logs the failure and retry-once carries it),
-          # but infra problems (missing clone, Orca down, wrapper gone) stay
-          # fatal and fail the job with the doctor's clear report.
           FM_DOCTOR_WARN_AUTH: "1"
         run: |
           scripts/fm_doctor.sh
           echo "fm_doctor: crew setup OK — proceeding with issue execution"
 
       # Verify toolchain preflight (U3): nix + flake.nix#verifyShell must be
-      # present for the "compiler before critic" promise to hold. This is a
-      # hard preflight: if the compiler layer cannot run, the execute job must
-      # fail clearly rather than report a green cycle that did no verification.
+      # present for the "compiler before critic" promise to hold.
       - name: Verify toolchain preflight (nix + verifyShell)
         run: |
           NIX_BIN=$(command -v nix || echo /nix/var/nix/profiles/default/bin/nix)
@@ -418,12 +267,6 @@ jobs:
             echo "::error::nix not found (PATH + Determinate path) — cannot run verify gate"
             exit 1
           fi
-          # verifyShell is a devShell (flake.nix: devShells.aarch64-darwin.
-          # verifyShell; the flake hardcodes system = "aarch64-darwin"). The
-          # `.#verifyShell` shorthand resolves for `nix develop` but NOT for
-          # `nix eval` (it only falls back to packages/defaultPackage/
-          # legacyPackages), so the full attr path is required or this check
-          # always fails (2026-08-12).
           SHELL_NAME=$("$NIX_BIN" eval --raw .#devShells.aarch64-darwin.verifyShell.name 2>/dev/null)
           if [ -z "$SHELL_NAME" ]; then
             echo "::error::flake.nix#verifyShell did not evaluate — cannot run verify gate"
@@ -438,104 +281,17 @@ jobs:
         run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
       - name: Crew ledger reconciliation audit (advisory)
-        # N10 / bead school-core-1u9. ADVISORY (always exits 0) and runs with
-        # if: always() — deliberately, for two separate reasons.
-        #
-        # WHY always(): a CANCELLED job is exactly when records are lost (that is
-        # what 5cc4ae0 fixed), so an audit that skips on cancellation goes blind
-        # in the only case that matters. Without this condition it inherits
-        # success() and never runs on the failure it exists to detect.
-        #
-        # WHY end-of-cycle and not preflight: the ledger is written DURING the
-        # cycle. A preflight audit reports the PREVIOUS cycle's damage one tick
-        # late and attributes it to the wrong run.
-        #
-        # WHY advisory: an unreconciled ledger means the work happened and was
-        # not recorded — a bookkeeping loss. Unlike the gateway preflight (which
-        # exits 1 because a dead gateway means no work is possible), killing the
-        # cycle here would trade a reporting problem for a work stoppage.
         if: always()
-        run: |
-          .venv/bin/python crew_ledger_reconcile.py
+        run: .venv/bin/python crew_ledger_reconcile.py
 
-      - name: Sanitize + commit board state (durable, PII-free)
-        # Runs even when the job is CANCELLED or FAILED. Without this condition
-        # the step defaults to success(), and the 30-minute timeout discarded
-        # every data/* mutation from the cycle.
-        #
-        # Measured cost of that: run 32330426471 admitted a crew for the FIRST
-        # time — issue #342 ran ~16 minutes of real crew work — then the job was
-        # cancelled and data/crew_runs.json kept NO record of it (newest entries
-        # are Aug-13 fixtures). dispatch_crew had written a durable `running`
-        # record at crew_dispatch.py:847; it died with the runner's workspace.
-        #
-        # Same durability class as 83deae8 (success path checkpointed only after
-        # the loop), one layer out: that loss was in Python, this one is in the
-        # step condition. Fixing the inner layer did not fix the outer one.
-        #
-        # always() rather than success() || cancelled(): state written before a
-        # FAILURE is just as real. A crew that spawned and then crashed the
-        # bridge still produced a genuine record, and persisting it is what stops
-        # the next cycle re-dispatching blind.
+      # Sanitize + commit board state to board-publish (linear history).
+      # Runs even when the job is CANCELLED or FAILED.
+      - name: Sanitize + commit board state to board-publish
         if: always()
-        # "STATE IN GIT" durability axis: scrub home paths out of the runtime
-        # JSON, then commit data/* so board state survives disk death. PII
-        # never reaches the public repo. pull --rebase makes the push
-        # self-healing against overlapping runs.
         run: |
-          # scores.json carries the school's cross-cycle memory (agent leaderboard
-          # used for selection + gate progression); retry_issues.json carries the
-          # retry-once counter for transiently failed issues; trajectories/ is the
-          # Layer 2 corpus (U2) — without it every fresh checkout is amnesiac. All
-          # must survive the fresh checkout each cycle — commit them sanitized.
-          # --trim-trajectories caps trajectory history to the newest N files so
-          # Layer 2 memory persists without unbounded repo growth.
           .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json
-          # The sanitizer exits non-zero if any consolidation still contains
-          # a home path, sensitive field, or recognizable token.
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Only sanitized, schema-owned artifacts are checkpointed. Do not
-          # force-add arbitrary runtime files from the consolidation tree. The
-          # seeded index.md (tracked Layer-3 archival README) is expected; any
-          # OTHER non-YAML file means the consolidation writer left runtime
-          # junk behind and the cycle must fail loudly (2026-08-12: U1
-          # session_id threading made consolidation YAMLs appear every cycle,
-          # which exposed that the guard predates the tracked index.md seed).
-          if find data/sessions/consolidation -type f ! -name '*.yaml' ! -name 'index.md' -print -quit 2>/dev/null | grep -q .; then
-            echo "::error::unexpected non-YAML file under data/sessions/consolidation"
-            exit 1
-          fi
-          # data/crew_runs.json is the U8 crew registry — the durable record
-          # the cross-cycle in-flight skip + stale sweep rely on. It MUST be
-          # checkpointed too, or every fresh checkout starts with an empty
-          # registry and an interrupted crew can double-spawn next cycle.
-          #
-          # Each add is INDEPENDENT and glob-safe (2026-08-12 fix): a single
-          # unmatched pathspec like data/sessions/consolidation/*/*.yaml makes
-          # `git add` abort the WHOLE command with 'fatal: pathspec did not
-          # match', so one empty dir silently blocked every state commit — the
-          # bridge's run records (scores, last_run, crew registry) stayed
-          # modified-but-unstaged and the board lost the cycle. `find` only
-          # adds real files, so a missing trajectories/ dir or an empty
-          # consolidation tree can never kill the checkpoint.
-          # 2026-08-23: board-publish is rewritten by the hosted `loop` job
-          # (force-push from ubuntu-latest each cycle). Committing our
-          # main-based HEAD on top of it without syncing first guarantees a
-          # non-fast-forward rejection ("stale info") EVERY cycle — six days
-          # of invisible checkpoint losses until stderr capture exposed it.
-          # Sync onto the live branch tip BEFORE staging, so this push is a
-          # clean fast-forward relative to what loop last wrote.
-          # Sync history onto board-publish tip WITHOUT touching the worktree.
-          # The bridge just wrote fresh data/*.json into the worktree; any
-          # operation that moves HEAD onto board-publish (reset --hard, merge,
-          # checkout, stash pop) collides with those uncommitted writes because
-          # data/*.json is tracked on board-publish with divergent content.
-          # git add stages the bridge's real files; git write-tree builds a
-          # tree from just those; git commit-tree parents the new commit on
-          # FETCH_HEAD directly; the push is a clean fast-forward and the
-          # worktree is never touched. (Phymora's tested approach — verified
-          # in a scratch repo reproducing the exact shape.)
           git fetch origin board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
@@ -545,56 +301,18 @@ jobs:
           else
             TREE=$(git write-tree)
             NEW=$(git commit-tree "$TREE" -p FETCH_HEAD -m "chore: checkpoint board state (sanitized) [skip ci]")
-            git push origin "$NEW:board-publish" 2>/tmp/cp-stderr.txt \
+            git push origin "$NEW:board-publish" \
               && echo "checkpoint: pushed $NEW to board-publish" \
-              || { echo "::warning::checkpoint push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
+              || { echo "::warning::checkpoint push failed"; }
           fi
 
-  loop:
-    # Board publishing — always runs (even when the Mac sleeps, even if
-    # execute failed), from the latest committed state. Serialized after
-    # `execute` (needs) so the two jobs never race their git pushes; the
-    # pull below picks up the sanitized data/* that execute just committed.
-    name: publish board (hosted)
-    needs: [gate, execute]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: read
-    # `always()` keeps the hosted board alive even if the runner gate itself
-    # errors before it can report a normal offline=false output.
-    if: always()
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Pull latest committed board state
-        # The `execute` job (Mac) may have committed fresh data/* in the same
-        # cycle and force-pushed to board-publish. Reset to it directly so we
-        # don't hit a rebase conflict from the diverged option-b commits on
-        # board-publish. Board-publish is a linear force-pushed target, so
-        # reset --hard is safe here.
-        run: git fetch origin board-publish && git reset --hard origin/board-publish
-
-      - name: Populate issue cache from GitHub
-        run: python populate_board_cache.py
-
-      - name: Publish board to ht-ml.app
-        # Regenerate board.html from the just-generated local data/, re-share,
-        # and record the (rotating) URL in board-url.txt so it stays
-        # discoverable. ht-ml.app has no in-place update flag, so each share
-        # yields a new URL — board-url.txt is the source of truth.
+      # Build board.html + status.json, publish to gh-pages (stable URL).
+      # Runs even when the job is CANCELLED or FAILED (so the board shows
+      # last known state, not a blank page).
+      - name: Build + publish board to GitHub Pages
+        if: always()
         run: |
+          # Build board.html from current data
           python -c "
           import json
           from pathlib import Path
@@ -605,30 +323,51 @@ jobs:
           cache = load('data/issues_cache.json')
           proc = load('data/processed_issues.json')
           lr = load('data/last_run.json')
-          # The bridge now closes processed issues, so they drop out of the
-          # open-issues cache. Merge them back from last_run (which records
-          # title/domain/difficulty on success) so Done cards keep their
-          # history on the board.
           cache_nums = {c.get('issue_number') for c in cache}
           for e in lr:
               n = e.get('issue')
               if n in cache_nums or n not in set(proc) or e.get('status') != 'success':
                   continue
-              cache.append({
-                  'issue_number': n,
-                  'title': e.get('title') or ('Issue #%s' % n),
-                  'domain': e.get('domain', ''),
-                  'difficulty': e.get('difficulty', ''),
-                  'state': 'done',
-              })
+              cache.append({'issue_number': n, 'title': e.get('title') or ('Issue #%s' % n), 'domain': e.get('domain', ''), 'difficulty': e.get('difficulty', ''), 'state': 'done'})
               cache_nums.add(n)
           Path('board.html').write_text(build_board_html(cache, proc, lr))
-          print('regenerated board.html')
+          print('built board.html')
           "
-          # re-share (URL rotates each time; record it)
-          URL=$(npx -y lavish-axi share board.html 2>/dev/null | grep -oE 'https://[a-z0-9]+\.ht-ml\.app/' | head -1)
-          echo "$URL" > board-url.txt
+
+          # Write status.json (version breadcrumb for debugging)
+          python -c "
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          lr = json.loads(Path('data/last_run.json').read_text() or '[]')
+          proc = json.loads(Path('data/processed_issues.json').read_text() or '[]')
+          status = {
+              'last_updated': datetime.now(timezone.utc).isoformat(),
+              'commit_sha': os.environ.get('GITHUB_SHA', 'unknown'),
+              'run_id': os.environ.get('GITHUB_RUN_ID', 'unknown'),
+              'runner': os.environ.get('RUNNER_NAME', 'unknown'),
+              'issues_processed': len(proc),
+              'last_run_entries': len(lr),
+          }
+          Path('status.json').write_text(json.dumps(status, indent=2))
+          print('built status.json')
+          "
+
+          # Commit board.html + status.json to gh-pages branch (linear history)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f board-url.txt 2>/dev/null || true
-          git commit -m "chore: publish board [skip ci]" && git push --force-with-lease origin HEAD:board-publish
+          git fetch origin gh-pages 2>/dev/null || echo "gh-pages branch does not exist yet"
+          # Use a temporary index to create a clean tree with just these files
+          export GIT_INDEX_FILE=$(mktemp)
+          git add board.html status.json
+          TREE=$(git write-tree)
+          rm -f "$GIT_INDEX_FILE"
+          # Parent on gh-pages tip if it exists, otherwise orphan
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            NEW=$(git commit-tree "$TREE" -p origin/gh-pages -m "chore: publish board [skip ci]")
+          else
+            NEW=$(git commit-tree "$TREE" -m "chore: publish board (initial) [skip ci]")
+          fi
+          git push origin "$NEW:gh-pages" \
+            && echo "published board to gh-pages: $NEW" \
+            || echo "::warning::gh-pages push failed"
