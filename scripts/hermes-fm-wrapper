@@ -82,7 +82,7 @@ fi
 # Capture the exit code: it feeds the deterministic terminal handshake below.
 set +e
 "$HERMES" -p "$PROFILE" --cli --accept-hooks --toolsets "$TOOLSETS" chat \
-  --query "$INPUT" --yolo --quiet --max-turns "$MAX_TURNS"
+  --query "$INPUT" --yolo --quiet --max-turns "$MAX_TURNS" 2>/tmp/hermes_stderr.log
 HERMES_EXIT=$?
 set -e
 
