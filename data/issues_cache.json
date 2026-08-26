@@ -1,189 +1,203 @@
 [
   {
-    "issue_number": 366,
-    "title": "[security][medium] react-router-dom 6.30.4 open-redirect XSS \u2014 v7 migration",
+    "issue_number": 59,
+    "title": "test: School Loop artifact-handshake smoke proof",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 365,
-    "title": "[security][medium] react-router 6.30.4 advisories \u2014 needs v7 migration (not a patch)",
+    "issue_number": 58,
+    "title": "test: School Loop real-issue smoke proof",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 364,
-    "title": "[security][high] postcss 8.5.16 source-map path traversal (CVSS 7.5) \u2014 RESOLVED via pnpm.overrides",
+    "issue_number": 27,
+    "title": "Code review findings \u2014 campus framework v1 (17 issues)",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 360,
-    "title": "[security][low] sentry-sdk 1.39.1 env-leak (CWE-200, CVSS 2.5) \u2014 PR #347 open",
+    "issue_number": 26,
+    "title": "test: Add tests for untested campus modules and code review gaps",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 359,
-    "title": "[security][low] djangorestframework-simplejwt 5.3.1 privilege mgmt (CWE-269) \u2014 PR #348 open",
+    "issue_number": 25,
+    "title": "fix: add_role/add_anchor no overwrite guard \u2014 silent data loss",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 358,
-    "title": "[security][low] djangorestframework 3.14.0 XSS (CWE-79, CVSS 6.1) \u2014 not reachable, BrowsableAPI disabled",
+    "issue_number": 24,
+    "title": "fix: Agent.from_dict no status validation \u2014 allows invalid states via deserialization",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 357,
-    "title": "[security][medium] brace-expansion 1.1.15 ReDoS (CWE-400/407, CVSS 5.3)",
+    "issue_number": 23,
+    "title": "fix: Event frontmatter YAML injection \u2014 use yaml.safe_dump for construction",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 356,
-    "title": "[security][medium] @hono/node-server 1.19.14 path traversal (CWE-22, CVSS 5.9)",
+    "issue_number": 22,
+    "title": "fix: bare except Exception + stderr print \u2014 use logging module",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 342,
-    "title": "churn: extract MIN_ROUNDS=1 / MAX_ROUNDS=10 bounds",
+    "issue_number": 21,
+    "title": "fix: Weak typing across campus modules \u2014 add generic type annotations",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 341,
-    "title": "churn: extract sweep constants SWEEP_ROUNDS=3 / SWEEP_VOTE_MARGIN=1",
+    "issue_number": 20,
+    "title": "fix: Campus.run() double-stop with context manager",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 340,
-    "title": "churn: extract BINGO_LINE_COUNT=5 (verify vs model first)",
+    "issue_number": 19,
+    "title": "fix: EventEmitter drain race \u2014 thread may not fully drain before stop",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 339,
-    "title": "churn: extract MAX_SPECTATORS=10 constant",
+    "issue_number": 18,
+    "title": "fix: core.py imports MemoryAdapter and ConsolidationTracker but never uses them",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 338,
-    "title": "churn: extract MIN_PRODUCERS_TO_PLAY=2 constant (6 sites)",
+    "issue_number": 17,
+    "title": "fix: difficulty_weight parameter in ScoreStore.update_score is dead code",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 249,
-    "title": "E2E Full Suite: ~60 residual test-debt failures (infra fixed, 82/143 pass)",
+    "issue_number": 16,
+    "title": "fix: director.py blocker routing hardcoded to owl-alpha instead of using best_agent",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 231,
-    "title": "Triage #04: T3 \u2014 close remaining ~37 bot PRs",
+    "issue_number": 15,
+    "title": "fix: director.py readiness check passes domain as difficulty parameter",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 205,
-    "title": "PR triage T5: confirm feature-branch topology, close stale",
+    "issue_number": 14,
+    "title": "fix: Agent trajectory grows unboundedly \u2014 no cap on in-memory events",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 204,
-    "title": "PR triage T4: BUG-2 health bot-branch PRs (#194/#167/#170)",
+    "issue_number": 13,
+    "title": "fix: Score has no bounds validation \u2014 set_score accepts any float",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 203,
-    "title": "PR triage T3: close 21 contaminated TestDriver PRs (link owning PR)",
+    "issue_number": 12,
+    "title": "fix: Campus.logs() raises KeyError on unknown agent_name",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 202,
-    "title": "PR triage T2: diff-audit 21 TestDriver PRs for unique tests",
+    "issue_number": 11,
+    "title": "fix: Path traversal in event agent/action fields writes arbitrary .md files",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 137,
-    "title": "E5: Re-verify full CI green before trusting the pipeline",
+    "issue_number": 10,
+    "title": "fix: Path traversal in agent name allows writing files outside data/agents/",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 136,
-    "title": "E4: Stand up deploy target + set SOUND_ROYALE_URL",
+    "issue_number": 9,
+    "title": "feat: Write pytest tests for GroundedScoreCalculator combined scoring",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 135,
-    "title": "E3: Remove player secret from URL query params (#105)",
+    "issue_number": 8,
+    "title": "feat: Write pytest tests for triage_classifier state logic",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 134,
-    "title": "E2: Wire Django+Redis backend into E2E Full Suite CI",
+    "issue_number": 7,
+    "title": "feat: Write pytest tests for AnchorRegistry query methods",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 133,
-    "title": "E1: Fix design-system regression (ReconnectingBanner side-tab + animate-pulse)",
+    "issue_number": 6,
+    "title": "feat: Add --dry-run mode to issue_bridge for safe testing",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 111,
-    "title": "aquarium status",
+    "issue_number": 5,
+    "title": "bug: director.py degraded mode doesn't auto-recover when cloud comes back",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 110,
-    "title": "Triage: npm run dev:all fails \u2014 Vite hard-errors on UploadDrawer.tsx syntax",
+    "issue_number": 4,
+    "title": "feat: Add code coverage reporting to test suite",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
   },
   {
-    "issue_number": 102,
-    "title": "Replace silent error handling with user-visible feedback",
+    "issue_number": 3,
+    "title": "feat: Create requirements.txt with pinned dependencies",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 2,
+    "title": "feat: Add CI workflow for test suite on push and PR",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 1,
+    "title": "feat: Add GitHub issue templates for bug reports and feature requests",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
