@@ -353,21 +353,26 @@ jobs:
           print('built status.json')
           "
 
-          # Commit board.html + status.json to gh-pages branch (linear history)
+          # Commit board.html + status.json to the Pages branch (board-publish)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages 2>/dev/null || echo "gh-pages branch does not exist yet"
-          # Use a temporary index to create a clean tree with just these files
+          git fetch origin board-publish 2>/dev/null || echo "board-publish branch does not exist yet"
+          # Use a temporary index to create a clean tree with the published files
           export GIT_INDEX_FILE=$(mktemp)
-          git add board.html status.json
+          git add board.html status.json \
+            docs/site/status.svg \
+            docs/site/pipeline-overview.svg \
+            docs/site/pipeline-crew.svg \
+            docs/site/pipeline-verify-gate.svg \
+            docs/site/pipeline-charts.html
           TREE=$(git write-tree)
           rm -f "$GIT_INDEX_FILE"
-          # Parent on gh-pages tip if it exists, otherwise orphan
-          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
-            NEW=$(git commit-tree "$TREE" -p origin/gh-pages -m "chore: publish board [skip ci]")
+          # Parent on board-publish tip if it exists, otherwise orphan
+          if git rev-parse --verify origin/board-publish >/dev/null 2>&1; then
+            NEW=$(git commit-tree "$TREE" -p origin/board-publish -m "chore: publish board [skip ci]")
           else
             NEW=$(git commit-tree "$TREE" -m "chore: publish board (initial) [skip ci]")
           fi
-          git push origin "$NEW:gh-pages" \
-            && echo "published board to gh-pages: $NEW" \
-            || echo "::warning::gh-pages push failed"
+          git push origin "$NEW:board-publish" \
+            && echo "published board to board-publish: $NEW" \
+            || echo "::warning::board-publish push failed"
