@@ -1587,5 +1587,63 @@
     "next_action": "escalate",
     "retry_attempt": 0,
     "timestamp": "2026-08-25T15:28:15.268478+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "data/trajectories/20260826_104640_059596--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "crew_failed",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-26T10:47:10.316209+00:00"
   }
 ]
