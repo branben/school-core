@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Verify gate recursive bug: repo root Python project, rglob finds frontend package.json, npm runs in the Python shell and fails. verify_gate.py line 80.">
+  <style>    svg{stroke-linejoin:round;font-family:'Helvetica Neue',Arial,sans-serif}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[class*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}}
+  </style>
+  <rect class="bg" x="0" y="0" width="165" height="202"/>
+  <rect class="frame" x="4" y="4" width="157" height="194" rx="3"/>
+  <text class="lab" x="12" y="16">verify gate</text>
+  <text class="sub" x="12" y="23">rglob finds frontend · npm in py shell</text>
+    <circle class="a-glow a-lit" cx="82" cy="48" r="17" style="animation-delay:0.00s"/>
+    <rect class="wh" x="50" y="37" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="49" text-anchor="middle">REPO</text>
+    <circle class="a-dot a-pulse" cx="109" cy="41" r="2.6" fill="#788C5D"/>
+    <line x1="82" y1="59" x2="82" y2="77" class="lnf"/>
+    <line x1="82" y1="59" x2="82" y2="77" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="88" r="17" style="animation-delay:1.10s"/>
+    <rect class="wh" x="50" y="77" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="89" text-anchor="middle">RGLOB</text>
+    <circle class="a-dot a-blink" cx="109" cy="81" r="2.6" fill="#D97757"/>
+    <line x1="82" y1="99" x2="82" y2="117" class="lnf"/>
+    <line x1="82" y1="99" x2="82" y2="117" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="128" r="17" style="animation-delay:2.20s"/>
+    <rect class="wh" x="50" y="117" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="129" text-anchor="middle">FRONTEND</text>
+    <circle class="a-dot a-blink" cx="109" cy="121" r="2.6" fill="#D97757"/>
+    <line x1="82" y1="139" x2="82" y2="157" class="lnf"/>
+    <line x1="82" y1="139" x2="82" y2="157" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="168" r="17" style="animation-delay:3.30s"/>
+    <rect class="wh" x="50" y="157" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="169" text-anchor="middle">NPM·PY</text>
+    <circle class="a-dot a-blink" cx="109" cy="161" r="2.6" fill="#D97757"/>
+  <circle class="a-token cl" cx="82" cy="48" r="3"/>
+  <text class="sub" x="12" y="196">fix: root-only scan when root config exists</text>
+</svg>

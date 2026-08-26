@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>School-Core Pipeline — Animated SVG Charts</title>
+<style>
+  :root{
+    --bg:#F0EEE6; --frame:#FFFFFF; --border:#D1CFC5; --ink:#141413;
+    --clay:#D97757; --olive:#788C5D; --muted:#87867F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:'Helvetica Neue',Arial,sans-serif;padding:32px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}
+  figure{margin:0;background:var(--frame);border:1px solid var(--border);border-radius:6px;
+         padding:14px;box-shadow:0 1px 2px rgba(20,20,19,.06)}
+  figure img{width:100%;height:auto;display:block;border-radius:3px}
+  figcaption{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.4}
+  figcaption b{color:var(--ink)}
+  .note{margin-top:28px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:12px}
+</style>
+</head>
+<body>
+<h1>School-Core Pipeline</h1>
+<p class="sub">Effective-SVG catalog idiom · declarative CSS @keyframes · no JS · sanitized-source metrics</p>
+
+<div class="grid">
+  <figure>
+    <img src="status.svg" alt="Status report tile: 36 issues, 63.9% pass, average score 58.8, with metric bars.">
+    <figcaption><b>Status</b> — aggregate run health from sanitized <code>last_run.json</code>.</figcaption>
+  </figure>
+  <figure>
+    <img src="pipeline-overview.svg" alt="5-stage pipeline cron to review; work token flows down; crew and review blocked.">
+    <figcaption><b>Overview</b> — cron → preflight → bridge → crew → review. Crew &amp; review blocked.</figcaption>
+  </figure>
+  <figure>
+    <img src="pipeline-crew.svg" alt="Crew flow brief to spawn to hermes to status to review; decision gate branches to silent failure.">
+    <figcaption><b>Crew flow</b> — hermes exits 2, writes no status, review starved.</figcaption>
+  </figure>
+  <figure>
+    <img src="pipeline-verify-gate.svg" alt="Verify gate recursive discovery bug: rglob finds frontend package.json, npm runs in Python shell.">
+    <figcaption><b>Verify gate</b> — rglob finds frontend <code>package.json</code>, npm in Python shell fails.</figcaption>
+  </figure>
+</div>
+
+<p class="note">All four artifacts are self-contained animated SVGs (pure CSS, play in <code>&lt;img&gt;</code>). Counts: 36 issues · 23 success · 8 error · 3 stuck-in-retry · 2 school-failed · 11 retry attempts · 63.9% pass · avg 58.8 (as of 2026-08-18). Source subject to <code>scripts/sanitize_data.py</code> — no PII.</p>
+</body>
+</html>

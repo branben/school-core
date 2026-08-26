@@ -313,7 +313,7 @@ jobs:
         if: always()
         run: |
           # Build board.html from current data
-          python -c "
+          python3 -c "
           import json
           from pathlib import Path
           from board import build_board_html
@@ -335,7 +335,7 @@ jobs:
           "
 
           # Write status.json (version breadcrumb for debugging)
-          python -c "
+          python3 -c "
           import json, os
           from datetime import datetime, timezone
           from pathlib import Path

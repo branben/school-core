@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="School-core pipeline as of 2026-08-18: 36 issues, 23 success, 8 error, 3 blocked in retry, 2 school-failed; 63.9 percent pass; avg score 58.8.">
+  <style>    svg{stroke-linejoin:round;font-family:'Helvetica Neue',Arial,sans-serif}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[class*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}}
+  </style>
+  <rect class="bg" x="0" y="0" width="165" height="202"/>
+  <rect class="frame" x="4" y="4" width="157" height="194" rx="3"/>
+  <text class="lab" x="12" y="16">school-core</text>
+  <text class="sub" x="12" y="23">pipeline · 36 issues · 64% pass</text>
+    <circle class="a-glow a-lit" cx="82" cy="44" r="17" style="animation-delay:0.00s"/>
+    <rect class="wh" x="50" y="33" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="45" text-anchor="middle">CRON</text>
+    <circle class="a-dot a-pulse" cx="109" cy="37" r="2.6" fill="#788C5D"/>
+    <line x1="82" y1="55" x2="82" y2="63" class="lnf"/>
+    <line x1="82" y1="55" x2="82" y2="63" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="74" r="17" style="animation-delay:0.90s"/>
+    <rect class="wh" x="50" y="63" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="75" text-anchor="middle">PRE</text>
+    <circle class="a-dot a-pulse" cx="109" cy="67" r="2.6" fill="#788C5D"/>
+    <line x1="82" y1="85" x2="82" y2="93" class="lnf"/>
+    <line x1="82" y1="85" x2="82" y2="93" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="104" r="17" style="animation-delay:1.80s"/>
+    <rect class="wh" x="50" y="93" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="105" text-anchor="middle">BRIDGE</text>
+    <circle class="a-dot a-pulse" cx="109" cy="97" r="2.6" fill="#788C5D"/>
+    <line x1="82" y1="115" x2="82" y2="123" class="lnf"/>
+    <line x1="82" y1="115" x2="82" y2="123" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="134" r="17" style="animation-delay:2.70s"/>
+    <rect class="wh" x="50" y="123" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="135" text-anchor="middle">CREW</text>
+    <circle class="a-dot a-blink" cx="109" cy="127" r="2.6" fill="#D97757"/>
+    <line x1="82" y1="145" x2="82" y2="153" class="lnf"/>
+    <line x1="82" y1="145" x2="82" y2="153" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="82" cy="164" r="17" style="animation-delay:3.60s"/>
+    <rect class="wh" x="50" y="153" width="64" height="22" rx="2"/>
+    <text class="lab" x="82" y="165" text-anchor="middle">REVIEW</text>
+    <circle class="a-dot a-blink" cx="109" cy="157" r="2.6" fill="#D97757"/>
+  <circle class="a-token cl" cx="82" cy="44" r="3"/>
+    <rect class="ol a-bar" x="14" y="182" width="34" height="14" rx="1.5" style="animation-delay:0.00s"/>
+    <circle class="a-dot a-pulse" cx="20" cy="187" r="2.2" fill="#788C5D"/>
+    <text class="lab" x="25" y="188">OK</text>
+    <text class="sub" x="25" y="193">23</text>
+    <rect class="cl a-bar" x="51" y="191" width="34" height="5" rx="1.5" style="animation-delay:0.18s"/>
+    <circle class="a-dot a-pulse" cx="57" cy="187" r="2.2" fill="#D97757"/>
+    <text class="lab" x="62" y="188">ERR</text>
+    <text class="sub" x="62" y="193">8</text>
+    <rect class="cl a-bar" x="88" y="194" width="34" height="2" rx="1.5" style="animation-delay:0.36s"/>
+    <circle class="a-dot a-pulse" cx="94" cy="187" r="2.2" fill="#D97757"/>
+    <text class="lab" x="99" y="188">RET</text>
+    <text class="sub" x="99" y="193">3</text>
+    <rect class="cl a-bar" x="125" y="194" width="34" height="2" rx="1.5" style="animation-delay:0.54s"/>
+    <circle class="a-dot a-pulse" cx="131" cy="187" r="2.2" fill="#D97757"/>
+    <text class="lab" x="136" y="188">FAIL</text>
+    <text class="sub" x="136" y="193">2</text>
+    <text class="cap" x="14" y="216">11 retry attempts · 3 stuck</text>
+</svg>
