@@ -1,33 +1,137 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Verify gate recursive bug: repo root Python project, rglob finds frontend package.json, npm runs in the Python shell and fails. verify_gate.py line 80.">
-  <style>    svg{stroke-linejoin:round;font-family:'Helvetica Neue',Arial,sans-serif}
-    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[class*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Verify-gate recursive bug: repo root, rglob finds frontend package.json, npm runs inside the Python shell and fails (clay path). verify_gate.py line 80.">
+  <style>
+    svg{stroke-linejoin:round}
+    .bg{fill:#F0EEE6}
+    .frame{fill:#FFFFFF;stroke:#D1CFC5;stroke-width:1.2}
+    .wh{fill:#FFFFFF;stroke:#9C9B93;stroke-width:1.4}
+    .whh{fill:#FFFFFF;stroke:#D1CFC5;stroke-width:1.2}
+    .oa{fill:#E3DACC;stroke:#B7AE9D;stroke-width:1.2}
+    .sl{fill:#141413}
+    .cl{fill:#D97757}
+    .ol{fill:#788C5D}
+    .fl{fill:#D1CFC5}
+    .fll{fill:#E6E3DA}
+    .st{fill:none;stroke:#87867F;stroke-width:1.4}
+    .stt{fill:none;stroke:#6F6E68;stroke-width:2}
+    .hl{fill:none;stroke:#D1CFC5;stroke-width:1}
+    .ln{fill:none;stroke:#9C9B93;stroke-width:1.3;stroke-linecap:round}
+    .lnf{fill:none;stroke:#CFCDC3;stroke-width:1.1;stroke-linecap:round}
+    .lc{fill:none;stroke:#D97757;stroke-width:1.5;stroke-linecap:round}
+    .da{stroke-dasharray:3 3}
+    @keyframes a-token{
+  0%   {transform:translateY(0);opacity:0}
+  4%   {opacity:1}
+  8%   {transform:translateY(16px)}
+  24%  {transform:translateY(40px)}
+  40%  {transform:translateY(74px)}
+  56%  {transform:translateY(112px)}
+  76%  {transform:translateY(140px)}
+  92%  {transform:translateY(156px);opacity:1}
+  97%  {opacity:0}
+  100% {transform:translateY(156px);opacity:0}
+}
+.a-token{transform-box:fill-box;transform-origin:50% 50%;animation:a-token 5.5s cubic-bezier(.5,0,.5,1) infinite}
+
+@keyframes a-lit{
+  0%,100%{opacity:0}
+  8%{opacity:0}
+  14%{opacity:.95}
+  30%{opacity:.25}
+  45%{opacity:0}
+}
+.a-glow{fill:none;stroke:#D97757;stroke-width:2.2;opacity:0}
+.a-g1{animation:a-lit 5.5s ease-in-out infinite;animation-delay:.05s}
+.a-g2{animation:a-lit 5.5s ease-in-out infinite;animation-delay:.85s}
+.a-g3{animation:a-lit 5.5s ease-in-out infinite;animation-delay:2.6s}
+.a-g4{animation:a-lit 5.5s ease-in-out infinite;animation-delay:4.4s}
+.a-g5{animation:a-lit 5.5s ease-in-out infinite;animation-delay:5.0s}
+.a-gstart{animation:a-lit 5.5s ease-in-out infinite;animation-delay:-.3s}
+.a-gend{animation:a-lit 5.5s ease-in-out infinite;animation-delay:3.6s}
+
+@keyframes a-pulse{
+  0%,38%,100%{transform:scale(1);opacity:.85}
+  46%{transform:scale(1.14);opacity:1}
+  54%{transform:scale(1);opacity:.85}
+}
+.a-diamond{transform-box:fill-box;transform-origin:50% 50%;animation:a-pulse 5.5s ease-in-out infinite}
+@keyframes a-ring{
+  0%,40%{transform:scale(.6);opacity:0}
+  48%{opacity:.7}
+  62%{transform:scale(1.5);opacity:0}
+  100%{transform:scale(1.5);opacity:0}
+}
+.a-gatering{fill:none;stroke:#D97757;stroke-width:1.6;transform-box:fill-box;transform-origin:50% 50%;opacity:0;animation:a-ring 5.5s ease-out infinite}
+
+@keyframes a-flow{
+  0%{stroke-dashoffset:60}
+  100%{stroke-dashoffset:0}
+}
+.a-spineflow{stroke:#D97757;stroke-width:2;stroke-linecap:round;fill:none;stroke-dasharray:5 55;animation:a-flow 5.5s linear infinite;opacity:.9}
+
+@keyframes a-branchA{
+  0%,40%{stroke-dashoffset:90}
+  52%{stroke-dashoffset:0}
+  88%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:90}
+}
+@keyframes a-branchB{
+  0%,58%{stroke-dashoffset:90}
+  70%{stroke-dashoffset:0}
+  92%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:90}
+}
+.a-branchdraw{fill:none;stroke:#D97757;stroke-width:1.4;stroke-dasharray:90;opacity:.75}
+.a-branchA{animation:a-branchA 5.5s ease-in-out infinite}
+.a-branchB{animation:a-branchB 5.5s ease-in-out infinite}
+    @media (prefers-reduced-motion: reduce){
+      *{animation:none!important;transition:none!important}
+      [class*="a-"],[id*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}
+    }
+
   </style>
-  <rect class="bg" x="0" y="0" width="165" height="202"/>
-  <rect class="frame" x="4" y="4" width="157" height="194" rx="3"/>
-  <text class="lab" x="12" y="16">verify gate</text>
-  <text class="sub" x="12" y="23">rglob finds frontend · npm in py shell</text>
-    <circle class="a-glow a-lit" cx="82" cy="48" r="17" style="animation-delay:0.00s"/>
-    <rect class="wh" x="50" y="37" width="64" height="22" rx="2"/>
-    <text class="lab" x="82" y="49" text-anchor="middle">REPO</text>
-    <circle class="a-dot a-pulse" cx="109" cy="41" r="2.6" fill="#788C5D"/>
-    <line x1="82" y1="59" x2="82" y2="77" class="lnf"/>
-    <line x1="82" y1="59" x2="82" y2="77" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="82" cy="88" r="17" style="animation-delay:1.10s"/>
-    <rect class="wh" x="50" y="77" width="64" height="22" rx="2"/>
-    <text class="lab" x="82" y="89" text-anchor="middle">RGLOB</text>
-    <circle class="a-dot a-blink" cx="109" cy="81" r="2.6" fill="#D97757"/>
-    <line x1="82" y1="99" x2="82" y2="117" class="lnf"/>
-    <line x1="82" y1="99" x2="82" y2="117" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="82" cy="128" r="17" style="animation-delay:2.20s"/>
-    <rect class="wh" x="50" y="117" width="64" height="22" rx="2"/>
-    <text class="lab" x="82" y="129" text-anchor="middle">FRONTEND</text>
-    <circle class="a-dot a-blink" cx="109" cy="121" r="2.6" fill="#D97757"/>
-    <line x1="82" y1="139" x2="82" y2="157" class="lnf"/>
-    <line x1="82" y1="139" x2="82" y2="157" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="82" cy="168" r="17" style="animation-delay:3.30s"/>
-    <rect class="wh" x="50" y="157" width="64" height="22" rx="2"/>
-    <text class="lab" x="82" y="169" text-anchor="middle">NPM·PY</text>
-    <circle class="a-dot a-blink" cx="109" cy="161" r="2.6" fill="#D97757"/>
-  <circle class="a-token cl" cx="82" cy="48" r="3"/>
-  <text class="sub" x="12" y="196">fix: root-only scan when root config exists</text>
+  <rect x="0" y="0" width="165" height="202" class="bg"/>
+<rect x="38" y="16" width="48" height="16" rx="8" class="oa"/>
+<line x1="46" y1="22" x2="70" y2="22" class="lnf"/>
+<line x1="46" y1="26.5" x2="62" y2="26.5" class="lnf"/>
+<rect x="38" y="16" width="48" height="16" rx="8" class="a-glow a-gstart"/>
+<line x1="62" y1="32" x2="62" y2="38" class="hl"/>
+<line x1="62" y1="58" x2="62" y2="70" class="hl"/>
+<line x1="62" y1="90" x2="62" y2="104" class="hl"/>
+<line x1="62" y1="124" x2="62" y2="138" class="hl"/>
+<line x1="62" y1="158" x2="62" y2="172" class="hl"/>
+<path d="M62 32 L62 38 M62 58 L62 70 M62 90 L62 104 M62 124 L62 138 M62 158 L62 172" class="a-spineflow"/>
+<rect x="34" y="38" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="44.5" r="1.1" class="sl"/>
+<line x1="45" y1="44.5" x2="84" y2="44.5" class="ln"/>
+<line x1="45" y1="49" x2="76" y2="49" class="lnf"/>
+<line x1="45" y1="53" x2="68" y2="53" class="lnf"/>
+<rect x="34" y="38" width="56" height="20" rx="4" class="a-glow a-gstart"/>
+<rect x="34" y="70" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="76.5" r="1.1" class="sl"/>
+<line x1="45" y1="76.5" x2="84" y2="76.5" class="ln"/>
+<line x1="45" y1="81" x2="76" y2="81" class="lnf"/>
+<line x1="45" y1="85" x2="68" y2="85" class="lnf"/>
+<rect x="34" y="70" width="56" height="20" rx="4" class="a-glow a-g1"/>
+<rect x="34" y="104" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="110.5" r="1.1" class="sl"/>
+<line x1="45" y1="110.5" x2="84" y2="110.5" class="ln"/>
+<line x1="45" y1="115" x2="76" y2="115" class="lnf"/>
+<line x1="45" y1="119" x2="68" y2="119" class="lnf"/>
+<rect x="34" y="104" width="3" height="20" rx="1.5" class="cl"/>
+<rect x="78" y="111" width="6" height="6" rx="1.5" class="cl"/>
+<rect x="34" y="104" width="56" height="20" rx="4" class="a-glow a-g2"/>
+<rect x="34" y="138" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="144.5" r="1.1" class="sl"/>
+<line x1="45" y1="144.5" x2="84" y2="144.5" class="ln"/>
+<line x1="45" y1="149" x2="76" y2="149" class="lnf"/>
+<line x1="45" y1="153" x2="68" y2="153" class="lnf"/>
+<rect x="34" y="138" width="3" height="20" rx="1.5" class="cl"/>
+<rect x="78" y="145" width="6" height="6" rx="1.5" class="cl"/>
+<rect x="34" y="138" width="56" height="20" rx="4" class="a-glow a-g3"/>
+<rect x="38" y="172" width="48" height="16" rx="8" class="oa"/>
+<circle cx="46" cy="180" r="2.6" class="cl"/>
+<line x1="52" y1="178.5" x2="78" y2="178.5" class="lnf"/>
+<line x1="52" y1="182.5" x2="70" y2="182.5" class="lnf"/>
+<rect x="38" y="172" width="48" height="16" rx="8" class="a-glow a-gend"/>
+<circle cx="62" cy="24" r="3.4" class="a-token cl"/>
 </svg>
