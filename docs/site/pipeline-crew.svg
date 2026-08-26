@@ -1,43 +1,154 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Crew flow: brief to spawn to hermes to status to review. Hermes exits 2, decision gate branches to silent failure; review starved of data.">
-  <style>    svg{stroke-linejoin:round;font-family:'Helvetica Neue',Arial,sans-serif}
-    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[class*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Crew flow: brief to spawn to Hermes to status to review. Hermes exits 2, the decision gate branches to a silent-failure box, and status/review downstream are starved (clay).">
+  <style>
+    svg{stroke-linejoin:round}
+    .bg{fill:#F0EEE6}
+    .frame{fill:#FFFFFF;stroke:#D1CFC5;stroke-width:1.2}
+    .wh{fill:#FFFFFF;stroke:#9C9B93;stroke-width:1.4}
+    .whh{fill:#FFFFFF;stroke:#D1CFC5;stroke-width:1.2}
+    .oa{fill:#E3DACC;stroke:#B7AE9D;stroke-width:1.2}
+    .sl{fill:#141413}
+    .cl{fill:#D97757}
+    .ol{fill:#788C5D}
+    .fl{fill:#D1CFC5}
+    .fll{fill:#E6E3DA}
+    .st{fill:none;stroke:#87867F;stroke-width:1.4}
+    .stt{fill:none;stroke:#6F6E68;stroke-width:2}
+    .hl{fill:none;stroke:#D1CFC5;stroke-width:1}
+    .ln{fill:none;stroke:#9C9B93;stroke-width:1.3;stroke-linecap:round}
+    .lnf{fill:none;stroke:#CFCDC3;stroke-width:1.1;stroke-linecap:round}
+    .lc{fill:none;stroke:#D97757;stroke-width:1.5;stroke-linecap:round}
+    .da{stroke-dasharray:3 3}
+    @keyframes a-token{
+  0%   {transform:translateY(0);opacity:0}
+  4%   {opacity:1}
+  8%   {transform:translateY(16px)}
+  24%  {transform:translateY(40px)}
+  40%  {transform:translateY(74px)}
+  56%  {transform:translateY(112px)}
+  76%  {transform:translateY(140px)}
+  92%  {transform:translateY(156px);opacity:1}
+  97%  {opacity:0}
+  100% {transform:translateY(156px);opacity:0}
+}
+.a-token{transform-box:fill-box;transform-origin:50% 50%;animation:a-token 5.5s cubic-bezier(.5,0,.5,1) infinite}
+
+@keyframes a-lit{
+  0%,100%{opacity:0}
+  8%{opacity:0}
+  14%{opacity:.95}
+  30%{opacity:.25}
+  45%{opacity:0}
+}
+.a-glow{fill:none;stroke:#D97757;stroke-width:2.2;opacity:0}
+.a-g1{animation:a-lit 5.5s ease-in-out infinite;animation-delay:.05s}
+.a-g2{animation:a-lit 5.5s ease-in-out infinite;animation-delay:.85s}
+.a-g3{animation:a-lit 5.5s ease-in-out infinite;animation-delay:2.6s}
+.a-g4{animation:a-lit 5.5s ease-in-out infinite;animation-delay:4.4s}
+.a-g5{animation:a-lit 5.5s ease-in-out infinite;animation-delay:5.0s}
+.a-gstart{animation:a-lit 5.5s ease-in-out infinite;animation-delay:-.3s}
+.a-gend{animation:a-lit 5.5s ease-in-out infinite;animation-delay:3.6s}
+
+@keyframes a-pulse{
+  0%,38%,100%{transform:scale(1);opacity:.85}
+  46%{transform:scale(1.14);opacity:1}
+  54%{transform:scale(1);opacity:.85}
+}
+.a-diamond{transform-box:fill-box;transform-origin:50% 50%;animation:a-pulse 5.5s ease-in-out infinite}
+@keyframes a-ring{
+  0%,40%{transform:scale(.6);opacity:0}
+  48%{opacity:.7}
+  62%{transform:scale(1.5);opacity:0}
+  100%{transform:scale(1.5);opacity:0}
+}
+.a-gatering{fill:none;stroke:#D97757;stroke-width:1.6;transform-box:fill-box;transform-origin:50% 50%;opacity:0;animation:a-ring 5.5s ease-out infinite}
+
+@keyframes a-flow{
+  0%{stroke-dashoffset:60}
+  100%{stroke-dashoffset:0}
+}
+.a-spineflow{stroke:#D97757;stroke-width:2;stroke-linecap:round;fill:none;stroke-dasharray:5 55;animation:a-flow 5.5s linear infinite;opacity:.9}
+
+@keyframes a-branchA{
+  0%,40%{stroke-dashoffset:90}
+  52%{stroke-dashoffset:0}
+  88%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:90}
+}
+@keyframes a-branchB{
+  0%,58%{stroke-dashoffset:90}
+  70%{stroke-dashoffset:0}
+  92%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:90}
+}
+.a-branchdraw{fill:none;stroke:#D97757;stroke-width:1.4;stroke-dasharray:90;opacity:.75}
+.a-branchA{animation:a-branchA 5.5s ease-in-out infinite}
+.a-branchB{animation:a-branchB 5.5s ease-in-out infinite}
+    @media (prefers-reduced-motion: reduce){
+      *{animation:none!important;transition:none!important}
+      [class*="a-"],[id*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}
+    }
+
   </style>
-  <rect class="bg" x="0" y="0" width="165" height="202"/>
-  <rect class="frame" x="4" y="4" width="157" height="194" rx="3"/>
-  <text class="lab" x="12" y="16">crew flow</text>
-  <text class="sub" x="12" y="23">exit 2 at hermes · no status written</text>
-    <circle class="a-glow a-lit" cx="68" cy="40" r="17" style="animation-delay:0.00s"/>
-    <rect class="wh" x="36" y="29" width="64" height="22" rx="2"/>
-    <text class="lab" x="68" y="41" text-anchor="middle">BRIEF</text>
-    <circle class="a-dot a-pulse" cx="95" cy="33" r="2.6" fill="#788C5D"/>
-    <line x1="68" y1="51" x2="68" y2="61" class="lnf"/>
-    <line x1="68" y1="51" x2="68" y2="61" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="68" cy="72" r="17" style="animation-delay:0.90s"/>
-    <rect class="wh" x="36" y="61" width="64" height="22" rx="2"/>
-    <text class="lab" x="68" y="73" text-anchor="middle">SPAWN</text>
-    <circle class="a-dot a-pulse" cx="95" cy="65" r="2.6" fill="#788C5D"/>
-    <line x1="68" y1="83" x2="68" y2="93" class="lnf"/>
-    <line x1="68" y1="83" x2="68" y2="93" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="68" cy="104" r="17" style="animation-delay:1.80s"/>
-    <rect class="wh" x="36" y="93" width="64" height="22" rx="2"/>
-    <text class="lab" x="68" y="105" text-anchor="middle">HERMES</text>
-    <circle class="a-dot a-blink" cx="95" cy="97" r="2.6" fill="#D97757"/>
-    <line x1="68" y1="115" x2="68" y2="125" class="lnf"/>
-    <line x1="68" y1="115" x2="68" y2="125" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="68" cy="136" r="17" style="animation-delay:2.70s"/>
-    <rect class="wh" x="36" y="125" width="64" height="22" rx="2"/>
-    <text class="lab" x="68" y="137" text-anchor="middle">STATUS</text>
-    <circle class="a-dot a-blink" cx="95" cy="129" r="2.6" fill="#D97757"/>
-    <line x1="68" y1="147" x2="68" y2="157" class="lnf"/>
-    <line x1="68" y1="147" x2="68" y2="157" class="a-spineflow"/>
-    <circle class="a-glow a-lit" cx="68" cy="168" r="17" style="animation-delay:3.60s"/>
-    <rect class="wh" x="36" y="157" width="64" height="22" rx="2"/>
-    <text class="lab" x="68" y="169" text-anchor="middle">REVIEW</text>
-    <circle class="a-dot a-blink" cx="95" cy="161" r="2.6" fill="#D97757"/>
-  <rect class="a-diamond fll" x="105" y="97" width="14" height="14" rx="2" transform="rotate(45 112 104)"/>
-  <circle class="a-gatering cl" cx="112" cy="104" r="9"/>
-  <line x1="100" y1="104" x2="105" y2="104" class="a-spineflow"/>
-  <text class="cap" x="104" y="124">silent fail</text>
-  <circle class="a-token cl" cx="68" cy="40" r="3"/>
-  <text class="sub" x="12" y="196">verdict gate starved — no status.json</text>
+  <rect x="0" y="0" width="165" height="202" class="bg"/>
+<rect x="38" y="16" width="48" height="16" rx="8" class="oa"/>
+<line x1="46" y1="22" x2="70" y2="22" class="lnf"/>
+<line x1="46" y1="26.5" x2="62" y2="26.5" class="lnf"/>
+<rect x="38" y="16" width="48" height="16" rx="8" class="a-glow a-gstart"/>
+<line x1="62" y1="32" x2="62" y2="38" class="hl"/>
+<line x1="62" y1="58" x2="62" y2="64" class="hl"/>
+<line x1="62" y1="84" x2="62" y2="90" class="hl"/>
+<line x1="62" y1="110" x2="62" y2="120" class="hl"/>
+<line x1="62" y1="140" x2="62" y2="146" class="hl"/>
+<line x1="62" y1="166" x2="62" y2="172" class="hl"/>
+<path d="M62 32 L62 38 M62 58 L62 64 M62 84 L62 90 M62 110 L62 120 M62 140 L62 146 M62 166 L62 172" class="a-spineflow"/>
+<g class="a-diamond"><rect x="51.5" y="104.5" width="21" height="21" rx="3" class="wh" transform="rotate(45 62 115)"/><line x1="58" y1="115" x2="66" y2="115" class="lnf"/></g>
+<rect x="51.5" y="104.5" width="21" height="21" rx="3" class="a-gatering" transform="rotate(45 62 115)"/>
+<path d="M73 115 L120 115 L120 133" class="hl da"/>
+<path d="M73 115 L120 115 L120 133" class="a-branchdraw a-branchB"/>
+<rect x="103" y="123" width="47" height="20" rx="4" class="whh"/>
+<rect x="108" y="128" width="7" height="7" rx="1.5" class="cl"/>
+<line x1="119" y1="130.5" x2="145" y2="130.5" class="lnf"/>
+<line x1="119" y1="134.5" x2="139" y2="134.5" class="lnf"/>
+<rect x="34" y="38" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="44.5" r="1.1" class="sl"/>
+<line x1="45" y1="44.5" x2="84" y2="44.5" class="ln"/>
+<line x1="45" y1="49" x2="76" y2="49" class="lnf"/>
+<line x1="45" y1="53" x2="68" y2="53" class="lnf"/>
+<rect x="34" y="38" width="56" height="20" rx="4" class="a-glow a-gstart"/>
+<rect x="34" y="64" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="70.5" r="1.1" class="sl"/>
+<line x1="45" y1="70.5" x2="84" y2="70.5" class="ln"/>
+<line x1="45" y1="75" x2="76" y2="75" class="lnf"/>
+<line x1="45" y1="79" x2="68" y2="79" class="lnf"/>
+<rect x="34" y="64" width="56" height="20" rx="4" class="a-glow a-g1"/>
+<rect x="34" y="90" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="96.5" r="1.1" class="sl"/>
+<line x1="45" y1="96.5" x2="84" y2="96.5" class="ln"/>
+<line x1="45" y1="101" x2="76" y2="101" class="lnf"/>
+<line x1="45" y1="105" x2="68" y2="105" class="lnf"/>
+<rect x="34" y="90" width="3" height="20" rx="1.5" class="cl"/>
+<rect x="78" y="97" width="6" height="6" rx="1.5" class="cl"/>
+<rect x="34" y="90" width="56" height="20" rx="4" class="a-glow a-g2"/>
+<rect x="34" y="120" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="126.5" r="1.1" class="sl"/>
+<line x1="45" y1="126.5" x2="84" y2="126.5" class="ln"/>
+<line x1="45" y1="131" x2="76" y2="131" class="lnf"/>
+<line x1="45" y1="135" x2="68" y2="135" class="lnf"/>
+<rect x="34" y="120" width="3" height="20" rx="1.5" class="cl"/>
+<rect x="78" y="127" width="6" height="6" rx="1.5" class="cl"/>
+<rect x="34" y="120" width="56" height="20" rx="4" class="a-glow a-g3"/>
+<rect x="34" y="146" width="56" height="20" rx="4" class="wh"/>
+<circle cx="40" cy="152.5" r="1.1" class="sl"/>
+<line x1="45" y1="152.5" x2="84" y2="152.5" class="ln"/>
+<line x1="45" y1="157" x2="76" y2="157" class="lnf"/>
+<line x1="45" y1="161" x2="68" y2="161" class="lnf"/>
+<rect x="34" y="146" width="3" height="20" rx="1.5" class="cl"/>
+<rect x="78" y="153" width="6" height="6" rx="1.5" class="cl"/>
+<rect x="34" y="146" width="56" height="20" rx="4" class="a-glow a-g4"/>
+<rect x="38" y="172" width="48" height="16" rx="8" class="oa"/>
+<circle cx="46" cy="180" r="2.6" class="ol"/>
+<line x1="52" y1="178.5" x2="78" y2="178.5" class="lnf"/>
+<line x1="52" y1="182.5" x2="70" y2="182.5" class="lnf"/>
+<rect x="38" y="172" width="48" height="16" rx="8" class="a-glow a-gend"/>
+<circle cx="62" cy="24" r="3.4" class="a-token cl"/>
 </svg>
