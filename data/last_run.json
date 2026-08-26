@@ -820,5 +820,963 @@
     "crew_fallback_reason": null,
     "teardown_ok": true,
     "timestamp": "2026-08-12T23:05:52.686351+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "spawn_silent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T14:18:32.493614+00:00"
+  },
+  {
+    "issue": 341,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "spawn_silent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T14:21:59.939068+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "openhands",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "data/trajectories/20260824_150414_854961--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-24T15:07:16.169212+00:00",
+      "agent": "openhands",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "openhands",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000001",
+    "lifecycle": "failed",
+    "quality": 1.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-24T15:07:16.196943+00:00"
+  },
+  {
+    "issue": 341,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T15:09:30.814161+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T15:54:26.915228+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T15:56:40.004741+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "data/trajectories/20260824_163255_761659--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T16:33:25.905911+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T16:36:26.047753+00:00"
+  },
+  {
+    "issue": 338,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T17:12:00.680976+00:00"
+  },
+  {
+    "issue": 249,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "timeout",
+    "fallback_reason": "timeout",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T17:27:28.152982+00:00"
+  },
+  {
+    "issue": 338,
+    "status": "school-failed",
+    "agent": "openhands",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "data/trajectories/20260824_174845_007448--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-24T17:50:32.477324+00:00",
+      "agent": "openhands",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 1,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Constant MIN_PRODUCERS_TO_PLAY=2 extracted to backend/game_engine/models.py (module level)"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Constant MIN_PRODUCERS_TO_PLAY=2 extracted to src/types/game.ts (exported)"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "All 8 inline usages replaced across 3 files: views.py (3 sites), LobbyWaitingRoom.tsx (2 sites), RoomBrowser.tsx (3 sites)"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Imports correctly reference the constant from respective locations"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Refactor-only change with no functional modifications"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "openhands",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000001",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-24T17:50:32.525029+00:00"
+  },
+  {
+    "issue": 249,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T17:53:11.099764+00:00"
+  },
+  {
+    "issue": 231,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T19:09:55.857543+00:00"
+  },
+  {
+    "issue": 205,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T19:12:21.404782+00:00"
+  },
+  {
+    "issue": 231,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "data/trajectories/20260824_194450_202510--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T19:45:20.247197+00:00"
+  },
+  {
+    "issue": 205,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T19:47:39.406099+00:00"
+  },
+  {
+    "issue": 204,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T20:53:41.453858+00:00"
+  },
+  {
+    "issue": 203,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T20:56:08.721692+00:00"
+  },
+  {
+    "issue": 204,
+    "status": "blocked",
+    "agent": "executor",
+    "score": null,
+    "trajectory": null,
+    "capability": null,
+    "teacher_evidence": null,
+    "lifecycle": "blocked",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "retry_pressure",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T21:22:48.804674+00:00"
+  },
+  {
+    "issue": 203,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T21:25:49.253062+00:00"
+  },
+  {
+    "issue": 202,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-24T21:54:20.715865+00:00"
+  },
+  {
+    "issue": 202,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": "silent_agent",
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-24T22:19:23.965934+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 85.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "data/trajectories/20260825_152604_787410--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-25T15:28:15.246880+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "PASS",
+      "cto_score": 70.0,
+      "coo_score": 100.0,
+      "combined_score": 85.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 1,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "models.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "views.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "test_max_spectators.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verification"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.85
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000001",
+    "lifecycle": "failed",
+    "quality": 0.85,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": "crew_failed",
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-25T15:28:15.268478+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "data/trajectories/20260826_104640_059596--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "crew_failed",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-26T10:47:10.316209+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 85.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "data/trajectories/20260826_105852_093087--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 40.56134999999999,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts → escalate to Faculty",
+        "Task difficulty exceeds gate → escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-26T11:01:47.774151+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "PASS",
+      "cto_score": 70.0,
+      "coo_score": 100.0,
+      "combined_score": 85.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 1,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "MAX_SPECTATORS constant correctly added to Room model in models.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "views.py correctly references Room.MAX_SPECTATORS in both the condition and error message"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Hardcoded value 10 replaced with constant as required"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Error string updated to use the constant for maintainability"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.85
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000001",
+    "lifecycle": "failed",
+    "quality": 0.85,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": "crew_failed",
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-26T11:01:47.822851+00:00"
   }
 ]

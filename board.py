@@ -528,10 +528,6 @@ def build_board_html(
         '<input id="board-filter" class="board-filter" placeholder="filter titles…" oninput="boardFilter()">\n'
         f'<time datetime="{now}">Updated {now}</time>\n'
         "</div>\n"
-        '<div class="status-panel">\n'
-        '<img src="docs/site/status.svg" alt="School-core run status tile" '
-        'width="165" height="202" loading="lazy">\n'
-        "</div>\n"
         '<div class="board-grid">\n'
         f'{"".join(col_html_parts)}'
         "</div>\n"
