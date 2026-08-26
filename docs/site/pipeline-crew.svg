@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 165 202" width="165" height="202" role="img" aria-label="Crew flow: brief to spawn to hermes to status to review. Hermes exits 2, decision gate branches to silent failure; review starved of data.">
+  <style>    svg{stroke-linejoin:round;font-family:'Helvetica Neue',Arial,sans-serif}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[class*="a-"]{opacity:1!important;transform:none!important;stroke-dashoffset:0!important;stroke-dasharray:none!important}}
+  </style>
+  <rect class="bg" x="0" y="0" width="165" height="202"/>
+  <rect class="frame" x="4" y="4" width="157" height="194" rx="3"/>
+  <text class="lab" x="12" y="16">crew flow</text>
+  <text class="sub" x="12" y="23">exit 2 at hermes · no status written</text>
+    <circle class="a-glow a-lit" cx="68" cy="40" r="17" style="animation-delay:0.00s"/>
+    <rect class="wh" x="36" y="29" width="64" height="22" rx="2"/>
+    <text class="lab" x="68" y="41" text-anchor="middle">BRIEF</text>
+    <circle class="a-dot a-pulse" cx="95" cy="33" r="2.6" fill="#788C5D"/>
+    <line x1="68" y1="51" x2="68" y2="61" class="lnf"/>
+    <line x1="68" y1="51" x2="68" y2="61" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="68" cy="72" r="17" style="animation-delay:0.90s"/>
+    <rect class="wh" x="36" y="61" width="64" height="22" rx="2"/>
+    <text class="lab" x="68" y="73" text-anchor="middle">SPAWN</text>
+    <circle class="a-dot a-pulse" cx="95" cy="65" r="2.6" fill="#788C5D"/>
+    <line x1="68" y1="83" x2="68" y2="93" class="lnf"/>
+    <line x1="68" y1="83" x2="68" y2="93" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="68" cy="104" r="17" style="animation-delay:1.80s"/>
+    <rect class="wh" x="36" y="93" width="64" height="22" rx="2"/>
+    <text class="lab" x="68" y="105" text-anchor="middle">HERMES</text>
+    <circle class="a-dot a-blink" cx="95" cy="97" r="2.6" fill="#D97757"/>
+    <line x1="68" y1="115" x2="68" y2="125" class="lnf"/>
+    <line x1="68" y1="115" x2="68" y2="125" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="68" cy="136" r="17" style="animation-delay:2.70s"/>
+    <rect class="wh" x="36" y="125" width="64" height="22" rx="2"/>
+    <text class="lab" x="68" y="137" text-anchor="middle">STATUS</text>
+    <circle class="a-dot a-blink" cx="95" cy="129" r="2.6" fill="#D97757"/>
+    <line x1="68" y1="147" x2="68" y2="157" class="lnf"/>
+    <line x1="68" y1="147" x2="68" y2="157" class="a-spineflow"/>
+    <circle class="a-glow a-lit" cx="68" cy="168" r="17" style="animation-delay:3.60s"/>
+    <rect class="wh" x="36" y="157" width="64" height="22" rx="2"/>
+    <text class="lab" x="68" y="169" text-anchor="middle">REVIEW</text>
+    <circle class="a-dot a-blink" cx="95" cy="161" r="2.6" fill="#D97757"/>
+  <rect class="a-diamond fll" x="105" y="97" width="14" height="14" rx="2" transform="rotate(45 112 104)"/>
+  <circle class="a-gatering cl" cx="112" cy="104" r="9"/>
+  <line x1="100" y1="104" x2="105" y2="104" class="a-spineflow"/>
+  <text class="cap" x="104" y="124">silent fail</text>
+  <circle class="a-token cl" cx="68" cy="40" r="3"/>
+  <text class="sub" x="12" y="196">verdict gate starved — no status.json</text>
+</svg>
