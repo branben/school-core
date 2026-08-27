@@ -2284,11 +2284,12 @@ class TestCrewDispatchPath:
              )), \
              patch("executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
-        assert results[0]["status"] == "success"
+        assert results[0]["status"] == "retry"
         assert results[0]["crew_fallback_reason"] == "timeout"
         # U9: teardown_ok rides the crew block on the result.
         assert results[0]["teardown_ok"] is True
-        mock_task.assert_called_once()
+        # Timeout defers direct fallback — no second model call in the same cycle.
+        mock_task.assert_not_called()
 
     def test_failed_falls_back_direct(self, monkeypatch, tmp_path, store):
         """Crew 'failed' → direct path, reason recorded."""

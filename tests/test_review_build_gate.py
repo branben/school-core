@@ -57,7 +57,7 @@ def _review_with_build_gate(monkeypatch, repo_path, vg_result, bead="bead-build-
         repo=repo,
     )
     monkeypatch.setattr(
-        "director._resolve_repo_path", lambda repo: repo_path
+        "director._resolve_repo_path", lambda repo, explicit_path=None: repo_path
     )
     monkeypatch.setattr(
         "director.run_verify_gate",

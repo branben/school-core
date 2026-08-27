@@ -91,6 +91,7 @@ def test_route_decision_logs_to_bookbag():
     assert out["logged"] is True
     writer.assert_called_once_with(
         "bead123", "__global__",
+        route_id="route-bead123",
         chosen_skill=SKILL_RANK_1,
         chosen_skill_label=out["label"],
         primary_workflow=SKILL_RANK_1,

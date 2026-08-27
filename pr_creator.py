@@ -463,10 +463,13 @@ def create_pr_for_issue(
         message = f"school: add {path} for #{num}"
         sys.stderr.write(f"[pr_creator] committing {path} to branch '{branch}'\n")
     else:
-        # Artifact-dir mode: write to school-output/<domain>/<num>/output.py
+        # Artifact-dir mode: write to school-output/<domain>/<num>/output.md
+        # The LLM response is arbitrary prose/code — not necessarily valid Python —
+        # so .md is the correct extension.  Strip outer markdown fences if present.
         domain = issue.get("domain", "_default")
-        path = f"school-output/{domain}/{num}/output.py"
-        content = response_text
+        path = f"school-output/{domain}/{num}/output.md"
+        content = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", response_text.strip())
+        content = re.sub(r"\n```$", "", content)
         entries = [{"path": path, "mode": "100644", "type": "blob", "sha": _blobSha(repo, content)}]
         message = f"school: task output for #{num} ({domain})"
         sys.stderr.write(f"[pr_creator] committing {path} to branch '{branch}'\n")

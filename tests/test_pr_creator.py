@@ -187,7 +187,7 @@ class TestCreatePRGuards:
             {"ref": "refs/heads/school/issue-8-noop"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
-                {"path": "school-output/debugging/8/output.py",
+                {"path": "school-output/debugging/8/output.md",
                  "mode": "100644", "type": "blob", "sha": base_sha},
             ]},
             {"sha": base_sha},
@@ -218,7 +218,7 @@ class TestCreatePRGuards:
             {"ref": "refs/heads/school/issue-9-real"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
-                {"path": "school-output/debugging/9/output.py",
+                {"path": "school-output/debugging/9/output.md",
                  "mode": "100644", "type": "blob", "sha": "oldblob111"},
             ]},
             {"sha": "newblob444"},
@@ -286,7 +286,7 @@ class TestCreatePRCrewPatch:
             {"ref": "refs/heads/school/issue-11-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},                    # read branch tree
-            {"sha": "outblob111"},                     # output.py blob
+            {"sha": "outblob111"},                     # output.md blob
             {"sha": "patchblob222"},                   # crew patch blob
             {"sha": "newtree333"},
             {"sha": "newcommit444"},
@@ -300,7 +300,7 @@ class TestCreatePRCrewPatch:
         )
         assert url == "https://github.com/user/test/pull/11"
 
-        # The tree POST must carry BOTH the output.py entry and the patch blob.
+        # The tree POST must carry BOTH the output.md entry and the patch blob.
         # _gh_api is called as (method, path, body), so the body dict is args[2].
         tree_post = next(
             c for c in mock_api.call_args_list
@@ -308,7 +308,7 @@ class TestCreatePRCrewPatch:
         )
         entries = tree_post.args[2]["tree"]
         paths = {e["path"] for e in entries}
-        assert "school-output/debugging/11/output.py" in paths
+        assert "school-output/debugging/11/output.md" in paths
         patch_entry = next(
             e for e in entries if e["path"].endswith("changes.patch")
         )
@@ -365,7 +365,7 @@ class TestCreatePRCrewPatch:
             {"ref": "refs/heads/school/issue-13-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},
-            {"sha": "outblob111"},   # output.py blob OK
+            {"sha": "outblob111"},   # output.md blob OK
             None,                    # crew patch blob FAILS
         ]
         issue = {"issue_number": 13, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
