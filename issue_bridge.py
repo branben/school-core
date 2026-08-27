@@ -1285,6 +1285,7 @@ def bridge_issues(
                 configured_cap=crew_max_per_cycle,
                 runner_slots=runner_slots,
                 active_claims=live_active,
+                dispatched=crew_dispatched,
                 remaining_seconds=cycle_budget_seconds - (time.monotonic() - cycle_started),
                 crew_timeout_seconds=CREW_DEFAULT_TIMEOUT,
                 retry_pressure=len(retries),

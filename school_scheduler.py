@@ -217,6 +217,7 @@ class DispatchOffice:
         configured_cap: int = 1,
         runner_slots: int = 1,
         active_claims: int = 0,
+        dispatched: int = 0,
         remaining_seconds: float = 1800.0,
         crew_timeout_seconds: float = 900.0,
         retry_pressure: int = 0,
@@ -231,12 +232,13 @@ class DispatchOffice:
         calls observe in-flight crews and `configured_cap` holds (fc7.3).
         """
         # 1) Admission — existing lock-safe policy (N3.1 budget-aware).
-        live_active = active_claims
+        # `dispatched` = total crews admitted this cycle (per-cycle cap);
+        # `active_claims` = currently in-flight (concurrent-run cap, lock-safe).
         admission = decide_admission(
-            dispatched=live_active,
+            dispatched=dispatched,
             configured_cap=configured_cap,
             runner_slots=runner_slots,
-            active_claims=live_active,
+            active_claims=active_claims,
             remaining_seconds=float(remaining_seconds),
             crew_timeout_seconds=float(crew_timeout_seconds),
             retry_pressure=retry_pressure,
