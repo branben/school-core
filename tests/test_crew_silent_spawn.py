@@ -44,6 +44,7 @@ hardest difficulty. Fail fast on silence, stay patient with work.
 """
 
 import pytest
+from typing import Optional
 
 import crew_dispatch
 
@@ -61,7 +62,7 @@ class _Clock:
         self.t += seconds
 
 
-def _poll(tmp_path, monkeypatch, status_text: str | None, **kw):
+def _poll(tmp_path, monkeypatch, status_text: Optional[str] = None, **kw):
     """Run _poll against a synthetic status file. Returns (status, reason, detail)."""
     crew_id = "crew-silent-test"
     task_dir = tmp_path / crew_id
