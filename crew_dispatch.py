@@ -1268,6 +1268,21 @@ def dispatch_crew(
         # its spawn-time stderr is attached to the record below.
         if fallback_reason == "spawn_silent":
             fallback_reason = "silent_agent"
+
+        # Attribution join (bead school-core-a9s): the .meta file carries
+        # project= at spawn time; join it into the .status file so every
+        # status record is self-verifying (the cited SHA can be checked
+        # in the named repo). Skip silently when .meta is absent or has
+        # no project= line — not every spawn publishes one.
+        meta_path = _meta_path(crew_id)
+        if meta_path.exists():
+            for line in meta_path.read_text().splitlines():
+                if line.startswith("project="):
+                    status_path = _status_path(crew_id)
+                    with open(status_path, "a") as f:
+                        f.write(f"repo={line.split('=', 1)[1]}\n")
+                    break
+
         report_path: Optional[Path] = None
         if terminal_status == "done":
             candidate = _task_dir(crew_id) / "report.md"
