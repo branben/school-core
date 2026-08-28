@@ -764,6 +764,15 @@ class TestEntireSensor:
         """No clone → None; the pipeline never blocks on the sensor."""
         assert _run_entire_sensor(Path("/nonexistent/repo")) is None
 
+    def test_sensor_warns_when_cli_missing(self, tmp_path, capsys):
+        """When repo exists but entire CLI missing, warn to stderr and return skipped dict."""
+        with patch("src.entire_review._get_entire_path", return_value=None):
+            result = _run_entire_sensor(tmp_path)
+        assert result is not None
+        assert result["status"] == "skipped"
+        captured = capsys.readouterr()
+        assert "[issue_bridge] entire CLI not found — pre-merge sensor will be skipped." in captured.err
+
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("executor.call_model")

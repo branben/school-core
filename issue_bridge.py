@@ -843,7 +843,12 @@ def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
     if not repo_path or not repo_path.exists():
         return None
     try:
-        from src.entire_review import run_entire_review
+        from src.entire_review import _get_entire_path, run_entire_review
+        if not _get_entire_path():
+            sys.stderr.write(
+                "[issue_bridge] entire CLI not found — pre-merge sensor will be skipped. "
+                "Install with: pip install entire-cli\n"
+            )
         return run_entire_review(str(repo_path), base_branch="main")
     except ImportError:
         return None
