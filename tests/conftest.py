@@ -71,6 +71,10 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(crew_dispatch, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
     monkeypatch.setattr(issue_bridge, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
 
+    monkeypatch.setattr(crew_dispatch, "FM_HOME", tmp_path / "fm-home")
+    monkeypatch.setattr(crew_dispatch, "STATE_DIR", tmp_path / "fm-home" / "state")
+    monkeypatch.setattr(crew_dispatch, "DATA_DIR", tmp_path / "fm-home" / "data")
+
     # Bulletproof scores isolation: any ScoreStore() created WITHOUT an
     # explicit file_path (e.g. mcp_server's module-level store, director
     # fallbacks, autonomous_loop) is redirected to tmp. An explicitly passed
