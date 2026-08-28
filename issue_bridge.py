@@ -2143,7 +2143,20 @@ def bridge_issues(
                                        retry_limit=RETRY_LIMIT)
                 except Exception as e_notify:
                     sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
-                processed.add(num)
+                retries.pop(num, None)
+                # BUG FIX (school-core-qb4): only mark processed if the crew
+                # actually ran and reached a terminal verdict. A crew that died
+                # silent (timeout, spawn_failed) must remain eligible for retry
+                # — otherwise the backlog gets eaten by infra failures that
+                # were never evaluated.
+                status = task_result.get("status")
+                if status in ("done", "error"):
+                    processed.add(num)
+                else:
+                    sys.stderr.write(
+                        f"[issue_bridge] #{num}: retry budget exhausted but "
+                        f"status={status} — keeping eligible\n"
+                    )
 
     # Flush removed: batch-flush is now per-record
     _save_retries(retries)
