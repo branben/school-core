@@ -14,7 +14,7 @@ git clone https://github.com/YOUR_USERNAME/school-core.git
 cd school-core
 ```
 
-### 2. Set up the environment
+## 2. Set up the environment
 
 ```bash
 pip install -r requirements.txt
@@ -22,6 +22,64 @@ pip install -r requirements.txt
 
 Core is mostly Python 3.9+ stdlib. The only third-party dependencies are
 PyYAML and pytest.
+
+> **⚠️ Critical:** Before your first reading, read
+> [`docs/STATE-MAP.md`](docs/STATE-MAP.md). It documents where truth lives,
+> the git diff convention, Python floors, directory-name coupling, and pipe
+> discipline — traps that cost real time in this session.
+
+### Python version
+
+| Environment | Python | Notes |
+|---|---|---|
+| CI (`ci.yml`) | 3.9 (compileall) + 3.12 (pytest matrix) | `str \| None` only safe with `from __future__ import annotations` |
+| Hermes venv | 3.11 | Where most developers run tests |
+| Runtime | varies | Orca worktrees use agent profile pins |
+
+### Git diff convention (NEVER use moving tip)
+
+```bash
+# WRONG — renders main's gains as branch deletions
+git diff main..HEAD
+
+# CORRECT — diff against the fork point
+git diff $(git merge-base main HEAD)..HEAD
+```
+
+### Directory naming
+
+Tests assert `REPO_PATH.endswith("school-core")`. Cloning to `/tmp/wk-ci`
+fails. Clone to a directory named `school-core` or relax the test assertion.
+
+### Pipe discipline
+
+```bash
+# WRONG — pipe reports the LAST element's exit code
+python -m compileall -q . | head
+
+# CORRECT — run bare, read the real exit code
+python -m compileall -q .
+echo "exit=$?"
+```
+
+### Test isolation
+
+`tests/conftest.py` monkeypatches `crew_dispatch.FM_HOME`, `STATE_DIR`,
+`DATA_DIR`, `CREW_RUNS_FILE`, and all `data/*.json` writers. A test that
+creates its own `.venv*` in the workspace will break `compileall`.
+
+### State locations
+
+| State | Location | In repo? |
+|---|---|---|
+| Producer status files | `~/.hermes/school-core-fm-config/state/*.status` | ❌ Outside |
+| Consumer ledger | `school-core/data/crew_runs.json` | ✅ Inside |
+| Issue tracker | `school-core/.beads/dolt/` (Dolt DB) | ✅ Inside |
+
+### Producer/consumer invariant
+
+Every status file with a terminal verb (`done`/`failed`) MUST have a ledger
+record. Audit: `python crew_ledger_reconcile.py`
 
 ### 3. Configure
 
