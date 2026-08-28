@@ -55,6 +55,7 @@ from crew_dispatch import (
     dispatch_crew as dispatch_crew,
     sweep_stale_runs as sweep_stale_runs,
 )
+from bookbag import locked_update_bookbag
 from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
@@ -1884,6 +1885,17 @@ def bridge_issues(
                 },
                 outcome=outcome,
             )
+            # Entire gate: persist findings to bookbag for acceptance gating
+            if entire_review and entire_review.get("findings"):
+                try:
+                    locked_update_bookbag(
+                        str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
+                        repo,
+                        entire_findings=entire_review.get("findings"),
+                        entire_status=entire_review.get("status"),
+                    )
+                except Exception:
+                    pass  # non-fatal; gate is best-effort
             compound_observation = _record_compound_observation(
                 bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                 trigger="bead_completed",
