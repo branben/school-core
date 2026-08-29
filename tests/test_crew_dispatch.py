@@ -1482,3 +1482,26 @@ def test_spawn_harness_exports_supervision_paths(monkeypatch, tmp_path):
     assert harness.startswith("export OMNIROUTE_API_KEY="), (
         "key export is no longer outermost; this breaks the existing key guard"
     )
+
+
+def test_brief_encourages_intermediate_status_writes(monkeypatch, tmp_path):
+    """Brief must NOT tell crews to report sparingly — that causes empty status files."""
+    configure_paths(monkeypatch, tmp_path)
+
+    crew_dispatch._write_brief(
+        crew_id="fm-test-001",
+        project_dir=tmp_path / "project",
+        issue_number=999,
+        task_text="Test task",
+    )
+
+    brief_path = tmp_path / "fm-home" / "data" / "fm-test-001" / "brief.md"
+    text = brief_path.read_text()
+    assert "report sparingly" not in text, (
+        "Brief still says 'report sparingly' — this causes empty status files "
+        "when crews run out of turns before writing done:"
+    )
+    assert "working:" in text, (
+        "Brief must tell crews to write working: at phase changes "
+        "so the supervisor can distinguish mid-work from silent failure"
+    )
