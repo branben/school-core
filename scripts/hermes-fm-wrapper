@@ -97,15 +97,34 @@ set -e
 if [[ -n "${FM_STATUS_FILE:-}" ]]; then
   if mkdir -p "$(dirname "$FM_STATUS_FILE")" 2>/dev/null; then
     TERMINAL=""
+    MIDWORK=""
     if [[ -f "$FM_STATUS_FILE" ]]; then
       LAST_LINE="$(tail -n 1 "$FM_STATUS_FILE" 2>/dev/null | sed 's/^[[:space:]]*//' || true)"
       case "$LAST_LINE" in
         done:*|failed:*|blocked:*|needs-decision:*) TERMINAL="yes" ;;
       esac
+      # Tri-state: any working:/resolved: line without a terminal = mid-work
+      case "$LAST_LINE" in
+        working:*|resolved:*) MIDWORK="yes" ;;
+      esac
+      # Also check for mid-work anywhere in the file (not just last line)
+      if [[ -z "$MIDWORK" && -z "$TERMINAL" ]]; then
+        if grep -qE '^(working|resolved):' "$FM_STATUS_FILE" 2>/dev/null; then
+          MIDWORK="yes"
+        fi
+      fi
     fi
     if [[ -z "$TERMINAL" ]]; then
-      printf 'failed: hermes-exit-%s-no-terminal-status\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
-        || echo "hermes-fm-wrapper: could not write terminal handshake to $FM_STATUS_FILE" >&2
+      if [[ -n "$MIDWORK" ]]; then
+        printf 'blocked: hermes-exit-%s-mid-work\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
+          || echo "hermes-fm-wrapper: could not write blocked handshake to $FM_STATUS_FILE" >&2
+      elif [[ -f "$FM_STATUS_FILE" && -s "$FM_STATUS_FILE" ]]; then
+        printf 'failed: hermes-exit-%s-no-terminal-status\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
+          || echo "hermes-fm-wrapper: could not write failed handshake to $FM_STATUS_FILE" >&2
+      else
+        printf 'failed: hermes-exit-%s-no-output\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
+          || echo "hermes-fm-wrapper: could not write no-output handshake to $FM_STATUS_FILE" >&2
+      fi
     fi
   else
     echo "hermes-fm-wrapper: cannot create status directory for $FM_STATUS_FILE" >&2
