@@ -94,10 +94,77 @@ def _wrapper_env(tmp_path, hermes_exit, status_text="", max_turns="3"):
     return hermes, status, env
 
 
+def test_wrapper_writes_blocked_handshake_when_hermes_exits_with_work_in_progress(tmp_path):
+    """Tri-state: working: but no terminal → blocked (recoverable), not failed."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text="working: implementing round-bounds extraction\n",
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    lines = status.read_text(encoding="utf-8").splitlines()
+    assert lines[-1] == "blocked: hermes-exit-0-mid-work"
+    assert not any(line.startswith("failed:") for line in lines)
+
+
+def test_wrapper_writes_blocked_handshake_when_resolved_but_no_terminal(tmp_path):
+    """Tri-state: resolved: but no terminal → blocked (recoverable)."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text="working: coding\nresolved: MIN_ROUNDS extracted\n",
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    lines = status.read_text(encoding="utf-8").splitlines()
+    assert lines[-1] == "blocked: hermes-exit-0-mid-work"
+
+
+def test_wrapper_writes_no_output_handshake_when_status_file_empty(tmp_path):
+    """Tri-state: empty status file → failed: no-output (genuine silence)."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text="",
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    lines = status.read_text(encoding="utf-8").splitlines()
+    assert lines[-1] == "failed: hermes-exit-0-no-output"
+
+
 def test_wrapper_writes_failed_handshake_when_hermes_exits_without_terminal_status(tmp_path):
     """U10: a crew that exits without a terminal status line must land a bounded
     failed status on the exact supervised path, never a fabricated pass."""
-    _, status, env = _wrapper_env(tmp_path, hermes_exit=0, status_text="working: coding\n")
+    _, status, env = _wrapper_env(tmp_path, hermes_exit=0, status_text="some random text\n")
 
     result = subprocess.run(
         [str(WRAPPER), "brief"],
@@ -115,7 +182,11 @@ def test_wrapper_writes_failed_handshake_when_hermes_exits_without_terminal_stat
 
 def test_wrapper_records_nonzero_hermes_exit_in_handshake(tmp_path):
     """U10: a non-zero Hermes exit is recorded in the handshake reason."""
-    _, status, env = _wrapper_env(tmp_path, hermes_exit=7)
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=7,
+        status_text="some random non-verb text\n",
+    )
 
     result = subprocess.run(
         [str(WRAPPER), "brief"],
@@ -126,7 +197,8 @@ def test_wrapper_records_nonzero_hermes_exit_in_handshake(tmp_path):
         check=False,
     )
     assert result.returncode == 7
-    assert status.read_text(encoding="utf-8").strip() == "failed: hermes-exit-7-no-terminal-status"
+    lines = status.read_text(encoding="utf-8").splitlines()
+    assert lines[-1] == "failed: hermes-exit-7-no-terminal-status"
 
 
 def test_wrapper_preserves_terminal_done_status(tmp_path):
