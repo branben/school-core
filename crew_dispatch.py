@@ -1076,6 +1076,7 @@ def _poll(
     started = now_fn()
     blocked_at: Optional[float] = None
     spoke = False
+    mid_work = False
     poll_sleep = poll_interval if poll_interval > 0 else min(max(timeout, 0.1), 0.1)
     max_attempts = max(1, int(max(timeout, 0.0) / max(poll_sleep, 0.1)) + 2)
     attempts = 0
@@ -1092,6 +1093,9 @@ def _poll(
                 return "blocked", "blocked", detail
         elif status == "resolved":
             blocked_at = None
+            mid_work = True
+        elif status == "working":
+            mid_work = True
         # A crew that has never spoken is not "working" — it is missing. Cut it
         # loose at the startup deadline instead of reserving the whole cycle
         # budget for a process that may not exist.
@@ -1099,6 +1103,11 @@ def _poll(
             return "timeout", "spawn_silent", detail
         # working, paused, resolved, unknown, and absent status all remain live.
         sleep_fn(poll_sleep)
+    # Timeout fired. If the crew wrote working:/resolved: but never reached
+    # a terminal state, return blocked (recoverable) so the supervisor
+    # preserves the worktree. Genuine silence and needs-decision stay timeout.
+    if mid_work:
+        return "blocked", "poll_timeout_mid_work", detail
     return "timeout", "timeout", ""
 
 
@@ -1263,6 +1272,14 @@ def dispatch_crew(
             now_fn=now_fn,
             sleep_fn=sleep_fn,
         )
+        # Re-read the status file to capture the wrapper's post-exit handshake.
+        # The wrapper writes blocked:/failed: AFTER Hermes exits, which can
+        # land after the poll loop's timeout fires. Only apply when poll returned
+        # a non-terminal status — don't overwrite a valid terminal result.
+        if terminal_status not in {"done", "failed", "blocked", "needs-decision"}:
+            _post_exit_status = _read_status(_status_path(crew_id))
+            if _post_exit_status in {"done", "failed", "blocked", "needs-decision"}:
+                terminal_status = _post_exit_status
         # B9: a crew that spawned without error yet produced no status file
         # within startup_grace is a *silent agent*, not a generic spawn
         # failure. Rename the code so it is distinguishable in the ledger;
@@ -1415,7 +1432,13 @@ def dispatch_crew(
                 str(patch_path.relative_to(DATA_DIR)) if patch_path else None
             ),
         })
-    teardown_ok = teardown_worktree(worktree_id)
+    teardown_ok = False
+    if terminal_status == "blocked":
+        # Tri-state: blocked means mid-work (recoverable). Preserve the
+        # worktree so the next dispatch can pick up where this one left off.
+        log.info("crew %s blocked (mid-work) — preserving worktree", crew_id)
+    else:
+        teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(
         crew_id=crew_id,

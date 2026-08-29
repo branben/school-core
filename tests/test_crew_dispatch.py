@@ -937,6 +937,45 @@ def test_terminal_state_persisted_before_teardown(monkeypatch, tmp_path):
     assert runs[-1]["report_path"] == f"{crew_id}/report.md"
 
 
+def test_teardown_skipped_when_blocked_mid_work(monkeypatch, tmp_path):
+    """Tri-state: a crew that wrote working: but ran out of turns is blocked
+    (recoverable) — its worktree must be preserved, not destroyed."""
+    configure_paths(monkeypatch, tmp_path)
+    crew_id = "fm-loop-20260812-120000-33"
+    (crew_dispatch.STATE_DIR / f"{crew_id}.status").write_text(
+        "working: implementing round-bounds extraction\n"
+    )
+    (crew_dispatch.STATE_DIR / f"{crew_id}.meta").write_text("orca_worktree_id=repo::/tmp/worktree\n")
+    monkeypatch.setattr(
+        crew_dispatch,
+        "_run",
+        lambda args, **kwargs: spawn_process() if args[0].endswith("fm-spawn.sh") else subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    teardown_called = []
+    monkeypatch.setattr(
+        crew_dispatch,
+        "teardown_worktree",
+        lambda worktree_id: teardown_called.append(worktree_id) or True,
+    )
+
+    result = dispatch_crew(
+        issue_number=33,
+        task_text="Worktree preservation on blocked",
+        project_dir=tmp_path,
+        cycle_session_id="loop-20260812-120000",
+        timeout=1,
+        poll_interval=0,
+    )
+
+    # The crew is blocked (mid-work), not failed
+    assert result.status == "blocked"
+    # Teardown was NOT called — worktree preserved
+    assert teardown_called == [], (
+        f"teardown_worktree was called for a blocked crew — "
+        f"worktree {teardown_called} was destroyed despite recoverable status"
+    )
+
+
 def test_blocked_grace_expires_as_blocked(monkeypatch, tmp_path):
     configure_paths(monkeypatch, tmp_path)
     clock = FakeClock()
