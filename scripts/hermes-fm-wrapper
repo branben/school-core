@@ -9,7 +9,7 @@
 # native Hermes toolset policy.
 set -euo pipefail
 
-MAX_TURNS="${FM_AGENT_MAX_TURNS:-16}"
+MAX_TURNS="${FM_AGENT_MAX_TURNS:-32}"
 if [[ ! "$MAX_TURNS" =~ ^[1-9][0-9]*$ ]]; then
   echo "hermes-fm-wrapper: invalid max-turns policy" >&2
   exit 78
