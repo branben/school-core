@@ -1414,6 +1414,10 @@ def bridge_issues(
                 # Transient failure (gateway hiccup, Orca unavailable, …):
                 # schedule a retry on the next cycle. Not processed, not labeled.
                 retries[num] = attempts
+                # Persist immediately: if this cycle dies mid-loop, the next
+                # cycle's _load_retries() must see this increment. Otherwise
+                # RETRY_LIMIT is unreachable and the issue retries forever.
+                _save_retries(retries)
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],
