@@ -1273,8 +1273,9 @@ def run_task(
         selected = (scored + unscored)[:3]
         prior_blob = "\n\n---\n### Prior Approaches\n" + "\n".join(
             f"- [{t.get('timestamp','?')[:10]}] **{t.get('agent','?') or '?'}** "
-            f"(score={t.get('task_score') or 0:.1f}): {t.get('response','')[:240]}"
+            f"(score={t.get('task_score') or 0:.1f}): {(t.get('response') or '')[:240]}"
             for t in selected
+            if t.get('response') is not None
         ) + "\n---"
         system_prompt = system_prompt + prior_blob
 

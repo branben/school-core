@@ -85,11 +85,18 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
         except Exception:
             continue
         sub = pkg.parent.relative_to(repo_path)
+        # Detect package manager from lockfile
+        if (pkg.parent / "pnpm-lock.yaml").exists():
+            runner = "pnpm"
+        elif (pkg.parent / "yarn.lock").exists():
+            runner = "yarn"
+        else:
+            runner = "npm"
         for key in ("typecheck", "lint", "test", "check"):
             if key in scripts:
                 commands.append({
-                    "name": f"{sub}/npm:{key}",
-                    "cmd": f"npm run {key}",
+                    "name": f"{sub}/{runner}:{key}",
+                    "cmd": f"{runner} run {key}" if runner != "pnpm" else f"pnpm {key}",
                     "cwd": str(sub) or ".",
                 })
 

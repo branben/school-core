@@ -2014,5 +2014,185 @@
     "next_action": "change_capability",
     "retry_attempt": 0,
     "timestamp": "2026-08-30T14:18:27.429607+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-30T15:53:33.551342+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-30T15:54:32.782776+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-30T15:59:18.280460+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-30T16:01:36.474046+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_160405_118421--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-30T16:08:30.077475+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 88.0,
+      "combined_score": 88.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run lint",
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\nOops! Something went wrong! :(\n\nESLint: 9.39.4\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@humanfs/node' imported from /private/var/folders/fq/6lkw8rws7gq144cbtzfyb"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: npm run test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@vitest/utils' imported from /private/var/folders/fq/6lkw8rws7gq144cb"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.88
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000009",
+    "lifecycle": "failed",
+    "quality": 0.88,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-30T16:08:30.968663+00:00"
   }
 ]
