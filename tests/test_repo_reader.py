@@ -207,6 +207,34 @@ class TestCloneRepo:
         result = clone_repo("nonexistent/repo")
         assert result is None
 
+    @patch("repo_reader.subprocess.run")
+    def test_installs_deps_for_ts_projects(self, mock_run, tmp_path, monkeypatch):
+        """For TypeScript projects (package.json present), clone_repo installs
+        dependencies so the hermetic verify gate can run without network."""
+        import os
+        # Override CACHE_DIR to use tmp_path
+        monkeypatch.setattr("repo_reader.CACHE_DIR", tmp_path / "cache")
+        # Create a fake git clone by mocking subprocess.run
+        def fake_run(cmd, **kwargs):
+            # git clone succeeds
+            if cmd[0] == "git":
+                # Create the repo structure
+                repo_path = Path(cmd[-1])
+                repo_path.mkdir(parents=True, exist_ok=True)
+                (repo_path / ".git").mkdir()
+                (repo_path / "package.json").write_text('{"scripts": {"test": "vitest"}}')
+                (repo_path / "pnpm-lock.yaml").write_text("")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            # pnpm install succeeds
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        mock_run.side_effect = fake_run
+        result = clone_repo("owner/repo")
+        assert result is not None
+        # Verify pnpm install was called
+        install_calls = [c for c in mock_run.call_args_list if 'pnpm' in str(c)]
+        assert len(install_calls) > 0, "pnpm install should be called for TS projects"
+
 
 # --- force_fresh must not orphan live crew worktrees (B8 fix) ---
 #

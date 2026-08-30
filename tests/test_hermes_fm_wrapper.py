@@ -264,4 +264,51 @@ def test_wrapper_no_status_file_is_noop(tmp_path):
     assert result.returncode == 0
 
 
+def test_tristate_integration_all_outcomes(tmp_path):
+    """All three outcomes of the tri-state handshake."""
+    def run_with(status_text, hermes_exit=0):
+        hermes = tmp_path / "hermes"
+        hermes.write_text(f"#!/usr/bin/env bash\nexit {hermes_exit}\n", encoding="utf-8")
+        hermes.chmod(0o755)
+        status = tmp_path / f"crew-{hermes_exit}-{hash(status_text)}.status"
+        if status_text:
+            status.write_text(status_text, encoding="utf-8")
+        env = os.environ.copy()
+        env.update({
+            "HERMES": str(hermes),
+            "FM_STATUS_FILE": str(status),
+            "FM_AGENT_MAX_TURNS": "3",
+        })
+        result = subprocess.run(
+            [str(WRAPPER), "brief"],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result, status
+
+    # Case 1: done: → no wrapper line appended
+    r, s = run_with("working: coding\ndone: branch=fm/task commit=abc123 base=main@def456\n")
+    assert r.returncode == 0
+    assert "failed:" not in s.read_text()
+    assert "blocked:" not in s.read_text()
+
+    # Case 2: working: only → blocked: hermes-exit-0-mid-work
+    r, s = run_with("working: implementing round-bounds extraction\n")
+    assert r.returncode == 0
+    assert s.read_text().endswith("blocked: hermes-exit-0-mid-work\n")
+
+    # Case 3: empty file → failed: hermes-exit-0-no-output
+    r, s = run_with("")
+    assert r.returncode == 0
+    assert s.read_text().endswith("failed: hermes-exit-0-no-output\n")
+
+    # Case 4: crashed (exit 7) with no terminal → failed: hermes-exit-7-no-terminal-status
+    r, s = run_with("some random text\n", hermes_exit=7)
+    assert r.returncode == 7
+    assert s.read_text().endswith("failed: hermes-exit-7-no-terminal-status\n")
+
+
 

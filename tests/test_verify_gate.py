@@ -16,6 +16,7 @@ from verify_gate import (
     _build_verify_script,
     _discover_commands,
     _flake_ref,
+    _has_node_modules,
     run_verify_gate,
     ALLOWED_CONFIG_NAMES,
 )
@@ -313,7 +314,12 @@ def test_repo_root_project_verify_yaml_auto_probed(tmp_path):
 
 def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     """The scratch copy must exclude .git/venv/node_modules bloat so the gate
-    stays fast on large checkouts — verify commands never need that noise."""
+    stays fast on large checkouts — verify commands never need that noise.
+
+    Note: node_modules IS copied when pre-installed by clone_repo for TS
+    projects (detected by presence of package.json + node_modules). This
+    test uses a non-TS fixture (no package.json), so node_modules is ignored.
+    """
     _write_pkg(tmp_path, ".", {"typecheck": "true"})
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "objects").mkdir()
@@ -329,9 +335,9 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
         return subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
-         mock.patch("verify_gate._find_nix", return_value="nix"):
+         mock.patch("verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("verify_gate._flake_ref", return_value="."):
         res = run_verify_gate(tmp_path)
-
     assert res["passed"] is True
     assert seen_cwds, "verify command should have run in the scratch copy"
     assert not any("node_modules" in c for c in seen_cwds)
@@ -340,6 +346,31 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     assert res["telemetry"]["shell_starts"] == 1
     assert res["telemetry"]["commands"] == 1
     assert res["telemetry"]["copied_bytes"] > 0
+
+
+def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path):
+    """For TypeScript projects (package.json present + node_modules pre-installed
+    by clone_repo), the scratch copy MUST include node_modules so the hermetic
+    gate can run typecheck/test/lint without network access."""
+    _write_pkg(tmp_path, ".", {"typecheck": "tsc --noEmit", "test": "vitest"})
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / ".bin").mkdir()
+    (tmp_path / "node_modules" / ".bin" / "tsc").write_text("#!/bin/sh\nexit 0")
+
+    seen_cwds: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        seen_cwds.append(str(kwargs.get("cwd", "")))
+        return subprocess.CompletedProcess([], 0, _successful_marker_output(2), "")
+
+    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("verify_gate._flake_ref", return_value="."):
+        res = run_verify_gate(tmp_path)
+    assert res["passed"] is True
+    assert seen_cwds, "verify command should have run in the scratch copy"
+    # The work dir should be the scratch/repo directory
+    assert any("repo" in c for c in seen_cwds if c)
 
 
 def test_default_mode_not_affected_by_env_gap(tmp_path, monkeypatch):

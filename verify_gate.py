@@ -108,14 +108,18 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
 
 
 # Scratch-copy noise the verify commands never need (VCS metadata, venvs,
-# node_modules, caches). A full copytree of a large checkout (e.g. a fat dev
-# checkout with .git + accumulated data) would otherwise stall the gate for
-# minutes before the first compile check runs.
+# caches). node_modules is included when present in the cache (installed by
+# repo_reader.clone_repo for TypeScript projects) so the hermetic gate can
+# run typecheck/test/lint without network access.
 _VERIFY_COPY_IGNORE = shutil.ignore_patterns(
-    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+    ".git", ".hg", ".svn", ".venv", "venv", "env",
     "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store",
 )
+
+def _has_node_modules(repo_path: Path) -> bool:
+    """Check if the repo has a node_modules directory (pre-installed by clone_repo)."""
+    return (repo_path / "node_modules").is_dir()
 
 
 def _find_nix() -> Optional[str]:
@@ -218,6 +222,8 @@ def _build_verify_script(
     starts: list[str] = []
     ends: list[str] = []
     script_lines = ["set +e"]
+    # Ensure local node_modules/.bin is in PATH for TS projects
+    script_lines.append(f'export PATH="{work}/node_modules/.bin:$PATH"')
     for index, cmd in enumerate(commands):
         cwd = (work / cmd["cwd"]).resolve()
         start = f"__SCHOOL_VERIFY_START_{index}__"
@@ -302,9 +308,18 @@ def run_verify_gate(
                 pass
             return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
+        # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
+        ignore_patterns = _VERIFY_COPY_IGNORE
+        if not _has_node_modules(repo_path):
+            ignore_patterns = shutil.ignore_patterns(
+                *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
+                  "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
+                  ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
+            )
+
         shutil.copytree(
             repo_path, scratch / "repo", dirs_exist_ok=True,
-            ignore=_VERIFY_COPY_IGNORE,
+            ignore=ignore_patterns,
             copy_function=_copy_with_measurement,
         )
         work = scratch / "repo"

@@ -301,7 +301,7 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             data = json.dumps(
                 self._build_board_json_payload(), ensure_ascii=False
             )
-            self.wfile.write(f"event: board\ndata: {data}\n\n".encode())
+            self.wfile.write(f"event: board\\ndata: {data}\\n\\n".encode())
             self.wfile.flush()
 
         # ── Track activity-log size ──────────────────────────────────────
@@ -343,18 +343,25 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                     except (json.JSONDecodeError, OSError):
                         pass
 
-                if new_count > prev_activity_count:
+                if new_count != prev_activity_count:
+                    # Any change (grow OR shrink from rotation) means new data.
+                    # On rotation the count drops — still must emit so the
+                    # observer's view resyncs with the (now smaller) log.
                     try:
                         all_entries: list[dict] = json.loads(
                             ACTIVITY_LOG_PATH.read_text()
                         ).get("entries", [])
-                        new_entries = all_entries[prev_activity_count:]
+                        if new_count > prev_activity_count:
+                            new_entries = all_entries[prev_activity_count:]
+                        else:
+                            # Rotation (or full rewrite): send the whole list
+                            new_entries = all_entries
                         if new_entries:
                             payload = json.dumps(
                                 new_entries, ensure_ascii=False
                             )
                             self.wfile.write(
-                                f"event: activity\ndata: {payload}\n\n".encode()
+                                f"event: activity\\ndata: {payload}\\n\\n".encode()
                             )
                             self.wfile.flush()
                     except (json.JSONDecodeError, OSError):
