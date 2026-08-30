@@ -1085,7 +1085,7 @@ def _poll(
         status, detail = _read_status_detail(_status_path(crew_id))
         if status is not None:
             spoke = True
-        if status in {"done", "failed"}:
+        if status in {"done", "failed", "resolved"}:
             return status, None, detail
         if status in {"blocked", "needs-decision"}:
             blocked_at = blocked_at if blocked_at is not None else now_fn()
@@ -1276,7 +1276,7 @@ def dispatch_crew(
         # The wrapper writes blocked:/failed: AFTER Hermes exits, which can
         # land after the poll loop's timeout fires. Only apply when poll returned
         # a non-terminal status — don't overwrite a valid terminal result.
-        if terminal_status not in {"done", "failed", "blocked", "needs-decision"}:
+        if terminal_status not in {"done", "failed", "blocked", "needs-decision", "resolved"}:
             _post_exit_status = _read_status(_status_path(crew_id))
             if _post_exit_status in {"done", "failed", "blocked", "needs-decision"}:
                 terminal_status = _post_exit_status
@@ -1353,6 +1353,22 @@ def dispatch_crew(
                 fallback_reason = "report_missing"
                 terminal_status = "failed"
                 log.warning("crew %s reached done without report.md", crew_id)
+        elif terminal_status == "resolved":
+            # The crew determined the work was already satisfied. This is a
+            # terminal success state — the crew did its job by identifying
+            # that no changes were needed. Capture the report if present.
+            fallback_reason = "already_satisfied"
+            candidate = _task_dir(crew_id) / "report.md"
+            if candidate.exists():
+                try:
+                    if candidate.stat().st_size <= MAX_REPORT_BYTES:
+                        report_path = candidate
+                        report_text = candidate.read_text(encoding="utf-8")
+                        report_identity = _artifact_identity(report_text)
+                        if report_identity:
+                            artifact_identity = report_identity
+                except OSError:
+                    pass
         elif terminal_status == "failed":
             fallback_reason = "crew_failed"
     except Exception as exc:
