@@ -1394,6 +1394,17 @@ def bridge_issues(
                         preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
                     )
+                elif crew_result is not None and crew_result.status == "resolved":
+                    # The crew determined the work was already satisfied. This is
+                    # a terminal success state — mark processed, close the issue,
+                    # and do NOT re-dispatch.
+                    crew_used = True
+                    task_result = {
+                        "status": "resolved",
+                        "response": crew_result.report_path.read_text() if crew_result.report_path else "Work already present.",
+                        "review": {"verdict": "PASS", "score": 100.0, "findings": []},
+                    }
+                    sys.stderr.write(f"[issue_bridge] #{num}: crew reported already satisfied — closing\n")
                 else:
                     task_result = run_task(
                         prompt=enriched_prompt,
