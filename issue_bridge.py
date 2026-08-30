@@ -18,6 +18,13 @@ Usage:
 
 import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from project root
+ENV_FILE = Path(__file__).parent / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
 import re
 import sys
 import time
