@@ -26,7 +26,7 @@ COMBO_MAP = {
     "agy/claude-sonnet-4-6": "agy/claude-sonnet-4-6",
     "mistral/mistral-small-latest": "mistral/mistral-small-latest",
     "auto/best-free": "auto/best-free",
-    "coder": "auto/coding:free",
+    "coder": "gemini/gemini-3-flash-preview",
     # A2A fallback (agent-to-agent protocol)
     "openhands": "a2a/antigravity",
     "a2a-agent": "a2a/antigravity",
