@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 ENV_FILE = Path(__file__).parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
+import fcntl
 import re
 import sys
 import time
@@ -66,6 +67,34 @@ from bookbag import locked_update_bookbag
 from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
+
+# Single-instance lock file — prevents concurrent cron cycles from corrupting state
+_LOCK_FILE = Path(__file__).parent / "data" / ".bridge_lock"
+_lock_fd: Optional[int] = None
+
+def _acquire_lock() -> bool:
+    """Acquire exclusive lock on the bridge lock file. Returns True if acquired."""
+    global _lock_fd
+    _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(_LOCK_FILE), os.O_CREAT | os.O_WRONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(fd, str(os.getpid()).encode())
+        _lock_fd = fd
+        return True
+    except (OSError, IOError):
+        return False
+
+def _release_lock() -> None:
+    """Release the bridge lock file."""
+    global _lock_fd
+    if _lock_fd is not None:
+        try:
+            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            os.close(_lock_fd)
+        except (OSError, IOError):
+            pass
+        _lock_fd = None
 
 # GitHub lifecycle labels so the repo's issue list reflects the school's work.
 # Success → closed + school-done (queryable "the school finished this").

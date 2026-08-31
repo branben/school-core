@@ -2848,5 +2848,430 @@
     "next_action": "change_capability",
     "retry_attempt": 0,
     "timestamp": "2026-08-31T02:41:29.622679+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 91.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=91.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031311_136115--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T03:14:10.422944+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "PASS",
+      "cto_score": 82.0,
+      "coo_score": 100.0,
+      "combined_score": 91.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 1,
+        "MEDIUM": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "backend/game_engine/bingo_utils.py: Extracted BINGO_LINE_COUNT=5 constant"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "backend/game_engine/views.py: Imported and used BINGO_LINE_COUNT from bingo_utils"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.91
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000014",
+    "lifecycle": "failed",
+    "quality": 0.91,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": null,
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T03:14:11.243632+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031533_787125--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-31T03:16:04.511240+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 70.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031735_716732--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T03:18:05.110410+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 76.0,
+      "coo_score": 64.0,
+      "combined_score": 70.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "LOW": 1,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Extracted BINGO_LINE_COUNT=5 in bingo_utils.py and used it in check_bingo()"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Created frontend constant in src/types/game.ts and imported in BingoBoard.tsx"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Showed import in views.py for validation"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Missing verification against models.py as required by task"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "No evidence of checking existing BINGO_LINE_COUNT value in models.py before extraction"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.7
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000015",
+    "lifecycle": "failed",
+    "quality": 0.7,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T03:18:05.799625+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_040507_240441--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T04:06:36.082992+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000016",
+    "lifecycle": "failed",
+    "quality": 1.0,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T04:06:36.724603+00:00"
   }
 ]
