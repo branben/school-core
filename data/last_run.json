@@ -2194,5 +2194,432 @@
     "next_action": "change_capability",
     "retry_attempt": 0,
     "timestamp": "2026-08-30T16:08:30.968663+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_161615_283815--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-30T16:18:00.795219+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 88.0,
+      "combined_score": 88.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.88
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000010",
+    "lifecycle": "failed",
+    "quality": 0.88,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-30T16:18:01.492910+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "success",
+    "agent": "coder",
+    "score": 66.5,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_174722_695519--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-30T17:48:40.444833+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": true,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "LOW": 2
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "verify_gate_error",
+          "citation": "exception",
+          "description": "[('~/.cache/branben__school-core/repos/branben__sound-royale-ny/node_modules/.pnpm/@typescript-eslint+eslint-plugin@8.62.1_@typescript-eslint+parser@8.62.1_eslint@9.39.4__ed1245df0"
+        }
+      ],
+      "routing_feedback": {
+        "success": true,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "review_packet": null,
+    "shadow_routing": {
+      "schema_version": 1,
+      "mode": "shadow",
+      "live_routing_unchanged": true,
+      "insufficient_data": false,
+      "samples": 77,
+      "growth": {
+        "samples": 33,
+        "slope": 0.9454,
+        "difficulty_adjusted_mean": 61.6222
+      },
+      "difficulty": {
+        "easy": {
+          "attempted": 9,
+          "succeeded": 4,
+          "success_rate": 0.4444
+        },
+        "medium": {
+          "attempted": 68,
+          "succeeded": 13,
+          "success_rate": 0.1912
+        },
+        "hard": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "diploma": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "blocker": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        }
+      },
+      "retry": {
+        "attempted": 77,
+        "retried": 24,
+        "rate": 0.3117
+      },
+      "confidence": {
+        "samples": 1,
+        "mean": 0.5,
+        "slope": 0.0
+      },
+      "skills": {},
+      "tools": {
+        "offered": [
+          "git",
+          "python",
+          "testing"
+        ],
+        "used": [],
+        "usage_evidence": "absent"
+      },
+      "recommendation": {
+        "current_agent": "coder",
+        "recommended_agent": "coder",
+        "changed": false,
+        "reason": "offline_shadow_score",
+        "candidates_with_history": 1
+      }
+    },
+    "title": "churn: extract MIN_ROUNDS=1 / MAX_ROUNDS=10 bounds",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": null,
+    "teardown_ok": null,
+    "evidence_join": {
+      "schema_version": 1,
+      "control": {
+        "route_id": "route-coder-code-implementation-29171b38",
+        "bd_id": null,
+        "plan_id": null,
+        "plan_unit": null,
+        "wayfinder_id": null,
+        "knowledge_anchor": null,
+        "primary_workflow": null,
+        "chosen_skill": null
+      },
+      "runtime": {
+        "dispatcher": "direct-orca",
+        "cycle_session_id": "loop-20260830-174603",
+        "firstmate_crew_id": null,
+        "orca_worktree_id": null,
+        "orca_terminal_id": null,
+        "hermes_session_id": null
+      },
+      "artifact": {
+        "repository": "branben/sound-royale-ny",
+        "base_ref": null,
+        "branch": null,
+        "commit": null,
+        "report_ref": null,
+        "trajectory_ref": "~/school-core/data/trajectories/20260830_174722_695519--code-implementation--coder.json",
+        "bookbag_ref": "~/.hermes/bookbag/__global__/coder-code-implementation-29171b38.json",
+        "changed_files": []
+      },
+      "verification": {
+        "project_gate": "unavailable",
+        "project_gate_reason": null,
+        "entire_status": "pass",
+        "entire_finding_count": 0,
+        "finding_classes": []
+      },
+      "judgment": {
+        "cto_verdict": "PASS",
+        "coo_verdict": "PASS",
+        "accepted": true,
+        "score": 100.0,
+        "critical_findings": 0
+      },
+      "outcome": {
+        "lifecycle": "completed",
+        "quality": 1.0,
+        "failure_edge": "none",
+        "failure_mode": "none",
+        "fallback_reason": null,
+        "next_action": "close"
+      }
+    },
+    "compound_observation_id": "obs-000011",
+    "lifecycle": "completed",
+    "quality": 1.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "close",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-30T17:50:21.347889+00:00",
+    "pipeline_metrics": {
+      "schema_version": 1,
+      "events": 28,
+      "calls": {
+        "two_judge_review": 1,
+        "verify_gate": 2,
+        "entire": 1,
+        "adversarial_review": 1,
+        "output_verification": 1
+      },
+      "timings_ms": {
+        "context": 53434.491,
+        "student_model": 25136.59,
+        "review": 8401.687,
+        "student_generation": 127256.048,
+        "verify": 95584.304,
+        "entire": 55.842,
+        "output_verification": 15.667,
+        "scoring": 1535.311,
+        "persistence": 0.031,
+        "total": 257401.02
+      },
+      "model": {
+        "call_count": 4,
+        "retry_count": 0,
+        "prompt_chars": 56602,
+        "output_chars": 1149,
+        "roles": {
+          "coder": 1,
+          "reviewer": 3
+        }
+      },
+      "verification": {
+        "gate_invocations": 2,
+        "shell_starts": 0,
+        "commands": 0,
+        "copied_bytes": 0
+      },
+      "context": {
+        "sources": {
+          "codebase": {
+            "hits": 1,
+            "misses": 0,
+            "latency_ms": 0.0
+          },
+          "archival": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 12.813
+          },
+          "serena": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 24183.733
+          },
+          "vault": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 0.0
+          }
+        }
+      },
+      "crew": {
+        "spawn_count": 0,
+        "poll_count": 0,
+        "blocked_wait_count": 0,
+        "fallback_count": 0,
+        "teardown_count": 0,
+        "in_flight_count": 0
+      },
+      "quality": {
+        "accepted": true,
+        "critical_findings": 0,
+        "retry_count": 0
+      }
+    }
   }
 ]

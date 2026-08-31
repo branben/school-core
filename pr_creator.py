@@ -40,12 +40,13 @@ def branch_name(issue_number: int, title: str) -> str:
     return f"school/issue-{issue_number}-{slug}"
 
 
-def _gh(args: list[str], timeout: int = 30) -> Optional[str]:
+def _gh(args: list[str], timeout: int = 30, input_data: Optional[str] = None) -> Optional[str]:
     """Run `gh` and return stdout, or None on failure."""
     try:
         result = subprocess.run(
             ["gh"] + args,
             capture_output=True, timeout=timeout, check=False, text=True,
+            input=input_data,
         )
     except FileNotFoundError:
         sys.stderr.write("[pr_creator] gh CLI not found in PATH\n")
@@ -64,10 +65,13 @@ def _gh(args: list[str], timeout: int = 30) -> Optional[str]:
 def _gh_api(method: str, path: str, body=None, accept: str = "application/vnd.github+json") -> Optional[dict]:
     """Make a GitHub API call via `gh api`. Returns parsed JSON or None."""
     cmd = ["api", path, f"--method={method}"]
+    input_data = None
     if body is not None:
-        cmd += ["-f", f"json={json.dumps(body)}"]
+        # Use stdin for body to avoid shell escaping issues
+        input_data = json.dumps(body)
+        cmd += ["--input", "-"]
     cmd += ["--header", f"Accept: {accept}"]
-    out = _gh(cmd)
+    out = _gh(cmd, input_data=input_data)
     if out is None:
         return None
     try:
@@ -97,6 +101,16 @@ def _resolve_base_sha(repo: str, base_branch: str) -> str:
 
 def _create_or_reuse_branch(repo: str, branch: str, base_sha: str) -> bool:
     """Create *branch* at *base_sha*, or reuse if it already exists."""
+    # Check if branch already exists
+    existing = _gh_api("GET", f"repos/{repo}/git/refs/heads/{branch}")
+    if existing is not None:
+        sys.stderr.write(
+            f"[pr_creator] branch '{branch}' already exists — will update ref\n"
+        )
+        # Update existing branch to new SHA
+        return _updateRef(repo, branch, base_sha)
+    
+    # Create new branch
     result = _gh_api(
         "POST",
         f"repos/{repo}/git/refs",
@@ -107,11 +121,17 @@ def _create_or_reuse_branch(repo: str, branch: str, base_sha: str) -> bool:
     )
     if result is not None:
         return True  # freshly created
-
-    sys.stderr.write(
-        f"[pr_creator] branch '{branch}' already exists — reusing\n"
-    )
-    return True
+    
+    # Check if branch was created by concurrent process
+    existing = _gh_api("GET", f"repos/{repo}/git/refs/heads/{branch}")
+    if existing is not None:
+        sys.stderr.write(
+            f"[pr_creator] branch '{branch}' appeared concurrently — reusing\n"
+        )
+        return _updateRef(repo, branch, base_sha)
+    
+    sys.stderr.write(f"[pr_creator] failed to create branch '{branch}'\n")
+    return False
 
 
 # ── Tree/commit construction ─────────────────────────────────────────────────
