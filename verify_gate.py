@@ -300,7 +300,14 @@ def run_verify_gate(
             "hermetic verify layer.",
         )
 
+    # Check flake.nix exists before attempting nix develop
     flake_ref = _flake_ref(flake_path)
+    if not Path(flake_ref).exists() and not (Path(flake_path) / "flake.nix").exists():
+        return _skipped_verdict(
+            "(flake)",
+            f"No flake.nix found at {flake_path} — verify gate SKIPPED. "
+            "Add a flake.nix with verifyShell to run hermetic verification.",
+        )
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
     # Use main filesystem for space (var/folders can be small)
@@ -319,16 +326,19 @@ def run_verify_gate(
             return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
         # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
-        # Skip if too large (>500MB) to avoid disk issues
+        # Skip if too large (>200MB) to avoid disk issues
         ignore_patterns = _VERIFY_COPY_IGNORE
         if _has_node_modules(repo_path):
             nm_path = repo_path / "node_modules"
             total_size = sum(f.stat().st_size for f in nm_path.rglob("*") if f.is_file())
-            if total_size < 500 * 1024 * 1024:  # 500MB limit
+            if total_size < 200 * 1024 * 1024:  # 200MB limit (was 500MB)
                 ignore_patterns = shutil.ignore_patterns(
                     *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
                       "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
                       ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
+                )
+                sys.stderr.write(
+                    f"[verify_gate] node_modules copied ({total_size / 1024 / 1024:.1f}MB)\n"
                 )
             else:
                 sys.stderr.write(
