@@ -324,22 +324,29 @@ def run_verify_gate(
                 copied_bytes += max(0, Path(src).stat().st_size)
             except OSError:
                 pass
-            return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+            # Use hardlinks to save disk space (node_modules can be hundreds of MB)
+            # copytree only calls this for files, dirs are handled automatically
+            try:
+                os.link(src, dst)
+                return dst
+            except OSError:
+                # Fallback to copy if hardlink fails (different filesystem, etc.)
+                return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
         # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
-        # Skip if too large (>200MB) to avoid disk issues
+        # Skip if too large (>500MB) to avoid disk issues
         ignore_patterns = _VERIFY_COPY_IGNORE
         if _has_node_modules(repo_path):
             nm_path = repo_path / "node_modules"
             total_size = sum(f.stat().st_size for f in nm_path.rglob("*") if f.is_file())
-            if total_size < 200 * 1024 * 1024:  # 200MB limit (was 500MB)
+            if total_size < 500 * 1024 * 1024:  # 500MB limit
                 ignore_patterns = shutil.ignore_patterns(
                     *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
                       "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
                       ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
                 )
                 sys.stderr.write(
-                    f"[verify_gate] node_modules copied ({total_size / 1024 / 1024:.1f}MB)\n"
+                    f"[verify_gate] node_modules will be hardlinked ({total_size / 1024 / 1024:.1f}MB)\n"
                 )
             else:
                 sys.stderr.write(
