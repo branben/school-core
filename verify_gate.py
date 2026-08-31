@@ -303,7 +303,10 @@ def run_verify_gate(
     flake_ref = _flake_ref(flake_path)
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
-    scratch = Path(tempfile.mkdtemp(prefix="school-verify-"))
+    # Use main filesystem for space (var/folders can be small)
+    scratch_base = Path("/Users/brandonbennett/tmp")
+    scratch_base.mkdir(parents=True, exist_ok=True)
+    scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:
         copied_bytes = 0
 
@@ -316,13 +319,21 @@ def run_verify_gate(
             return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
         # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
+        # Skip if too large (>500MB) to avoid disk issues
         ignore_patterns = _VERIFY_COPY_IGNORE
-        if not _has_node_modules(repo_path):
-            ignore_patterns = shutil.ignore_patterns(
-                *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
-                  "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
-                  ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
-            )
+        if _has_node_modules(repo_path):
+            nm_path = repo_path / "node_modules"
+            total_size = sum(f.stat().st_size for f in nm_path.rglob("*") if f.is_file())
+            if total_size < 500 * 1024 * 1024:  # 500MB limit
+                ignore_patterns = shutil.ignore_patterns(
+                    *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
+                      "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
+                      ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
+                )
+            else:
+                sys.stderr.write(
+                    f"[verify_gate] node_modules too large ({total_size / 1024 / 1024:.0f}MB) — skipping copy\n"
+                )
 
         shutil.copytree(
             repo_path, scratch / "repo", dirs_exist_ok=True,
