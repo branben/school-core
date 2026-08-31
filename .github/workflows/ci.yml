@@ -37,7 +37,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Syntax check (compile all modules)
-        run: python -m compileall -q .
+        run: python -m compileall -q -x "school-output" .
 
       - name: Run tests
         # Keep the hosted matrix hermetic and fast: live Orca tests have an

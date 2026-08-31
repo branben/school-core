@@ -764,6 +764,15 @@ class TestEntireSensor:
         """No clone → None; the pipeline never blocks on the sensor."""
         assert _run_entire_sensor(Path("/nonexistent/repo")) is None
 
+    def test_sensor_warns_when_cli_missing(self, tmp_path, capsys):
+        """When repo exists but entire CLI missing, warn to stderr and return skipped dict."""
+        with patch("src.entire_review._get_entire_path", return_value=None):
+            result = _run_entire_sensor(tmp_path)
+        assert result is not None
+        assert result["status"] == "skipped"
+        captured = capsys.readouterr()
+        assert "[issue_bridge] entire CLI not found — pre-merge sensor will be skipped." in captured.err
+
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
     @patch("executor.call_model")
@@ -2284,11 +2293,12 @@ class TestCrewDispatchPath:
              )), \
              patch("executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
-        assert results[0]["status"] == "success"
+        assert results[0]["status"] == "retry"
         assert results[0]["crew_fallback_reason"] == "timeout"
         # U9: teardown_ok rides the crew block on the result.
         assert results[0]["teardown_ok"] is True
-        mock_task.assert_called_once()
+        # Timeout defers direct fallback — no second model call in the same cycle.
+        mock_task.assert_not_called()
 
     def test_failed_falls_back_direct(self, monkeypatch, tmp_path, store):
         """Crew 'failed' → direct path, reason recorded."""

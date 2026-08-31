@@ -229,9 +229,18 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str, repo: str = "__global
     except (TypeError, ValueError):
         cto_score = coo_score = 0.0
     findings = (bag.get("cto_findings", []) or []) + (bag.get("coo_findings", []) or [])
+    # Entire gate: CRITICAL findings from entire review also veto acceptance
+    entire_findings = bag.get("entire_findings") or []
+    if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
+        findings = findings + entire_findings
     has_critical = any(
         str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
     )
+    # HIGH findings veto only when ENTIRE_HIGH_STRICT=1
+    if not has_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
+        has_critical = any(
+            str(f.get("severity", "")).upper() == "HIGH" for f in entire_findings
+        )
     accepted = (
         cto_v == "PASS"
         and coo_v == "PASS"

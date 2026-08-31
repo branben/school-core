@@ -40,13 +40,13 @@ import re
 import crew_dispatch
 
 
-def _brief(tmp_path) -> str:
+def _brief(tmp_path, monkeypatch) -> str:
     """Render the crew brief and return its text.
 
     ``_write_brief`` writes brief.md into the crew task dir, so point the task
     dir at a tmp path and read the file back.
     """
-    crew_dispatch._task_dir = lambda cid: tmp_path / cid  # type: ignore[assignment]
+    monkeypatch.setattr(crew_dispatch, "_task_dir", lambda cid: tmp_path / cid)
     path = crew_dispatch._write_brief(
         crew_id="test-crew-1",
         task_text="implement the thing",
@@ -57,14 +57,14 @@ def _brief(tmp_path) -> str:
 
 
 class TestBriefSpecifiesReportEvidenceSyntax:
-    def test_brief_shows_an_explicit_report_template(self, tmp_path):
+    def test_brief_shows_an_explicit_report_template(self, tmp_path, monkeypatch):
         """The report instruction must include a copyable template.
 
         REGRESSION: the brief gave an exact form for the `done:` status line but
         only prose for report.md, so the agent improvised a shape the parser
         rejected — artifact_status_evidence_missing / artifact_identity_mismatch.
         """
-        brief = _brief(tmp_path)
+        brief = _brief(tmp_path, monkeypatch)
         # A template means the three field names appear together in a
         # machine-shaped block, not merely mentioned in a sentence.
         assert re.search(r"branch\s*[:=]", brief, re.IGNORECASE), (
@@ -73,13 +73,13 @@ class TestBriefSpecifiesReportEvidenceSyntax:
         assert re.search(r"commit\s*[:=]", brief, re.IGNORECASE)
         assert re.search(r"base\s*[:=]", brief, re.IGNORECASE)
 
-    def test_the_briefs_report_template_actually_parses(self, tmp_path):
+    def test_the_briefs_report_template_actually_parses(self, tmp_path, monkeypatch):
         """Round-trip: the template the brief hands the agent must satisfy the gate.
 
         This is the test that matters. A template that looks reasonable but does
         not parse would reproduce the same failure with extra confidence.
         """
-        brief = _brief(tmp_path)
+        brief = _brief(tmp_path, monkeypatch)
 
         # Extract the report template block the brief provides. It must contain
         # all three fields; feed exactly that text to the real parser.
@@ -109,16 +109,16 @@ class TestBriefSpecifiesReportEvidenceSyntax:
             "instructions exactly"
         )
 
-    def test_brief_still_specifies_the_status_line_form(self, tmp_path):
+    def test_brief_still_specifies_the_status_line_form(self, tmp_path, monkeypatch):
         """Guard: the status-line template must not be lost."""
-        brief = _brief(tmp_path)
+        brief = _brief(tmp_path, monkeypatch)
         assert "done: branch=" in brief, "status-line template regressed"
 
-    def test_brief_warns_about_the_base_section_gotcha(self, tmp_path):
+    def test_brief_warns_about_the_base_section_gotcha(self, tmp_path, monkeypatch):
         """The parser treats a branch nested under ## Base as descriptive.
 
         An agent that writes its task branch inside a Base section produces a
         mismatch. The brief should steer away from that shape.
         """
-        brief = _brief(tmp_path)
+        brief = _brief(tmp_path, monkeypatch)
         assert "base" in brief.lower(), "brief does not mention base identity"

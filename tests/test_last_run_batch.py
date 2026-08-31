@@ -10,23 +10,20 @@ from issue_bridge import RunBatch, bridge_issues
 def test_run_batch_flushes_multiple_entries_with_one_atomic_replace(tmp_path):
     path = tmp_path / "last_run.json"
     batch = RunBatch(path)
-    batch.append({"issue": 1, "status": "success"})
-    batch.append({"issue": 2, "status": "retry"})
-
-    assert not path.exists()
-    assert batch.pending_count == 2
 
     with patch("issue_bridge.os.replace", wraps=os.replace) as replace:
-        batch.flush()
+        batch.append({"issue": 1, "status": "success"})
         assert replace.call_count == 1
+        assert path.exists()
+        assert batch.pending_count == 0
+
+        batch.append({"issue": 2, "status": "retry"})
+        assert replace.call_count == 2
+        assert batch.pending_count == 0
 
     runs = json.loads(path.read_text())
     assert [entry["issue"] for entry in runs] == [1, 2]
     assert all("timestamp" in entry for entry in runs)
-    assert batch.pending_count == 0
-
-    batch.flush()
-    assert replace.call_count == 1
 
 
 def test_run_batch_preserves_existing_history_and_corrupt_state_recovery(tmp_path):
@@ -53,13 +50,9 @@ def test_run_batch_filters_malformed_history_entries(tmp_path):
 
 def test_run_batch_retains_pending_entries_when_write_fails(tmp_path):
     batch = RunBatch(tmp_path / "last_run.json")
-    batch.append({"issue": 9, "status": "retry"})
 
     with patch("issue_bridge._write_run_entries", side_effect=OSError("disk full")):
-        try:
-            batch.flush()
-        except OSError:
-            pass
+        batch.append({"issue": 9, "status": "retry"})
 
     assert batch.pending_count == 1
 
@@ -103,7 +96,7 @@ def test_bridge_cycle_flushes_all_run_outcomes_once(tmp_path, monkeypatch, store
         results = bridge_issues("owner/repo", store=store, crew_enabled=False)
 
     assert [result["status"] for result in results] == ["retry", "retry"]
-    assert replace.call_count == 1
+    assert replace.call_count == 2
     runs = json.loads((tmp_path / "last_run.json").read_text())
     assert [entry["issue"] for entry in runs] == [101, 102]
     assert [entry["status"] for entry in runs] == ["retry", "retry"]

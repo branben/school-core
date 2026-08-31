@@ -1,5 +1,12 @@
 [
   {
+    "issue_number": 399,
+    "title": "grilling: production-ready-definition",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 366,
     "title": "[security][medium] react-router-dom 6.30.4 open-redirect XSS \u2014 v7 migration",
     "domain": "_default",

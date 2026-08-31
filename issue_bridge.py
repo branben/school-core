@@ -55,6 +55,7 @@ from crew_dispatch import (
     dispatch_crew as dispatch_crew,
     sweep_stale_runs as sweep_stale_runs,
 )
+from bookbag import locked_update_bookbag
 from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
@@ -842,7 +843,12 @@ def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
     if not repo_path or not repo_path.exists():
         return None
     try:
-        from src.entire_review import run_entire_review
+        from src.entire_review import _get_entire_path, run_entire_review
+        if not _get_entire_path():
+            sys.stderr.write(
+                "[issue_bridge] entire CLI not found — pre-merge sensor will be skipped. "
+                "Install with: pip install entire-cli\n"
+            )
         return run_entire_review(str(repo_path), base_branch="main")
     except ImportError:
         return None
@@ -1285,6 +1291,7 @@ def bridge_issues(
                 configured_cap=crew_max_per_cycle,
                 runner_slots=runner_slots,
                 active_claims=live_active,
+                dispatched=crew_dispatched,
                 remaining_seconds=cycle_budget_seconds - (time.monotonic() - cycle_started),
                 crew_timeout_seconds=CREW_DEFAULT_TIMEOUT,
                 retry_pressure=len(retries),
@@ -1883,6 +1890,17 @@ def bridge_issues(
                 },
                 outcome=outcome,
             )
+            # Entire gate: persist findings to bookbag for acceptance gating
+            if entire_review and entire_review.get("findings"):
+                try:
+                    locked_update_bookbag(
+                        str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
+                        repo,
+                        entire_findings=entire_review.get("findings"),
+                        entire_status=entire_review.get("status"),
+                    )
+                except Exception:
+                    pass  # non-fatal; gate is best-effort
             compound_observation = _record_compound_observation(
                 bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                 trigger="bead_completed",
@@ -2130,7 +2148,20 @@ def bridge_issues(
                                        retry_limit=RETRY_LIMIT)
                 except Exception as e_notify:
                     sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
-                processed.add(num)
+                retries.pop(num, None)
+                # BUG FIX (school-core-qb4): only mark processed if the crew
+                # actually ran and reached a terminal verdict. A crew that died
+                # silent (timeout, spawn_failed) must remain eligible for retry
+                # — otherwise the backlog gets eaten by infra failures that
+                # were never evaluated.
+                status = task_result.get("status")
+                if status in ("done", "error"):
+                    processed.add(num)
+                else:
+                    sys.stderr.write(
+                        f"[issue_bridge] #{num}: retry budget exhausted but "
+                        f"status={status} — keeping eligible\n"
+                    )
 
     # Flush removed: batch-flush is now per-record
     _save_retries(retries)
