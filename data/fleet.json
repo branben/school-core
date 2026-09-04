@@ -1,9 +1,0 @@
-{
-  "daemons": {
-    "local": {
-      "endpoint": "local",
-      "worktrees": ["wt-1", "wt-2", "wt-3", "wt-4"],
-      "capacity": 4
-    }
-  }
-}
