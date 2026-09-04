@@ -312,7 +312,7 @@ def run_verify_gate(
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
     # Use main filesystem for space (var/folders can be small)
-    scratch_base = Path("/Users/brandonbennett/tmp")
+    scratch_base = Path(tempfile.gettempdir())
     scratch_base.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:
