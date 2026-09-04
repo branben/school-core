@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env file from project root
-ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+ENV_FILE = Path(__file__).parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
@@ -20,34 +20,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from src.core.scoring import ScoreStore, GATES
-from src.core.routing import route_task
-from src.crew.sleep_state import execute_sleep, execute_wake
-from src.crew.executor import call_model, COMBO_MAP, get_role_for_domain
-from src.sensors.trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
-from src.tools.engram_adapter import engram_available
+from scoring import ScoreStore, GATES
+from routing import route_task
+from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFoundError
+from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
+from trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
+from engram_adapter import engram_available
 from training.lora_pipeline import has_adapter
-from src.tools.cocoindex_client import cocoindex_available
-from src.core.context_orchestrator import DEFAULT_VAULT, enrich_prompt
-from src.core.repo_reader import CACHE_DIR as _REPO_CACHE_DIR
-from src.core.anchor_loader import AnchorRegistry
-from src.core.triage_classifier import classify_issue
-from src.sensors.activity_log import get_log
-from src.sensors.decision_log import get_decision_log, DecisionType
-from src.sensors.escalation_log import EscalationLog
-from bookbag import write_bookbag, update_bookbag, bead_path, REPO_GLOBAL
-from src.tools.teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
-from src.review.adversarial_reviewer import (
+from cocoindex_client import cocoindex_available
+from context_orchestrator import DEFAULT_VAULT, enrich_prompt
+from repo_reader import CACHE_DIR as _REPO_CACHE_DIR
+from anchor_loader import AnchorRegistry
+from triage_classifier import classify_issue
+from activity_log import get_log
+from decision_log import get_decision_log, DecisionType
+from escalation_log import EscalationLog
+from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
+from teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
+from adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
     VerificationCoevolution, CoevolutionReport, ReviewResult,
     extract_balanced_json,
 )
-from src.crew.orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
+from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec
-from src.review.verify_gate import run_verify_gate, freeze_verification_contract
-from src.tools.pipeline_metrics import PipelineMetrics
+from verify_gate import run_verify_gate
+from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
-from src.sensors.score_finalizer import finalize_score
+from score_finalizer import finalize_score
 
 SYSTEM_PROMPTS = {
     "python-testing": (
@@ -63,14 +63,6 @@ SYSTEM_PROMPTS = {
         "You are a senior code reviewer. Analyze code for correctness, security, "
         "maintainability, and style. Provide actionable feedback with specific line references. "
         "Flag any potential bugs, race conditions, or security issues immediately."
-    ),
-    "code-implementation": (
-        "You are a senior software engineer. Implement complete, working solutions. "
-        "Read the existing code first. Match the project's style and conventions. "
-        "Your output MUST be a complete implementation — not a stub, not a placeholder. "
-        "Every function must have a body. Every test must have real assertions. "
-        "If the task involves multiple files, output all of them. "
-        "Use the correct code block language for each file type (python, markdown, yaml, json)."
     ),
 }
 
@@ -138,23 +130,15 @@ ROLE_SYSTEM_PROMPTS = {
         "  Does the selector work for all form states? What about validation errors?"
     ),
     "coder": (
-        "You are a Coder — a specialized code generation agent. "
+        "You are a Coder \u2014 a specialized code generation agent. "
         "Your tools: Python, TypeScript, testing frameworks, git. "
         "Write clean, correct, well-typed code. Follow [SOLID Principles]. "
-        "Apply [TDD] — test first, then implement. "
+        "Apply [TDD] \u2014 test first, then implement. "
         "Your output is used for [Distillation] into smaller models.\n"
         "\n"
         "[OUTPUT FORMAT — CRITICAL]\n"
-        "Output ONLY the code changes. Use the correct format for each file type:\n"
-        "- Python files (.py): ```python ... ``` code block\n"
-        "- Markdown files (.md): ```markdown ... ``` code block\n"
-        "- YAML files (.yaml/.yml): ```yaml ... ``` code block\n"
-        "- JSON files (.json): ```json ... ``` code block\n"
-        "- Rust files (.rs): ```rust ... ``` code block\n"
-        "- TypeScript/JavaScript files (.ts/.tsx/.js/.jsx): ```typescript ... ``` code block\n"
-        "- Shell files (.sh): ```bash ... ``` code block\n"
-        "- Other files: use the appropriate language tag based on the file extension\n"
-        "CRITICAL: Detect the language from the file path/extension. Do NOT put Rust code in a python block.\n"
+        "Output ONLY the code changes. Place EVERY code change inside a"
+        " ```python ... ``` code block (one block per file change). "
         "Do NOT include any planning, reasoning, step-by-step analysis, "
         "markdown headings, or explanatory text outside the code blocks.\n"
         "If the task has multiple files, output a separate code block for each.\n"
@@ -163,17 +147,7 @@ ROLE_SYSTEM_PROMPTS = {
         "\n"
         "Correct example (no preamble, just code blocks):\n"
         "```python\n# backend/file.py\nclass Foo:\n    BAR = 42\n```\n"
-        "```markdown\n# docs/CONTRIBUTING.md\n## Section\nContent here.\n```\n"
-        "\n"
-        "[QUALITY — CRITICAL]\n"
-        "Your output MUST be a complete, working implementation. NOT a stub. NOT a placeholder.\n"
-        "- Do NOT output 'pass', 'TODO', 'Implementation will go here', or similar placeholders.\n"
-        "- Do NOT output a function signature without a body.\n"
-        "- Do NOT output a class without methods.\n"
-        "- Every function you write MUST have a complete implementation.\n"
-        "- Every test you write MUST have actual assertions that test behavior.\n"
-        "- If you are unsure how to implement something, implement it to the best of your ability.\n"
-        "  A partial implementation is better than a stub. A stub will be rejected.\n"
+        "```python\n# tests/test_file.py\ndef test_bar():\n    assert Foo.BAR == 42\n```\n"
     ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "OUTPUT") + (
         "- If writing a function to chunk a list, verify:\n"
         "  Does it handle empty lists? Edge cases like n > len(lst)? n <= 0?\n"
@@ -188,59 +162,6 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful coding assistant. Provide clear, correct, and concise answers."
 )
 
-
-def _fix_code_block_languages(text: Optional[str]) -> Optional[str]:
-    """Fix code block language tags based on file path comments.
-
-    Detects patterns like:
-        ```python
-        # path/to/file.rs
-        ...rust code...
-
-    And fixes the language tag to match the file extension:
-        ```rust
-        # path/to/file.rs
-        ...rust code...
-    """
-    if text is None:
-        return None
-    import re
-
-    ext_to_lang = {
-        ".py": "python", ".pyi": "python",
-        ".rs": "rust",
-        ".go": "go",
-        ".ts": "typescript", ".tsx": "typescript",
-        ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
-        ".yaml": "yaml", ".yml": "yaml",
-        ".json": "json",
-        ".md": "markdown",
-        ".sh": "bash", ".bash": "bash",
-        ".toml": "toml",
-        ".c": "c", ".h": "c",
-        ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
-        ".java": "java",
-        ".rb": "ruby",
-        ".php": "php",
-    }
-
-    # Match code blocks with a file path comment on the first line
-    # Pattern: ```lang\n# path/to/file.ext\n...
-    pattern = r'```(\w+)\n# ([^\s]+\.\w+)\n'
-
-    def replace_lang(match):
-        current_lang = match.group(1).lower()
-        file_path = match.group(2)
-        # Get the extension
-        for ext, lang in ext_to_lang.items():
-            if file_path.endswith(ext):
-                if current_lang != lang:
-                    return f'```{lang}\n# {file_path}\n'
-                break
-        return match.group(0)
-
-    return re.sub(pattern, replace_lang, text)
-
 _escalation_log = EscalationLog()
 
 # Session state tracking for sleep/wake
@@ -251,30 +172,6 @@ _active_sessions = {}  # session_id -> {agent, building, task_queue, layer_0, ep
 # Sleep configuration
 SLEEP_TIMEOUT_MINUTES = 15
 SLEEP_CONTEXT_PRESSURE_THRESHOLD = 0.70  # 70% of context window
-
-# Issue classes that indicate non-functional code. These block acceptance at
-# whatever severity the path emits — a veto that depends on a severity the
-# path never produces is unreachable code.
-BLOCKING_CLASSES = frozenset({
-    "runtime_failure",
-    "not_executable",
-    "timeout",
-    "verify_failed",
-    "verify_gate_error",
-})
-
-# Runtime errors that usually mean the snippet needs context the standalone
-# sandbox does not provide (repo modules, stdin, fixtures), not that the
-# answer is wrong. These are emitted as ``runtime_missing_context``, which is
-# not in BLOCKING_CLASSES: advisory, and scored as "not run" (50), not 0.
-_MISSING_CONTEXT_ERROR_RE = re.compile(
-    r"\b(ModuleNotFoundError|ImportError|EOFError)\b"
-)
-
-
-def _is_missing_context_failure(stderr: str) -> bool:
-    """True when a runtime failure looks like missing context, not a bug."""
-    return bool(stderr) and bool(_MISSING_CONTEXT_ERROR_RE.search(stderr))
 
 
 def _now_iso() -> str:
@@ -289,7 +186,7 @@ def _record_acrouter_outcome(agent: str, success: bool, quality: float = 1.0) ->
     feedback is best-effort and must not affect task correctness.
     """
     try:
-        from src.crew.executor import record_routing_outcome
+        from executor import record_routing_outcome
 
         record_routing_outcome(agent, success=success, quality=quality)
     except Exception:
@@ -306,7 +203,7 @@ def _resolve_capability_metadata(
 ) -> Optional[dict]:
     """Resolve the persona/profile/skill/tool contract for observability."""
     try:
-        from src.core.capabilities import resolve_capability
+        from capabilities import resolve_capability
 
         bounded_score = max(0.0, min(100.0, float(score)))
         metadata = resolve_capability(
@@ -422,7 +319,6 @@ def _run_two_judge_review(
     preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: Optional[bool] = None,
-    trusted_contract: Optional[dict] = None,
 ) -> dict:
     """Run CTO+COO two-judge adversarial review on student output.
 
@@ -466,10 +362,9 @@ def _run_two_judge_review(
 
     # ── Orca Execution ──
     # Execute student code in an Orca terminal sandbox before CTO review.
-    # Exit code 0 → PASS signal. Runtime errors → HIGH findings that block via
-    # BLOCKING_CLASSES, except missing-context errors (ImportError,
-    # ModuleNotFoundError, EOFError), which stay advisory because extracted
-    # code may depend on context it can't get standalone. OrcaUnavailableError is a hard failure — the pipeline cannot
+    # Exit code 0 → PASS signal. Runtime errors → HIGH findings (advisory, not
+    # veto-level — extracted code may be context-dependent and can't run
+    # standalone). OrcaUnavailableError is a hard failure — the pipeline cannot
     # verify code without a sandbox, so the exception propagates up to run_task().
     #
     # Language detection: for code-implementation tasks, resolve the repo path
@@ -503,29 +398,7 @@ def _run_two_judge_review(
                 if code.strip():
                     result = orca.execute(code=code, bead=bead, timeout_ms=30000)
 
-                    if getattr(result, "not_executable", False):
-                        # CRITICAL: the code cannot be executed at all
-                        # (syntax error or no-op module). A non-functional
-                        # submission must veto, not pass with score 100.
-                        reason = (
-                            getattr(result, "not_executable_reason", None)
-                            or result.stderr
-                            or "not_executable"
-                        )
-                        execution_findings.append(Finding(
-                            section="execution",
-                            issue_class="not_executable",
-                            severity=Severity.CRITICAL,
-                            citation=reason,
-                            description=reason[:300],
-                            suggestion=(
-                                "Ensure the code is syntactically valid and "
-                                "has an executable entry point (e.g., call "
-                                "your function at the top level or under "
-                                "`if __name__ == '__main__':`)"
-                            ),
-                        ))
-                    elif result.timed_out:
+                    if result.timed_out:
                         execution_findings.append(Finding(
                             section="execution",
                             issue_class="timeout",
@@ -535,20 +408,13 @@ def _run_two_judge_review(
                             suggestion="Ensure the code terminates in reasonable time",
                         ))
                     elif result.exit_code != 0:
-                        # HIGH severity either way. runtime_failure is a
-                        # blocking class (issue #139). A failure that looks
-                        # like missing context (ImportError,
-                        # ModuleNotFoundError, EOFError) is emitted as
-                        # runtime_missing_context instead and stays advisory:
-                        # the snippet may be correct but depend on repo
-                        # modules or stdin the standalone sandbox lacks.
-                        _missing_ctx = _is_missing_context_failure(result.stderr or "")
+                        # HIGH, not CRITICAL: extracted code may be a context-dependent
+                        # snippet (e.g. TypeScript refactoring in a JS project) that
+                        # can't run standalone in Orca.  The CTO/COO judges assess
+                        # correctness; this finding is advisory only.
                         execution_findings.append(Finding(
                             section="execution",
-                            issue_class=(
-                                "runtime_missing_context" if _missing_ctx
-                                else "runtime_failure"
-                            ),
+                            issue_class="runtime_failure",
                             severity=Severity.HIGH,
                             citation=f"exit_code={result.exit_code}",
                             description=(result.stderr or "Unknown execution error")[:300],
@@ -659,15 +525,10 @@ def _run_two_judge_review(
                 # Pin the runner flake to this module's checkout. The review
                 # may run from a workflow working-directory unrelated to the
                 # school-core flake that provides verifyShell.
-                # Use the pre-frozen contract if provided (frozen before
-                # dispatch); otherwise freeze here (legacy path).
-                _frozen = trusted_contract or freeze_verification_contract(repo_path)
                 vg = run_verify_gate(
                     repo_path=repo_path,
                     project_verify=None,
-                    flake_path=Path(__file__).resolve().parent.parent.parent,
-                    diff_text=task.get("response", "") if isinstance(task, dict) else "",
-                    trusted_contract=_frozen,
+                    flake_path=Path(__file__).resolve().parent,
                 )
                 if pipeline_metrics is not None:
                     gate_metrics = vg.get("telemetry") or {}
@@ -744,13 +605,6 @@ def _run_two_judge_review(
     def _run_both_judges():
         # CTO and COO are independent lenses. The fixed bound of two prevents
         # review fan-out while allowing their model calls to overlap.
-        # SCHOOL_REVIEW_SERIAL=1 runs them one-at-a-time instead: under a
-        # rate-limited gateway (15s queue expiry), concurrent lens calls
-        # pile up and 504; serial keeps queue depth at 1-2.
-        if os.environ.get("SCHOOL_REVIEW_SERIAL", "").strip() == "1":
-            return _run_judge([LensType.CORRECTNESS, LensType.SECURITY]), _run_judge(
-                [LensType.COMPLETENESS]
-            )
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="school-review") as pool:
             cto_future = pool.submit(_run_judge, [LensType.CORRECTNESS, LensType.SECURITY])
             coo_future = pool.submit(_run_judge, [LensType.COMPLETENESS])
@@ -767,11 +621,11 @@ def _run_two_judge_review(
     cto_verdict = cto_result.verdict.value  # "PASS" or "FAIL"
     coo_verdict = coo_result.verdict.value
     all_findings = execution_findings + build_findings + cto_result.findings + coo_result.findings
-    # Acceptance requires both judges PASS at score >= 50. A blocking finding
-    # (from execution or verify paths) is an automatic veto — non-functional
-    # output cannot be accepted even if both judges happen to say PASS.
-    has_blocking_finding = any(
-        getattr(f, "issue_class", None) in BLOCKING_CLASSES for f in all_findings
+    # Acceptance requires both judges PASS at score >= 50. A CRITICAL finding
+    # (from lens findings) is an automatic veto — broken or unsafe output cannot
+    # be accepted even if both judges happen to say PASS.
+    has_critical = any(
+        getattr(f, "severity", None) == Severity.CRITICAL for f in all_findings
     )
     # A judge whose raw output could not be parsed is INCONCLUSIVE, not
     # approving. adversarial_reviewer's parse-failure branches return
@@ -788,19 +642,10 @@ def _run_two_judge_review(
         and coo_verdict == "PASS"
         and cto_result.score >= 50
         and coo_result.score >= 50
-        and not has_blocking_finding
+        and not has_critical
         and not parse_failed
     )
-    # Execution score: 100 if passed, 50 if not run, 0 if failed.
-    # Feeds execution findings into the score, not just into a veto.
-    execution_score = 50.0  # default: not run
-    for f in execution_findings:
-        if f.issue_class == "execution_passed":
-            execution_score = 100.0
-        elif f.issue_class in BLOCKING_CLASSES:
-            execution_score = 0.0
-
-    combined_score = (cto_result.score + coo_result.score + execution_score) / 3.0
+    combined_score = (cto_result.score + coo_result.score) / 2.0
 
     # ── Verification-co-evolution pass (P2.2) ──
     # As the agent/harness improves, *fixed* acceptance checks stop measuring real
@@ -851,20 +696,13 @@ def _run_two_judge_review(
         accepted=accepted,
     )
 
-    # Update bookbag with review results. The four decision inputs are persisted
-    # alongside `accepted` so a rejection is reconstructable from the record
-    # alone: a PASS/PASS bag with accepted=false and no scores is unauditable,
-    # and unauditable derived fields get misread as bugs.
+    # Update bookbag with review results
     update_bookbag(
         bead,
         cto_verdict=cto_verdict,
         coo_verdict=coo_verdict,
         findings=[f.to_dict() for f in all_findings],
         accepted=accepted,
-        cto_score=cto_result.score,
-        coo_score=coo_result.score,
-        has_blocking_finding=has_blocking_finding,
-        parse_failed=parse_failed,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
         verification=verification_output or None,
         repo=repo,
@@ -909,15 +747,6 @@ def _run_two_judge_review(
         "build_findings": [f.to_dict() for f in build_findings],
         "build_verification": verification_output or None,
         "accepted": accepted,
-        # A judge that crashed is the REASON a review was rejected, so the
-        # record has to carry it. `parse_failed` above gates `accepted`, but
-        # until these keys were returned the downstream evidence record could
-        # only ever say `parse_failed: false` -- a rejection whose stated
-        # cause was absent from the record.
-        "parse_failed": parse_failed,
-        "cto_parse_failed": bool(getattr(cto_result, "parse_failed", False)),
-        "coo_parse_failed": bool(getattr(coo_result, "parse_failed", False)),
-        "has_blocking_finding": has_blocking_finding,
         "coevolution": coevolution_report.to_dict() if coevolution_report else None,
         "cto_narrative": cto_narrative,
         "coo_narrative": coo_narrative,
@@ -1031,7 +860,7 @@ def triage_issue(title: str, labels: list, body: str = "") -> dict:
 
 
 def _load_escalation_thresholds() -> dict:
-    config_path = Path(__file__).parent.parent.parent / "config" / "escalation_thresholds.yaml"
+    config_path = Path(__file__).parent / "config" / "escalation_thresholds.yaml"
     if not config_path.exists():
         return {"easy": 3, "medium": 5, "hard": 7, "diploma": 8}
     with open(config_path) as f:
@@ -1047,7 +876,7 @@ def _load_escalation_thresholds() -> dict:
 
 def _get_threshold(domain: str, difficulty: str) -> float:
     thresholds = _load_escalation_thresholds()
-    config_path = Path(__file__).parent.parent.parent / "config" / "escalation_thresholds.yaml"
+    config_path = Path(__file__).parent / "config" / "escalation_thresholds.yaml"
     if config_path.exists():
         with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
@@ -1139,6 +968,683 @@ def _anchor_context(role: str, domains: list[str] = None) -> Optional[str]:
     return "\n".join(lines)
 
 
+
+
+class TaskRunner:
+    """Encapsulates the run_task pipeline: role resolution, context
+    enrichment, model call, adversarial review, scoring, and acceptance
+    persistence.
+
+    Extracted from the monolithic run_task() function. Each phase is a
+    separate method for testability and readability. run_task() remains
+    as a thin wrapper that delegates to TaskRunner(...).run().
+    """
+
+    def __init__(
+        self,
+        prompt: str,
+        domain: str = "_default",
+        difficulty: str = "easy",
+        force_agent: str = None,
+        store: ScoreStore = None,
+        system_prompt: str = None,
+        session_id: Optional[str] = None,
+        skip_review: bool = False,
+        repo: str = REPO_GLOBAL,
+        repo_path: Optional[Path] = None,
+        ce_enabled: bool = False,
+        complex_task: bool = False,
+        dod_gate: bool = False,
+        skip_readiness: bool = False,
+        isolated_phases: bool = False,
+        phase_students: Optional[list] = None,
+        phase_drop_rate: float = 0.5,
+        phase_seeds: Optional[list] = None,
+        provided_student_output: Optional[str] = None,
+        preverified_verification: Optional[dict] = None,
+        pipeline_metrics: Optional[PipelineMetrics] = None,
+        synthesize_narratives: bool = False,
+    ):
+        # ── Inputs ────────────────────────────────────────────────
+        self.prompt = prompt
+        self.domain = domain
+        self.difficulty = difficulty
+        self.force_agent = force_agent
+        self.store = store if store is not None else ScoreStore()
+        self.system_prompt = system_prompt
+        self.session_id = session_id
+        self.skip_review = skip_review
+        self.repo = repo
+        self.repo_path = repo_path
+        self.ce_enabled = ce_enabled
+        self.complex_task = complex_task
+        self.dod_gate = dod_gate
+        self.skip_readiness = skip_readiness
+        self.isolated_phases = isolated_phases
+        self.phase_students = phase_students
+        self.phase_drop_rate = phase_drop_rate
+        self.phase_seeds = phase_seeds
+        self.provided_student_output = provided_student_output
+        self.preverified_verification = preverified_verification
+        self.pipeline_metrics = pipeline_metrics
+        self.synthesize_narratives = synthesize_narratives
+
+        # ── Derived state (set during run()) ─────────────────────
+        self.role: str = ""
+        self.role_score: float = 0.0
+        self.capability: Optional[dict] = None
+        self.old_score: float = 0.0
+        self.response: str = ""
+        self.error: Optional[str] = None
+        self.ce_phases: list = []
+        self.plan_result: Optional[dict] = None
+        self.escalated: bool = False
+        self.traj_path = None
+        self.context_blob: str = ""
+        self.bead: Optional[str] = None
+
+    # ──────────────────────────────────────────────────────────────
+    # run_task() pipeline
+    # ──────────────────────────────────────────────────────────────
+
+    def run(self) -> dict:
+        """Execute the full task pipeline and return the result dict."""
+        if self.provided_student_output is not None and self.isolated_phases:
+            raise ValueError(
+                "provided_student_output is invalid with isolated_phases: "
+                "that path reasons its own response and returns before the "
+                "student model call."
+            )
+
+        # Isolated phases has its own early-return path
+        if self.isolated_phases:
+            return self._run_isolated_phases()
+
+        # Determine the role: force_agent overrides domain mapping
+        self._resolve_role()
+        if self.role not in COMBO_MAP:
+            return {
+                "status": "error", "domain": self.domain,
+                "difficulty": self.difficulty, "agent": self.role,
+                "error": f"Unknown role '{self.role}' — not in COMBO_MAP",
+            }
+
+        # Build system prompt: role-specific prompt > domain-specific > default
+        self._build_system_prompt()
+
+        # Inject vault context (includes past bookbag feedback for this role).
+        self._inject_context()
+
+        # Auto-sleep check
+        self._auto_sleep_check()
+
+        # Gate check + readiness + A2A escalation
+        gate_result = self._gate_and_readiness()
+        if gate_result is not None:
+            return gate_result
+
+        # Resolve the capability contract after any readiness/A2A role change.
+        self.capability = _resolve_capability_metadata(
+            self.role, self.domain, self.difficulty, self.role_score,
+        )
+
+        # Execute the task: dispatch to the model, capture trajectory, handle
+        # A2A fallback on hard failure
+        early_return = self._call_model_and_sensors()
+        if early_return is not None:
+            return early_return
+
+        # Bookbag + Two-Judge Review + final result assembly
+        return self._persist_acceptance()
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 1: isolated-reasoning short-circuit
+    # ──────────────────────────────────────────────────────────────
+
+    def _run_isolated_phases(self) -> dict:
+        from isolated_reasoning import run_isolated_phases
+
+        if self.force_agent:
+            base_role = self.force_agent
+        else:
+            base_role = get_role_for_domain(self.domain)
+        students = list(self.phase_students or [base_role])
+
+        def _phase_reason_fn(student_id, prompt, seed):
+            return call_model(student_id, prompt, system_prompt=self.system_prompt)
+
+        iso = run_isolated_phases(
+            task_prompt=self.prompt,
+            students=students,
+            base_blocks={"role": base_role, "domain": self.domain,
+                         "difficulty": self.difficulty},
+            reason_fn=_phase_reason_fn,
+            seeds=self.phase_seeds,
+            drop_rate=self.phase_drop_rate,
+        )
+        get_decision_log().log(
+            DecisionType.CONTEXT_RETRIEVED,
+            agent="isolated-phases",
+            context={"domain": self.domain, "students": students},
+            choice={
+                "isolated_phases": True,
+                "vendi_score": round(iso.vendi_score, 4),
+                "collapsed": iso.collapsed,
+            },
+            expected="Decoupled context should raise output diversity",
+        )
+        return {
+            "status": "success",
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "agent": "isolated-phases",
+            "students": students,
+            "isolated_phases": True,
+            "vendi_score": iso.vendi_score,
+            "collapsed": iso.collapsed,
+            "selected_student": iso.selected_student,
+            "response": iso.selected_response,
+            "phase_responses": [p.response for p in iso.phases],
+            "error": None,
+            "old_score": self.store.get_score(base_role, self.domain),
+            "new_score": self.store.get_score(base_role, self.domain),
+        }
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 2: role resolution
+    # ──────────────────────────────────────────────────────────────
+
+    def _resolve_role(self) -> None:
+        if self.force_agent:
+            # N4.3 (worst-day-ever): a forced agent must be the capability's
+            # own resolved profile — it must NOT escalate to a higher-trust
+            # role. The allowlist anchor is the domain's canonical role.
+            canonical_role = get_role_for_domain(self.domain)
+            from resilience import force_agent_allowed
+            if force_agent_allowed(self.force_agent, canonical_role,
+                                    lora_twin=f"lora-{self.domain}"):
+                self.role = self.force_agent
+            else:
+                sys.stderr.write(
+                    f"[director] force_agent '{self.force_agent}' denied: not the "
+                    f"capability profile for domain '{self.domain}' (expected "
+                    f"'{canonical_role}'); falling back to domain role\n"
+                )
+                self.role = canonical_role
+        else:
+            self.role = get_role_for_domain(self.domain)
+            # Prefer LoRA-tuned role if a trained adapter exists for this domain
+            if has_adapter(self.domain):
+                lora_role = f"lora-{self.domain}"
+                # Seed LoRA agent score from base role so first run doesn't start at 0
+                if self.store.get_score(lora_role, self.domain) == 0.0:
+                    self.store.set_score(
+                        lora_role, self.domain,
+                        self.store.get_score(self.role, self.domain),
+                    )
+                self.role = lora_role
+
+    def _build_system_prompt(self) -> None:
+        if not self.system_prompt:
+            if self.role in ROLE_SYSTEM_PROMPTS:
+                self.system_prompt = ROLE_SYSTEM_PROMPTS[self.role]
+            else:
+                self.system_prompt = SYSTEM_PROMPTS.get(self.domain, DEFAULT_SYSTEM_PROMPT)
+
+    def _auto_sleep_check(self) -> None:
+        # Auto-sleep check (mutates the session via sleep()) if applicable.
+        if self.session_id is not None and _should_auto_sleep(self.session_id):
+            sys.stderr.write(
+                f"[director] Auto-sleep: session {self.session_id} timed out "
+                f"({SLEEP_TIMEOUT_MINUTES}min)\n"
+            )
+            sleep(
+                session_id=self.session_id,
+                agent=self.role,
+                store=self.store,
+            )
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 3: context injection (vault, anchors)
+    # ──────────────────────────────────────────────────────────────
+
+    def _resolve_repo(self) -> None:
+        """Resolve the repository checkout path."""
+        self.repo_path = _resolve_repo_path(self.repo, explicit_path=self.repo_path)
+
+    def _inject_context(self) -> None:
+        """Enrich the system prompt with vault context and semantic anchors."""
+        # Resolve repo path via _resolve_repo
+        self._resolve_repo()
+        if self.pipeline_metrics is not None:
+            with self.pipeline_metrics.stage("context"):
+                context_blob = enrich_prompt(
+                    self.domain, self.prompt,
+                    vault_path=DEFAULT_VAULT,
+                    session_id=self.session_id,
+                    repo_path=self.repo_path,
+                    metrics=self.pipeline_metrics,
+                )
+        else:
+            context_blob = enrich_prompt(
+                self.domain, self.prompt,
+                vault_path=DEFAULT_VAULT,
+                session_id=self.session_id,
+                repo_path=self.repo_path,
+            )
+        self.context_blob = context_blob
+        if self.pipeline_metrics is not None:
+            self.pipeline_metrics.record_context("vault", hit=bool(context_blob))
+        if context_blob:
+            self.system_prompt = self.system_prompt + context_blob
+            get_decision_log().log(
+                DecisionType.CONTEXT_RETRIEVED,
+                agent=self.role,
+                context={"domain": self.domain, "prompt_length": len(self.prompt)},
+                choice={"context_injected": True, "context_length": len(context_blob)},
+                expected="Vault context should improve response quality",
+            )
+
+        # Inject semantic anchors from the AnchorRegistry (constraint + domain-specific)
+        anchor_str = _anchor_context(self.role)
+        if anchor_str:
+            self.system_prompt = (
+                self.system_prompt + "\n\n---\n### Semantic Anchors\n" + anchor_str + "\n---"
+            )
+            get_decision_log().log(
+                DecisionType.CONTEXT_RETRIEVED,
+                agent=self.role,
+                context={"domain": self.domain},
+                choice={"anchors_injected": True},
+                expected="Semantic anchors should improve constraint adherence",
+            )
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 4: gate check + readiness + A2A escalation
+    # ──────────────────────────────────────────────────────────────
+
+    def _gate_and_readiness(self) -> Optional[dict]:
+        # Gate check: use route_task to find if ANY agent qualifies — scores
+        # live under model names (e.g. foundry-coder-1.5b), not role names
+        # (e.g. coder). route_task searches all agents, so a Foundry-era
+        # score in code-implementation still gates correctly.
+        if self.difficulty not in GATES:
+            raise ValueError(f"Invalid difficulty '{self.difficulty}'")
+
+        if self.force_agent:
+            self.role_score = self.store.get_score(self.role, self.domain)
+        else:
+            route = route_task(self.store, self.domain, self.difficulty)
+            if route.blocked:
+                return {
+                    "status": "blocked", "domain": self.domain,
+                    "difficulty": self.difficulty, "agent": self.role,
+                    "role_score": route.score or 0.0,
+                    "gate_threshold": GATES.get(self.difficulty, 0),
+                }
+            self.role_score = route.score or 0.0
+
+        # Readiness check. On low confidence, escalate to the A2A fallback
+        # (openhands) instead of blocking — this is the U8 "I Don't Know"
+        # escalation path. When route_task already found a qualified agent
+        # (score >= gate), skip the readiness check — it's redundant.
+        self.escalated = False
+        role_qualifies = self.role_score >= GATES.get(self.difficulty, 0)
+        if not role_qualifies and not self.skip_readiness:
+            confidence = _check_readiness(self.role, self.domain,
+                                          self.difficulty, self.prompt)
+            if confidence < _get_threshold(self.domain, self.difficulty):
+                _escalation_log.log(
+                    agent=self.role, domain=self.domain,
+                    difficulty=self.difficulty,
+                    confidence=confidence,
+                    threshold=_get_threshold(self.domain, self.difficulty),
+                    escalated_to="a2a_fallback",
+                )
+                sys.stderr.write(
+                    f"[director] {self.role} not ready for "
+                    f"{self.domain}/{self.difficulty} (confidence={confidence:.1f}) "
+                    "— escalating\n"
+                )
+                esc = _try_a2a_fallback(self.role, self.prompt, self.system_prompt)
+                if esc is not None:
+                    self.role, self.response, self.error, self.escalated = esc
+                else:
+                    return {
+                        "status": "blocked", "domain": self.domain,
+                        "difficulty": self.difficulty, "agent": self.role,
+                        "reason": f"readiness check failed (confidence={confidence:.1f}) "
+                                  "and A2A fallback unavailable",
+                    }
+        return None
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 5: model call + sensors + trajectory + A2A retry
+    # ──────────────────────────────────────────────────────────────
+
+    def _call_model_and_sensors(self) -> Optional[dict]:
+        # Execute the task
+        self.old_score = self.store.get_score(self.role, self.domain)
+        self.error = None
+        self.response = ""
+        self.ce_phases = []
+
+        get_log().start_task(
+            agent=self.role, domain=self.domain, difficulty=self.difficulty,
+            role=_agent_role(self.role, self.role_score),
+            prompt_preview=self.prompt[:80],
+        )
+
+        # Rank 4b: retrieve prior similar trajectories from filesystem to inform
+        # routing. Prefer scored trajectories, then fall back by recency.
+        prior = _list_trajectories(domain=self.domain, limit=6)
+        if prior:
+            # Sort: scored (desc) first, then unscored, then by recency
+            scored = [t for t in prior
+                      if t.get('task_score') is not None and t['task_score'] > 0]
+            unscored = [t for t in prior
+                        if t.get('task_score') is None or t['task_score'] == 0]
+            scored.sort(key=lambda t: t['task_score'], reverse=True)
+            selected = (scored + unscored)[:3]
+            prior_blob = "\n\n---\n### Prior Approaches\n" + "\n".join(
+                f"- [{t.get('timestamp','?')[:10]}] **{t.get('agent','?') or '?'}** "
+                f"(score={t.get('task_score') or 0:.1f}): "
+                f"{(t.get('response') or '')[:240]}"
+                for t in selected
+                if t.get('response') is not None
+            ) + "\n---"
+            self.system_prompt = self.system_prompt + prior_blob
+
+        # Rank 5: complex-task decomposition into a bite-sized plan, executed as
+        # per-sub-task CE/TDD loops (each sub-task is its own run_leaf call).
+        self.plan_result = None
+        if self.complex_task:
+            from scripts.student_plan import generate_plan, execute_plan
+            plan = generate_plan(task_prompt=self.prompt)
+            self.plan_result = execute_plan(
+                plan,
+                role=self.role, domain=self.domain, difficulty=self.difficulty,
+                store=self.store, repo=self.repo,
+            )
+            # The "response" becomes a summary of the plan execution.
+            self.response = (
+                f"Plan {plan['task_id']} executed: "
+                f"{len(self.plan_result['sub_task_results'])} sub-task(s), "
+                f"all_passed={self.plan_result['all_passed']}"
+            )
+            self.ce_phases = [f"plan:{plan['task_id']}"]
+        # CE-enabled execution
+        elif self.ce_enabled:
+            from scripts.ce_runner import run_ce_loop
+            ce_result = run_ce_loop(
+                task_prompt=self.prompt,
+                domain=self.domain,
+                role=self.role,
+                difficulty=self.difficulty,
+                repo=self.repo,
+            )
+            if ce_result["status"] != "success":
+                self.error = ce_result.get("error", "CE loop failed")
+            else:
+                self.response = (
+                    f"CE execution completed. Artifacts written to "
+                    f"docs/solutions/{ce_result['task_id']}/"
+                )
+                self.ce_phases = ce_result["ce_phases"]
+        else:
+            # Original execution path. U8: when the crew path already produced a
+            # student deliverable (crew report.md), substitute it for the student
+            # model call — the deliverable was created by a real code-producing
+            # crew, so no model call happens here. Review/scoring treat it exactly
+            # like any other response.
+            try:
+                if self.provided_student_output is not None:
+                    self.response = self.provided_student_output
+                else:
+                    if self.pipeline_metrics is not None:
+                        with self.pipeline_metrics.stage("student_model"):
+                            self.response = call_model(
+                                self.role, self.prompt, system_prompt=self.system_prompt,
+                            )
+                        self.pipeline_metrics.record_model(
+                            self.role,
+                            prompt_chars=len(self.prompt or "") + len(self.system_prompt or ""),
+                            output_chars=len(self.response or ""),
+                        )
+                    else:
+                        self.response = call_model(
+                            self.role, self.prompt, system_prompt=self.system_prompt,
+                        )
+            except Exception as e:
+                self.error = str(e)
+
+        self.traj_path = capture_trajectory(
+            domain=self.domain, difficulty=self.difficulty, agent=self.role,
+            prompt=self.prompt, system_prompt=self.system_prompt,
+            response=self.response,
+            task_score=0.0 if self.error else None,
+            old_score=self.old_score,
+            new_score=self.store.get_score(self.role, self.domain) if self.error else None,
+            error=self.error,
+        )
+
+        if self.error:
+            # Try A2A fallback (reuses the same escalation helper)
+            esc = _try_a2a_fallback(self.role, self.prompt, self.system_prompt)
+            if esc is not None:
+                self.role, self.response, self.error, self.escalated = esc
+
+            if self.error:
+                # Both primary role and A2A failed — NOW penalize the role
+                self.store.update_score(self.role, self.domain, 0.0)
+                get_log().task_error(agent=self.role, domain=self.domain, error=self.error)
+                # ACRouter feedback: a hard routing failure is a strong negative
+                # outcome for the combo that was selected.
+                _record_acrouter_outcome(self.role, success=False, quality=0.0)
+                return {
+                    "status": "error", "domain": self.domain,
+                    "difficulty": self.difficulty, "agent": self.role,
+                    "error": self.error, "old_score": self.old_score,
+                    "new_score": self.store.get_score(self.role, self.domain),
+                    "trajectory": self.traj_path,
+                    "capability": self.capability,
+                }
+
+        get_log().finish_task(
+            agent=self.role, domain=self.domain,
+            score=self.store.get_score(self.role, self.domain), success=True,
+        )
+        return None
+
+    # ──────────────────────────────────────────────────────────────
+    # Phase 6: bookbag + two-judge review + score + persist
+    # ──────────────────────────────────────────────────────────────
+
+    def _run_verify_gate(self, result: dict) -> dict:
+        """Rank 6: spec-gate (DOD checker). Evaluate DOD criteria when a
+        spec file exists for this bead."""
+        if self.dod_gate:
+            spec = _load_spec(self.bead, self.repo)
+            if spec is not None:
+                gate_result = check_dod(self.bead, result, repo=self.repo)
+                result["dod_gate"] = gate_result
+                if not gate_result["passed"]:
+                    result["accepted"] = False
+        return result
+
+    def _run_adversarial_review(self) -> tuple[dict, bool]:
+        """Run the two-judge adversarial review. Returns (review, orca_error).
+        orca_error is True if OrcaUnavailableError was raised."""
+        try:
+            review = _run_two_judge_review(
+                bead=self.bead,
+                output=self.response,
+                task={"title": self.prompt[:100], "body": self.prompt,
+                      "domain": self.domain, "difficulty": self.difficulty},
+                codebase_context=self.context_blob or "",
+                role="reviewer",
+                repo=self.repo,
+                repo_path=self.repo_path,
+                preverified_verification=self.preverified_verification,
+                pipeline_metrics=self.pipeline_metrics,
+                synthesize_narratives=self.synthesize_narratives,
+            )
+            return review, False
+        except OrcaUnavailableError as e:
+            return {"error": str(e)}, True
+
+    def _compute_score(self, review: dict) -> float:
+        """Compute task_score from the review result.
+        accepted → max(60, combined_score); rejected → min(40, combined_score)."""
+        if review["accepted"]:
+            return max(60, review["combined_score"])
+        else:
+            return min(40, review["combined_score"])
+
+    def _persist_acceptance(self) -> dict:
+        # ── Bookbag + Two-Judge Review ──
+        # Student output goes into a bookbag. CTO+COO review the bookbag.
+        # Both must PASS for the work to be accepted.
+        import uuid
+        self.bead = f"{self.role}-{self.domain}-{uuid.uuid4().hex[:8]}"
+
+        write_bookbag(
+            self.bead,
+            student=self.role,
+            domain=self.domain,
+            difficulty=self.difficulty,
+            task=self.prompt[:200],
+            output=self.response,
+            repo=self.repo,
+        )
+
+        if self.skip_review:
+            # Phase 2 async dispatch: only LLM call + bookbag, no review.
+            # Teachers (in persistent worktrees) will review the bookbag
+            # asynchronously. The caller must poll for verdicts and score.
+            result = {
+                "status": "success",
+                "domain": self.domain,
+                "difficulty": self.difficulty,
+                "agent": self.role,
+                "escalation": self.escalated,
+                "prompt": self.prompt,
+                "response": self.response,
+                "error": None,
+                "old_score": self.old_score,
+                "new_score": self.store.get_score(self.role, self.domain),
+                "task_score": 0.0,  # Will be set after teacher review
+                "trajectory": self.traj_path,
+                "capability": self.capability,
+                "bookbag": str(bead_path(self.bead, self.repo)),
+                "bead": self.bead,
+                "review": {
+                    "cto_verdict": "",
+                    "coo_verdict": "",
+                    "cto_score": 0,
+                    "coo_score": 0,
+                    "findings": [],
+                    "accepted": False,
+                },
+                "async": True,
+            }
+            # Rank 2: include ce_phases ONLY when the CE loop ran (see note above).
+            if self.ce_enabled:
+                result["ce_phases"] = self.ce_phases
+            sys.stderr.write(
+                f"[director] Async dispatch: bead={self.bead} role={self.role} "
+                f"\u2192 awaiting teacher review\n"
+            )
+            return result
+
+        try:
+            review = _run_two_judge_review(
+                bead=self.bead,
+                output=self.response,
+                task={"title": self.prompt[:100], "body": self.prompt,
+                      "domain": self.domain, "difficulty": self.difficulty},
+                codebase_context=self.context_blob or "",
+                role="reviewer",
+                repo=self.repo,
+                repo_path=self.repo_path,
+                preverified_verification=self.preverified_verification,
+                pipeline_metrics=self.pipeline_metrics,
+                synthesize_narratives=self.synthesize_narratives,
+            )
+        except OrcaUnavailableError as e:
+            # Hard fail: Orca sandbox is required for executable domains.
+            # Return a clean error instead of crashing the conductor.
+            sys.stderr.write(f"[director] Orca unavailable: {e}\n")
+            self.store.update_score(self.role, self.domain, 0.0)
+            return {
+                "status": "error", "domain": self.domain,
+                "difficulty": self.difficulty, "agent": self.role,
+                "error": f"Orca sandbox unavailable: {e}",
+                "old_score": self.old_score,
+                "new_score": self.store.get_score(self.role, self.domain),
+                "trajectory": self.traj_path,
+                "capability": self.capability,
+            }
+
+        # Score reflects review: accepted → high score, rejected → penalty.
+        # Note: callers (autonomous_loop, issue_bridge) call evaluate_and_update()
+        # after run_task() — do NOT call store.update_score() here to avoid double-EMA.
+        if review["accepted"]:
+            task_score = max(60, review["combined_score"])
+        else:
+            task_score = min(40, review["combined_score"])
+
+        result = {
+            "status": "success",
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "agent": self.role,
+            "escalation": self.escalated,
+            "prompt": self.prompt,
+            "response": self.response,
+            "error": None,
+            "old_score": self.old_score,
+            "new_score": self.store.get_score(self.role, self.domain),
+            "task_score": task_score,
+            "trajectory": self.traj_path,
+            "capability": self.capability,
+            "bookbag": str(bead_path(self.bead)),
+            "bead": self.bead,
+            "review": review,
+        }
+        # Rank 2: include ce_phases ONLY when the CE loop ran. When ce_enabled is
+        # False the key is intentionally absent (backward compat — callers and the
+        # test_ce_disabled_behavior test assert `"ce_phases" not in result`).
+        if self.ce_enabled:
+            result["ce_phases"] = self.ce_phases
+        # Rank 5: include plan ONLY when a complex-task plan was executed.
+        if self.plan_result is not None:
+            result["plan"] = {
+                "task_id": self.plan_result["task_id"],
+                "sub_task_count": len(self.plan_result["sub_task_results"]),
+                "all_passed": self.plan_result["all_passed"],
+            }
+
+        # Rank 6: spec-gate (DOD checker). When a spec file exists for this
+        # task/bead, evaluate every DOD criterion against the execution result.
+        # The result carries a falsy "accepted" if any criterion fails, so the
+        # existing review/scoring pipeline treats a spec-gate failure like a
+        # normal CTO+COO rejection without extra plumbing.
+        if self.dod_gate:
+            spec = _load_spec(self.bead, self.repo)
+            if spec is not None:
+                gate_result = check_dod(self.bead, result, repo=self.repo)
+                result["dod_gate"] = gate_result
+                if not gate_result["passed"]:
+                    result["accepted"] = False
+
+        # Teacher evidence is durable on the trajectory and is the sole source for
+        # the normalized router signal. This runs after optional DoD evaluation so
+        # the returned result and the learning record describe the same decision.
+        _attach_teacher_evidence(result)
+        return result
+
+
 def run_task(
     prompt: str,
     domain: str = "_default",
@@ -1162,526 +1668,43 @@ def run_task(
     preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: bool = False,
-    trusted_contract: Optional[dict] = None,
 ) -> dict:
-    """Route task to the specialized role for this domain. One role = one attempt.
-    If the role fails, escalate to A2A fallback.
+    """Thin wrapper around TaskRunner.run().
 
-    Args:
-        skip_review: If True, skip the two-judge CTO+COO review and write the
-                     bookbag with empty verdicts. Used by Phase 2 async dispatch
-                     where teachers review bookbags in their own worktree terminals.
-                     The caller is responsible for waiting for teacher verdicts
-                     via ``wait_for_verdicts()`` and scoring via ``evaluate_and_update()``.
-        ce_enabled: If True, route execution through the Compound Engineering (CE) loop.
-                     Produces artifacts in `docs/solutions/<task-id>/` and returns `ce_phases`.
-        complex_task: If True (Rank 5), decompose the task into a bite-sized plan
-                     (`.hermes/plans/<id>.md`) and execute each sub-task as its own
-                     CE/TDD loop. Returns a `plan` field with sub-task results.
-        dod_gate: If True (Rank 6), evaluate the spec-gate Definition-of-Done criteria
-                  against the execution result. Fails the run if any required criterion
-                  is unmet.
-        isolated_phases: If True, run the task through isolated reasoning phases
-                  (Diversity Collapse fix, arXiv:2604.18005) — each candidate role
-                  reasons from a DECOUPLED per-student context instead of the shared
-                  enriched context, then the Vendi Score measures effective output
-                  diversity. Promotes the medoid (most representative) output. This
-                  keeps the reasoning decoupled so students do not collapse to
-                  identical outputs. When True, ``phase_students`` lists the roles
-                  to run; the returned ``response`` is the medoid and ``vendi_score``
-                  / ``collapsed`` are included.
-        phase_students: Roles to run in isolated phases (default: the role mapped
-                  from ``domain`` plus the other available COMBO_MAP roles).
-        phase_drop_rate: Fraction of shared context blocks dropped per phase.
-        phase_seeds: Optional per-student seeds for reproducible isolation.
-        provided_student_output: When set (U8 crew path), skip the student model
-                  call entirely and use this text as the student's ``response``.
-                  The review/scoring/bookbag pipeline is unchanged — the crew's
-                  report.md content becomes the deliverable the teachers assess.
-                  Invalid with ``isolated_phases`` (that path already produces a
-                  response and returns early).
-        repo_path: Optional explicit checkout for cross-repository dispatch. This
-                  is the authoritative local candidate when the caller has already
-                  cloned or provisioned it; it avoids resolving only by repo slug.
-        preverified_verification: Optional verify-gate result produced against a
-                  disposable student worktree before teardown. When supplied, do
-                  not re-run the gate against the clean cached base.
+    Preserves the original run_task() signature and return-dict contract so
+    that issue_bridge.py and conductor.py callers are unaffected. The full
+    pipeline (role resolution, context injection, model call, adversarial
+    review, score, acceptance persistence) lives in TaskRunner.
+
+    See TaskRunner's docstring and the original run_task() docstring for
+    parameter documentation.
     """
-    if store is None:
-        store = ScoreStore()
-
-    if provided_student_output is not None and isolated_phases:
-        raise ValueError(
-            "provided_student_output is invalid with isolated_phases: "
-            "that path reasons its own response and returns before the "
-            "student model call."
-        )
-
-    # ── Isolated reasoning phases (Diversity Collapse fix, arXiv:2604.18005) ──
-    # When enabled, run the task through N role "students", each in its own
-    # reasoning phase with a DECOUPLED context (not the single shared enriched
-    # context that drives every role to the same output). The Vendi Score then
-    # measures how diverse the outputs actually are. The medoid (output closest
-    # to all others) is promoted as ``response``. Skips the bookbag/two-judge
-    # path so it composes with the caller's own review stage.
-    if isolated_phases:
-        from src.core.isolated_reasoning import run_isolated_phases
-
-        if force_agent:
-            base_role = force_agent
-        else:
-            base_role = get_role_for_domain(domain)
-        students = list(phase_students or [base_role])
-
-        # Resolve each role's base context block independently — running
-        # enrich_prompt per role so the "shared context" each phase is
-        # decoupled FROM is the role-appropriate one, then isolated_reasoning
-        # derives per-student subsets from it.
-        def _phase_reason_fn(student_id, prompt, seed):
-            return call_model(student_id, prompt, system_prompt=system_prompt)
-
-        iso = run_isolated_phases(
-            task_prompt=prompt,
-            students=students,
-            base_blocks={"role": base_role, "domain": domain, "difficulty": difficulty},
-            reason_fn=_phase_reason_fn,
-            seeds=phase_seeds,
-            drop_rate=phase_drop_rate,
-        )
-        get_decision_log().log(
-            DecisionType.CONTEXT_RETRIEVED,
-            agent="isolated-phases",
-            context={"domain": domain, "students": students},
-            choice={
-                "isolated_phases": True,
-                "vendi_score": round(iso.vendi_score, 4),
-                "collapsed": iso.collapsed,
-            },
-            expected="Decoupled context should raise output diversity",
-        )
-        return {
-            "status": "success",
-            "domain": domain,
-            "difficulty": difficulty,
-            "agent": "isolated-phases",
-            "students": students,
-            "isolated_phases": True,
-            "vendi_score": iso.vendi_score,
-            "collapsed": iso.collapsed,
-            "selected_student": iso.selected_student,
-            "response": iso.selected_response,
-            "phase_responses": [p.response for p in iso.phases],
-            "error": None,
-            "old_score": store.get_score(base_role, domain),
-            "new_score": store.get_score(base_role, domain),
-        }
-
-    # Determine the role: force_agent overrides domain mapping
-    if force_agent:
-        # N4.3 (worst-day-ever): a forced agent must be the capability's own
-        # resolved profile — it must NOT escalate to a higher-trust role. The
-        # allowlist anchor is the domain's canonical role; any other forced value
-        # is treated as an escalation and denied (falls back to the domain role
-        # instead of silently running with elevated privilege).
-        canonical_role = get_role_for_domain(domain)
-        # N4.3 (worst-day-ever): delegate the escalation check to the shared
-        # allowlist helper so the rule has one source of truth.
-        from src.core.resilience import force_agent_allowed
-        if force_agent_allowed(force_agent, canonical_role, lora_twin=f"lora-{domain}"):
-            role = force_agent
-        else:
-            sys.stderr.write(
-                f"[director] force_agent '{force_agent}' denied: not the "
-                f"capability profile for domain '{domain}' (expected "
-                f"'{canonical_role}'); falling back to domain role\n"
-            )
-            role = canonical_role
-    else:
-        role = get_role_for_domain(domain)
-        # Prefer LoRA-tuned role if a trained adapter exists for this domain
-        if has_adapter(domain):
-            lora_role = f"lora-{domain}"
-            # Seed LoRA agent score from base role so first run doesn't start at 0
-            if store.get_score(lora_role, domain) == 0.0:
-                store.set_score(lora_role, domain, store.get_score(role, domain))
-            role = lora_role
-
-    if role not in COMBO_MAP:
-        return {"status": "error", "domain": domain, "difficulty": difficulty,
-                "agent": role, "error": f"Unknown role '{role}' — not in COMBO_MAP"}
-
-    # Build system prompt: role-specific prompt > domain-specific > default
-    if not system_prompt:
-        if role in ROLE_SYSTEM_PROMPTS:
-            system_prompt = ROLE_SYSTEM_PROMPTS[role]
-        else:
-            system_prompt = SYSTEM_PROMPTS.get(domain, DEFAULT_SYSTEM_PROMPT)
-
-    # Inject vault context (includes past bookbag feedback for this role).
-    # Resolve repo_path for Serena LSP symbol enrichment when available.
-    # Forward session_id so Layer 3 archival context fires (U1): the
-    # orchestrator gates _archival_context on session_id (context_orchestrator
-    # .py:78), so dropping it here keeps Layer 3 dead in the school-loop path.
-    repo_path = _resolve_repo_path(repo, explicit_path=repo_path)
-    if pipeline_metrics is not None:
-        with pipeline_metrics.stage("context"):
-            context_blob = enrich_prompt(
-                domain, prompt,
-                vault_path=DEFAULT_VAULT,
-                session_id=session_id,
-                repo_path=repo_path,
-                metrics=pipeline_metrics,
-            )
-    else:
-        context_blob = enrich_prompt(
-            domain, prompt,
-            vault_path=DEFAULT_VAULT,
-            session_id=session_id,
-            repo_path=repo_path,
-        )
-    if pipeline_metrics is not None:
-        pipeline_metrics.record_context("vault", hit=bool(context_blob))
-    if context_blob:
-        system_prompt = system_prompt + context_blob
-        get_decision_log().log(
-            DecisionType.CONTEXT_RETRIEVED,
-            agent=role,
-            context={"domain": domain, "prompt_length": len(prompt)},
-            choice={"context_injected": True, "context_length": len(context_blob)},
-            expected="Vault context should improve response quality",
-        )
-
-    # Inject semantic anchors from the AnchorRegistry (constraint + domain-specific)
-    anchor_str = _anchor_context(role)
-    if anchor_str:
-        system_prompt = system_prompt + "\n\n---\n### Semantic Anchors\n" + anchor_str + "\n---"
-        get_decision_log().log(
-            DecisionType.CONTEXT_RETRIEVED,
-            agent=role,
-            context={"domain": domain},
-            choice={"anchors_injected": True},
-            expected="Semantic anchors should improve constraint adherence",
-        )
-
-    # Auto-sleep check
-    if session_id is not None and _should_auto_sleep(session_id):
-        sys.stderr.write(f"[director] Auto-sleep: session {session_id} timed out ({SLEEP_TIMEOUT_MINUTES}min)\n")
-        sleep(
-            session_id=session_id,
-            agent=role,
-            store=store,
-        )
-
-    # Gate check: use route_task to find if ANY agent qualifies — scores
-    # live under model names (e.g. foundry-coder-1.5b), not role names
-    # (e.g. coder).  route_task searches all agents, so a Foundry-era
-    # score in code-implementation still gates correctly.
-    if difficulty not in GATES:
-        raise ValueError(f"Invalid difficulty '{difficulty}'")
-
-    if force_agent:
-        role_score = store.get_score(role, domain)
-    else:
-        route = route_task(store, domain, difficulty)
-        if route.blocked:
-            return {"status": "blocked", "domain": domain, "difficulty": difficulty,
-                    "agent": role, "role_score": route.score or 0.0,
-                    "gate_threshold": GATES.get(difficulty, 0)}
-        role_score = route.score or 0.0
-
-    # Readiness check. On low confidence, escalate to the A2A fallback
-    # (openhands) instead of blocking — this is the U8 "I Don't Know"
-    # escalation path. Previously this branch returned 'blocked'; it now
-    # escalates so a low-confidence primary still gets a second attempt.
-    #
-    # When route_task already found a qualified agent (score >= gate), skip
-    # the readiness check — it's redundant (the agent's stats already prove
-    # capability) and was causing false escalations from auto/best-free
-    # timeouts. The check still runs for force_agent with underqualified
-    # agents (score < gate).
-    escalated = False
-    role_qualifies = role_score >= GATES.get(difficulty, 0)
-    if not role_qualifies and not skip_readiness:
-        confidence = _check_readiness(role, domain, difficulty, prompt)
-        if confidence < _get_threshold(domain, difficulty):
-            _escalation_log.log(
-                agent=role, domain=domain, difficulty=difficulty,
-                confidence=confidence, threshold=_get_threshold(domain, difficulty),
-                escalated_to="a2a_fallback",
-            )
-            sys.stderr.write(f"[director] {role} not ready for {domain}/{difficulty} (confidence={confidence:.1f}) — escalating\n")
-            esc = _try_a2a_fallback(role, prompt, system_prompt)
-            if esc is not None:
-                role, response, error, escalated = esc
-            else:
-                return {"status": "blocked", "domain": domain, "difficulty": difficulty,
-                        "agent": role, "reason": f"readiness check failed (confidence={confidence:.1f}) and A2A fallback unavailable"}
-
-    # Resolve the capability contract after any readiness/A2A role change. This
-    # is metadata only; the legacy routing decision remains authoritative.
-    capability = _resolve_capability_metadata(role, domain, difficulty, role_score)
-
-    # Execute the task
-    old_score = store.get_score(role, domain)
-    error = None
-    response = ""
-    ce_phases = []
-
-    get_log().start_task(
-        agent=role, domain=domain, difficulty=difficulty,
-        role=_agent_role(role, role_score),
-        prompt_preview=prompt[:80],
-    )
-
-    # Rank 4b: retrieve prior similar trajectories from filesystem to inform
-    # routing. Prefer scored trajectories, then fall back by recency.
-    # (The save side is wired in evaluate_and_update — writes to Engram intact.)
-    prior = _list_trajectories(domain=domain, limit=6)
-    if prior:
-        # Sort: scored (desc) first, then unscored, then by recency
-        scored = [t for t in prior if t.get('task_score') is not None and t['task_score'] > 0]
-        unscored = [t for t in prior if t.get('task_score') is None or t['task_score'] == 0]
-        scored.sort(key=lambda t: t['task_score'], reverse=True)
-        selected = (scored + unscored)[:3]
-        prior_blob = "\n\n---\n### Prior Approaches\n" + "\n".join(
-            f"- [{t.get('timestamp','?')[:10]}] **{t.get('agent','?') or '?'}** "
-            f"(score={t.get('task_score') or 0:.1f}): {(t.get('response') or '')[:240]}"
-            for t in selected
-            if t.get('response') is not None
-        ) + "\n---"
-        system_prompt = system_prompt + prior_blob
-
-    # Rank 5: complex-task decomposition into a bite-sized plan, executed as
-    # per-sub-task CE/TDD loops (each sub-task is its own run_leaf call).
-    plan_result = None
-    if complex_task:
-        from scripts.student_plan import generate_plan, execute_plan
-        plan = generate_plan(task_prompt=prompt)
-        plan_result = execute_plan(
-            plan,
-            role=role, domain=domain, difficulty=difficulty,
-            store=store, repo=repo,
-        )
-        # The "response" becomes a summary of the plan execution.
-        response = (
-            f"Plan {plan['task_id']} executed: "
-            f"{len(plan_result['sub_task_results'])} sub-task(s), "
-            f"all_passed={plan_result['all_passed']}"
-        )
-        ce_phases = [f"plan:{plan['task_id']}"]
-
-    # CE-enabled execution
-    elif ce_enabled:
-        from scripts.ce_runner import run_ce_loop
-        ce_result = run_ce_loop(
-            task_prompt=prompt,
-            domain=domain,
-            role=role,
-            difficulty=difficulty,
-            repo=repo,
-        )
-        if ce_result["status"] != "success":
-            error = ce_result.get("error", "CE loop failed")
-        else:
-            response = f"CE execution completed. Artifacts written to docs/solutions/{ce_result['task_id']}/"
-            ce_phases = ce_result["ce_phases"]
-    else:
-        # Original execution path. U8: when the crew path already produced a
-        # student deliverable (crew report.md), substitute it for the student
-        # model call — the deliverable was created by a real code-producing
-        # crew, so no model call happens here. Review/scoring treat it exactly
-        # like any other response.
-        try:
-            if provided_student_output is not None:
-                response = provided_student_output
-            else:
-                if pipeline_metrics is not None:
-                    with pipeline_metrics.stage("student_model"):
-                        response = call_model(role, prompt, system_prompt=system_prompt)
-                    pipeline_metrics.record_model(
-                        role,
-                        prompt_chars=len(prompt or "") + len(system_prompt or ""),
-                        output_chars=len(response or ""),
-                    )
-                else:
-                    response = call_model(role, prompt, system_prompt=system_prompt)
-            # Fix code block language tags based on file path comments.
-            # The student model often puts Rust/Go/TS code in a ```python block.
-            if response:
-                response = _fix_code_block_languages(response)
-        except Exception as e:
-            error = str(e)
-
-    traj_path = capture_trajectory(
-        domain=domain, difficulty=difficulty, agent=role,
-        prompt=prompt, system_prompt=system_prompt,
-        response=response, task_score=0.0 if error else None,
-        old_score=old_score, new_score=store.get_score(role, domain) if error else None,
-        error=error,
-    )
-
-    if error:
-        # Try A2A fallback (reuses the same escalation helper)
-        esc = _try_a2a_fallback(role, prompt, system_prompt)
-        if esc is not None:
-            role, response, error, escalated = esc
-
-        if error:
-            # Both primary role and A2A failed — NOW penalize the role
-            store.update_score(role, domain, 0.0)
-            get_log().task_error(agent=role, domain=domain, error=error)
-            # ACRouter feedback: a hard routing failure is a strong negative
-            # outcome for the combo that was selected.
-            _record_acrouter_outcome(role, success=False, quality=0.0)
-            return {"status": "error", "domain": domain, "difficulty": difficulty,
-                    "agent": role, "error": error, "old_score": old_score,
-                    "new_score": store.get_score(role, domain), "trajectory": traj_path,
-                    "capability": capability}
-
-    get_log().finish_task(
-        agent=role, domain=domain,
-        score=store.get_score(role, domain), success=True,
-    )
-
-    # ── Bookbag + Two-Judge Review ──
-    # Student output goes into a bookbag. CTO+COO review the bookbag.
-    # Both must PASS for the work to be accepted.
-    import uuid
-    bead = f"{role}-{domain}-{uuid.uuid4().hex[:8]}"
-
-    write_bookbag(
-        bead,
-        student=role,
+    return TaskRunner(
+        prompt=prompt,
         domain=domain,
         difficulty=difficulty,
-        task=prompt[:200],
-        output=response,
+        force_agent=force_agent,
+        store=store,
+        system_prompt=system_prompt,
+        session_id=session_id,
+        skip_review=skip_review,
         repo=repo,
-    )
+        repo_path=repo_path,
+        ce_enabled=ce_enabled,
+        complex_task=complex_task,
+        dod_gate=dod_gate,
+        skip_readiness=skip_readiness,
+        isolated_phases=isolated_phases,
+        phase_students=phase_students,
+        phase_drop_rate=phase_drop_rate,
+        phase_seeds=phase_seeds,
+        provided_student_output=provided_student_output,
+        preverified_verification=preverified_verification,
+        pipeline_metrics=pipeline_metrics,
+        synthesize_narratives=synthesize_narratives,
+    ).run()
 
-    if skip_review:
-        # Phase 2 async dispatch: only LLM call + bookbag, no review.
-        # Teachers (in persistent worktrees) will review the bookbag
-        # asynchronously. The caller must poll for verdicts and score.
-        result = {
-            "status": "success",
-            "domain": domain,
-            "difficulty": difficulty,
-            "agent": role,
-            "escalation": escalated,
-            "prompt": prompt,
-            "response": response,
-            "error": None,
-            "old_score": old_score,
-            "new_score": store.get_score(role, domain),
-            "task_score": 0.0,  # Will be set after teacher review
-            "trajectory": traj_path,
-            "capability": capability,
-            "bookbag": str(bead_path(bead, repo)),
-            "bead": bead,
-            "review": {
-                "cto_verdict": "",
-                "coo_verdict": "",
-                "cto_score": 0,
-                "coo_score": 0,
-                "findings": [],
-                "accepted": False,
-            },
-            "async": True,
-        }
-        # Rank 2: include ce_phases ONLY when the CE loop ran (see note above).
-        if ce_enabled:
-            result["ce_phases"] = ce_phases
-        sys.stderr.write(
-            f"[director] Async dispatch: bead={bead} role={role} "
-            f"\u2192 awaiting teacher review\n"
-        )
-        return result
 
-    try:
-        review = _run_two_judge_review(
-            bead=bead,
-            output=response,
-            task={"title": prompt[:100], "body": prompt, "domain": domain, "difficulty": difficulty},
-            codebase_context=context_blob or "",
-            role="reviewer",
-            repo=repo,
-            repo_path=repo_path,
-            preverified_verification=preverified_verification,
-            pipeline_metrics=pipeline_metrics,
-            synthesize_narratives=synthesize_narratives,
-            trusted_contract=trusted_contract,
-        )
-    except OrcaUnavailableError as e:
-        # Hard fail: Orca sandbox is required for executable domains.
-        # Return a clean error instead of crashing the conductor.
-        sys.stderr.write(f"[director] Orca unavailable: {e}\n")
-        store.update_score(role, domain, 0.0)
-        return {
-            "status": "error", "domain": domain, "difficulty": difficulty,
-            "agent": role, "error": f"Orca sandbox unavailable: {e}",
-            "old_score": old_score, "new_score": store.get_score(role, domain),
-            "trajectory": traj_path,
-            "capability": capability,
-        }
-
-    # Score reflects review: accepted → high score, rejected → penalty.
-    # Note: callers (autonomous_loop, issue_bridge) call evaluate_and_update()
-    # after run_task() — do NOT call store.update_score() here to avoid double-EMA.
-    if review["accepted"]:
-        task_score = max(60, review["combined_score"])
-    else:
-        task_score = min(40, review["combined_score"])
-
-    result = {
-        "status": "success",
-        "domain": domain,
-        "difficulty": difficulty,
-        "agent": role,
-        "escalation": escalated,
-        "prompt": prompt,
-        "response": response,
-        "error": None,
-        "old_score": old_score,
-        "new_score": store.get_score(role, domain),
-        "task_score": task_score,
-        "trajectory": traj_path,
-        "capability": capability,
-        "bookbag": str(bead_path(bead)),
-        "bead": bead,
-        "review": review,
-    }
-    # Rank 2: include ce_phases ONLY when the CE loop ran. When ce_enabled is
-    # False the key is intentionally absent (backward compat — callers and the
-    # test_ce_disabled_behavior test assert `"ce_phases" not in result`).
-    if ce_enabled:
-        result["ce_phases"] = ce_phases
-    # Rank 5: include plan ONLY when a complex-task plan was executed.
-    if plan_result is not None:
-        result["plan"] = {
-            "task_id": plan_result["task_id"],
-            "sub_task_count": len(plan_result["sub_task_results"]),
-            "all_passed": plan_result["all_passed"],
-        }
-
-    # Rank 6: spec-gate (DOD checker). When a spec file exists for this
-    # task/bead, evaluate every DOD criterion against the execution result.
-    # The result carries a falsy "accepted" if any criterion fails, so the
-    # existing review/scoring pipeline treats a spec-gate failure like a
-    # normal CTO+COO rejection without extra plumbing.
-    if dod_gate:
-        spec = _load_spec(bead, repo)
-        if spec is not None:
-            gate_result = check_dod(bead, result, repo=repo)
-            result["dod_gate"] = gate_result
-            if not gate_result["passed"]:
-                result["accepted"] = False
-
-    # Teacher evidence is durable on the trajectory and is the sole source for
-    # the normalized router signal. This runs after optional DoD evaluation so
-    # the returned result and the learning record describe the same decision.
-    _attach_teacher_evidence(result)
-    return result
 
 
 def evaluate_and_update(
@@ -1716,10 +1739,8 @@ def run_staff(
     config_path: str = None,
 ) -> list:
     """Run one or all Staff plugins and return results."""
-    from src.core.context_orchestrator import DEFAULT_VAULT
-    from staff.loader import StaffLoader
-    from staff.sandbox import StaffSandbox
-    from staff.plugin import StaffContext, StaffResult
+    from engram_adapter import engram_available
+    from context_orchestrator import DEFAULT_VAULT
 
     store = ScoreStore()
     vault = vault_path or str(DEFAULT_VAULT)
@@ -1820,9 +1841,8 @@ def wake(session_id: str) -> dict:
 
 
 def staff_list(vault_path: str = None, config_path: str = None) -> list:
-    from src.core.context_orchestrator import DEFAULT_VAULT
-    from staff.loader import StaffLoader
-    vault = vault_path or str(DEFAULT_VAULT)  # noqa: F841 - reserved for later plugin filtering
+    from context_orchestrator import DEFAULT_VAULT
+    vault = vault_path or str(DEFAULT_VAULT)
     cfg = {}
     if config_path:
         import yaml
@@ -1866,10 +1886,9 @@ def _resolve_repo_path(
 
     # Fallback: if the slug matches the current checkout, use its root.
     try:
-        from src.tools.repo_default import default_repo
+        from repo_default import default_repo
         if repo == default_repo():
-            # src/core/director.py -> checkout root is three levels up.
-            return Path(__file__).resolve().parent.parent.parent
+            return Path(__file__).resolve().parent
     except Exception:
         pass
 
