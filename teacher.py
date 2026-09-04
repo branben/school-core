@@ -99,63 +99,37 @@ class TeacherError(Exception):
 # ── Teacher Worktree ─────────────────────────────────────────────────────────
 
 
-class TeacherWorktree:
-    """A persistent teacher worktree that sleeps/wakes for bookbag review.
-
-    Each teacher (CTO or COO) runs in its own Orca worktree with a dedicated
-    terminal. The teacher enters an infinite loop:
-        1. Sleep (save state via sleep_state.execute_sleep)
-        2. Wake (restore state via sleep_state.execute_wake)
-        3. Poll for un-reviewed bookbags matching its lens type
-        4. Review via AdversarialReviewer
-        5. Update bookbag with verdict + findings
-        6. Repeat
+class WorktreeLifecycle:
+    """Handles boot/close/worktree-path management for a teacher worktree.
 
     Args:
         role: "cto" or "coo"
         poll_interval: Seconds between bookbag poll checks.
         session_id: Unique session ID for sleep/wake state persistence.
+        repo: Repository identifier.
+        diagnose_on_fail: Whether to run diagnosis on FAIL verdict.
     """
 
     def __init__(
         self,
         role: str,
-        poll_interval: float = DEFAULT_POLL_INTERVAL,
-        session_id: str = DEFAULT_SESSION_ID,
-        repo: str = "__global__",
-        diagnose_on_fail: bool = False,
+        poll_interval: float,
+        session_id: str,
+        repo: str,
+        diagnose_on_fail: bool,
     ):
-        if role not in TEACHER_LENSES:
-            raise ValueError(f"Unknown teacher role '{role}'. Must be 'cto' or 'coo'.")
         self.role = role
-        self.lenses = TEACHER_LENSES[role]
         self.poll_interval = poll_interval
-        self.session_id = f"{session_id}-{role}"
+        self.session_id = session_id
         self.repo = repo
+        self.diagnose_on_fail = diagnose_on_fail
         self.worktree_name = f"teacher-{role}" if repo == "__global__" else f"teacher-{role}-{repo.replace('/', '__')}"
         self.worktree_path: Optional[str] = None
         self._mgr: Optional[OrcaExecutionManager] = None
-        self._review_terminal: Optional[str] = None  # Reusable Hermes terminal
-        self._store = ScoreStore()
-        self._reviewer = AdversarialReviewer(call_model_fn=self._call_review_model_via_hermes)
-        self._cycle_count = 0
-        self._episodic_history: list[dict] = []
         self._booted = False
-        # When True, a FAIL verdict triggers the systematic-debugging + TDD
-        # diagnose loop (Rank 1): the teacher writes a regression test that
-        # reproduces the gate failure and records a root-cause diagnosis in
-        # the bookbag instead of leaving a bare FAIL. Backward compatible:
-        # defaults to False (legacy pass/fail behavior unchanged).
-        self.diagnose_on_fail = diagnose_on_fail
-
-    # ── Public API ───────────────────────────────────────────────────────────
 
     def boot(self) -> str:
         """Create or rediscover the persistent teacher worktree.
-
-        Tries to create the worktree via OrcaExecutionManager. If the worktree
-        already exists (e.g., from a previous principal run), rediscovers it
-        by scanning Orca's worktree list for a matching name.
 
         Returns:
             The path to the teacher's worktree.
@@ -164,17 +138,6 @@ class TeacherWorktree:
             TeacherError: If worktree cannot be created or found.
         """
         self._mgr = OrcaExecutionManager()
-
-        # Single-source-of-truth rediscovery (Lifecycle invariant).
-        # Reuse the persistent worktree if it already exists; never mint a
-        # suffixed clone (teacher-cto-2 / -lens-2) — that suffix spray is the
-        # zombie-worktree pressure. create_worktree_persistent() handles the
-        # scan-and-reuse centrally in orca_executor.
-        #
-        # NOTE: boot() NO LONGER spawns a `teacher-*-review` terminal. The
-        # review loop is owned by an Orca automation (see conductor._boot_teachers
-        # → run_teacher_review_once.py), so Orca owns the schedule and there is
-        # no per-boot terminal spray.
         try:
             self.worktree_path = self._mgr.create_worktree_persistent(
                 self.worktree_name
@@ -188,11 +151,129 @@ class TeacherWorktree:
         except OrcaUnavailableError:
             pass
 
-        # Fall through to error if neither rediscovery nor creation worked.
         raise TeacherError(
             "[teacher:" + self.role + "] could not create or rediscover worktree '"
             + self.worktree_name + "'"
         )
+
+    def close(self) -> None:
+        """Close the teacher's worktree, terminal, and any stale admin entries.
+
+        Idempotent: safe to call multiple times, on a partial boot, or when
+        ``self._mgr`` is unset. Never raises — each step has its own
+        try/except so a failure in one does not skip the others.
+        """
+        if self._mgr:
+            if self.worktree_path or self.worktree_name:
+                # Layer 1: path-based removal
+                if self.worktree_path:
+                    try:
+                        self._mgr.close_worktree(self.worktree_path)
+                    except Exception:
+                        pass
+                # Layer 2: by canonical name
+                if self.worktree_name:
+                    try:
+                        self._mgr._run_orca(
+                            ["worktree", "remove", "--worktree",
+                             f"name:{self.worktree_name}", "--force"],
+                            timeout=15,
+                        )
+                    except Exception:
+                        pass
+                # Layer 3: git worktree prune
+                try:
+                    rp = getattr(self._mgr, "REPO_PATH", None)
+                    if isinstance(rp, (str, Path)):
+                        subprocess.run(
+                            ["git", "-C", str(rp), "worktree", "prune"],
+                            capture_output=True, timeout=10,
+                        )
+                except Exception:
+                    pass
+                self.worktree_path = None
+                self.worktree_name = None
+            self._booted = False
+
+    def prune_sessions(self, max_cycles: int = MAX_SESSION_CYCLES) -> int:
+        """Remove old teacher session files beyond the retention limit.
+
+        Args:
+            max_cycles: Maximum number of session files to keep.
+
+        Returns:
+            Number of session files pruned.
+        """
+        from sleep_state import SESSIONS_DIR, CONSOLIDATION_DIR
+
+        pruned = 0
+        session_prefix = f"{self.session_id}.json"
+        cons_prefix = f"{self.session_id}.yaml"
+
+        # Session files (sorted by mtime, oldest first)
+        session_files = sorted(
+            SESSIONS_DIR.glob(f"{self.session_id}*.json"),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if len(session_files) > max_cycles:
+            for f in session_files[:-max_cycles]:
+                try:
+                    f.unlink()
+                    pruned += 1
+                except OSError:
+                    pass
+
+        # Consolidation files
+        cons_files = sorted(
+            CONSOLIDATION_DIR.glob(f"{self.session_id}*.yaml"),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if len(cons_files) > max_cycles:
+            for f in cons_files[:-max_cycles]:
+                try:
+                    f.unlink()
+                    pruned += 1
+                except OSError:
+                    pass
+
+        if pruned > 0:
+            logger.info("[teacher:%s] Pruned %d old session files", self.role, pruned)
+        return pruned
+
+
+class ReviewLoop:
+    """Handles review_cycle/diagnose/regression_test/run_loop for a teacher.
+
+    Args:
+        role: "cto" or "coo"
+        poll_interval: Seconds between bookbag poll checks.
+        session_id: Unique session ID for sleep/wake state persistence.
+        repo: Repository identifier.
+        diagnose_on_fail: Whether to run diagnosis on FAIL verdict.
+        worktree_lifecycle: WorktreeLifecycle instance for worktree management.
+    """
+
+    def __init__(
+        self,
+        role: str,
+        poll_interval: float,
+        session_id: str,
+        repo: str,
+        diagnose_on_fail: bool,
+        worktree_lifecycle: WorktreeLifecycle,
+    ):
+        self.role = role
+        self.poll_interval = poll_interval
+        self.session_id = session_id
+        self.repo = repo
+        self.diagnose_on_fail = diagnose_on_fail
+        self.lifecycle = worktree_lifecycle
+        self._review_terminal: Optional[str] = None
+        self._store = ScoreStore()
+        self._reviewer = AdversarialReviewer(call_model_fn=self._call_review_model_via_hermes)
+        self._cycle_count = 0
+        self._episodic_history: list[dict] = []
+        self.lenses = TEACHER_LENSES[role]
 
     def sleep(self, duration_minutes: float = 0.0) -> dict:
         """Execute the sleep sequence for this teacher.
@@ -258,7 +339,7 @@ class TeacherWorktree:
         Returns:
             1 if a bookbag was reviewed, 0 if none found.
         """
-        if not self._booted:
+        if not self.lifecycle._booted:
             raise TeacherError("Teacher not booted — call boot() first")
 
         for bead in list_bookbags(self.repo):
@@ -294,12 +375,6 @@ class TeacherWorktree:
                 findings_dicts = [f.to_dict() for f in result.findings]
 
                 # Rank 1 — systematic-debugging + TDD loop on FAIL.
-                # When diagnose_on_fail is set, a FAIL verdict triggers a
-                # learning intervention: the teacher reads the failed gate,
-                # reproduces it with a regression test (written to disk),
-                # traces the root cause, and records a diagnosis dict instead
-                # of leaving a bare FAIL. Backward compatible: when
-                # diagnose_on_fail is False (default), this block is skipped.
                 diagnosis = None
                 if verdict == "FAIL" and self.diagnose_on_fail:
                     diagnosis = self._diagnose(bead, bag, task, result)
@@ -388,12 +463,6 @@ class TeacherWorktree:
         3. If a bookbag is found, review it and loop back to 2
         4. If no bookbags found, sleep and loop back to 1
         """
-        if not self._booted:
-            print(f"[teacher:{self.role}] Boot required — run boot() first", file=sys.stderr)
-            return
-
-        print(f"[teacher:{self.role}] Entering run loop (poll={self.poll_interval}s)")
-
         while True:
             self._cycle_count += 1
             session_start = time.monotonic()
@@ -420,143 +489,7 @@ class TeacherWorktree:
 
             # 4. Prune old sessions periodically
             if self._cycle_count % MAX_SESSION_CYCLES == 0:
-                self.prune_sessions(max_cycles=MAX_SESSION_CYCLES)
-
-    def prune_sessions(self, max_cycles: int = MAX_SESSION_CYCLES) -> int:
-        """Remove old teacher session files beyond the retention limit.
-
-        sleep_state.execute_sleep() saves session files as {session_id}.json
-        and consolidation as {session_id}.yaml. Over time these accumulate.
-        Keeps only the most recent `max_cycles` session files.
-
-        Args:
-            max_cycles: Maximum number of session files to keep.
-
-        Returns:
-            Number of session files pruned.
-        """
-        from sleep_state import SESSIONS_DIR, CONSOLIDATION_DIR
-
-        pruned = 0
-        session_prefix = f"{self.session_id}.json"
-        cons_prefix = f"{self.session_id}.yaml"
-
-        # Session files (sorted by mtime, oldest first)
-        session_files = sorted(
-            SESSIONS_DIR.glob(f"{self.session_id}*.json"),
-            key=lambda p: p.stat().st_mtime,
-        )
-        if len(session_files) > max_cycles:
-            for f in session_files[:-max_cycles]:
-                try:
-                    f.unlink()
-                    pruned += 1
-                except OSError:
-                    pass
-
-        # Consolidation files
-        cons_files = sorted(
-            CONSOLIDATION_DIR.glob(f"{self.session_id}*.yaml"),
-            key=lambda p: p.stat().st_mtime,
-        )
-        if len(cons_files) > max_cycles:
-            for f in cons_files[:-max_cycles]:
-                try:
-                    f.unlink()
-                    pruned += 1
-                except OSError:
-                    pass
-
-        if pruned > 0:
-            logger.info("[teacher:%s] Pruned %d old session files", self.role, pruned)
-        return pruned
-
-    def close(self) -> None:
-        """Close the teacher's worktree, terminal, and any stale admin entries.
-
-        Idempotent: safe to call multiple times, on a partial boot, or when
-        ``self._mgr`` is unset. Never raises — each step has its own
-        try/except so a failure in one does not skip the others.
-
-        Three layers of registry cleanup so a re-serve after ``close()`` lands
-        on the canonical ``teacher-<role>`` name (no ``-2`` / ``-3``
-        suffix-spray):
-
-        1. ``close_worktree(path)`` — primary path-based removal: covers the
-           on-disk directory and the orca-side registration.
-        2. ``orca worktree rm --worktree name:<canon> --force`` —
-           belt-and-suspenders for the case where the path-based remove
-           missed a stale registry entry (e.g. directory removed
-           out-of-band). Note: the orca CLI flag is ``--worktree <selector>``
-           (the legacy ``--name`` form is rejected); the selector accepts
-           ``name:<displayName>`` for canonical-name targeting.
-        3. ``git worktree prune`` — drops any lingering
-           ``<repo>/.git/worktrees/<name>`` admin entry, the source of the
-           ``teacher-cto-N`` suffix spray on re-serve (see ``Lifecycle``
-           invariant in docs/school-core-architecture.md).
-
-        The terminal close runs first; only then the worktree cleanup. State
-        is nilled unconditionally.
-        """
-        if self._mgr:
-            if self._review_terminal:
-                try:
-                    self._mgr.close_terminal(self._review_terminal)
-                except Exception:
-                    pass
-                self._review_terminal = None
-            # Layers 1+2+3: combined worktree cleanup. Each step is
-            # independently best-effort so the union actually happens even
-            # when one of them raises (e.g. orca rejects the by-name form
-            # because the entry was already gone).
-            if self.worktree_path or self.worktree_name:
-                # Layer 1: path-based removal (covers dir + orca registration).
-                if self.worktree_path:
-                    try:
-                        self._mgr.close_worktree(self.worktree_path)
-                    except Exception:
-                        pass
-                # Layer 2: belt-and-suspenders by canonical name. Catches
-                # the case where path-based remove left a stale registry.
-                if self.worktree_name:
-                    try:
-                        self._mgr._run_orca(
-                            ["worktree", "remove", "--worktree",
-                             f"name:{self.worktree_name}", "--force"],
-                            timeout=15,
-                        )
-                    except Exception:
-                        pass
-                # Layer 3: drop any leftover git admin entry. Tested with
-                # an isinstance guard so mocked ``REPO_PATH`` (a MagicMock)
-                # is naturally skipped in unit tests.
-                try:
-                    rp = getattr(self._mgr, "REPO_PATH", None)
-                    if isinstance(rp, (str, Path)):
-                        subprocess.run(
-                            ["git", "-C", str(rp), "worktree", "prune"],
-                            capture_output=True, timeout=10,
-                        )
-                except Exception:
-                    pass
-                # Nil both worktree_path AND worktree_name so that calling
-                # ``close()`` a second time is a true no-op for the
-                # cleanup block. ``worktree_name`` is otherwise a role
-                # canonical invariant; nil-ing it after close() is safe
-                # because the teacher is considered ``unbound`` post-close
-                # and any future close()/boot() will reconstruct it from
-                # ``role`` + ``repo``.
-                self.worktree_path = None
-                self.worktree_name = None
-            self._booted = False
-
-    def __enter__(self):
-        if not self._booted:
-            self.boot()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+                self.lifecycle.prune_sessions(max_cycles=MAX_SESSION_CYCLES)
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
@@ -569,8 +502,8 @@ class TeacherWorktree:
         override = os.environ.get("DIAGNOSE_DIR")
         if override:
             base = Path(override)
-        elif self.worktree_path:
-            base = Path(self.worktree_path)
+        elif self.lifecycle.worktree_path:
+            base = Path(self.lifecycle.worktree_path)
         else:
             base = Path.cwd()
         d = base / "diagnoses" / self.role
@@ -607,7 +540,6 @@ class TeacherWorktree:
         phases.append("understand")
 
         # ── understand (cont.): trace data flow → root cause ───────────────
-        # (done before writing the test so the cause can be embedded in it)
         top = result.findings[0] if result.findings else None
         if top is not None:
             root_cause = (
@@ -620,7 +552,6 @@ class TeacherWorktree:
         else:
             root_cause = "Gate FAILED with no structured findings (empty output or parse failure)."
             fix_applied = "Require the student to produce non-empty, parseable output."
-        # root-cause tracing is folded into the "understand" phase above
 
         # ── reproduce: pin the failure as a self-contained regression test ─
         test_path = self._diagnose_dir() / f"{bead}.py"
@@ -629,11 +560,9 @@ class TeacherWorktree:
         phases.append("reproduce")
 
         # ── fix: record the remediation the student must apply ────────────
-        # The teacher does not edit the student's output here; it records the
-        # fix the student must apply (Matt Pocock: understand → reproduce → fix).
         phases.append("fix")
 
-        # ── verify: run the regression test (offline) ──────────────────────
+        # ── verify: run the regression test (offline) ─────────────────────
         verified = False
         try:
             proc = subprocess.run(
@@ -743,16 +672,16 @@ class TeacherWorktree:
             f"## Review Task\n{prompt}"
         )
 
-        # ── Run Hermes in the teacher's worktree ────────────────────────
+        # ── Run Hermes in the teacher's worktree ───────────────────────
         review_bead = f"review-{self.role}-{uuid.uuid4().hex[:8]}"
         timeout_ms = kwargs.get("timeout", DEFAULT_REVIEW_TIMEOUT) * 1000
 
-        if not self._mgr or not self.worktree_path:
+        if not self.lifecycle._mgr or not self.lifecycle.worktree_path:
             raise TeacherError("Teacher not booted — cannot run Hermes review")
 
         try:
-            response = self._mgr.run_hermes(
-                worktree_path=self.worktree_path,
+            response = self.lifecycle._mgr.run_hermes(
+                worktree_path=self.lifecycle.worktree_path,
                 bead=review_bead,
                 task=full_prompt,
                 timeout_ms=timeout_ms,
@@ -769,9 +698,6 @@ class TeacherWorktree:
                 "[teacher:%s] Hermes review failed: %s", self.role, e
             )
         # ── Fallback: direct OmniRoute call (faster, no terminal overhead) ──
-        # The Hermes terminal path can time out on slow free-tier models.
-        # Fall back to direct call_model which routes through OmniRoute's
-        # combo-selection (reviewer role → auto/best-free or better).
         logger.info(
             "[teacher:%s] Falling back to direct OmniRoute for review",
             self.role,
@@ -783,6 +709,155 @@ class TeacherWorktree:
             system_prompt=system_prompt,
             timeout=180,
         )
+
+
+class TeacherWorktree:
+    """A persistent teacher worktree that delegates to WorktreeLifecycle and ReviewLoop.
+
+    This is a thin facade that delegates all work to the underlying
+    WorktreeLifecycle and ReviewLoop instances.
+    """
+
+    def __init__(
+        self,
+        role: str,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        session_id: str = DEFAULT_SESSION_ID,
+        repo: str = "__global__",
+        diagnose_on_fail: bool = False,
+    ):
+        if role not in TEACHER_LENSES:
+            raise ValueError(f"Unknown teacher role '{role}'. Must be 'cto' or 'coo'.")
+        self.role = role
+        self.lenses = TEACHER_LENSES[role]
+        self.poll_interval = poll_interval
+        self.session_id = session_id
+        self.repo = repo
+        self.diagnose_on_fail = diagnose_on_fail
+
+        # Create lifecycle and loop components
+        self.lifecycle = WorktreeLifecycle(
+            role=role,
+            poll_interval=poll_interval,
+            session_id=session_id,
+            repo=repo,
+            diagnose_on_fail=diagnose_on_fail,
+        )
+        self.loop = ReviewLoop(
+            role=role,
+            poll_interval=poll_interval,
+            session_id=session_id,
+            repo=repo,
+            diagnose_on_fail=diagnose_on_fail,
+            worktree_lifecycle=self.lifecycle,
+        )
+
+    # ── Property proxies ─────────────────────────────────────────────────────
+
+    @property
+    def worktree_path(self) -> Optional[str]:
+        return self.lifecycle.worktree_path
+
+    @worktree_path.setter
+    def worktree_path(self, value: Optional[str]):
+        self.lifecycle.worktree_path = value
+
+    @property
+    def _mgr(self) -> Optional[OrcaExecutionManager]:
+        return self.lifecycle._mgr
+
+    @_mgr.setter
+    def _mgr(self, value: Optional[OrcaExecutionManager]):
+        self.lifecycle._mgr = value
+
+    @property
+    def _booted(self) -> bool:
+        return self.lifecycle._booted
+
+    @_booted.setter
+    def _booted(self, value: bool):
+        self.lifecycle._booted = value
+
+    @property
+    def _review_terminal(self) -> Optional[str]:
+        return self.loop._review_terminal
+
+    @_review_terminal.setter
+    def _review_terminal(self, value: Optional[str]):
+        self.loop._review_terminal = value
+
+    @property
+    def _store(self) -> ScoreStore:
+        return self.loop._store
+
+    @property
+    def _reviewer(self) -> AdversarialReviewer:
+        return self.loop._reviewer
+
+    @property
+    def _cycle_count(self) -> int:
+        return self.loop._cycle_count
+
+    @_cycle_count.setter
+    def _cycle_count(self, value: int):
+        self.loop._cycle_count = value
+
+    @property
+    def _episodic_history(self) -> list[dict]:
+        return self.loop._episodic_history
+
+    @_episodic_history.setter
+    def _episodic_history(self, value: list[dict]):
+        self.loop._episodic_history = value
+
+    # ── Public API ───────────────────────────────────────────────────────────
+
+    def boot(self) -> str:
+        return self.lifecycle.boot()
+
+    def close(self) -> None:
+        self.lifecycle.close()
+
+    def sleep(self, duration_minutes: float = 0.0) -> dict:
+        return self.loop.sleep(duration_minutes)
+
+    def wake(self) -> dict:
+        return self.loop.wake()
+
+    def review_cycle(self) -> int:
+        return self.loop.review_cycle()
+
+    def run_loop(self) -> None:
+        if not self.lifecycle._booted:
+            print(f"[teacher:{self.role}] Boot required — run boot() first", file=sys.stderr)
+            return
+        print(f"[teacher:{self.role}] Entering run loop (poll={self.poll_interval}s)")
+        self.loop.run_loop()
+
+    def prune_sessions(self, max_cycles: int = MAX_SESSION_CYCLES) -> int:
+        return self.lifecycle.prune_sessions(max_cycles)
+
+    def __enter__(self):
+        if not self.lifecycle._booted:
+            self.boot()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    # ── Internal (delegate to loop) ──────────────────────────────────────────
+
+    def _diagnose_dir(self) -> Path:
+        return self.loop._diagnose_dir()
+
+    def _diagnose(self, bead: str, bag: dict, task: dict, result):
+        return self.loop._diagnose(bead, bag, task, result)
+
+    def _build_regression_test(self, bead: str, findings_dicts: list[dict], output: str, root_cause: str) -> str:
+        return self.loop._build_regression_test(bead, findings_dicts, output, root_cause)
+
+    def _call_review_model_via_hermes(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
+        return self.loop._call_review_model_via_hermes(prompt, system_prompt, **kwargs)
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────
