@@ -106,13 +106,14 @@ class TestCreatePR:
             "https://github.com/user/test/pull/42",         # gh pr create
         ]
         mock_api.side_effect = [
-            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # create ref
-            {"object": {"sha": "branchsha456"}},                  # read branch ref
+            None,                                                 # branch doesn't exist yet
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # create ref (POST)
+            {"object": {"sha": "branchsha456"}},                  # read branch ref after creation
             {"sha": "treesha789"},                                # read tree
             {"sha": "blobsha111"},                                # create blob
             {"sha": "newtree222"},                                # create tree
             {"sha": "newcommit333"},                              # create commit
-            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # update ref
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # update ref (PATCH)
         ]
         issue = {"issue_number": 10, "title": "Fix the thing", "domain": "debugging", "difficulty": "medium"}
         task_result = {"response": "def fix(): return 42\n", "agent": "foundry-coder-7b"}
@@ -128,6 +129,7 @@ class TestCreatePR:
             "https://github.com/user/test/pull/99",         # gh pr create
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-15-add-feature"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "treesha789"},
@@ -184,6 +186,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/8",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-8-noop"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
@@ -215,6 +218,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/9",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-9-real"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
@@ -240,6 +244,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/10",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-10-unk"},
             {"object": {"sha": "branchsha456"}},
             None,
@@ -283,6 +288,7 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/11",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-11-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},                    # read branch tree
@@ -326,6 +332,7 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/12",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-12-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},
@@ -362,6 +369,7 @@ class TestCreatePRCrewPatch:
             "basesha123\n",
         ]
         mock_api.side_effect = [
+            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-13-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},
