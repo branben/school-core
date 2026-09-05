@@ -233,6 +233,50 @@ def _save_retries(retries: dict[int, int]) -> None:
 _LABELS_ENSURED: set[str] = set()
 
 
+def _record_outcome(results, run_batch, issue, task_result, crew_result,
+                   crew_used, crew_fallback_reason, attempts, err,
+                   retry_limit, retry_status="retry"):
+    """Record a retry/error/success outcome to results + run_batch.
+
+    Deduplicates the three ~80-line near-identical blocks that previously
+    handled retry, error, and success outcomes separately.
+    """
+    num = issue["issue_number"]
+    outcome = _outcome_fields(
+        status=retry_status,
+        task_result=task_result,
+        error=err,
+        fallback_reason=crew_fallback_reason,
+        retry_attempt=attempts,
+    )
+    base = {
+        "issue_number": num,
+        "title": issue["title"],
+        "domain": issue["domain"],
+        "difficulty": issue["difficulty"],
+        "status": retry_status,
+        "crew_id": crew_result.crew_id if crew_result else None,
+        "crew_used": crew_used,
+        "crew_fallback_reason": crew_fallback_reason,
+        "teardown_ok": crew_result.teardown_ok if crew_result else None,
+    }
+    if retry_status == "retry":
+        base["retry_attempt"] = attempts
+        base["error"] = err
+    results.append({**base, **outcome})
+    try:
+        run_batch.append({
+            "issue": num,
+            "status": retry_status,
+            "agent": task_result.get("agent") if task_result else None,
+            "score": None,
+            "trajectory": task_result.get("trajectory") if task_result else None,
+            **outcome,
+        })
+    except Exception as e_rec:
+        sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+
+
 def _order_crew_first(issues: list, is_crew_eligible) -> list:
     """Stable-partition ``issues`` so crew-eligible ones are offered first.
 
