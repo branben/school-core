@@ -731,9 +731,10 @@ class TeacherWorktree:
         self.role = role
         self.lenses = TEACHER_LENSES[role]
         self.poll_interval = poll_interval
-        self.session_id = session_id
+        self.session_id = f"{session_id}-{role}"
         self.repo = repo
         self.diagnose_on_fail = diagnose_on_fail
+        self.worktree_name = f"teacher-{role}"
 
         # Create lifecycle and loop components
         self.lifecycle = WorktreeLifecycle(
