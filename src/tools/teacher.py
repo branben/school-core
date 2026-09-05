@@ -451,7 +451,7 @@ class ReviewLoop:
 
         return 0  # No bookbags to review
 
-    def run_loop(self) -> None:
+    def run_loop(self, _max_cycles: int = 0, _sleep_fn=None) -> None:
         """Enter the infinite sleep/wake/review cycle.
 
         Designed to be started inside the teacher's worktree terminal:
@@ -462,8 +462,15 @@ class ReviewLoop:
         2. Poll for bookbags to review
         3. If a bookbag is found, review it and loop back to 2
         4. If no bookbags found, sleep and loop back to 1
+
+        Args:
+            _max_cycles: For testing — stop after N cycles. 0 = infinite.
+            _sleep_fn: For testing — override time.sleep. None = time.sleep.
         """
+        _sleep = _sleep_fn or time.sleep
         while True:
+            if _max_cycles and self._cycle_count >= _max_cycles:
+                return
             self._cycle_count += 1
             session_start = time.monotonic()
 
@@ -477,7 +484,7 @@ class ReviewLoop:
                 if count == 0:
                     break
                 reviewed += count
-                time.sleep(self.poll_interval)
+                _sleep(self.poll_interval)
 
             # 3. Sleep (only if we reviewed something — saves state)
             if reviewed > 0:
@@ -485,7 +492,7 @@ class ReviewLoop:
                 self.sleep(duration_minutes=session_duration)
             else:
                 # Brief pause before checking again
-                time.sleep(self.poll_interval)
+                _sleep(self.poll_interval)
 
             # 4. Prune old sessions periodically
             if self._cycle_count % MAX_SESSION_CYCLES == 0:
@@ -747,7 +754,7 @@ class TeacherWorktree:
         self.loop = ReviewLoop(
             role=role,
             poll_interval=poll_interval,
-            session_id=session_id,
+            session_id=self.session_id,
             repo=repo,
             diagnose_on_fail=diagnose_on_fail,
             worktree_lifecycle=self.lifecycle,
@@ -828,14 +835,21 @@ class TeacherWorktree:
     def review_cycle(self) -> int:
         return self.loop.review_cycle()
 
-    def run_loop(self) -> None:
+    def run_loop(self, _max_cycles: int = 0, _sleep_fn=None) -> None:
         if not self.lifecycle._booted:
             print(f"[teacher:{self.role}] Boot required — run boot() first", file=sys.stderr)
             return
         print(f"[teacher:{self.role}] Entering run loop (poll={self.poll_interval}s)")
-        self.loop.run_loop()
+        # Temporarily swap review_cycle so monkeypatching on the facade works
+        original = self.loop.review_cycle
+        self.loop.review_cycle = self.review_cycle
+        try:
+            self.loop.run_loop(_max_cycles=_max_cycles, _sleep_fn=_sleep_fn)
+        finally:
+            self.loop.review_cycle = original
 
     def prune_sessions(self, max_cycles: int = MAX_SESSION_CYCLES) -> int:
+        self.lifecycle.session_id = self.session_id
         return self.lifecycle.prune_sessions(max_cycles)
 
     def __enter__(self):
@@ -854,8 +868,9 @@ class TeacherWorktree:
     def _diagnose(self, bead: str, bag: dict, task: dict, result):
         return self.loop._diagnose(bead, bag, task, result)
 
-    def _build_regression_test(self, bead: str, findings_dicts: list[dict], output: str, root_cause: str) -> str:
-        return self.loop._build_regression_test(bead, findings_dicts, output, root_cause)
+    @staticmethod
+    def _build_regression_test(bead: str, findings_dicts: list[dict], output: str, root_cause: str) -> str:
+        return ReviewLoop._build_regression_test(bead, findings_dicts, output, root_cause)
 
     def _call_review_model_via_hermes(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         return self.loop._call_review_model_via_hermes(prompt, system_prompt, **kwargs)
