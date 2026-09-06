@@ -1,5 +1,33 @@
 [
   {
+    "issue_number": 415,
+    "title": "docs: add JSDoc to MIN_ROUNDS/MAX_ROUNDS constants",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 414,
+    "title": "[TEST] Linear CI Integration Live",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 413,
+    "title": "[TEST] CI Integration Verification",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 399,
+    "title": "grilling: production-ready-definition",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 366,
     "title": "[security][medium] react-router-dom 6.30.4 open-redirect XSS \u2014 v7 migration",
     "domain": "_default",
@@ -177,13 +205,6 @@
   {
     "issue_number": 110,
     "title": "Triage: npm run dev:all fails \u2014 Vite hard-errors on UploadDrawer.tsx syntax",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 102,
-    "title": "Replace silent error handling with user-visible feedback",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
