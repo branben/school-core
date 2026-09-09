@@ -42,36 +42,8 @@
     "state": "open"
   },
   {
-    "issue_number": 364,
-    "title": "[security][high] postcss 8.5.16 source-map path traversal (CVSS 7.5) \u2014 RESOLVED via pnpm.overrides",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
     "issue_number": 360,
     "title": "[security][low] sentry-sdk 1.39.1 env-leak (CWE-200, CVSS 2.5) \u2014 PR #347 open",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 359,
-    "title": "[security][low] djangorestframework-simplejwt 5.3.1 privilege mgmt (CWE-269) \u2014 PR #348 open",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 358,
-    "title": "[security][low] djangorestframework 3.14.0 XSS (CWE-79, CVSS 6.1) \u2014 not reachable, BrowsableAPI disabled",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
-    "issue_number": 357,
-    "title": "[security][medium] brace-expansion 1.1.15 ReDoS (CWE-400/407, CVSS 5.3)",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
@@ -175,13 +147,6 @@
     "state": "open"
   },
   {
-    "issue_number": 135,
-    "title": "E3: Remove player secret from URL query params (#105)",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
     "issue_number": 134,
     "title": "E2: Wire Django+Redis backend into E2E Full Suite CI",
     "domain": "_default",
@@ -205,6 +170,13 @@
   {
     "issue_number": 110,
     "title": "Triage: npm run dev:all fails \u2014 Vite hard-errors on UploadDrawer.tsx syntax",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
+    "issue_number": 102,
+    "title": "Replace silent error handling with user-visible feedback",
     "domain": "_default",
     "difficulty": "medium",
     "state": "open"
