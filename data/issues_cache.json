@@ -49,13 +49,6 @@
     "state": "open"
   },
   {
-    "issue_number": 356,
-    "title": "[security][medium] @hono/node-server 1.19.14 path traversal (CWE-22, CVSS 5.9)",
-    "domain": "_default",
-    "difficulty": "medium",
-    "state": "open"
-  },
-  {
     "issue_number": 342,
     "title": "churn: extract MIN_ROUNDS=1 / MAX_ROUNDS=10 bounds",
     "domain": "_default",
