@@ -49,24 +49,10 @@ _log = ActivityLog()
 from scoring import ScoreStore
 from capabilities import capability_for_task_role, resolve_capability
 
+# Import shared utilities from school_core package
+from school_core.soul import load_soul
+
 logger = logging.getLogger(__name__)
-
-
-def load_soul(profile_name: str) -> str:
-    """Resolve a persona's SOUL.md.
-
-    Resolution order (single source of truth = repo config/profiles):
-        1. ``<repo>/config/profiles/<name>/SOUL.md``  (committed, authoritative)
-        2. ``~/.hermes/profiles/<name>/SOUL.md``       (machine-local override)
-        3. empty string (caller supplies a generic fallback)
-    """
-    repo_soul = Path(__file__).parent / "config" / "profiles" / profile_name / "SOUL.md"
-    if repo_soul.exists():
-        return repo_soul.read_text().strip()
-    home_soul = Path.home() / ".hermes" / "profiles" / profile_name / "SOUL.md"
-    if home_soul.exists():
-        return home_soul.read_text().strip()
-    return ""
 
 
 # ── Exceptions ───────────────────────────────────────────────────────────────

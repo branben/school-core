@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from school_core.paths import ROLES_DIR
+
 
 @dataclass
 class Role:
@@ -21,7 +23,6 @@ class Role:
     updated: str = ""
 
 
-ROLE_DIR = Path(__file__).parent / "config" / "roles"
 ROLE_NAMES = ["student", "teacher", "faculty"]
 
 
@@ -37,7 +38,7 @@ def _parse_yaml_frontmatter(text: str) -> tuple[dict, dict]:
 
 def _load_role_file(role_name: str) -> dict:
     """Load a single role YAML file and return merged frontmatter + role body."""
-    path = ROLE_DIR / f"{role_name}.yaml"
+    path = ROLES_DIR / f"{role_name}.yaml"
     if not path.exists():
         raise FileNotFoundError(f"Role file not found: {path}")
     text = path.read_text(encoding="utf-8")
@@ -72,7 +73,7 @@ def _build_role(data: dict) -> Role:
 
 class RoleLoader:
     def __init__(self, role_dir: str | Path = None):
-        self._role_dir = Path(role_dir) if role_dir else ROLE_DIR
+        self._role_dir = Path(role_dir) if role_dir else ROLES_DIR
         self._cache: Dict[str, Role] = {}
         self._definitions: Dict[str, dict] = {}
 

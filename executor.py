@@ -14,6 +14,60 @@ A2A_BASE = "http://localhost:20128/a2a"
 # before and had to be rotated). Fail loudly at use time when unset.
 API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
 
+# Model provider routing: "nous" (direct Nous API) or "omniroute" (proxy)
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "omniroute").strip()
+NOUS_API_KEY = os.environ.get("NOUS_API_KEY", "").strip()
+NOUS_MODEL = os.environ.get("NOUS_MODEL", "meituan/longcat-2.0:free").strip()
+NOUS_BASE = "https://inference-api.nousresearch.com/v1"
+
+
+class NousClient:
+    """Direct Nous API client — replaces OmniRoute for MODEL_PROVIDER=nous."""
+
+    def __init__(self, api_key: str = None, model: str = None):
+        self.api_key = api_key or NOUS_API_KEY
+        self.model = model or NOUS_MODEL
+        self.base = NOUS_BASE
+
+    def complete(self, prompt: str, system_prompt: str = None, timeout: int = 120) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        body = json.dumps({
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 4096,
+            "stream": False,
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{self.base}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "User-Agent": "school-core/1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode()[:500] if e.fp else str(e)
+            raise ExecutorError(f"Nous HTTP {e.code}: {detail}")
+        except urllib.error.URLError as e:
+            raise ExecutorError(f"Nous connection failed: {e.reason}")
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise ExecutorError(f"No choices in Nous response: {json.dumps(data)[:300]}")
+        return choices[0]["message"]["content"]
+
+
 COMBO_MAP = {
     # Specialized roles — each role has a specific tool domain and model assignment.
     # Roles replace the old fungible "student" agents. Domain determines role;
@@ -123,6 +177,12 @@ DOMAIN_ROLE_MAP = {
     "git-operations": "executor",
     "terminal": "executor",
     "web-automation": "browser",
+    "pipeline-diagnosis": "ci",
+    "ci-cd": "ci",
+    "visual-design": "designer",
+    "ui-craft": "designer",
+    "infrastructure-diagnosis": "whymage",
+    "substrate-debugging": "whymage",
     "_default": "coder",
 }
 
@@ -362,6 +422,16 @@ def call_model(
         else:
             system_prompt = adapter_prefix
         agent_name = "coder"  # Use base model for actual inference
+
+    # Route: Nous (direct) or OmniRoute (proxy)
+    if MODEL_PROVIDER == "nous":
+        if not NOUS_API_KEY:
+            raise ExecutorError(
+                "NOUS_API_KEY is not set. Set it in your environment "
+                "(see .env.example) before using MODEL_PROVIDER=nous."
+            )
+        client = NousClient(api_key=NOUS_API_KEY, model=NOUS_MODEL)
+        return client.complete(prompt, system_prompt=system_prompt, timeout=timeout or 120)
 
     # ACRouter: pick the combo through the outcome-feedback router (falls
     # back to the static COMBO_MAP on cold start). The chosen combo is

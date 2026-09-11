@@ -234,6 +234,7 @@ def build_pr_body(
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
     patch_path: Optional[str] = None,
+    human_review: Optional[str] = None,
 ) -> str:
     """Render the PR body carrying the full acceptance evidence chain (B3).
 
@@ -352,6 +353,7 @@ def build_pr_body(
         f"- **Verify gate:** {verify_md}\n"
         f"- **Pre-merge check (Entire):** {entire_md}\n"
         f"- **Path:** {'crew' if crew_used else 'direct'}\n"
+        + (f"\n### Human Review\n\n{human_review}\n" if human_review else "")
     )
     # Only on the crew path: a direct-path PR must not advertise an artifact.
     if crew_used and artifact_path:
@@ -585,6 +587,19 @@ def create_pr_for_issue(
         sys.stderr.write("[pr_creator] ref update failed — aborting\n")
         return None
 
+    # 2b. Human code-review gate via Plannotator.
+    #     Opens the local diff in the browser. The human can approve, annotate,
+    #     or dismiss. Annotations are captured as review_evidence for the PR body.
+    from scripts.plannotator_gate import gate_diff
+    diff_result = gate_diff(repo_path=".", task_id=f"pr-{num}-{branch}")
+    human_review = None
+    if diff_result.get("decision") == "annotated":
+        human_review = diff_result.get("feedback", "")
+    elif diff_result.get("decision") == "dismissed":
+        sys.stderr.write(f"[pr_creator] PR #{num} dismissed by human reviewer\n")
+        return None
+    # "approved", "bypassed", or "error" → proceed
+
     # 3. Build PR body — carry the full acceptance evidence chain so a human
     #    reviewing the PR can see WHY the school accepted this, not just that
     #    it did. Without this, the PR is an evidence-free artifact.
@@ -599,6 +614,7 @@ def create_pr_for_issue(
         artifact_path=artifact_path,
         crew_used=crew_used,
         patch_path=patch_path,
+        human_review=human_review,
     )
 
     # 4. Open PR.

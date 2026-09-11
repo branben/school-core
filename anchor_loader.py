@@ -20,6 +20,13 @@ from typing import Optional
 import yaml
 
 
+# Lazy import to avoid circular import: school_core.paths imports
+# school_core.director.selection which imports anchor_loader
+def _get_anchors_path() -> Path:
+    from school_core.paths import ANCHORS_PATH
+    return ANCHORS_PATH
+
+
 @dataclass
 class Anchor:
     """A semantic anchor — a term that activates known patterns in LLMs."""
@@ -42,7 +49,7 @@ class AnchorRegistry:
 
     def __init__(self, config_path: str | Path | None = None):
         if config_path is None:
-            config_path = Path(__file__).parent / "config" / "anchors.yaml"
+            config_path = _get_anchors_path()
         self._config_path = Path(config_path)
         self._anchors: list[Anchor] = []
         self._load()

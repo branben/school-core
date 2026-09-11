@@ -99,21 +99,22 @@ class TestCreatePR:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_successful_pr_creation(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_successful_pr_creation(self, mock_gate, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),          # repo view
             "basesha123\n",                                 # base sha
             "https://github.com/user/test/pull/42",         # gh pr create
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # create ref (POST)
-            {"object": {"sha": "branchsha456"}},                  # read branch ref after creation
-            {"sha": "treesha789"},                                # read tree
-            {"sha": "blobsha111"},                                # create blob
-            {"sha": "newtree222"},                                # create tree
-            {"sha": "newcommit333"},                              # create commit
-            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # update ref (PATCH)
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
+            {"sha": "treesha789"},                                # GET read tree
+            {"sha": "blobsha111"},                                # POST create blob
+            {"sha": "newtree222"},                                # POST create tree
+            {"sha": "newcommit333"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # PATCH update ref
         ]
         issue = {"issue_number": 10, "title": "Fix the thing", "domain": "debugging", "difficulty": "medium"}
         task_result = {"response": "def fix(): return 42\n", "agent": "foundry-coder-7b"}
@@ -122,21 +123,22 @@ class TestCreatePR:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_pr_creation_uses_correct_args(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_pr_creation_uses_correct_args(self, mock_gate, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),          # repo view
             "basesha123\n",                                 # base sha
             "https://github.com/user/test/pull/99",         # gh pr create
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-15-add-feature"},
-            {"object": {"sha": "branchsha456"}},
-            {"sha": "treesha789"},
-            {"sha": "blobsha111"},
-            {"sha": "newtree222"},
-            {"sha": "newcommit333"},
-            {"ref": "refs/heads/school/issue-15-add-feature"},
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-15-add-feature"},    # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
+            {"sha": "treesha789"},                                # GET read tree
+            {"sha": "blobsha111"},                                # POST create blob
+            {"sha": "newtree222"},                                # POST create tree
+            {"sha": "newcommit333"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-15-add-feature"},    # PATCH update ref
         ]
         issue = {"issue_number": 15, "title": "Add feature", "domain": "code-implementation", "difficulty": "easy"}
         task_result = {"response": "# new feature\nprint('done')", "agent": "owl-alpha"}
@@ -186,7 +188,6 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/8",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-8-noop"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
@@ -211,24 +212,25 @@ class TestCreatePRGuards:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_real_change_still_commits(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_real_change_still_commits(self, mock_gate, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),
             "basesha123\n",
             "https://github.com/user/test/pull/9",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-9-real"},
-            {"object": {"sha": "branchsha456"}},
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-9-real"},            # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
             {"sha": "basetree999", "tree": [
                 {"path": "school-output/debugging/9/output.md",
                  "mode": "100644", "type": "blob", "sha": "oldblob111"},
-            ]},
-            {"sha": "newblob444"},
-            {"sha": "newtree222"},
-            {"sha": "newcommit333"},
-            {"ref": "refs/heads/school/issue-9-real"},
+            ]},                                                   # GET read tree
+            {"sha": "newblob444"},                                # POST create blob
+            {"sha": "newtree222"},                                # POST create tree
+            {"sha": "newcommit333"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-9-real"},            # PATCH update ref
         ]
         issue = {"issue_number": 9, "title": "Real", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('changed')\n", "agent": "owl-alpha"}
@@ -237,21 +239,22 @@ class TestCreatePRGuards:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_unreadable_base_tree_fails_open(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_unreadable_base_tree_fails_open(self, mock_gate, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),
             "basesha123\n",
             "https://github.com/user/test/pull/10",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-10-unk"},
-            {"object": {"sha": "branchsha456"}},
-            None,
-            {"sha": "newblob444"},
-            {"sha": "newtree222"},
-            {"sha": "newcommit333"},
-            {"ref": "refs/heads/school/issue-10-unk"},
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-10-unk"},            # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
+            None,                                                 # GET read tree (unreadable)
+            {"sha": "newblob444"},                                # POST create blob
+            {"sha": "newtree222"},                                # POST create tree
+            {"sha": "newcommit333"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-10-unk"},            # PATCH update ref
         ]
         issue = {"issue_number": 10, "title": "Unknown", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('ok')\n", "agent": "owl-alpha"}
@@ -275,7 +278,8 @@ class TestCreatePRCrewPatch:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_crew_patch_is_committed_as_blob(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_crew_patch_is_committed_as_blob(self, mock_gate, mock_gh, mock_api, tmp_path):
         # Write a real .patch file (binary-safe: git diff --binary is ASCII).
         patch = tmp_path / "changes.patch"
         patch.write_text(
@@ -288,15 +292,15 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/11",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-11-crew"},
-            {"object": {"sha": "branchsha456"}},
-            {"sha": "basetree789"},                    # read branch tree
-            {"sha": "outblob111"},                     # output.md blob
-            {"sha": "patchblob222"},                   # crew patch blob
-            {"sha": "newtree333"},
-            {"sha": "newcommit444"},
-            {"ref": "refs/heads/school/issue-11-crew"},
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-11-crew"},           # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
+            {"sha": "basetree789"},                               # GET read branch tree
+            {"sha": "outblob111"},                                # POST output.md blob
+            {"sha": "patchblob222"},                              # POST crew patch blob
+            {"sha": "newtree333"},                                # POST create tree
+            {"sha": "newcommit444"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-11-crew"},           # PATCH update ref
         ]
         issue = {"issue_number": 11, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('done')\n", "agent": "owl-alpha"}
@@ -324,7 +328,8 @@ class TestCreatePRCrewPatch:
 
     @patch("pr_creator._gh_api")
     @patch("pr_creator._gh")
-    def test_no_patch_when_not_crew_or_missing(self, mock_gh, mock_api, tmp_path):
+    @patch("scripts.plannotator_gate.gate_diff", return_value={"decision": "approved"})
+    def test_no_patch_when_not_crew_or_missing(self, mock_gate, mock_gh, mock_api, tmp_path):
         # crew_used but patch_path is None (e.g. capture returned None).
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),
@@ -332,14 +337,14 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/12",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
-            {"ref": "refs/heads/school/issue-12-crew"},
-            {"object": {"sha": "branchsha456"}},
-            {"sha": "basetree789"},
-            {"sha": "outblob111"},
-            {"sha": "newtree333"},
-            {"sha": "newcommit444"},
-            {"ref": "refs/heads/school/issue-12-crew"},
+            None,                                                # GET check branch exists
+            {"ref": "refs/heads/school/issue-12-crew"},           # POST create ref
+            {"object": {"sha": "branchsha456"}},                  # GET read branch ref
+            {"sha": "basetree789"},                               # GET read branch tree
+            {"sha": "outblob111"},                                # POST output.md blob
+            {"sha": "newtree333"},                                # POST create tree
+            {"sha": "newcommit444"},                              # POST create commit
+            {"ref": "refs/heads/school/issue-12-crew"},           # PATCH update ref
         ]
         issue = {"issue_number": 12, "title": "Crew", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('done')\n", "agent": "owl-alpha"}
@@ -369,7 +374,6 @@ class TestCreatePRCrewPatch:
             "basesha123\n",
         ]
         mock_api.side_effect = [
-            None,                                                 # branch doesn't exist yet
             {"ref": "refs/heads/school/issue-13-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},

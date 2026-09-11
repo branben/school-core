@@ -123,6 +123,26 @@ def generate_plan(task_prompt: str, task_id: Optional[str] = None) -> Dict[str, 
     }
 
 
+def gate_plan(plan_path: str | Path, *, task_id: Optional[str] = None) -> Dict:
+    """Human-in-the-loop plan approval via Plannotator.
+
+    Opens the plan in Plannotator's browser UI. Blocks until the human
+    approves, annotates, or dismisses. Returns the decision dict.
+
+    This is the missing gate between plan generation and execution —
+    without it, the agent executes plans the human never reviewed.
+
+    Args:
+        plan_path: Path to the plan .md file (from generate_plan).
+        task_id: Stable id; defaults to file stem.
+
+    Returns:
+        {"decision": "approved"|"annotated"|"dismissed"|"bypassed"|"error", ...}
+    """
+    from scripts.plannotator_gate import gate_plan as _gate
+    return _gate(plan_path, task_id=task_id)
+
+
 def _extract_explicit_steps(task_prompt: str) -> List[str]:
     """Pull numbered/bulleted lines out as sub-tasks."""
     steps: List[str] = []

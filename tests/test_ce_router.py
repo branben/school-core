@@ -172,8 +172,10 @@ def test_route_decision_overlay_cap_is_deterministic():
 def test_dispatch_attaches_chosen_skill():
     fake_result = {"status": "success", "agent": "coder", "bead": "bead-xyz",
                    "domain": "python-coding"}
-    with patch.object(conductor, "run_leaf", return_value=fake_result) as leaf_mock, \
-         patch.object(conductor, "locked_update_bookbag", MagicMock()) as w:
+    import leaf
+    import school_core.conductor.dispatch as dispatch_mod
+    with patch.object(leaf, "run_leaf", return_value=fake_result) as leaf_mock, \
+         patch.object(dispatch_mod, "locked_update_bookbag", MagicMock()) as w:
         out = conductor._principal_dispatch(
             task="t", role="coder", domain="python-coding",
             difficulty="easy", store=MagicMock(), repo="__global__",
@@ -208,9 +210,11 @@ def test_dispatch_persists_full_route_contract():
         is_curiosity_driven=True,
         requires_human_gate=True,
     )
+    import leaf
+    import school_core.conductor.dispatch as dispatch_mod
     with (
-        patch.object(conductor, "run_leaf", return_value=fake_result),
-        patch.object(conductor, "locked_update_bookbag", MagicMock()) as w,
+        patch.object(leaf, "run_leaf", return_value=fake_result),
+        patch.object(dispatch_mod, "locked_update_bookbag", MagicMock()) as w,
     ):
         out = conductor._principal_dispatch(
             task="t", role="coder", domain="python-coding",
@@ -235,8 +239,10 @@ def test_dispatch_chosen_skill_reflects_task_shape():
     fake_result = {"status": "success", "agent": "coder", "bead": "bead-f",
                    "domain": "python-coding"}
     shape = classify_task(has_failed_gate=True)
-    with patch.object(conductor, "run_leaf", return_value=fake_result), \
-         patch.object(conductor, "locked_update_bookbag", MagicMock()):
+    import leaf
+    import school_core.conductor.dispatch as dispatch_mod
+    with patch.object(leaf, "run_leaf", return_value=fake_result), \
+         patch.object(dispatch_mod, "locked_update_bookbag", MagicMock()):
         out = conductor._principal_dispatch(
             task="t", role="coder", domain="python-coding",
             difficulty="easy", store=MagicMock(), repo="__global__",

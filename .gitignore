@@ -27,7 +27,8 @@ coverage.xml
 *.swo
 *~
 
-# Local scratch / diagnostic files (never tracked — personal paths, probes, notes)
+# Encrypted secrets (never commit plaintext or private keys)
+.secrets/
 .scratch/
 
 # OS
@@ -77,3 +78,8 @@ scripts/prior_solutions/cocoindex_store/
 .env
 .env.*
 !.env.example
+
+# User-local profiles (generated from templates)
+config/profiles/*/
+!config/profiles/_TEMPLATES/
+.envit/

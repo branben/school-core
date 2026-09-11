@@ -17,10 +17,11 @@ from pathlib import Path
 from typing import Optional
 
 from triage_classifier import classify_issue
+from school_core.paths import GITHUB_CONFIG_PATH
 
 from repo_default import default_repo
 
-CONFIG_PATH = Path(__file__).parent / "config" / "github.yaml"
+CONFIG_PATH = GITHUB_CONFIG_PATH
 
 # The reserved value "__self__" means "the repo this checkout was cloned from"
 # (resolved via repo_default.default_repo). Expanded here so every consumer gets

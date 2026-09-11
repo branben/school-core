@@ -1,9 +1,17 @@
 """Shared fixtures for school-core tests."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+# Ensure src/ is on path so school_core can be imported from root-level
+# scripts (teacher.py, leaf.py) during tests.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SRC_DIR = _REPO_ROOT / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 from scoring import ScoreStore
 

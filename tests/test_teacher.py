@@ -602,7 +602,8 @@ class TestRunLoop:
 
         teacher.review_cycle = limited_review
 
-        teacher.run_loop(_max_cycles=1, _sleep_fn=lambda _: None)
+        with pytest.raises(StopIteration):
+            teacher.run_loop()
 
         assert call_count >= 1
 
