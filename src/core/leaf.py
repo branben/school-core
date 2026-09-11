@@ -17,11 +17,11 @@ asynchronously via wait_for_handoff().
 
 Usage:
     # Full lifecycle via convenience function:
-    from src.core.leaf import run_leaf
+    from leaf import run_leaf
     result = run_leaf("Write a hello function", role="coder", domain="python-coding")
 
     # Manual lifecycle (more control):
-    from src.core.leaf import StudentLeaf
+    from leaf import StudentLeaf
     leaf = StudentLeaf("coder", "python-coding")
     try:
         leaf.boot()
@@ -35,96 +35,24 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
 
 from bookbag import BookbagSignal, wait_for_verdicts, write_bookbag, HANDOFF_TIMEOUT
-from src.core.director import run_task
-from src.crew.orca_executor import OrcaExecutionManager, StudentBrief, OrcaUnavailableError
-from src.crew.student_vm_runner import SmolVmRunner, StudentTaskRequest, StudentTaskResult, StudentVMBlocked
-from src.sensors.activity_log import ActivityLog
+from director import run_task
+from orca_executor import OrcaExecutionManager, StudentBrief, OrcaUnavailableError
+from activity_log import ActivityLog
 
 _log = ActivityLog()
-from src.core.scoring import ScoreStore
-from src.core.capabilities import capability_for_task_role, resolve_capability
+from scoring import ScoreStore
+from capabilities import capability_for_task_role, resolve_capability
+
+# Import shared utilities from school_core package
+from school_core.soul import load_soul
 
 logger = logging.getLogger(__name__)
-
-# Transport selection for the leaf's student dispatch (gap-fix G1).
-#   "hermes"    — (default) run Hermes agent in the leaf's Orca terminal.
-#   "omniroute" — call the student role via OmniRoute from the principal
-#                 process (the path that feeds ACRouter outcome feedback).
-#   "auto"      — try the Hermes terminal first; fall back to OmniRoute only
-#                 when Orca/Hermes is unavailable for this dispatch.
-LEAF_TRANSPORT = os.environ.get("LEAF_TRANSPORT", "hermes").strip().lower()
-
-# Opt-in student execution via local smolvm microVM instead of Orca worktree.
-# Set SCHOOL_CORE_USE_SMOLVM=1 to enable. Requires SCHOOL_CORE_SMOLVM_PACK
-# (operator-pinned guest pack path) and smolvm on PATH.
-_USE_SMOLVM = os.environ.get("SCHOOL_CORE_USE_SMOLVM", "").strip().lower() in ("1", "true", "yes")
-_SMOLVM_PACK = os.environ.get("SCHOOL_CORE_SMOLVM_PACK", "").strip() or None
-_SMOLVM_CMD = os.environ.get("SCHOOL_CORE_SMOLVM_CMD", "smolvm").strip()
-
-
-def _run_student_via_omniroute(leaf: "StudentLeaf", task_prompt: str) -> str:
-    """Dispatch the student task through ``executor.call_model`` (OmniRoute).
-
-    This is the ACRouter-compliant path the sync director uses: it selects a
-    model combo through outcome-feedback routing and calls OmniRoute from the
-    principal process. Used when ``LEAF_TRANSPORT=omniroute`` or when the
-    Hermes-terminal path auto-falls back (Gap-G1).
-
-    Returns the raw student response text. Raises on transport failure.
-    """
-    from src.core.context_orchestrator import enrich_prompt
-    from src.crew.executor import call_model
-
-    context_blob = enrich_prompt(
-        leaf.domain, task_prompt,
-        vault_path=None,
-        session_id=None,
-        repo_path=getattr(leaf, "repo_path", None),
-    )
-    system_prompt = f"Role: {leaf.role}, Domain: {leaf.domain}, Difficulty: {leaf.difficulty}."
-    if context_blob:
-        system_prompt += "\n\nContext:\n" + context_blob
-    return call_model(leaf.role, task_prompt, system_prompt=system_prompt)
-
-
-def _record_leaf_routing_outcome(agent_name: str, success: bool, quality: float) -> None:
-    """Record a routing outcome for a leaf dispatch (best-effort, never raises).
-
-    Mirrors ``director._record_acrouter_outcome`` so async/kanban dispatches
-    feed the same ACRouter feedback loop as the sync path (Gap-G1). A failure
-    here must never break the dispatch itself.
-    """
-    try:
-        from src.crew.executor import record_routing_outcome
-        record_routing_outcome(agent_name, success=success, quality=quality)
-    except Exception:
-        pass
-
-
-def load_soul(profile_name: str) -> str:
-    """Resolve a persona's SOUL.md.
-
-    Resolution order (single source of truth = repo config/profiles):
-        1. ``<repo>/config/profiles/<name>/SOUL.md``  (committed, authoritative)
-        2. ``~/.hermes/profiles/<name>/SOUL.md``       (machine-local override)
-        3. empty string (caller supplies a generic fallback)
-    """
-    repo_soul = Path(__file__).parent.parent.parent / "config" / "profiles" / profile_name / "SOUL.md"
-    if repo_soul.exists():
-        return repo_soul.read_text().strip()
-    home_soul = Path.home() / ".hermes" / "profiles" / profile_name / "SOUL.md"
-    if home_soul.exists():
-        return home_soul.read_text().strip()
-    return ""
 
 
 # ── Exceptions ───────────────────────────────────────────────────────────────
@@ -288,123 +216,6 @@ class StudentLeaf:
         )
         return self._mgr.write_student_brief(self.worktree_path, brief)
 
-    def _run_via_smolvm(self, task_prompt: str) -> dict:
-        """Execute the task inside a local smolvm microVM (opt-in).
-
-        Requires ``SCHOOL_CORE_USE_SMOLVM=1`` and ``SCHOOL_CORE_SMOLVM_PACK``
-        pointing at an operator-pinned guest pack. Network egress is off by
-        default in the guest; the operator is responsible for model reachability.
-        """
-        if not _SMOLVM_PACK:
-            raise LeafError(
-                "SCHOOL_CORE_USE_SMOLVM=1 is set but "
-                "SCHOOL_CORE_SMOLVM_PACK is empty"
-            )
-        from hashlib import sha256 as _sha256
-        pack_path = Path(_SMOLVM_PACK).expanduser().resolve()
-        if not pack_path.is_file():
-            raise LeafError(
-                f"smolvm guest pack not found: {pack_path}"
-            )
-        pack_sha = _sha256(pack_path.read_bytes()).hexdigest()
-
-        runner = SmolVmRunner(
-            smolvm=_SMOLVM_CMD,
-            pack_path=pack_path,
-            pack_sha256=pack_sha,
-        )
-        soul = load_soul(self._hermes_profile)
-        if not soul:
-            soul = f"You are a {self.role} agent. Complete the task precisely."
-        full_prompt = f"{soul}\n\n---\n\nTask: {task_prompt}"
-
-        request = StudentTaskRequest(
-            task_id=self.bead,
-            repository=self._repo_slug(),
-            repo_path=self.repo_path or Path("."),
-            base_sha=self._get_base_sha(),
-            task={"prompt": full_prompt},
-            command=("student-agent", "--task-file", "/workspace/task.json"),
-            timeout_seconds=HANDOFF_TIMEOUT,
-        )
-        logger.info(
-            "[leaf:%s] Running student via smolvm (%s)...",
-            self.bead[:12], _SMOLVM_CMD,
-        )
-        try:
-            result = runner.execute(request)
-        except StudentVMBlocked as exc:
-            return self._hermes_failure(
-                task_prompt, f"smolvm blocked: {exc}"
-            )
-
-        # Translate the VM result into the same shape the Orca path returns.
-        response = self._extract_vm_response(result)
-        output_data = {
-            "bead": self.bead,
-            "role": self.role,
-            "domain": self.domain,
-            "difficulty": self.difficulty,
-            "task": task_prompt,
-            "response": response,
-            "response_chars": len(response),
-            "hermes_profile": self._hermes_profile,
-            "transport": "smolvm",
-            "capability": self.capability.to_dict(),
-        }
-        # Write output to the repo root (no Orca worktree in smolvm mode).
-        output_dir = Path(".hermes/outputs")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"{self.bead}.json"
-        output_path.write_text(
-            json.dumps(output_data, indent=2, default=str)
-        )
-
-        write_bookbag(
-            self.bead,
-            student=self.role,
-            domain=self.domain,
-            difficulty=self.difficulty,
-            task=task_prompt[:200],
-            output=response,
-            repo=self._repo_slug(),
-        )
-        return output_data
-
-    def _extract_vm_response(self, result: StudentTaskResult) -> str:
-        """Pull the student's text response from the candidate archive tar."""
-        import tarfile
-        import io
-        try:
-            with tarfile.open(
-                fileobj=io.BytesIO(result.candidate_archive), mode="r"
-            ) as tar:
-                texts = []
-                for member in tar.getmembers():
-                    if not member.isfile():
-                        continue
-                    try:
-                        fobj = tar.extractfile(member)
-                        if fobj is None:
-                            continue
-                        content = fobj.read().decode("utf-8", "replace")
-                        if content.strip():
-                            texts.append(content.strip())
-                    except (OSError, UnicodeDecodeError):
-                        continue
-                return "\n".join(texts) if texts else ""
-        except tarfile.ReadError:
-            return ""
-
-    def _get_base_sha(self) -> str:
-        """Return the current repo HEAD sha for the StudentTaskRequest."""
-        try:
-            return subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=self.repo_path or "."
-            ).decode().strip()
-        except Exception:
-            return "HEAD"
-
     def run_via_hermes(self, task_prompt: str) -> dict:
         """Execute the task by running Hermes agent in the leaf's Orca terminal.
 
@@ -445,65 +256,41 @@ class StudentLeaf:
         # ── Run Hermes in the leaf's Orca terminal ───────────────────────
         logger.info("[leaf:%s] Running Hermes (%s) in Orca terminal...", self.bead[:12], self._hermes_profile)
 
-        transport = LEAF_TRANSPORT
-        response = None
-        transport_used = "hermes"
-        hermes_error: Optional[str] = None
-
-        # Opt-in: route through local smolvm microVM instead of Orca worktree.
-        if _USE_SMOLVM:
-            try:
-                return self._run_via_smolvm(task_prompt)
-            except Exception as e:
-                logger.error(
-                    "[leaf:%s] smolvm failed: %s", self.bead[:12], e
-                )
-                return self._hermes_failure(
-                    task_prompt, f"smolvm: {e}"
-                )
-
-        # Gap-fix G1: when OmniRoute delegation is selected ("omniroute") or
-        # auto-fallback triggers, run the student through the ACRouter path
-        # (executor.call_model) instead of the one-shot `hermes chat -q`
-        # shell-out. That keeps async/kanban dispatch on the same routing
-        # feedback loop as the sync director path.
-        if transport == "omniroute":
-            try:
-                response = _run_student_via_omniroute(self, task_prompt)
-                transport_used = "omniroute"
-            except Exception as e:
-                _record_leaf_routing_outcome(self.role, success=False, quality=0.0)
-                return self._hermes_failure(task_prompt, str(e))
-        else:
-            try:
-                response = self._mgr.run_hermes(
-                    worktree_path=self.worktree_path,
-                    bead=self.bead,
-                    task=full_prompt,
-                    role=self.role,
-                    difficulty=self.difficulty,
-                )
-            except OrcaUnavailableError as e:
-                hermes_error = str(e)
-                logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)
-                if transport == "auto":
-                    logger.info(
-                        "[leaf:%s] Hermes unavailable — falling back to OmniRoute",
-                        self.bead[:12],
-                    )
-                    try:
-                        response = _run_student_via_omniroute(self, task_prompt)
-                        transport_used = "omniroute"
-                    except Exception as e2:
-                        _record_leaf_routing_outcome(self.role, success=False, quality=0.0)
-                        return self._hermes_failure(
-                            task_prompt, f"{hermes_error}; omniroute: {e2}"
-                        )
-                else:
-                    return self._hermes_failure(task_prompt, str(e))
-
-        if response is None:
-            return self._hermes_failure(task_prompt, hermes_error or "no student response")
+        try:
+            response = self._mgr.run_hermes(
+                worktree_path=self.worktree_path,
+                bead=self.bead,
+                task=full_prompt,
+                role=self.role,
+                difficulty=self.difficulty,
+            )
+        except OrcaUnavailableError as e:
+            logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)
+            # Write a failed bookbag so pipeline doesn't hang
+            write_bookbag(
+                self.bead,
+                student=self.role,
+                domain=self.domain,
+                difficulty=self.difficulty,
+                task=task_prompt[:200],
+                output=f"[Hermes error: {e}]",
+                repo=self._repo_slug(),
+            )
+            return {
+                "status": "error",
+                "bead": self.bead,
+                "agent": self.role,
+                "domain": self.domain,
+                "response": "",
+                "error": str(e),
+                "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
+                "review": {
+                    "cto_verdict": "", "coo_verdict": "",
+                    "cto_score": 0, "coo_score": 0,
+                    "findings": [], "accepted": False,
+                },
+                "async": True,
+            }
 
         # ── Write output for audit trail ─────────────────────────────────
         output_data = {
@@ -515,7 +302,6 @@ class StudentLeaf:
             "response": response,
             "response_chars": len(response),
             "hermes_profile": self._hermes_profile,
-            "transport": transport_used,
             "capability": self.capability.to_dict(),
         }
         self._mgr.write_student_output(self.worktree_path, self.bead, output_data)
@@ -532,11 +318,6 @@ class StudentLeaf:
         )
 
         logger.info("[leaf:%s] Hermes completed: %d chars", self.bead[:12], len(response))
-        # Gap-fix G1: a successful OmniRoute dispatch feeds the router outcome
-        # feedback loop — the completion is a positive signal for the combo
-        # that was selected (mirrors director._record_acrouter_outcome).
-        if transport_used == "omniroute":
-            _record_leaf_routing_outcome(self.role, success=True, quality=1.0)
 
         return {
             "status": "success",
@@ -546,44 +327,6 @@ class StudentLeaf:
             "difficulty": self.difficulty,
             "response": response,
             "error": None,
-            "transport": transport_used,
-            "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
-            "review": {
-                "cto_verdict": "",
-                "coo_verdict": "",
-                "cto_score": 0,
-                "coo_score": 0,
-                "findings": [],
-                "accepted": False,
-            },
-            "async": True,
-        }
-
-    def _hermes_failure(self, task_prompt: str, error: str) -> dict:
-        """Write a failed bookbag and return an error result for the dispatch.
-
-        Prevents the parent pipeline from hanging when the Hermes terminal or
-        the OmniRoute fallback both fail (Gap-G1). The bookbag is written with
-        the error text so teachers / the dashboard see a terminal failure state.
-        """
-        logger.error("[leaf:%s] Dispatch failed: %s", self.bead[:12], error)
-        write_bookbag(
-            self.bead,
-            student=self.role,
-            domain=self.domain,
-            difficulty=self.difficulty,
-            task=task_prompt[:200],
-            output=f"[Dispatch error: {error}]",
-            repo=self._repo_slug(),
-        )
-        return {
-            "status": "error",
-            "bead": self.bead,
-            "agent": self.role,
-            "domain": self.domain,
-            "response": "",
-            "error": error,
-            "transport": LEAF_TRANSPORT,
             "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
             "review": {
                 "cto_verdict": "",

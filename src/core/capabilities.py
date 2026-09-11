@@ -26,6 +26,9 @@ TASK_ROLE_PROFILES: dict[str, str] = {
     "reviewer": "student-reviewer",
     "tester": "student-coder",
     "debugger": "student-coder",
+    "ci": "student-ci",
+    "designer": "student-designer",
+    "whymage": "student-whymage",
 }
 
 # These are the tool contracts already described by ROLE_SYSTEM_PROMPTS and
@@ -38,6 +41,9 @@ TASK_ROLE_TOOLS: dict[str, tuple[str, ...]] = {
     "reviewer": ("adversarial-review", "security-analysis"),
     "tester": ("python", "testing", "git"),
     "debugger": ("python", "testing", "git"),
+    "ci": ("yaml", "gh-actions", "shell"),
+    "designer": ("html", "css", "browser"),
+    "whymage": ("shell", "logs", "process-inspection"),
 }
 
 # Hermes receives native toolset names, not the school-facing semantic labels
@@ -66,6 +72,16 @@ TASK_ROLE_HERMES_TOOLSETS: dict[str, tuple[str, ...]] = {
         "clarify", "codegraph", "file", "memory", "serena", "skills",
         "terminal", "todo",
     ),
+    "ci": (
+        "clarify", "file", "memory", "skills", "terminal", "todo",
+    ),
+    "designer": (
+        "file", "memory", "skills", "terminal", "web",
+    ),
+    "whymage": (
+        "clarify", "codegraph", "cocoindex", "file", "memory",
+        "serena", "skills", "terminal",
+    ),
 }
 
 # Keep this mapping in one place for prompt/skill observability. The names are
@@ -78,6 +94,9 @@ TASK_ROLE_SKILL_DOMAINS: dict[str, tuple[str, ...]] = {
     "browser": (),
     "tester": ("python-testing",),
     "debugger": ("debugging",),
+    "ci": ("pipeline-diagnosis",),
+    "designer": ("visual-design",),
+    "whymage": ("infrastructure-diagnosis",),
 }
 
 

@@ -78,7 +78,7 @@ def mock_mgr():
 
 class TestSendToTerminal:
     def test_send_to_terminal_passes_correct_orca_args(self, mock_mgr):
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _send_to_terminal("h-handle-xyz", "echo hi", enter=True)
         mock_mgr._run_orca.assert_called_once()
         args = mock_mgr._run_orca.call_args[0][0]
@@ -90,18 +90,18 @@ class TestSendToTerminal:
         assert "--enter" in args
 
     def test_send_to_terminal_omits_enter_when_disabled(self, mock_mgr):
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _send_to_terminal("h-handle-xyz", "echo hi", enter=False)
         args = mock_mgr._run_orca.call_args[0][0]
         assert "--enter" not in args
 
     def test_send_to_terminal_is_best_effort_on_exception(self, mock_mgr):
         mock_mgr._run_orca.side_effect = RuntimeError("orca down")
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _send_to_terminal("h-handle-xyz", "echo hi")
 
     def test_send_to_terminal_is_best_effort_when_orca_unavailable(self):
-        with patch("conductor.OrcaExecutionManager") as MockMgr:
+        with patch("school_core.conductor.daemon.OrcaExecutionManager") as MockMgr:
             instance = MockMgr.return_value
             instance._run_orca.side_effect = OSError("no orca")
             _send_to_terminal("h-handle-xyz", "echo hi")
@@ -113,8 +113,8 @@ class TestLegacyCleanup:
             {"id": "auto-1", "name": "agent-school-principal"},
             {"id": "auto-2", "name": "Spec-Gap Harness Loop"},
         ]
-        with patch("conductor.orca_automations_list", return_value=fake_automations), \
-             patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.orca_automations_list", return_value=fake_automations), \
+             patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             removed = _cleanup_legacy_automations(mock_mgr)
         assert removed == 1
         mock_mgr._run_orca.assert_called_once_with(
@@ -127,14 +127,14 @@ class TestLegacyCleanup:
             {"id": "cooid", "name": "agent-school-teacher-coo"},
             {"id": "other", "name": "Spec-Gap Harness Loop"},
         ]
-        with patch("conductor.orca_automations_list", return_value=fake_automations), \
-             patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.orca_automations_list", return_value=fake_automations), \
+             patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             removed = _cleanup_legacy_automations(mock_mgr)
         assert removed == 2
 
     def test_no_op_when_no_legacy_automations(self, mock_mgr):
-        with patch("conductor.orca_automations_list", return_value=[]), \
-             patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.orca_automations_list", return_value=[]), \
+             patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             removed = _cleanup_legacy_automations(mock_mgr)
         assert removed == 0
         mock_mgr._run_orca.assert_not_called()
@@ -152,35 +152,35 @@ class TestLegacyCleanup:
                 raise RuntimeError("wedged")
             return {"ok": True}
         mock_mgr._run_orca.side_effect = maybe_fail
-        with patch("conductor.orca_automations_list", return_value=fake), \
-             patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.orca_automations_list", return_value=fake), \
+             patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             removed = _cleanup_legacy_automations(mock_mgr)
         assert removed == 2
 
 
 class TestFindUnreviewedBeads:
     def test_returns_bead_when_both_verdicts_missing(self, monkeypatch):
-        monkeypatch.setattr("bookbag.list_bookbags", lambda repo=None: ["b1"])
-        monkeypatch.setattr("bookbag.read_bookbag", lambda b, r=None: {"cto_verdict": "", "coo_verdict": ""})
+        monkeypatch.setattr("school_core.conductor.daemon.list_bookbags", lambda repo=None: ["b1"])
+        monkeypatch.setattr("school_core.conductor.daemon.read_bookbag", lambda b, r=None: {"cto_verdict": "", "coo_verdict": ""})
         assert "b1" in _find_unreviewed_beads_for("__global__")
 
     def test_excludes_bead_when_both_verdicts_present(self, monkeypatch):
-        monkeypatch.setattr("bookbag.list_bookbags", lambda repo=None: ["b1"])
-        monkeypatch.setattr("bookbag.read_bookbag", lambda b, r=None: {"cto_verdict": "PASS", "coo_verdict": "PASS"})
+        monkeypatch.setattr("school_core.conductor.daemon.list_bookbags", lambda repo=None: ["b1"])
+        monkeypatch.setattr("school_core.conductor.daemon.read_bookbag", lambda b, r=None: {"cto_verdict": "PASS", "coo_verdict": "PASS"})
         assert "b1" not in _find_unreviewed_beads_for("__global__")
 
     def test_includes_bead_when_only_coo_missing(self, monkeypatch):
-        monkeypatch.setattr("bookbag.list_bookbags", lambda repo=None: ["b1"])
-        monkeypatch.setattr("bookbag.read_bookbag", lambda b, r=None: {"cto_verdict": "PASS", "coo_verdict": ""})
+        monkeypatch.setattr("school_core.conductor.daemon.list_bookbags", lambda repo=None: ["b1"])
+        monkeypatch.setattr("school_core.conductor.daemon.read_bookbag", lambda b, r=None: {"cto_verdict": "PASS", "coo_verdict": ""})
         assert "b1" in _find_unreviewed_beads_for("__global__")
 
     def test_includes_bead_when_only_cto_missing(self, monkeypatch):
-        monkeypatch.setattr("bookbag.list_bookbags", lambda repo=None: ["b1"])
-        monkeypatch.setattr("bookbag.read_bookbag", lambda b, r=None: {"cto_verdict": "", "coo_verdict": "PASS"})
+        monkeypatch.setattr("school_core.conductor.daemon.list_bookbags", lambda repo=None: ["b1"])
+        monkeypatch.setattr("school_core.conductor.daemon.read_bookbag", lambda b, r=None: {"cto_verdict": "", "coo_verdict": "PASS"})
         assert "b1" in _find_unreviewed_beads_for("__global__")
 
     def test_returns_empty_list_when_no_beads(self, monkeypatch):
-        monkeypatch.setattr("bookbag.list_bookbags", lambda repo=None: [])
+        monkeypatch.setattr("school_core.conductor.daemon.list_bookbags", lambda repo=None: [])
         assert _find_unreviewed_beads_for("__global__") == []
 
 
@@ -188,10 +188,10 @@ class TestLaunchServe:
     def test_launch_does_NOT_create_automations(self, tmp_path, mock_mgr):
         mock_mgr._run_orca.return_value = {"ok": True, "result": {"terminals": []}}
         state_path = tmp_path / "serve-state.json"
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._find_or_create_terminal", side_effect=["hp", "ht"]), \
-             patch("conductor._send_to_terminal"), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._find_or_create_terminal", side_effect=["hp", "ht"]), \
+             patch("school_core.conductor.daemon._send_to_terminal"), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.load_config", return_value={"target_repos": []}), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock())
@@ -204,10 +204,10 @@ class TestLaunchServe:
         sent = []
         mock_mgr._run_orca.return_value = {"ok": True, "result": {"terminals": []}}
         state_path = tmp_path / "serve-state.json"
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._find_or_create_terminal", side_effect=["hp", "ht"]), \
-             patch("conductor._send_to_terminal", side_effect=lambda h, t, e=True: sent.append(t)), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._find_or_create_terminal", side_effect=["hp", "ht"]), \
+             patch("school_core.conductor.daemon._send_to_terminal", side_effect=lambda h, t, e=True: sent.append(t)), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.load_config", return_value={"target_repos": []}), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock())
@@ -221,10 +221,10 @@ class TestLaunchServe:
     def test_launch_persists_terminal_handles(self, tmp_path, mock_mgr):
         mock_mgr._run_orca.return_value = {"ok": True, "result": {"terminals": []}}
         state_path = tmp_path / "serve-state.json"
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._find_or_create_terminal", side_effect=["hp-xyz", "ht-abc"]), \
-             patch("conductor._send_to_terminal"), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._find_or_create_terminal", side_effect=["hp-xyz", "ht-abc"]), \
+             patch("school_core.conductor.daemon._send_to_terminal"), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.load_config", return_value={"target_repos": []}), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock())
@@ -237,10 +237,10 @@ class TestLaunchServe:
     def test_launch_runs_legacy_cleanup(self, tmp_path, mock_mgr):
         mock_mgr._run_orca.return_value = {"ok": True, "result": {"terminals": []}}
         state_path = tmp_path / "serve-state.json"
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._find_or_create_terminal", side_effect=["hp", "ht"]), \
-             patch("conductor._send_to_terminal"), \
-             patch("conductor._cleanup_legacy_automations") as mc, \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._find_or_create_terminal", side_effect=["hp", "ht"]), \
+             patch("school_core.conductor.daemon._send_to_terminal"), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations") as mc, \
              patch("conductor.load_config", return_value={"target_repos": []}), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock())
@@ -255,8 +255,8 @@ class TestTeardownServe:
             "principal_terminal_handle": "h-principal-xyz",
             "teacher_both_terminal_handle": "h-teacher-both-abc",
         }, state_path)
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=state_path)
@@ -268,16 +268,16 @@ class TestTeardownServe:
         state_path = tmp_path / "serve-state.json"
         save_serve_state({"x": 1}, state_path)
         assert state_path.exists()
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=state_path)
         assert not state_path.exists()
 
     def test_teardown_best_effort_when_state_missing(self, tmp_path, mock_mgr):
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=tmp_path / "missing.json")
@@ -285,8 +285,8 @@ class TestTeardownServe:
     def test_teardown_skips_missing_handles(self, tmp_path, mock_mgr):
         state_path = tmp_path / "serve-state.json"
         save_serve_state({"principal_terminal_handle": "h-only"}, state_path)
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=state_path)
@@ -305,19 +305,19 @@ class TestTeacherBothLoopOnce:
         ft.review_cycle.side_effect = fake_review
         ft.boot = MagicMock()
         ft.close = MagicMock()
-        monkeypatch.setattr("conductor._find_unreviewed_beads_for", lambda r: ["bead-x"])
+        monkeypatch.setattr("school_core.conductor.daemon._find_unreviewed_beads_for", lambda r: ["bead-x"])
         def fake_sleep(_):
             raise KeyboardInterrupt()
-        monkeypatch.setattr("conductor.time.sleep", fake_sleep)
+        monkeypatch.setattr("school_core.conductor.daemon.time.sleep", fake_sleep)
         with patch("conductor.TeacherWorktree", return_value=ft):
             teacher_both_loop(_args(teacher_both_daemon=True, once=True, daemon_interval=1))
         assert called["n"] == 2
 
     def test_loop_handles_no_beads(self, monkeypatch):
-        monkeypatch.setattr("conductor._find_unreviewed_beads_for", lambda r: [])
+        monkeypatch.setattr("school_core.conductor.daemon._find_unreviewed_beads_for", lambda r: [])
         def fake_sleep(_):
             raise KeyboardInterrupt()
-        monkeypatch.setattr("conductor.time.sleep", fake_sleep)
+        monkeypatch.setattr("school_core.conductor.daemon.time.sleep", fake_sleep)
         ft = MagicMock()
         ft.boot = MagicMock()
         ft.close = MagicMock()
@@ -333,8 +333,8 @@ class TestPrincipalDispatchLoopOnce:
         def fake(*args, **kwargs):
             called["n"] += 1
             return {"status": "ok", "bead": "b"}
-        monkeypatch.setattr("conductor._principal_dispatch", fake)
-        monkeypatch.setattr("conductor.time.sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
+        monkeypatch.setattr("school_core.conductor.daemon._principal_dispatch", fake)
+        monkeypatch.setattr("school_core.conductor.daemon.time.sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
         principal_dispatch_loop(_args(principal_daemon=True, once=True, daemon_interval=1))
         assert called["n"] == 1
 
@@ -365,7 +365,7 @@ def gc_terminals_mock_response():
 class TestGcTerminals:
     def test_gc_closes_empty_title_terminals(self, gc_terminals_mock_response, mock_mgr):
         mock_mgr._run_orca.return_value = gc_terminals_mock_response
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-empty-1" in closed
@@ -373,7 +373,7 @@ class TestGcTerminals:
 
     def test_gc_closes_stale_agent_school_terminals(self, gc_terminals_mock_response, mock_mgr):
         mock_mgr._run_orca.return_value = gc_terminals_mock_response
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-legacy" in closed
@@ -382,7 +382,7 @@ class TestGcTerminals:
 
     def test_gc_preserves_named_user_terminals(self, gc_terminals_mock_response, mock_mgr):
         mock_mgr._run_orca.return_value = gc_terminals_mock_response
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-named" not in closed
@@ -390,13 +390,13 @@ class TestGcTerminals:
 
     def test_gc_dry_run_lists_but_does_not_close(self, gc_terminals_mock_response, mock_mgr):
         mock_mgr._run_orca.return_value = gc_terminals_mock_response
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals(dry_run=True)
         assert n == 0
         mock_mgr.close_terminal.assert_not_called()
 
     def test_gc_returns_zero_when_orca_list_fails(self):
-        with patch("conductor.OrcaExecutionManager") as MockMgr:
+        with patch("school_core.conductor.daemon.OrcaExecutionManager") as MockMgr:
             instance = MockMgr.return_value
             instance._run_orca.side_effect = RuntimeError("orca dead")
             n = _gc_terminals()
@@ -415,7 +415,7 @@ class TestGcTerminals:
             if n["n"] == 2:
                 raise RuntimeError("Terminal wedged")
         mock_mgr.close_terminal.side_effect = maybe_fail
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             closed = _gc_terminals()
         assert closed == 2
 
@@ -424,7 +424,7 @@ class TestGcTerminals:
             {"handle": "h-empty", "title": ""},
             {"handle": "h-keep", "title": "Main branch"},
         ]
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-empty" in closed
@@ -435,7 +435,7 @@ class TestGcTerminals:
         mock_mgr._run_orca.return_value = {"terminals": [
             {"handle": "h-empty", "title": ""},
         ]}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-empty" in closed
@@ -444,7 +444,7 @@ class TestGcTerminals:
         mock_mgr._run_orca.return_value = {"result": {"terminals": [
             {"handle": "h-empty", "title": ""},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
         assert "h-empty" in closed
@@ -453,7 +453,7 @@ class TestGcTerminals:
         mock_mgr._run_orca.return_value = {"result": {"terminals": [
             {"handle": "h-1", "title": "Conductor serve command"},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 0
         mock_mgr.close_terminal.assert_not_called()
@@ -463,7 +463,7 @@ class TestGcTerminals:
             {"title": ""},
             {"handle": "h-empty", "title": ""},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             closed = _gc_terminals()
         assert closed == 1
         assert mock_mgr.close_terminal.call_args.args[0] == "h-empty"
@@ -479,9 +479,9 @@ class TestTeardownWithGc:
             "principal_terminal_handle": "h-principal",
             "teacher_both_terminal_handle": "h-teacher-both",
         }, state_path)
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
-             patch("conductor._gc_terminals") as mock_gc, \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
+             patch("school_core.conductor.daemon._gc_terminals") as mock_gc, \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=state_path)
@@ -492,9 +492,9 @@ class TestTeardownWithGc:
         state_path = tmp_path / "serve-state.json"
         save_serve_state({"x": 1}, state_path)
         assert state_path.exists()
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr), \
-             patch("conductor._cleanup_legacy_automations", return_value=0), \
-             patch("conductor._gc_terminals", return_value=0), \
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr), \
+             patch("school_core.conductor.daemon._cleanup_legacy_automations", return_value=0), \
+             patch("school_core.conductor.daemon._gc_terminals", return_value=0), \
              patch("conductor.TeacherWorktree") as MockTW:
             MockTW.return_value = MagicMock(boot=MagicMock(), close=MagicMock())
             _teardown_serve(state_path=state_path)
@@ -515,7 +515,7 @@ class TestGcTerminalsFailureSummary:
         ]
         mock_mgr._run_orca.return_value = {"result": {"terminals": terminals}}
         mock_mgr.close_terminal.side_effect = RuntimeError("wedge")
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             closed = _gc_terminals()
         captured = capsys.readouterr().out
         assert "summary: failed to close 3 terminal(s)" in captured
@@ -524,7 +524,7 @@ class TestGcTerminalsFailureSummary:
     def test_no_summary_when_all_succeeded(self, mock_mgr, capsys):
         terminals = [{"handle": "h-ok", "title": ""}]
         mock_mgr._run_orca.return_value = {"result": {"terminals": terminals}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals()
         captured = capsys.readouterr().out
         assert "summary" not in captured
@@ -538,19 +538,19 @@ class TestGcTerminalsEdgeCases:
 
     def test_returns_zero_when_orca_returns_none(self, mock_mgr):
         mock_mgr._run_orca.return_value = None
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 0
 
     def test_handles_string_instead_of_list_with_no_crash(self, mock_mgr):
         mock_mgr._run_orca.return_value = "not a list"
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 0
 
     def test_handles_termininals_field_as_string(self, mock_mgr):
         mock_mgr._run_orca.return_value = {"terminals": "not a list"}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 0
 
@@ -567,7 +567,7 @@ class TestGcTerminalsEdgeCases:
             {"handle": "h-list", "title": ["x", "y"], "name": ""},
             {"handle": "h-none", "title": None, "name": ""},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 3
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
@@ -578,7 +578,7 @@ class TestGcTerminalsEdgeCases:
         mock_mgr._run_orca.return_value = {"result": {"terminals": [
             {"handle": None, "id": "h-real", "title": ""},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals()
         assert n == 1
         assert mock_mgr.close_terminal.call_args.args[0] == "h-real"
@@ -603,7 +603,7 @@ class TestGcTerminalsEdgeCases:
             {"handle": "h-stale-coo", "title": "agent-school-teacher-coo"},
             {"handle": "h-empty-orphan", "title": ""},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals(state_path=state_path)
         closed = sorted(c.args[0] for c in mock_mgr.close_terminal.call_args_list)
         assert closed == ["h-empty-orphan", "h-stale-coo", "h-stale-cto"]
@@ -615,7 +615,7 @@ class TestGcTerminalsEdgeCases:
         mock_mgr._run_orca.return_value = {"result": {"terminals": [
             {"handle": "h-1", "title": "agent-school-principal"},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals(state_path=state_path)
         assert n == 1
         assert mock_mgr.close_terminal.call_args.args[0] == "h-1"
@@ -627,7 +627,7 @@ class TestGcTerminalsEdgeCases:
         mock_mgr._run_orca.return_value = {"result": {"terminals": [
             {"handle": "h-1", "title": "agent-school-principal"},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             n = _gc_terminals(state_path=state_path)
         assert n == 1
 
@@ -651,7 +651,7 @@ class TestGcTerminalsEdgeCases:
             {"handle": "h-live-teacher-both", "title": "agent-school-teacher-both"},
             {"handle": "h-stale-cto", "title": "agent-school-teacher-cto"},
         ]}}
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             _gc_terminals(dry_run=True, state_path=state_path)
         captured = capsys.readouterr().out
         # Live handles must NOT be listed as 'would close' candidates.
@@ -682,7 +682,7 @@ class TestGcTerminalsFlagDispatch:
             {"handle": "h-empty", "title": ""},
         ]}}
         monkeypatch.setattr("sys.argv", ["conductor.py", "--gc-terminals"])
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             from conductor import main as conductor_main
             conductor_main()
         closed = [c.args[0] for c in mock_mgr.close_terminal.call_args_list]
@@ -696,7 +696,7 @@ class TestGcTerminalsFlagDispatch:
             "sys.argv",
             ["conductor.py", "--gc-terminals", "--gc-terminals-dry-run"],
         )
-        with patch("conductor.OrcaExecutionManager", return_value=mock_mgr):
+        with patch("school_core.conductor.daemon.OrcaExecutionManager", return_value=mock_mgr):
             from conductor import main as conductor_main
             conductor_main()
         mock_mgr.close_terminal.assert_not_called()

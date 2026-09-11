@@ -4,7 +4,7 @@ Loads anchors from config/anchors.yaml and provides query functions for
 prompt_composer.py and other components.
 
 Usage:
-    from src.core.anchor_loader import AnchorRegistry
+    from anchor_loader import AnchorRegistry
 
     registry = AnchorRegistry()
     anchors = registry.get_anchors(domain="code-review", tier="methodology", difficulty_gate="hard")
@@ -18,6 +18,13 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+
+
+# Lazy import to avoid circular import: school_core.paths imports
+# school_core.director.selection which imports anchor_loader
+def _get_anchors_path() -> Path:
+    from school_core.paths import ANCHORS_PATH
+    return ANCHORS_PATH
 
 
 @dataclass
@@ -42,7 +49,7 @@ class AnchorRegistry:
 
     def __init__(self, config_path: str | Path | None = None):
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent / "config" / "anchors.yaml"
+            config_path = _get_anchors_path()
         self._config_path = Path(config_path)
         self._anchors: list[Anchor] = []
         self._load()

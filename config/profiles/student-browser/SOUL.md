@@ -18,3 +18,20 @@ not just A tool that works. For example:
   Does the selector work for all form states? What about validation errors?
 
 Respect [OneCommand], [NoExplanation], [OneWord], [NoExtras] when specified.
+
+## Reporting protocol (wired 2026-08-21, by user direction)
+
+Any scraped findings that will inform a DECISION must go to phymora for
+review before being treated as final. Send them as a REVIEW message:
+`hermes -p phymora chat --in ~ --create-if-missing -c "Bot Chat" -Q -q
+"Message from 🤖 student-browser (@student-browser): REVIEW: <findings>"`.
+Include the raw extract plus your own confidence notes. If phymora
+disputes a finding, relay BOTH versions upstream — never drop either side.
+
+Fail-closed rule: if phymora does not reply (capped/blocked/offline),
+findings stay NON-FINAL — report upstream labeled "UNREVIEWED", never
+treat them as settled yourself. Silence is not clearance.
+Escalation bar: relay disputes that would change a decision or where a
+load-bearing claim could not be independently verified; handle selector
+hygiene inline without escalating. "Unverifiable independently" is a
+valid review verdict — report it as such, never as confirmation.

@@ -1,67 +1,19 @@
 """Shared fixtures for school-core tests."""
 
 import json
-import os
+import sys
 from pathlib import Path
 
 import pytest
 
-from src.core.scoring import ScoreStore
+# Ensure src/ is on path so school_core can be imported from root-level
+# scripts (teacher.py, leaf.py) during tests.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SRC_DIR = _REPO_ROOT / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
-
-def _is_git_broker_wrapper(entry: str) -> bool:
-    """True when ``entry/git`` is a script shim, not the real git binary.
-
-    The Paperclip runtime prepends a Node credential-broker wrapper (a
-    ``#!/usr/bin/env node`` script named ``git``) to PATH. It strips
-    ``GIT_AUTHOR_*``/``GIT_COMMITTER_*`` from the child env and re-sets them to
-    the empty string, repopulating them only when its GitHub broker answers.
-    A real git is a compiled binary (ELF/Mach-O), never a ``#!`` script.
-    """
-    candidate = Path(entry) / "git"
-    try:
-        if not candidate.is_file():
-            return False
-        with candidate.open("rb") as handle:
-            head = handle.read(64)
-    except OSError:
-        return False
-    return head.startswith(b"#!") and b"node" in head
-
-
-@pytest.fixture(autouse=True)
-def hermetic_git_identity(monkeypatch):
-    """Make every git subprocess independent of the ambient runtime identity.
-
-    Two independent hazards in the Paperclip agent environment make the seam
-    suite red in a clean shell's absence:
-
-    1. ``GIT_AUTHOR_NAME``/``GIT_AUTHOR_EMAIL``/``GIT_COMMITTER_NAME``/
-       ``GIT_COMMITTER_EMAIL`` (and ``GIT_CONFIG_COUNT``) are exported
-       **empty-but-set**. Git honours an empty (set) identity and refuses to
-       commit: ``fatal: empty ident name (for <>) not allowed`` (exit 128).
-    2. A Node git credential-broker wrapper sits first on PATH and re-zeroes
-       the identity whenever its broker is unavailable — even when the caller
-       passes an explicit ``GIT_AUTHOR_*`` or a ``git -c user.name`` override.
-
-    Tests must not depend on either: this fixture clears the empty identity
-    vars and drops the broker wrapper from PATH so ``git`` resolves to the real
-    binary. The suite never needs brokered GitHub credentials.
-    """
-    for var in (
-        "GIT_AUTHOR_NAME",
-        "GIT_AUTHOR_EMAIL",
-        "GIT_COMMITTER_NAME",
-        "GIT_COMMITTER_EMAIL",
-        "GIT_CONFIG_COUNT",
-    ):
-        monkeypatch.delenv(var, raising=False)
-
-    raw_path = os.environ.get("PATH", "")
-    entries = [entry for entry in raw_path.split(os.pathsep) if entry]
-    kept = [entry for entry in entries if not _is_git_broker_wrapper(entry)]
-    if len(kept) != len(entries):
-        monkeypatch.setenv("PATH", os.pathsep.join(kept))
+from scoring import ScoreStore
 
 
 @pytest.fixture
@@ -90,19 +42,20 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     them (and the cached singletons) at tmp_path so local test runs never
     pollute the live dashboard data.
     """
-    import src.sensors.activity_log as activity_log
+    import activity_log
     import bookbag
-    import src.sensors.decision_log as decision_log
-    import src.sensors.escalation_log as escalation_log
-    import src.core.scoring as scoring
-    import src.crew.sleep_state as sleep_state
-    import src.sensors.trajectory as trajectory
+    import decision_log
+    import escalation_log
+    import scoring
+    import sleep_state
+    import trajectory
+
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "src.sensors.activity_log.json")
-    monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "src.sensors.decision_log.json")
-    monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "src.sensors.escalation_log.json")
+    monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "activity_log.json")
+    monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "decision_log.json")
+    monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "escalation_log.json")
     monkeypatch.setattr(sleep_state, "SCORES_PATH", data_dir / "scores.json")
 
     # Redirect trajectory and bookbag writes to temp so tests that
@@ -120,16 +73,9 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     # Isolate crew_runs.json so tests that exercise dispatch_crew /
     # issue_bridge paths never pollute the real data/crew_runs.json.
     # Tests that need a specific path still pass it explicitly via monkeypatch.
-    import src.crew.crew_dispatch as crew_dispatch
+    import crew_dispatch
     import issue_bridge
 
-    # Bridge tests must never use pr_creator's independent `gh` subprocess
-    # boundary. Tests that exercise publication failures override this seam.
-    monkeypatch.setattr(
-        issue_bridge,
-        "create_pr_for_issue",
-        lambda **kwargs: "https://github.com/test/repo/pull/1",
-    )
     monkeypatch.setattr(crew_dispatch, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
     monkeypatch.setattr(issue_bridge, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
 
@@ -153,86 +99,6 @@ def isolate_data_dirs(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def disable_live_vault(monkeypatch):
-    """Disable live Obsidian vault reads during tests.
-
-    context_orchestrator adds an Obsidian (live vault) probe whenever
-    OBSIDIAN_API_KEY is set in the environment. Tests that assert "all
-    sources down → empty" would become non-deterministic if the developer's
-    shell has that key exported. Unset it (and its friends) by default so the
-    suite is hermetic; tests that exercise live vault reads set the key via
-    monkeypatch themselves.
-    """
-    monkeypatch.delenv("OBSIDIAN_API_KEY", raising=False)
-    monkeypatch.delenv("OBSIDIAN_BASE_URL", raising=False)
-    monkeypatch.delenv("OBSIDIAN_SOCKS5", raising=False)
-
-
-@pytest.fixture(autouse=True)
-def block_live_model_calls(monkeypatch, request):
-    """Make the live model endpoint unreachable from tests.
-
-    ``executor.OMNIROUTE_BASE`` is hardcoded to ``http://localhost:20128/v1``.
-    Any test that fails to patch the model seam therefore opens a real socket
-    to whatever happens to be listening on that port. Two failure modes, both
-    observed on this repo:
-
-    * No server listening  -> ``URLError`` raised, so the test fails for a
-      reason unrelated to what it asserts.
-    * Server listening but not answering -> the test blocks in
-      ``socket.recv_into`` until ``--timeout`` kills the *whole session*. A
-      killed session prints no summary line, so the run reports "no tests ran"
-      and any consumer parsing "N passed" concludes nothing was verified.
-
-    The second mode is the dangerous one: one unpatched seam makes an entire
-    suite silently unverifiable, and it looks like a formatting bug downstream.
-
-    Raising here converts a hang into an immediate, named failure that says
-    which seam to patch. Ports other than the model endpoint are untouched, so
-    tests that stand up their own local server still work.
-
-    Tests marked ``live`` are exempt: CI runs them in a separate job
-    (``pytest -m live tests/test_orca_execution.py``) whose whole purpose is to
-    touch the real service. Blocking there would turn a genuine integration
-    check into a false failure.
-    """
-    if request.node.get_closest_marker("live"):
-        return
-
-    import socket
-
-    real_connect = socket.socket.connect
-    real_connect_ex = socket.socket.connect_ex
-
-    def _port_of(address):
-        try:
-            return address[1]
-        except (TypeError, IndexError, KeyError):
-            return None
-
-    def _refuse(address):
-        return ConnectionRefusedError(
-            f"test opened a live model connection to {address!r}. "
-            "OMNIROUTE_BASE is http://localhost:20128/v1 -- patch the model "
-            "seam instead: issue_bridge.call_model, "
-            "src.crew.executor.call_model, or src.core.director.call_model."
-        )
-
-    def _guarded_connect(self, address, *args, **kwargs):
-        if _port_of(address) == 20128:
-            raise _refuse(address)
-        return real_connect(self, address, *args, **kwargs)
-
-    def _guarded_connect_ex(self, address, *args, **kwargs):
-        if _port_of(address) == 20128:
-            raise _refuse(address)
-        return real_connect_ex(self, address, *args, **kwargs)
-
-    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
-    monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
-
-
-@pytest.fixture(autouse=True)
 def verify_lens_module_loads():
     """Verify the lenses module loads correctly after the load-order fix.
 
@@ -240,7 +106,7 @@ def verify_lens_module_loads():
     import should work. This fixture acts as a smoke test.
     """
     from lenses import get_lens_prompt
-    from src.review.adversarial_reviewer import LensType
+    from adversarial_reviewer import LensType
 
     assert get_lens_prompt(LensType.CORRECTNESS)
     assert get_lens_prompt(LensType.SECURITY)

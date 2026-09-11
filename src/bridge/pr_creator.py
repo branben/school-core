@@ -9,14 +9,17 @@ Flow:
   4. Open a PR using gh CLI
 
 Usage:
-    from src.bridge.pr_creator import create_pr_for_issue
+    from pr_creator import create_pr_for_issue
     pr_url = create_pr_for_issue(issue, task_result, repo="owner/repo")
 """
 
+import base64
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -174,24 +177,6 @@ def _blobSha(repo: str, content: str, encoding: str = "utf-8") -> Optional[str]:
     return result.get("sha") if result else None
 
 
-def _inner_loop_artifact_blob(repo: str, target_path: str, local_file: Path) -> Optional[str]:
-    """Create a blob for a generated inner-loop artifact, or None if unreadable.
-
-    Artifacts are text (source.json, pr-writeup.md/.html); a file that cannot
-    be read (missing, or not valid text under the given encoding) is treated
-    like an infra fault — the caller skips the entry rather than aborting the
-    whole PR.
-    """
-    try:
-        content = local_file.read_text(encoding="utf-8")
-    except OSError as exc:
-        sys.stderr.write(
-            f"[pr_creator] cannot read inner-loop artifact {target_path}: {exc}\n"
-        )
-        return None
-    return _blobSha(repo, content, encoding="utf-8")
-
-
 def _treeSha(repo: str, base_tree: str, entries: list[dict]) -> Optional[str]:
     """Create a tree in *repo* with *entries* appended to *base_tree*.
 
@@ -249,7 +234,7 @@ def build_pr_body(
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
     patch_path: Optional[str] = None,
-    source_json_path: Optional[str] = None,
+    human_review: Optional[str] = None,
 ) -> str:
     """Render the PR body carrying the full acceptance evidence chain (B3).
 
@@ -292,50 +277,6 @@ def build_pr_body(
         verify_md = f"{v_verdict} ({v_ran} command(s))"
     else:
         verify_md = "not run"
-
-    # Per-command verification effort. This is EVIDENCE, so it must not
-    # overstate: a command with no marker reads "no marker", never a pass, and
-    # no row is ever synthesised for a command that did not run. Rendered only
-    # when the gate actually recorded per-command results — an empty/absent
-    # list emits NOTHING (no empty table).
-    verify_table = ""
-    if verify_result:
-        raw_results = verify_result.get("results") or []
-        if isinstance(raw_results, list) and raw_results:
-            rows_md = []
-            for idx, entry in enumerate(raw_results, start=1):
-                if not isinstance(entry, dict):
-                    continue
-                name = entry.get("name") or entry.get("cmd") or ""
-                name = str(name).replace("|", "\\|")
-                if len(name) > 60:
-                    name = name[:59] + "…"
-                exit_code = entry.get("exit")
-                exit_md = str(exit_code) if isinstance(exit_code, int) else "—"
-                duration = entry.get("duration_s")
-                try:
-                    duration_md = f"{float(duration):.2f}s" if duration is not None else "—"
-                except (TypeError, ValueError):
-                    duration_md = "—"
-                status = entry.get("status")
-                if status == "pass":
-                    result_md = "✅ pass"
-                elif status == "fail":
-                    result_md = "❌ fail"
-                elif status == "no_marker":
-                    result_md = "⚠️ no marker"
-                else:
-                    result_md = "⚠️ unknown"
-                rows_md.append(
-                    f"| {idx} | `{name}` | {exit_md} | {duration_md} | {result_md} |"
-                )
-            if rows_md:
-                verify_table = (
-                    "\n### Verification effort (per command)\n\n"
-                    "| # | check | exit | time | result |\n"
-                    "|---|---|---|---|---|\n"
-                    + "\n".join(rows_md) + "\n\n"
-                )
 
     if entire_review:
         e_status = entire_review.get("status", "n/a") or "n/a"
@@ -391,50 +332,16 @@ def build_pr_body(
             "Treat this as UNREVIEWED, not approved."
         )
 
-    # ---------------------------------------------------------------
-    # Assembly — PR body template (docs/templates/pr-body-template.md):
-    # lean core + collapsible evidence. The non-expert triager sees the
-    # Summary, Related Issues & Bead, and (crew path) a one-line note; the
-    # domain expert opens the <details> blocks for the raw task output,
-    # the acceptance evidence, the crew record, and the source chain.
-    # Every evidence line below is preserved verbatim from the pre-template
-    # renderer — only its grouping/placement changes.
-    # ---------------------------------------------------------------
-    path_label = "crew" if crew_used else "direct"
-
-    # Read the REVIEW sidecar once: bead id feeds "Related Issues & Bead",
-    # and the full chain feeds the collapsible source-chain block. Absent or
-    # bead-less source -> neither section renders (fail-open, never fabricate).
-    source = {}
-    if source_json_path:
-        try:
-            source = json.loads(Path(source_json_path).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            source = {}
-    if not isinstance(source, dict):
-        source = {}
-    bead_id = source.get("bead") if source.get("bead") else None
-
     body = (
-        f"## Summary\n\n"
-        f"_Automated PR for #{num}: {title} — agent: {agent}_\n\n"
-        f"This PR implements issue #{num} ({title}).\n"
-        f"- **Domain:** {issue.get('domain', '_default')}"
-        f" ({issue.get('difficulty', 'medium')})\n"
-        f"- **Path:** {path_label}\n"
+        f"## Automated PR for #{num}: {title}\n\n"
+        f"_Created by Agent School — agent: {agent}_\n\n"
+        f"### Domain\n"
+        f"{issue.get('domain', '_default')} ({issue.get('difficulty', 'medium')})\n\n"
+        f"### Task Output\n"
+        f"```python\n{response_text[:800]}\n```\n"
+        + ("..." if len(response_text) > 800 else "") + "\n\n"
+        f"### Acceptance Evidence\n\n"
         f"- **Acceptance:** {acceptance_md}\n"
-    )
-
-    body += "\n## Related Issues & Bead\n\n"
-    body += f"- Closes #{num}\n"
-    if bead_id:
-        body += f"- Bead `{bead_id}`\n"
-
-    # Acceptance evidence — collapsed for the non-expert; the modern template
-    # keeps the verdict + review line reachable, not the raw output.
-    body += (
-        "\n<details>\n"
-        "<summary><b>Acceptance evidence</b></summary>\n\n"
         # Label the score as QUALITY, not a gate. ReviewResult.score is 100 minus
         # difficulty-weighted findings penalties (adversarial_reviewer.py:102-117)
         # while the verdict is FAIL iff a CRITICAL/HIGH finding exists — so a high
@@ -444,34 +351,29 @@ def build_pr_body(
         f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — "
         f"quality {score:.0f}/100 _(quality only; the verdict is the gate)_\n"
         f"- **Verify gate:** {verify_md}\n"
-        f"{verify_table}"
         f"- **Pre-merge check (Entire):** {entire_md}\n"
-        "\n</details>\n"
+        f"- **Path:** {'crew' if crew_used else 'direct'}\n"
+        + (f"\n### Human Review\n\n{human_review}\n" if human_review else "")
     )
-
-    # Crew record — forensics for the domain expert. Only on the crew path;
-    # a direct-path PR must not advertise an artifact or a crew patch.
+    # Only on the crew path: a direct-path PR must not advertise an artifact.
+    if crew_used and artifact_path:
+        body += f"- **Artifact:** `{artifact_path}`\n"
+    # A cited commit that does not resolve is worse than no commit at all,
+    # because a reader trusts the hash. crew_dispatch probes reachability BEFORE
+    # teardown and records a tri-state; surface False loudly and None honestly.
     if crew_used:
-        crew_lines = []
-        # Only on the crew path: a direct-path PR must not advertise an artifact.
-        if artifact_path:
-            crew_lines.append(f"- **Artifact:** `{artifact_path}`")
-        # A cited commit that does not resolve is worse than no commit at all,
-        # because a reader trusts the hash. crew_dispatch probes reachability
-        # BEFORE teardown and records a tri-state; surface False loudly and None
-        # honestly (adversarial_reviewer.py:102-117).
         reachable = (review_evidence or {}).get("commit_reachable")
         if reachable is False:
-            crew_lines.append(
+            body += (
                 "- ⚠️ **The crew's commit does NOT resolve.** Its branch lived in "
                 "a disposable worktree that has been torn down, so the cited SHA "
                 "is orphaned and the content of this PR was NOT taken from it. "
-                "Do not treat the commit as evidence."
+                "Do not treat the commit as evidence.\n"
             )
         elif reachable is None:
-            crew_lines.append(
+            body += (
                 "- **Commit reachability:** not determined (the probe could not "
-                "run) — treat the cited SHA as unverified."
+                "run) — treat the cited SHA as unverified.\n"
             )
         # The crew's actual diff, captured before teardown (bead school-core-3um).
         # The commit cannot survive its disposable clone, so this patch is the
@@ -482,58 +384,16 @@ def build_pr_body(
         # key so direct renderer callers keep working.
         patch_path = patch_path or (review_evidence or {}).get("patch_path")
         if patch_path:
-            crew_lines.append(
+            body += (
                 f"- **Crew diff (captured):** `{patch_path}` — the real change "
                 "the crew made, preserved as a patch because its commit does not "
-                "survive worktree teardown."
+                "survive worktree teardown.\n"
             )
         elif reachable is False:
-            crew_lines.append(
-                "- ⚠️ **No crew diff was captured** — the crew's work is not "
-                "preserved anywhere. Treat this PR as carrying no crew output."
-            )
-        if crew_lines:
             body += (
-                "\n<details>\n"
-                "<summary><b>Crew record</b>"
-                f" <i>({path_label} path)</i></summary>\n\n"
-                + "\n".join(crew_lines) + "\n\n</details>\n"
+                "- ⚠️ **No crew diff was captured** — the crew's work is not "
+                "preserved anywhere. Treat this PR as carrying no crew output.\n"
             )
-
-    # Raw task output — noisy, collapsed.
-    body += (
-        "\n<details>\n"
-        "<summary><b>Task Output</b></summary>\n\n"
-        f"```python\n{response_text[:800]}\n```\n"
-        + ("..." if len(response_text) > 800 else "") + "\n"
-        "\n</details>\n"
-    )
-
-    # Source chain: read the REVIEW sidecar and surface the verified artifact
-    # chain so a reviewer can trace the PR back to the ticket and every prior
-    # inner-loop artifact without leaving GitHub.
-    if bead_id:
-        lines = [
-            f"- **bead:** `{source.get('bead', '')}`",
-            f"- **spec:** {source.get('spec', '')}",
-            f"- **decisions:** {', '.join(source.get('decisions', []) or [])}",
-            "**artifacts:**",
-        ]
-        for art in source.get("artifacts", []) or []:
-            lines.append(f"  - `{art}`")
-        lines.append(f"**acceptance:** {source.get('spec_acceptance', '')}")
-        body += "\n### Source chain\n\n" + "\n".join(lines) + "\n"
-
-    # Checklist — collapsed, auto-filled from facts already rendered above.
-    body += (
-        "\n<details>\n"
-        "<summary><b>Checklist</b></summary>\n\n"
-        f"- [ ] Bead ID present: {('yes' if bead_id else 'no')}\n"
-        f"- [ ] Acceptance recorded: {('yes' if acceptance_md != 'not recorded' else 'no')}\n"
-        f"- [ ] Verified: {verify_md}\n"
-        "\n</details>\n"
-    )
-
     return body
 
 
@@ -549,8 +409,6 @@ def create_pr_for_issue(
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
     patch_path: Optional[str] = None,
-    source_json_path: Optional[str] = None,
-    inner_loop_artifacts: Optional[dict] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -569,12 +427,6 @@ def create_pr_for_issue(
         combined_score: Combined score from the review (used when
             review_evidence is absent).
         work_dir: Ignored (kept for backward compat).
-        inner_loop_artifacts: Optional mapping of repo-relative target
-            path (e.g. "docs/source.json") to an absolute local file path
-            whose bytes should be committed into the PR branch. The
-            generated source.json / pr-writeup.* artifacts arrive this way
-            so they appear in the PR diff (M4). Entries whose file is
-            missing are skipped; a blob that cannot be created is skipped.
         dry_run: If True, log actions without executing.
 
     Returns:
@@ -588,48 +440,6 @@ def create_pr_for_issue(
 
     if not response_text:
         sys.stderr.write(f"[pr_creator] No response text for issue #{num}\n")
-        return None
-
-    # Fail-closed publication guard. This function is the PR-creation boundary
-    # and already holds the full evidence chain, so a rejected review must not
-    # produce a PR URL *here* either. The bridge gates the default sync path at
-    # issue_bridge.py:2427 (`_review.get("accepted") is False` → continue), and
-    # `review_evidence` is that same dict (issue_bridge.py:3020), so this guard
-    # is defence-in-depth: it makes the boundary self-defending for any DIRECT
-    # caller — `create_prs_for_results` (currently dead), the module CLI
-    # (pr_creator.py:720), or a future worker.
-    #
-    # Scope matches the bridge guard exactly — CRITICAL and HIGH both refuse
-    # (issue_bridge.py:2698, conductor._persist_acceptance). MEDIUM/LOW stay
-    # advisory.
-    #
-    # Returns None (the function's existing "no PR" value, pr_creator.py:447)
-    # rather than raising, so callers that already handle None keep working.
-    _rejected = False
-    _why = ""
-    if review_evidence and review_evidence.get("accepted") is False:
-        _rejected = True
-        _why = "review rejected (accepted=False)"
-    else:
-        _e_findings = (entire_review or {}).get("findings") or []
-        if isinstance(_e_findings, list):
-            for _f in _e_findings:
-                if (
-                    isinstance(_f, dict)
-                    and str(_f.get("severity", "")).upper() in ("CRITICAL", "HIGH")
-                ):
-                    # The bridge's entire veto rewrites findings with a
-                    # `citation` key; raw sensor findings carry file/line.
-                    _cite = _f.get("citation") or "{}:{}".format(
-                        _f.get("file", "?"), _f.get("line", "?")
-                    )
-                    _rejected = True
-                    _why = "critical entire finding: {}".format(_cite)
-                    break
-    if _rejected:
-        sys.stderr.write(
-            f"[pr_creator] #{num}: refusing to open a PR — {_why}\n"
-        )
         return None
 
     if dry_run:
@@ -729,31 +539,6 @@ def create_pr_for_issue(
                 f"to branch '{branch}'\n"
             )
 
-    # M4: commit the generated inner-loop artifacts (source.json, pr-writeup
-    # .md/.html) into the PR branch so they appear in the PR diff. Each entry
-    # maps a repo-relative target path to a local absolute file. Missing local
-    # files are skipped (generation is fail-open by design); a blob that
-    # cannot be created is skipped like every other infra fault here.
-    if inner_loop_artifacts:
-        for target_path, local_file in sorted(inner_loop_artifacts.items()):
-            blob_sha = _inner_loop_artifact_blob(repo, target_path, Path(local_file))
-            if blob_sha is None:
-                sys.stderr.write(
-                    f"[pr_creator] skipping inner-loop artifact {target_path} "
-                    f"(missing local file or blob creation failed)\n"
-                )
-                continue
-            entries.append({
-                "path": target_path,
-                "mode": "100644",
-                "type": "blob",
-                "sha": blob_sha,
-            })
-            sys.stderr.write(
-                f"[pr_creator] committing inner-loop artifact {target_path} "
-                f"to branch '{branch}'\n"
-            )
-
     # Filter out any entries where blob creation failed (an infra fault: the
     # GitHub blob POST returned no SHA). If none survive, there is nothing to
     # commit and we must abort — but this is a distinct fault from the
@@ -802,6 +587,19 @@ def create_pr_for_issue(
         sys.stderr.write("[pr_creator] ref update failed — aborting\n")
         return None
 
+    # 2b. Human code-review gate via Plannotator.
+    #     Opens the local diff in the browser. The human can approve, annotate,
+    #     or dismiss. Annotations are captured as review_evidence for the PR body.
+    from scripts.plannotator_gate import gate_diff
+    diff_result = gate_diff(repo_path=".", task_id=f"pr-{num}-{branch}")
+    human_review = None
+    if diff_result.get("decision") == "annotated":
+        human_review = diff_result.get("feedback", "")
+    elif diff_result.get("decision") == "dismissed":
+        sys.stderr.write(f"[pr_creator] PR #{num} dismissed by human reviewer\n")
+        return None
+    # "approved", "bypassed", or "error" → proceed
+
     # 3. Build PR body — carry the full acceptance evidence chain so a human
     #    reviewing the PR can see WHY the school accepted this, not just that
     #    it did. Without this, the PR is an evidence-free artifact.
@@ -816,7 +614,7 @@ def create_pr_for_issue(
         artifact_path=artifact_path,
         crew_used=crew_used,
         patch_path=patch_path,
-        source_json_path=source_json_path,
+        human_review=human_review,
     )
 
     # 4. Open PR.

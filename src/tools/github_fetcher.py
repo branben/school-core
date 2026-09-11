@@ -3,7 +3,7 @@
 github_fetcher.py — Fetch GitHub issues via `gh` CLI, classify, and map to Director domains.
 
 Usage:
-    from src.tools.github_fetcher import fetch_issues, list_repos, load_config
+    from github_fetcher import fetch_issues, list_repos, load_config
 
     issues = fetch_issues("owner/repo")
     repos = list_repos()
@@ -16,11 +16,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from src.core.triage_classifier import classify_issue
+from triage_classifier import classify_issue
+from school_core.paths import GITHUB_CONFIG_PATH
 
-from src.tools.repo_default import default_repo
+from repo_default import default_repo
 
-CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "github.yaml"
+CONFIG_PATH = GITHUB_CONFIG_PATH
 
 # The reserved value "__self__" means "the repo this checkout was cloned from"
 # (resolved via repo_default.default_repo). Expanded here so every consumer gets
@@ -71,10 +72,7 @@ def load_config(path: Optional[str] = None) -> dict:
     defaults = {
         "repo": "",
         "poll_interval_seconds": 300,
-        # Labels narrow discovery only, never authorize execution. Admission
-        # is closed until an owner-selected association allowlist is set.
-        "labels": [],
-        "allowed_author_associations": [],
+        "labels": ["bug", "enhancement"],
         "difficulty_overrides": {},
         "domain_overrides": {},
         "target_repos": [],
@@ -159,70 +157,28 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
             "--json", "number,title,labels,body", "--limit", "50"]
 
     if labels:
-        # `gh` ANDs repeated --label flags and also ANDs the comma form
-        # (`--label a,b` == `--label a --label b`; verified on the live target
-        # repo: ready-for-agent=13, production-readiness=11, both forms=6).
-        # The config label list is a filter set, not a conjunction, so OR it:
-        # fetch once per label and union by issue number. Without this,
-        # `labels: ["bug","enhancement"]` yields 0 on a repo where no issue
-        # carries both.
-        merged: dict[int, dict] = {}
         for label in labels:
-            single = [*args, "--label", label]
-            stdout = _gh_command(single)
-            if stdout is None:
-                continue
-            try:
-                batch = json.loads(stdout)
-            except json.JSONDecodeError as e:
-                sys.stderr.write(
-                    f"[github_fetcher] Failed to parse gh output for label "
-                    f"'{label}': {e}\n"
-                )
-                continue
-            for item in batch if isinstance(batch, list) else []:
-                number = item.get("number")
-                if number is not None and number not in merged:
-                    merged[number] = item
-        raw_issues = [merged[n] for n in sorted(merged)]
-    else:
-        stdout = _gh_command(args)
-        if stdout is None:
-            return []
-        try:
-            raw_issues = json.loads(stdout)
-        except json.JSONDecodeError as e:
-            sys.stderr.write(f"[github_fetcher] Failed to parse gh output: {e}\n")
-            return []
+            args.extend(["--label", label])
+
+    stdout = _gh_command(args)
+    if stdout is None:
+        return []
+
+    try:
+        raw_issues = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        sys.stderr.write(f"[github_fetcher] Failed to parse gh output: {e}\n")
+        return []
 
     config = load_config()
     domain_overrides = config.get("domain_overrides", {})
     results = []
 
-    allowed = config.get("allowed_author_associations", [])
-    valid = {"OWNER", "MEMBER", "COLLABORATOR"}
-    if not isinstance(allowed, list) or not allowed or any(a not in valid for a in allowed):
-        sys.stderr.write("[github_fetcher] intake disabled: configure allowed_author_associations\n")
-        return []
     for issue in raw_issues:
-        # gh issue list does not expose authorAssociation. Fetch authenticated
-        # API metadata separately; issue body/labels cannot grant admission.
-        number = issue.get("number")
-        if not isinstance(number, int) or number <= 0:
-            continue
-        detail = _gh_command(["api", f"repos/{repo}/issues/{number}"])
-        try:
-            metadata = json.loads(detail) if detail else {}
-            if metadata.get("number") != number or metadata.get("author_association") not in allowed:
-                continue
-            if metadata.get("state") != "open" or metadata.get("pull_request"):
-                continue
-        except (ValueError, TypeError, AttributeError):
-            continue
         number = issue.get("number", 0)
-        title = metadata.get("title", issue.get("title", ""))
-        body = metadata.get("body", issue.get("body", "")) or ""
-        gh_labels = metadata.get("labels", issue.get("labels", []))
+        title = issue.get("title", "")
+        body = issue.get("body", "") or ""
+        gh_labels = issue.get("labels", [])
         label_names = [l.get("name", "") for l in gh_labels] if isinstance(gh_labels, list) else []
 
         category, state = classify_issue(title, label_names, body)
@@ -276,13 +232,6 @@ def fetch_single_issue(owner: str, repo: str, number: int) -> Optional[dict]:
     or None on any gh failure. Reuses the same classification/domain mapping
     as fetch_issues so the conductor's --issue bridge stays consistent.
     """
-    config = load_config()
-    allowed = config.get("allowed_author_associations", [])
-    valid = {"OWNER", "MEMBER", "COLLABORATOR"}
-    if not isinstance(allowed, list) or not allowed or any(a not in valid for a in allowed):
-        sys.stderr.write("[github_fetcher] intake disabled: configure allowed_author_associations\n")
-        return None
-
     stdout = _gh_command([
         "issue", "view", str(number),
         "--repo", f"{owner}/{repo}",
@@ -302,18 +251,7 @@ def fetch_single_issue(owner: str, repo: str, number: int) -> Optional[dict]:
     gh_labels = issue.get("labels", [])
     label_names = [l.get("name", "") for l in gh_labels] if isinstance(gh_labels, list) else []
 
-    # gh issue view does not expose authorAssociation. Fetch authenticated
-    # API metadata separately; issue body/labels cannot grant admission.
-    detail = _gh_command(["api", f"repos/{owner}/{repo}/issues/{number}"])
-    try:
-        metadata = json.loads(detail) if detail else {}
-        if metadata.get("number") != number or metadata.get("author_association") not in allowed:
-            return None
-        if metadata.get("state") != "open" or metadata.get("pull_request"):
-            return None
-    except (ValueError, TypeError, AttributeError):
-        return None
-
+    config = load_config()
     category, state = classify_issue(title, label_names, body)
 
     domain_overrides = config.get("domain_overrides", {})

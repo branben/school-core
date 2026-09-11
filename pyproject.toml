@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "school-core"
+version = "0.1.0"
+description = "Agent School Core — multi-agent AI education framework"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Brandon Bennett", email = "brandonbennett@example.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+hermes = []  # Hermes integration is optional
+orca = []    # Orca integration is optional
+omniroute = []  # OmniRoute integration is optional
+agentmail = []  # AgentMail integration is optional
+
+[project.scripts]
+conductor = "school_core.cli:conductor_main"
+director = "school_core.cli:director_main"
+issue-bridge = "school_core.cli:bridge_main"
+
+[project.urls]
+Homepage = "https://github.com/branben/school-core"
+Repository = "https://github.com/branben/school-core"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+school_core = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: marks tests that hit live APIs (deselect with '-m \"not live\"')",
+    "unit: marks unit tests",
+    "integration: marks integration tests",
+    "slow: marks slow tests",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
