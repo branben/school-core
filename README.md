@@ -39,10 +39,13 @@ Working skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md`.
 ## Quick Start
 
 ```bash
-# One-command setup (Nix)
-nix develop github:branben/school-core
+# One-command setup (installs deps, .env, profiles)
+./setup.sh
 
-# Dispatch a task
+# Run tests (deselects live Orca tests)
+python3 -m pytest -q -m "not live"
+
+# Dispatch a task (requires Orca)
 orca dispatch --profile student-coder "implement feature X"
 
 # Review + rubber-stamp via AgentMail
@@ -135,7 +138,7 @@ the full contract.
 
 ## Contributing
 
-See [`docs/HANDOFF.md`](docs/HANDOFF.md). Build against **wired** capabilities only — `campus.md` marks what's operational vs aspirational.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Build against **wired** capabilities only — `campus.md` marks what's operational vs aspirational.
 
 ---
 
