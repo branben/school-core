@@ -40,7 +40,7 @@ class TestAnchorRegistryLoad:
         assert len(registry) > 0
 
     def test_contains_known_anchors(self, registry):
-        """Registry contains anchors migrated from prompt_composer.py."""
+        """Registry contains anchors loaded from config/anchors.yaml."""
         assert "Fagan Inspection" in registry
         assert "YAGNI" in registry
         assert "Five Whys" in registry
@@ -124,103 +124,6 @@ class TestAnchorQuerying:
         assert "methodology" in tiers
         assert "principle" in tiers
         assert "technique" in tiers
-
-
-# ── Backward Compatibility (Golden Test) ─────────────────────────────────────
-
-
-class TestBackwardCompatibility:
-    """Verify that compose_prompt produces output compatible with the
-    pre-registry hardcoded dicts. The bracket notation and prompt structure
-    must be identical; the registry adds activation pattern enrichment."""
-
-    def test_compose_prompt_has_bracket_notation(self, registry, store):
-        """compose_prompt output includes bracket notation for all anchors."""
-        from prompt_composer import compose_prompt
-
-        result = compose_prompt(
-            domain="code-review",
-            difficulty="hard",
-            agent="foundry-coder-7b",
-            store=store,
-            domain_prompts={},
-            default_prompt="",
-            is_local=False,
-            is_blocker=False,
-        )
-        # Must contain bracket notation for known anchors
-        assert "[Fagan Inspection]" in result
-        assert "[SOLID Principles]" in result
-        assert "[Code Smells]" in result
-
-    def test_compose_prompt_enriches_with_activation_patterns(self, registry, store):
-        """compose_prompt output includes activation patterns from registry."""
-        from prompt_composer import compose_prompt
-
-        result = compose_prompt(
-            domain="code-review",
-            difficulty="hard",
-            agent="foundry-coder-7b",
-            store=store,
-            domain_prompts={},
-            default_prompt="",
-            is_local=False,
-            is_blocker=False,
-        )
-        # Activation patterns should appear as [Name]: pattern
-        assert "[Fagan Inspection]:" in result
-        assert "structured" in result.lower() or "systematic" in result.lower()
-
-    def test_compose_prompt_role_anchors_present(self, registry, store):
-        """compose_prompt includes role-based anchors."""
-        from prompt_composer import compose_prompt
-
-        result = compose_prompt(
-            domain="debugging",
-            difficulty="medium",
-            agent="foundry-coder-7b",
-            store=store,
-            domain_prompts={},
-            default_prompt="",
-            is_local=True,
-            is_blocker=False,
-        )
-        assert "[YAGNI]" in result
-        assert "[ROLE]" in result
-
-    def test_compose_prompt_difficulty_anchors(self, registry, store):
-        """compose_prompt includes difficulty-based anchors."""
-        from prompt_composer import compose_prompt
-
-        result = compose_prompt(
-            domain="debugging",
-            difficulty="blocker",
-            agent="foundry-coder-7b",
-            store=store,
-            domain_prompts={},
-            default_prompt="",
-            is_local=False,
-            is_blocker=True,
-        )
-        assert "[Five Whys]" in result
-        assert "[DIFFICULTY]" in result
-
-    def test_compose_prompt_domain_extra_context(self, registry, store):
-        """compose_prompt preserves domain extra_context."""
-        from prompt_composer import compose_prompt
-
-        result = compose_prompt(
-            domain="python-testing",
-            difficulty="easy",
-            agent="foundry-coder-7b",
-            store=store,
-            domain_prompts={},
-            default_prompt="",
-            is_local=True,
-            is_blocker=False,
-        )
-        assert "[DOMAIN_CONTEXT]" in result
-        assert "state-based testing" in result.lower()
 
 
 # ── Anchor Data Integrity ────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """Semantic Anchor Registry loader.
 
 Loads anchors from config/anchors.yaml and provides query functions for
-prompt_composer.py and other components.
+the director and other components.
 
 Usage:
     from anchor_loader import AnchorRegistry
