@@ -16,9 +16,19 @@ cd school-core
 
 ## 2. Set up the environment
 
+The one-command bootstrap handles venv, deps, `.env` templating, Orca check,
+and Hermes profile copy:
+
 ```bash
-pip install -r requirements.txt
+./setup.sh
 ```
+
+Flags: `--dry-run` (print steps without executing), `--noninteractive`
+(skip overwrite prompts for existing Hermes profiles).
+
+This installs Python deps, copies `.env.example` to `.env` (edit it with your
+API keys — see `.env.example` for required vs optional), and deploys persona
+profiles to `~/.hermes/profiles/`.
 
 Core is mostly Python 3.9+ stdlib. The only third-party dependencies are
 PyYAML and pytest.
@@ -91,10 +101,12 @@ cp config.example.yaml config.yaml
 ### 4. Run the tests
 
 ```bash
-python -m pytest -q
+python -m pytest -q -m "not live"
 ```
 
-Tests run on Python 3.9, 3.11, and 3.12 in CI (`.github/workflows/ci.yml`).
+The `not live` marker deselects tests that require a live Orca + OmniRoute
+backend (those run only on the self-hosted runner in CI). Tests run on Python
+3.9, 3.11, and 3.12 in CI (`.github/workflows/ci.yml`).
 
 ### 5. Make your change
 
@@ -140,6 +152,19 @@ school-core is a three-tier loop:
 2. Add the lens to `lenses/` if it's a new adversarial axis.
 3. Update the README roles section.
 4. Write a test in `tests/` that covers the new path.
+
+### Persona profiles
+
+Personas live in `config/profiles/_TEMPLATES/<name>/SOUL.md`. The one-command
+setup (`./setup.sh`) copies them into `~/.hermes/profiles/` so Hermes can load
+them. To add a persona:
+
+1. Create a new directory under `config/profiles/_TEMPLATES/<name>/`.
+2. Write a `SOUL.md` describing the persona's role, capabilities, and constraints.
+3. Re-run `./setup.sh` to deploy it to your local Hermes profiles.
+
+The templates are the source of truth — `~/.hermes/profiles/` is generated
+and should not be edited directly.
 
 ### Code style
 

@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  orca-shim:
+    image: python:3.11-slim
+    container_name: orca-shim
+    command: >
+      sh -c "pip install fastapi uvicorn httpx &&
+             cd /app && python -m uvicorn scripts.orca_shim:app --host 0.0.0.0 --port 9100"
+    working_dir: /app
+    volumes:
+      - ./scripts:/app/scripts
+      - orca-workspaces:/workspaces
+      # SECURITY: host Docker socket mount — container-escape vector.
+      # This compose file is for LOCAL DEVELOPMENT ONLY. Do not use it for
+      # shared or production deployments.
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:9100:9100"
+    environment:
+      ORCA_BIN: orca
+      ORCA_SHIM_TOKEN: ${ORCA_SHIM_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  school-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: school-core
+    depends_on:
+      orca-shim:
+        condition: service_healthy
+    environment:
+      ORCA_HTTP: http://orca-shim:9100
+      ORCA_MODE: http
+      MODEL_PROVIDER: nous
+      NOUS_API_KEY: ${NOUS_API_KEY}
+      NOUS_MODEL: ${NOUS_MODEL:-meituan/longcat-2.0:free}
+      ORCA_SHIM_TOKEN: ${ORCA_SHIM_TOKEN:-}
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    stdin_open: true
+    tty: true
+
+volumes:
+  orca-workspaces:
