@@ -1,0 +1,19 @@
+{
+  "$schema": "school-core vault manifest v1",
+  "description": "Curated, project-safe subset of the Knowledge Vault. Contains ONLY notes that their owner has reviewed and approved for repo/agent access. Personal or private data is prohibited here.",
+  "purpose": "Layer 3 (Obsidian) to Layer 0 (CocoIndex) bridge — hand-picked archival notes that agents may read for context. Not a mirror of the personal Obsidian vault.",
+  "allowlist_source": "config/vault_allowlist.yaml",
+  "enforcement": "scripts/check_vault_allowlist.py",
+  "allowed_patterns": [
+    "school/**",
+    "docs/glossary/**",
+    "anchors/*.md",
+    "roles/*.md",
+    ".vault_manifest.json",
+    "README.md"
+  ],
+  "notes": [
+    "Only files matching 'allowed_patterns' may live here. Anything else fails CI.",
+    "Personal Obsidian data must never be added to this repo. When in doubt, leave it out."
+  ]
+}

@@ -6,4 +6,5 @@ pytest>=7.0          # for the test suite
 # Optional integrations (gracefully skipped if absent):
 #   - engram  (persistent memory adapter; detected at runtime)
 #   - cocoindex / serena (code-context; optional)
+#   - obsidian live vault (scripts/obsidian_client.py) — PURE STDLIB, no deps
 #   - Nix flake.nix provides a hermetic verify-shell (node20, pnpm, python312, ripgrep, fd, jq)

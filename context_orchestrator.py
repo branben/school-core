@@ -93,6 +93,12 @@ _REPO_ROOT = Path(__file__).resolve().parent
 # containing .cocoindex_code/.  Override via AGENT_SCHOOL_VAULT env var.
 DEFAULT_VAULT = Path(os.environ.get("AGENT_SCHOOL_VAULT", str(_REPO_ROOT)))
 
+# Config for the live vault read (optional). When OBSIDIAN_API_KEY is set,
+# enrich_prompt adds live Obsidian context (via the tailnet SOCKS5 proxy).
+LIVE_VAULT_ENV_BASE = "OBSIDIAN_BASE_URL"
+LIVE_VAULT_ENV_KEY = "OBSIDIAN_API_KEY"
+LIVE_VAULT_ENV_SOCKS5 = "OBSIDIAN_SOCKS5"
+
 # Approximate char budget for Layer 3 archival context.
 # Total context budget is ~10K chars; Layer 0 + Layer 1 can use ~2K,
 # leaving ~8K. We cap Layer 3 at 4K to leave headroom.
@@ -146,6 +152,8 @@ def enrich_prompt(
         probes.append(("engram", lambda: _engram_context(domain, prompt, top_k)))
     if session_id:
         probes.append(("archival", lambda: _archival_context(domain, session_id)))
+    if _obsidian_configured():
+        probes.append(("obsidian", lambda: _obsidian_context(prompt, top_k)))
 
     def _run_probe(item):
         source, probe = item
@@ -180,8 +188,83 @@ def enrich_prompt(
     return result
 
 
+def _vault_allowlist_violation(vault: Path) -> Optional[str]:
+    """Return the allowlist violation under `vault`, or None if clean/absent.
+
+    Privacy guard for the CURATED knowledge vault: `data/vault/` must contain
+    only allowlisted, non-personal notes. If anything else lands there,
+    CocoIndex search is skipped so private data never reaches agent prompts.
+
+    The repo-root vault (DEFAULT_VAULT == repo root, used for CocoIndex over
+    the codebase) is intentionally NOT allowlist-checked — it indexes repo
+    source, which is already public to the repo, not personal notes.
+    """
+    if not vault.exists():
+        return None
+    curated = (Path(__file__).resolve().parent / "data" / "vault").resolve()
+    if Path(vault).expanduser().resolve() != curated:
+        return None
+    try:
+        from scripts.check_vault_allowlist import REPO_ROOT, scan_vault, load_allowlist
+        # Allowlist lives next to this module; always enforce the repo's own.
+        allowlist = REPO_ROOT / "config" / "vault_allowlist.yaml"
+        patterns = load_allowlist(allowlist)
+        violations = scan_vault(vault, patterns)
+    except Exception as e:  # non-blocking: fail closed only on explicit proof
+        sys.stderr.write(f"[context] vault allowlist check failed: {e}\n")
+        return "allowlist check failed"
+    return violations[0].as_posix() if violations else None
+
+
+_OBSIDIAN_SEARCH_CHAR_BUDGET = 4000
+
+
+def _obsidian_configured() -> bool:
+    """True when live vault reads are enabled via env (fails open otherwise)."""
+    return bool(os.environ.get(LIVE_VAULT_ENV_KEY))
+
+
+def _obsidian_context(prompt: str, top_k: int = 3) -> Optional[str]:
+    """Live Obsidian (KnowledgeCore) context via the tailnet SOCKS5 proxy.
+
+    Gated behind OBSIDIAN_API_KEY being set (see _obsidian_configured).
+    Read-only, confined to the safe (non-personal) vault subset by
+    scripts.obsidian_client. Returns concise search snippets; empty if the
+    bridge is down or the vault is unreachable (fail-open by design).
+    """
+    try:
+        from scripts.obsidian_client import ObsidianClient
+
+        client = ObsidianClient()
+        results = client.simple_search(prompt, top_k=top_k)
+    except Exception as e:
+        sys.stderr.write(f"[context] live vault (obsidian) failed: {e}\n")
+        return None
+    if not results:
+        return None
+    parts = []
+    used = 0
+    for res in results:
+        path = res.get("filename") or res.get("path") or "note"
+        snippet = res.get("snippet", "")
+        block = f"· {path}\n  {snippet}"
+        if used + len(block) > _OBSIDIAN_SEARCH_CHAR_BUDGET:
+            break
+        parts.append(block)
+        used += len(block)
+    if not parts:
+        return None
+    return "[Live Vault]\n" + "\n".join(parts)
+
+
 def _cocoindex_context(prompt: str, vault: Path, top_k: int) -> Optional[str]:
     """Search the vault with CocoIndex and return formatted snippets."""
+    violation = _vault_allowlist_violation(vault)
+    if violation:
+        sys.stderr.write(
+            f"[context] vault allowlist violation; skipping cocoindex: {violation}\n"
+        )
+        return None
     try:
         result = subprocess.run(
             ["ccc", "search", prompt, "--limit", str(top_k)],

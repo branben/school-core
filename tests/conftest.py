@@ -91,6 +91,22 @@ def isolate_data_dirs(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def disable_live_vault(monkeypatch):
+    """Disable live Obsidian vault reads during tests.
+
+    context_orchestrator adds an Obsidian (live vault) probe whenever
+    OBSIDIAN_API_KEY is set in the environment. Tests that assert "all
+    sources down → empty" would become non-deterministic if the developer's
+    shell has that key exported. Unset it (and its friends) by default so the
+    suite is hermetic; tests that exercise live vault reads set the key via
+    monkeypatch themselves.
+    """
+    monkeypatch.delenv("OBSIDIAN_API_KEY", raising=False)
+    monkeypatch.delenv("OBSIDIAN_BASE_URL", raising=False)
+    monkeypatch.delenv("OBSIDIAN_SOCKS5", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def verify_lens_module_loads():
     """Verify the lenses module loads correctly after the load-order fix.
 
