@@ -15,6 +15,8 @@ from context_orchestrator import (
     _cocoindex_context,
     _engram_context,
     _extract_symbol_names,
+    _obsidian_configured,
+    _obsidian_context,
     enrich_prompt,
     LAYER_3_CHAR_BUDGET,
 )
@@ -625,3 +627,76 @@ class TestEngramContextRealFiles:
         """A domain that will never have trajectory files returns None."""
         ctx = _engram_context("__nonexistent_domain_xyz__", "Review code", 3)
         assert ctx is None
+
+
+# ---------------------------------------------------------------------------
+# Live vault (Obsidian) integration tests
+# ---------------------------------------------------------------------------
+
+class TestLiveVaultIntegration:
+    def test_obsidian_probe_not_configured_by_default(self):
+        """Without OBSIDIAN_API_KEY set, the live-vault probe is skipped."""
+        assert not _obsidian_configured()
+
+    def test_obsidian_probe_configured_when_key_set(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_API_KEY", "test-key")
+        assert _obsidian_configured()
+
+    def test_obsidian_context_formats_search_results(self, monkeypatch):
+        """_obsidian_context turns client search results into a prompt block."""
+        monkeypatch.setenv("OBSIDIAN_API_KEY", "test-key")
+
+        class FakeClient:
+            def simple_search(self, query, top_k=3):
+                return [
+                    {"filename": "01-Projects/School/school-core/docs/agents/issue-tracker.md",
+                     "snippet": "Issues are tracked on GitHub via gh."},
+                    {"filename": "03-Skills/Code Review/ce-code-review.md",
+                     "snippet": "Review checklist..."},
+                ]
+
+        import context_orchestrator as co
+        import types
+        fake_mod = types.ModuleType("fake_obsidian_client")
+        fake_mod.ObsidianClient = lambda **kw: FakeClient()
+        monkeypatch.setitem(sys.modules, "scripts.obsidian_client", fake_mod)
+
+        out = co._obsidian_context("review a change")
+
+        assert out is not None
+        assert "[Live Vault]" in out
+        assert "issue-tracker.md" in out
+        assert "ce-code-review.md" in out
+
+    def test_obsidian_context_empty_when_no_results(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_API_KEY", "test-key")
+
+        class FakeClient:
+            def simple_search(self, query, top_k=3):
+                return []
+
+        import context_orchestrator as co
+        import types
+        fake_mod = types.ModuleType("fake_obsidian_client_empty")
+        fake_mod.ObsidianClient = lambda **kw: FakeClient()
+        monkeypatch.setitem(sys.modules, "scripts.obsidian_client", fake_mod)
+
+        assert co._obsidian_context("whatever") is None
+
+    def test_enrich_prompt_adds_live_vault_when_key_and_results(self, monkeypatch):
+        """enrich_prompt includes [Live Vault] when the probe yields results."""
+        monkeypatch.setenv("OBSIDIAN_API_KEY", "test-key")
+
+        class FakeClient:
+            def simple_search(self, query, top_k=3):
+                return [{"filename": "Welcome.md", "snippet": "KnowledgeCore bootstrap."}]
+
+        import context_orchestrator as co
+        import types
+        fake_mod = types.ModuleType("fake_obsidian_client_enrich")
+        fake_mod.ObsidianClient = lambda **kw: FakeClient()
+        monkeypatch.setitem(sys.modules, "scripts.obsidian_client", fake_mod)
+
+        out = co.enrich_prompt("_default", "bootstrap the vault", top_k=1, session_id="live-vault-test")
+        assert "[Live Vault]" in out
+        assert "Welcome.md" in out

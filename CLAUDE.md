@@ -57,6 +57,19 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
 
+## Slice Tracking Contract
+
+The triage board (`docs/templates/triage-board.html`) is a projection of beads and
+`data/last_run.json`. It is read-only. If it disagrees with reality, beads wins.
+
+- Moving a card on the board is a proposal. Applying it means running `bd`.
+- End every inner-loop cycle with a bead write (`bd close <id>` or
+  `bd update <id> --status open`) for the slice you worked, before the next cycle.
+- Rebuild the view when you need a fresh projection:
+  `python3 scripts/build_board_json.py`
+
+Full contract: `docs/templates/slice-tracking-contract.md`.
+
 
 ## Build & Test
 
