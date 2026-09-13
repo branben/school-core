@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 
 # Reuse the repo's readiness classifier; the envelope risk logic lives in
@@ -48,6 +49,20 @@ def _get(url: str, headers: dict, timeout: int = 60):
     req = urllib.request.Request(url, headers=headers, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode())
+
+
+def _start_task_status(api_key: str, start_task_id: str) -> dict | None:
+    """Poll the async start-task status (GET) for the real app_conversation_id.
+
+    POST /app-conversations is async: it returns a start-task record. The
+    app_conversation_id only appears once the sandbox is provisioned.
+    """
+    url = (f"{_base('OH_CLOUD_BASE', APP_BASE)}/app-conversations/start-tasks?ids="
+           f"{urllib.parse.quote(start_task_id)}")
+    resp = _get(url, {"Authorization": f"Bearer {api_key}"})
+    if isinstance(resp, list) and resp:
+        return resp[0] or None
+    return None
 
 
 def fetch_issue(repo: str, number: int, token: str) -> dict:
@@ -107,17 +122,14 @@ def start_cloud_conversation(issue: dict, repo: str, api_key: str, dry_run: bool
     except Exception as exc:  # noqa: BLE001  report and fall through to comment
         print(f"[dispatch] failed to start cloud conversation: {exc}", file=sys.stderr)
         return None
-    # Asynchronous start: `app_conversation_id` may only arrive after polling
-    # the start-task. We do one poll here so the URL we comment is valid.
+    # Asynchronous start: the returned record is a start-task; the real
+    # app_conversation_id appears only after the sandbox is provisioned.
     conv_id = start.get("app_conversation_id") or start.get("id")
     if not start.get("app_conversation_id"):
         try:
-            items = _post(f"{_base('OH_CLOUD_BASE', APP_BASE)}/app-conversations/start-tasks",
-                          {"ids": [start.get("id")]},
-                          {"Authorization": f"Bearer {api_key}"})
-            if isinstance(items, list) and items:
-                item = items[0] if not isinstance(items[0], dict) else items[0]
-                conv_id = (item or {}).get("app_conversation_id") or conv_id
+            poll = _start_task_status(api_key, start["id"])
+            if poll:
+                conv_id = poll.get("app_conversation_id") or conv_id
         except Exception as exc:  # noqa: BLE001
             print(f"[dispatch] start-task poll failed (still commenting URL): {exc}", file=sys.stderr)
     if not conv_id:

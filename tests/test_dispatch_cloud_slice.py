@@ -42,18 +42,30 @@ class _Stub(BaseHTTPRequestHandler):
         elif "/repos/x/y/issues/2" in self.path:
             self._send(json.dumps({"number": 2, "title": "Add auth rate limiting",
                                    "body": "", "labels": [{"name": "ready-for-agent"}]}))
+        elif "/repos/x/y/issues/3" in self.path:
+            self._send(json.dumps({"number": 3, "title": "Async dispatch slice",
+                                   "body": "", "labels": [{"name": "ready-for-agent"}]}))
         elif "/repos/x/y/issues/99" in self.path:
             self._send(json.dumps({}), code=404)
+        elif "/app-conversations/start-tasks" in self.path:
+            # Async start-task poll (GET): app_conversation_id appears late.
+            if "start-2" in self.path:
+                self._send(json.dumps([{"id": "start-2", "app_conversation_id": "late42"}]))
+            else:
+                self._send(json.dumps([{"id": "start-1", "app_conversation_id": "abc123"}]))
         else:
             self._send("{}")
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
-        if "/app-conversations" in self.path and "/start-tasks" in self.path:
-            self._send(json.dumps({"items": [{"id": "start-1", "app_conversation_id": "abc123"}]}))
-        elif "/app-conversations" in self.path:
-            self._send(json.dumps({"id": "start-1", "app_conversation_id": "abc123"}))
+        if "/app-conversations" in self.path and "start-tasks" not in self.path:
+            # Start-task record only; app_conversation_id comes from GET poll.
+            # Issue 3's prompt includes its title; use it to select start-2.
+            if "Async dispatch slice" in json.dumps(body):
+                self._send(json.dumps({"id": "start-2"}))
+            else:
+                self._send(json.dumps({"id": "start-1"}))
         elif self.path.endswith("/labels"):
             _Stub.labels_added.extend(body.get("labels", []))
             self._send("[]")
@@ -105,6 +117,15 @@ def test_human_approve_pauses_and_labels(stub_server):
     assert "human-approve" in result.stdout
     assert "human-approve" in _Stub.labels_added
     assert any("Paused for human approval" in c for c in _Stub.comments)
+
+
+def test_async_start_task_polled_via_get_for_conversation_id(stub_server):
+    """POST only returns a start-task id; the app_conversation_id must be
+    resolved via GET on start-tasks (regression: was POST, got 405)."""
+    result = _run(stub_server, 3)
+    assert result.returncode == 0
+    assert "auto-apply" in result.stdout
+    assert "https://app.all-hands.dev/conversations/late42" in " ".join(_Stub.comments)
 
 
 def test_missing_issue_is_input_error(stub_server):
