@@ -1,0 +1,56 @@
+name: context
+
+# SDLC context/skills declaration verify.
+#
+# The repo declares reproducible agent context + phase skills in
+# envit.json / envit.lock.json (see docs/sdlc/context-skills.md). This
+# job verifies the declaration on every push/PR:
+#   1. envit sync --frozen  — reproduce the declared context from the
+#      lockfile; errors on manifest/lock drift (verify-gate: drift fails).
+#   2. ripwire --scan-skills — security-scan the materialized skills before
+#      they are usable (third-party skill content is untrusted until scanned).
+#
+# Reads only. No secrets. Mirrors the repo's hermetic hosted-runner style.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: envit frozen + ripwire skill scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install envit + ripwire (script is the single source of truth)
+        # scripts/install_context_tools.sh is the canonical install: downloads
+        # the same pinned releases + SHA-verifies them. Same script used for
+        # local data/tools/ installs and here, so CI and machine never drift.
+        run: |
+          CI=1 bash scripts/install_context_tools.sh
+          # Put binaries on PATH for subsequent steps (CI installs into /tmp/context-tools)
+          echo "/tmp/context-tools" >> "$GITHUB_PATH"
+          echo "/tmp/context-tools/ripwire-0.6.0-linux-x64" >> "$GITHUB_PATH"
+
+      - name: Verify declared context reproduces (envit sync --frozen)
+        # Fail loudly if the lockfile cannot reproduce the declared context
+        # (verify-gate discipline: drift or non-reproducibility is a hard error).
+        run: |
+          envit sync --frozen
+
+      - name: Security-scan materialized skills (ripwire --scan-skills)
+        # Third-party skills are untrusted until scanned. Exit 0 = clean
+        # (CRITICAL findings would exit 2 and fail the job).
+        run: |
+          SKILLS_DIR=".envit/skills"
+          if [ ! -d "$SKILLS_DIR" ]; then
+            echo "::error::declared skills not materialized by envit sync"
+            exit 1
+          fi
+          ripwire --scan-skills="$SKILLS_DIR"

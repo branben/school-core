@@ -1,0 +1,34 @@
+{
+  "repos": [
+    { "source": "redhat-et/ripwire", "ref": "v0.6.0", "update": "frozen" },
+    { "source": "plannotator/effective-html", "ref": "HEAD", "update": "frozen" },
+    { "source": "plannotator/guides", "ref": "HEAD", "update": "frozen" }
+  ],
+  "skills": {
+    "redhat-et/ripwire": {
+      "path": "skills",
+      "pick": [
+        "ripwire-router",
+        "ripwire-orient",
+        "ripwire-navigate",
+        "ripwire-before-you-build",
+        "ripwire-reuse-first",
+        "ripwire-change-check",
+        "ripwire-write-tests",
+        "ripwire-handoff",
+        "ripwire-security-scan"
+      ],
+      "modelInvocable": false
+    },
+    "plannotator/effective-html": {
+      "path": "skills",
+      "pick": "*",
+      "modelInvocable": false
+    },
+    "plannotator/guides": {
+      "path": "skills",
+      "pick": "*",
+      "modelInvocable": false
+    }
+  }
+}

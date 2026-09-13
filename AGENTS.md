@@ -212,3 +212,15 @@ Obsidian live-vault search (bridge + `OBSIDIAN_API_KEY` present) → Orca
 worktree radar (paired `mac` env). Missing bridges are reported as skipped, not
 errors. Ticket sources are tried in order: `bd` CLI → `.beads/issues.jsonl` →
 GitHub (`gh`) → local plan/spec path. Tests: `tests/test_prime_tool.py`.
+
+<!-- envit:begin -->
+## envit: repo context
+
+Additional context is available in `.envit/`. The source of each external
+repository declared in `envit.json` is at `.envit/repos/<name>/`, read-only,
+at a pinned commit. Read `.envit/AGENTS.md` for the inventory.
+
+When you work with a dependency, read its actual code there instead of
+guessing from memory. The entries are symlinks: use `rg --follow` or
+`fd -L` when you search them.
+<!-- envit:end -->

@@ -110,3 +110,42 @@ def test_missing_file_returns_2(tmp_path):
     result = run_cli([str(missing)])
     assert result.returncode == 2, result.stdout + result.stderr
     assert str(missing) in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Whole-directory contract gate.
+#
+# The build + verify contract (docs/templates/TIER.md) applies to EVERY HTML
+# artifact in docs/templates/. This test lints them all at tier 2 and enforces
+# one hard rule: every template must be completely clean — no FAIL, and no
+# WARN (horizontal-overflow smells, table wrappers, etc.). A single new
+# warning in any template fails the test (regression).
+#
+# Run with:  python3 -m pytest tests/test_check_html_artifact.py -q
+# ---------------------------------------------------------------------------
+
+TEMPLATES_DIR = REPO_ROOT / "docs" / "templates"
+
+
+def _lint_template(path: Path):
+    """Lint one template, returning (returncode, stdout, stderr)."""
+    return run_cli([str(path)])
+
+
+def test_all_templates_satisfy_build_verify_contract():
+    templates = sorted(TEMPLATES_DIR.glob("*.html"))
+    assert templates, "no HTML templates found under docs/templates/"
+    assert len(templates) >= 8, f"sanity: expected >=8 templates, got {len(templates)}"
+
+    failures = []
+
+    for t in templates:
+        result = _lint_template(t)
+        if result.returncode != 0:
+            failures.append((t.name, result.stdout + result.stderr))
+        elif "WARN" in result.stderr:
+            failures.append((t.name, result.stderr.strip()))
+
+    assert not failures, "templates violate the build + verify contract:\n" + "\n".join(
+        f"{name}: {msg}" for name, msg in failures
+    )

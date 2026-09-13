@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<!--
+  Tier-2 Prime module-map template — diagram of the codebase / service topology.
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE: the .html itself, GENERATED from repo data (symbols, modules,
+  config, CI state). Regenerate from real data; keep generator + artifact in git.
+  See docs/templates/TIER.md (Tier 2). Do NOT hand-edit this into a different
+  diagram than the repo data supports.
+
+  Form contract (per html-diagram skill + Effective HTML guide):
+  - small set of shapes, lines, colors, labels — consistent
+  - hot path highlighted, entry points listed
+  - dense explanation stays OUTSIDE the diagram
+  - labels legible at actual viewing size; mobile: no horizontal overflow
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="generated from repo data (symbols/modules/CI)">
+<meta name="generated-from" content="[generator path] · regenerate when repo changes">
+<title>Module map · Prime</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Geist',-apple-system,'Segoe UI',sans-serif; line-height:1.55; padding:2rem clamp(1rem,3vw,3rem); max-width:1100px; margin:0 auto;}
+  header{margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:1rem;}
+  header h1{font-size:1.4rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
+  .meta{font-family:'Geist Mono',monospace; font-size:.7rem; color:var(--muted); margin-top:.6rem;}
+  .diagram-wrap{border:1px solid var(--border); border-radius:10px; background:var(--panel); padding:1rem; margin-bottom:1.4rem; overflow-x:auto;}
+  svg{display:block; margin:0 auto; max-width:100%; height:auto;}
+  .legend{display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.75rem; color:var(--muted); margin-bottom:1rem;}
+  .legend span::before{content:''; display:inline-block; width:.7em; height:.7em; border-radius:2px; margin-right:.35rem; vertical-align:middle;}
+  .lg-module::before{background:var(--panel2); border:1px solid var(--border);}
+  .lg-hot::before{background:var(--accent);}
+  .lg-entry::before{background:var(--blue);}
+  .entry-list{display:flex; flex-direction:column; gap:.5rem; margin-bottom:1.6rem;}
+  .entry{display:flex; gap:.7rem; align-items:baseline; font-size:.85rem; background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.5rem .8rem;}
+  .entry .tag{font-family:'Geist Mono',monospace; font-size:.66rem; color:var(--blue); border:1px solid var(--blue); border-radius:4px; padding:.1rem .4rem; flex-shrink:0;}
+  .entry code{font-family:'Geist Mono',monospace; font-size:.78em; color:#d5d2cd;}
+  .entry .why{color:var(--muted); font-size:.8rem;}
+  .section-title{font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:1.2rem 0 .55rem;}
+  .note{font-size:.78rem; color:var(--muted); background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:.55rem .85rem; margin-top:.8rem;}
+  .footer{border-top:1px solid var(--border); margin-top:2rem; padding-top:.9rem; color:var(--muted); font-size:.75rem;}
+  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.6rem;}
+  nav a{color:var(--muted); text-decoration:none; font-size:.78rem; border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;}
+  nav a:hover{color:var(--accent); border-color:var(--accent);}
+  @media (max-width:700px){ body{padding:1rem;} .diagram-wrap{padding:.5rem;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Module map — [package / service]</h1>
+  <p class="subtitle">Architecture at a glance: boxes are modules, arrows are the call/request path. The hot path is highlighted.</p>
+  <p class="meta">Tier-2 · canonical source: this file, regenerated from repo data · generated: [date]</p>
+</header>
+
+<nav aria-label="Sections">
+  <a href="#legend">Legend</a>
+  <a href="#diagram">Diagram</a>
+  <a href="#entries">Entry points</a>
+</nav>
+
+<main>
+<p class="section-title" id="legend">Legend</p>
+<div class="legend">
+  <span class="lg-module">Module (box)</span>
+  <span class="lg-hot">Hot path highlighted</span>
+  <span class="lg-entry">Entry point</span>
+</div>
+
+<p class="section-title">Diagram</p>
+<div class="diagram-wrap" id="diagram">
+  <svg viewBox="0 0 900 420" role="img" aria-label="Module map: [package]">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#4a4a5a"/>
+      </marker>
+      <marker id="arrowHot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#c8ff00"/>
+      </marker>
+    </defs>
+
+    <!-- edges -->
+    <g fill="none" stroke="#4a4a5a" stroke-width="1.2" marker-end="url(#arrow)">
+      <path d="M120 90 L260 90"/>
+      <path d="M380 90 L380 150"/>
+      <path d="M380 190 L380 260"/>
+      <path d="M120 330 L260 330"/>
+      <path d="M520 90 L660 130"/>
+      <path d="M520 190 L520 260"/>
+    </g>
+    <!-- hot path -->
+    <g fill="none" stroke="#c8ff00" stroke-width="2.4" marker-end="url(#arrowHot)">
+      <path d="M260 90 L380 90"/>
+      <path d="M120 330 L260 330"/>
+      <path d="M520 190 L520 260"/>
+    </g>
+
+    <!-- modules -->
+    <g font-family="'Geist Mono',monospace" font-size="12">
+      <rect x="10" y="60" width="110" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="65" y="92" text-anchor="middle" fill="#e8e6e3">Entry · HTTP</text>
+
+      <rect x="120" y="60" width="140" height="60" rx="8" fill="#c8ff00" stroke="#c8ff00"/>
+      <text x="190" y="92" text-anchor="middle" fill="#0a0a0f" font-weight="600">hot path · routing</text>
+
+      <rect x="260" y="60" width="120" height="60" rx="8" fill="#1a1a24" stroke="#5b8def"/>
+      <rect x="300" y="60" width="40" height="16" rx="3" fill="#5b8def"/>
+      <text x="300" y="72" text-anchor="middle" fill="#0a0a0f" font-size="9">entry</text>
+      <text x="320" y="95" text-anchor="middle" fill="#e8e6e3">auth</text>
+
+      <rect x="380" y="60" width="140" height="130" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="450" y="90" text-anchor="middle" fill="#e8e6e3">app core</text>
+      <text x="450" y="112" text-anchor="middle" fill="#8a8694" font-size="10">biz rules</text>
+      <text x="450" y="130" text-anchor="middle" fill="#8a8694" font-size="10">state</text>
+
+      <rect x="380" y="190" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="450" y="222" text-anchor="middle" fill="#e8e6e3">store / persistence</text>
+
+      <rect x="10" y="300" width="110" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="65" y="332" text-anchor="middle" fill="#e8e6e3">queue / worker</text>
+
+      <rect x="120" y="300" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="190" y="332" text-anchor="middle" fill="#e8e6e3">notify / hook</text>
+
+      <rect x="520" y="120" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="590" y="152" text-anchor="middle" fill="#e8e6e3">api gateway</text>
+
+      <rect x="520" y="260" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
+      <text x="590" y="292" text-anchor="middle" fill="#e8e6e3">data lake / export</text>
+    </g>
+  </svg>
+</div>
+
+<p class="section-title" id="entries">Entry points</p>
+<div class="entry-list">
+  <div class="entry"><span class="tag">Entry</span><code>packages/api/src/routes.ts</code><span class="why">HTTP surface — where a request first lands.</span></div>
+  <div class="entry"><span class="tag">Entry</span><code>packages/worker/src/index.ts</code><span class="why">queue consumer — async entry.</span></div>
+  <div class="entry"><span class="tag">Entry</span><code>apps/web/src/App.tsx</code><span class="why">browser entry — talks to gateway.</span></div>
+</div>
+
+<p class="note"><strong>Tier-2 note:</strong> this is a generated view of real repo data, not a hand sketch. When the repo changes (new module, new hot path), regenerate the file with the generator rather than editing the SVG by hand.</p>
+</main>
+
+<footer class="footer">Generated from repo data · generator: [path] · regenerate: [command].</footer>
+</body>
+</html>
