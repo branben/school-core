@@ -1,0 +1,7 @@
+interface:
+  display_name: "Write Better"
+  short_description: "Clear, direct writing that sounds human"
+  default_prompt: "Use $write-better to revise this text for clarity, directness, and a natural human voice."
+
+policy:
+  allow_implicit_invocation: true

@@ -39,6 +39,11 @@ jobs:
       - name: Syntax check (compile all modules)
         run: python -m compileall -q -x "school-output" .
 
+      - name: Vault allowlist (privacy guard)
+        # The repo knowledge vault must contain only curated, non-personal
+        # notes. Fails if anything private/unknown enters data/vault/.
+        run: python scripts/check_vault_allowlist.py --strict
+
       - name: Run tests
         # Keep the hosted matrix hermetic and fast: live Orca tests have an
         # explicit marker and run only in the push-only self-hosted lane below.

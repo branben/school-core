@@ -39,6 +39,15 @@ data/
 !data/
 data/*
 !data/crew_runs.json
+# Curated vault: track the contract (manifest + README), never the notes.
+# data/ itself stays ignored; only these contract files are un-ignored.
+!data/vault/
+!data/vault/.vault_manifest.json
+!data/vault/README.md
+data/vault/school/
+data/vault/docs/
+data/vault/anchors/
+data/vault/roles/
 .omo/
 
 # Logs

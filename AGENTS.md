@@ -13,6 +13,19 @@ This project uses **bd** (beads) for issue tracking. Run `bd prime` for full wor
 > source of truth; don't `bd import` during normal operation; don't
 > reach for third-party Dolt hosting before trying the default).
 
+## Slice Tracking Contract
+
+The triage board (`docs/templates/triage-board.html`) is a projection of beads and
+`data/last_run.json`. It is read-only. If it disagrees with reality, beads wins.
+
+- Moving a card on the board is a proposal. Applying it means running `bd`.
+- End every inner-loop cycle with a bead write (`bd close <id>` or
+  `bd update <id> --status open`) for the slice you worked, before the next cycle.
+- Rebuild the view when you need a fresh projection:
+  `python3 scripts/build_board_json.py`
+
+Full contract: `docs/templates/slice-tracking-contract.md`.
+
 ## Quick Reference
 
 ```bash
@@ -126,3 +139,76 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Live Vault (Obsidian) + Orca Bridge — session survival guide
+
+**Quickest way to test if the bridge is up:** `python3 scripts/obsidian_client.py doctor` (exit 0 = usable).
+
+**If it's down** (container restart), do:
+```bash
+scripts/bridge_live_vault.sh up     # tailscale re-downloads only if cache gone; state persists under data/tailscale
+# ^ this prints an auth URL you MUST give the user to click (Tailscale re-auth, only after a fresh node create)
+scripts/bridge_live_vault.sh status # verify mac online + Obsidian HTTP 200
+export OBSIDIAN_API_KEY="..."       # from Obsidian → Local REST API plugin settings
+
+# Orca remote (same tailnet) — one command, no code needed if already paired:
+scripts/orca_pair.sh up             # starts SOCKS5 forwarder 6768->Mac, re-points endpoint
+scripts/orca_cli.sh worktree list --environment mac
+```
+
+**Durability (this sandbox):** `/workspace` is the only real disk (ext4 at
+`/dev/nvme0n2`). `/tmp` and `$HOME` are container overlay and get wiped on pod
+recycle. Therefore ALL state lives under the repo's `data/`:
+
+| State | Durable path | Why |
+|---|---|---|
+| tailscale binary/state/socket | `data/tailscale/` | survives recycle; re-auth not needed |
+| Orca CLI (node, no Electron) | `data/orca-cli/<ver>/` | 182MB extracted once |
+| Orca paired env (device token) | `data/orca-config/` (via `ORCA_USER_DATA_PATH`) | E2EE pairing persists |
+
+`data/*` is gitignored and these dirs are chmod 700 (they hold the E2EE device
+token + tailscale identity). Never commit them, never loosen perms.
+
+**Privacy contract (do not violate):**
+- The client is `scripts/obsidian_client.py` — **pure stdlib** (no `requests`), read-only,
+  folder-confined. It never surfaces `00-Inbox`, `05-Daily`, `06-Archive`, or
+  `01-Projects/Brandon Career` — including from `search` (filtered per-result).
+- `context_orchestrator` adds a `[Live Vault]` probe only when `OBSIDIAN_API_KEY` is set.
+  No key → no probe (fail open). Tests disable it by default via `tests/conftest.py`.
+- The curated vault (`data/vault/`) is allowlist-guarded (`config/vault_allowlist.yaml` +
+  `scripts/check_vault_allowlist.py`). Both layer-3 paths enforce the same boundary.
+
+**Tests:** `tests/test_obsidian_client.py` (path safety + search filtering),
+`tests/test_context_orchestrator.py::TestLiveVaultIntegration`.
+
+## Prime / ticket-scoping direction (from 2026-09-13 thread)
+
+The inner-loop "Prime" step should emit a ticket-scoped context block in the
+shape of `docs/templates/` handoff format (Metadata / Task / Code Paths /
+Pre-Dispatch Evidence / Guardrails / Verification). **Implemented in
+`scripts/prime.py`** — the working command is:
+
+```bash
+python3 scripts/prime.py --ticket '#123'      # GitHub issue (owner/repo#N, #N, URL)
+python3 scripts/prime.py --ticket 'BEAD-7'    # beads id (if bd CLI or .beads/issues.jsonl exists)
+python3 scripts/prime.py --ticket 'docs/plans/foo.md'   # plan/spec markdown path
+python3 scripts/prime.py --ticket '#26' --out docs/dispatch/26.md   # write a dispatch block
+python3 scripts/prime.py --ticket '#26' --json               # machine-readable (tooling)
+```
+
+Recommended keying: beads issue id first (`--ticket BEAD-123`), optional `--plan <wayfinder plan
+path>` alias. bd is not on PATH in this container; `.beads/` raw data exists if
+a read path is needed.
+
+The context layers your vault documents (and their order):
+codegraph → serena → cocoindex → obsidian (see `04-Reference/Tools/MCP-Tools.md`
++ ADR-0001). Those MCP tool servers run on the Mac and are NOT reachable from
+this sandbox; the only live context pipe here is the Obsidian safe-vault bridge.
+Build Prime to use code tools when reachable and fall back to Obsidian.
+
+Prime's context probes degrade gracefully and in this order:
+local repo (`repo_reader` tree + keyword-scored candidate files, always) →
+Obsidian live-vault search (bridge + `OBSIDIAN_API_KEY` present) → Orca
+worktree radar (paired `mac` env). Missing bridges are reported as skipped, not
+errors. Ticket sources are tried in order: `bd` CLI → `.beads/issues.jsonl` →
+GitHub (`gh`) → local plan/spec path. Tests: `tests/test_prime_tool.py`.

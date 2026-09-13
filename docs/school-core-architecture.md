@@ -98,8 +98,10 @@ below so the refactor knows exactly what to cut.
 - Layer 0 Ambient: vault structure / domain glossary (CocoIndex search of vault).
 - Layer 1 Structural: Serena (exact symbol, LSP) + CocoIndex (semantic AST).
 - Layer 2 Episodic: Engram (`mem_store`/`mem_search`/`trigger_rem_cycle`).
-- Layer 3 Archival: Obsidian vault (`data/vault`, YAML frontmatter notes),
-  sleep/wake consolidation (`sleep_state.py`).
+- Layer 3 Archival: Obsidian vault — curated copies in `data/vault` (YAML
+  frontmatter notes, allowlist-guarded) **plus** live reads via
+  `scripts/obsidian_client.py` (Tailscale SOCKS5 → Local REST API, read-only,
+  folder-confined), sleep/wake consolidation (`sleep_state.py`).
 - Self-healing: `classify_issue()` auto-triage + StaffPlugins (janitor,
   session_manager, score_auditor, adversarial_reviewer) operating on the
   school's own state.

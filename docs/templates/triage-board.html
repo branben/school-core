@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>school-core · slice triage</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --purple:#a855f7;
+    --card:#16161e; --lane:#0e0e15;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family: 'Geist', -apple-system, 'Segoe UI', sans-serif;
+    padding:2rem clamp(1rem, 3vw, 3rem);
+  }
+  header{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;
+  }
+  header h1{font-size:1.25rem; font-weight:650; letter-spacing:-.01em;}
+  header p{color:var(--muted); font-size:.85rem; margin-top:.25rem;}
+  .toolbar{display:flex; gap:.5rem; flex-wrap:wrap; align-items:center;}
+  .btn{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:.5rem .8rem; font-size:.8rem; cursor:pointer;
+    font-family:inherit;
+  }
+  .btn:hover{border-color:var(--blue);}
+  .btn.accent{background:var(--accent); color:#0a0a0f; border-color:transparent; font-weight:600;}
+  .btn.accent:hover{filter:brightness(1.1);}
+  .meta{font-family:'Geist Mono', monospace; font-size:.7rem; color:var(--muted);}
+  .filters{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.25rem;}
+  .chip{
+    background:transparent; border:1px solid var(--border); color:var(--muted);
+    border-radius:999px; padding:.25rem .7rem; font-size:.72rem; cursor:pointer;
+  }
+  .chip.active{color:var(--accent); border-color:var(--accent);}
+  .board{
+    display:grid; grid-template-columns:repeat(4, minmax(200px, 1fr));
+    gap:.9rem; align-items:start;
+  }
+  .lane{
+    background:var(--lane); border:1px solid var(--border); border-radius:12px;
+    padding:.7rem; min-height:300px;
+  }
+  .lane h2{
+    font-size:.72rem; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); display:flex; justify-content:space-between; margin-bottom:.6rem;
+  }
+  .lane h2 .count{color:var(--accent);}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:8px;
+    padding:.7rem .8rem; margin-bottom:.6rem; cursor:grab; transition:border-color .15s;
+  }
+  .card:hover{border-color:var(--blue);}
+  .card.dragging{opacity:.4;}
+  .card.lane-now{border-left:3px solid var(--green);}
+  .card.lane-next{border-left:3px solid var(--amber);}
+  .card.lane-cut{border-left:3px solid var(--red);}
+  .card .id{
+    font-family:'Geist Mono', monospace; font-size:.68rem; color:var(--blue);
+    letter-spacing:.02em;
+  }
+  .card .title{font-size:.82rem; line-height:1.35; margin:.3rem 0 .4rem;}
+  .card .foot{display:flex; justify-content:space-between; gap:.5rem; font-size:.68rem; color:var(--muted);}
+  .tag{
+    font-size:.62rem; text-transform:uppercase; letter-spacing:.05em;
+    border:1px solid var(--border); border-radius:4px; padding:.05rem .4rem;
+  }
+  .empty{color:var(--muted); font-size:.75rem; text-align:center; padding:2rem 0;}
+  .export{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:1rem; margin-top:1.5rem; display:none;
+  }
+  .export.visible{display:block;}
+  .export h3{font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.5rem;}
+  .export pre{
+    font-family:'Geist Mono', monospace; font-size:.75rem; line-height:1.6;
+    background:#0c0c12; border:1px solid var(--border); border-radius:8px;
+    padding:.8rem; white-space:pre-wrap; word-break:break-word;
+  }
+  .export .confirm{color:var(--green); font-size:.75rem; margin-top:.5rem;}
+  .btn.danger:hover{border-color:var(--red); color:var(--red);}
+  @media (max-width: 900px){
+    .board{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width: 560px){
+    .board{grid-template-columns:1fr;}
+    body{padding:1rem;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Slice triage · school-core</h1>
+    <p>Live view of pipeline + beads state. <strong>Read-only board</strong> — move cards to plan; export <code>bd</code> commands for a human/agent to apply.</p>
+  </div>
+  <div class="toolbar">
+    <span class="meta" id="genMeta"></span>
+    <button class="btn" id="resetBtn">Reset</button>
+    <button class="btn accent" id="copyBtn">Copy as bd commands</button>
+  </div>
+</header>
+
+<div class="filters" id="filters"></div>
+
+<div class="board" id="board"></div>
+
+<div class="export" id="export">
+  <h3>bd commands (apply in your terminal)</h3>
+  <pre id="exportText"></pre>
+  <p class="confirm" id="exportConfirm">Copied to clipboard ✓</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var LANES = [
+    { key: 'now',   label: 'Now'  , rationale: 'actively worked this cycle (in_progress / crew_in_flight)' },
+    { key: 'next',  label: 'Next' , rationale: 'queued behind the current slice (in_review / retry / blocked)' },
+    { key: 'later', label: 'Later', rationale: 'not yet touched by the loop (open, unprocessed)' },
+    { key: 'cut',   label: 'Cut'  , rationale: 'loop decided it is done or not actionable; the original reason is shown' },
+  ];
+
+  var tickets = [];   // live state: {id,title,lane,actor,reason,tag,_origLane}
+  var activeFilter = null;
+
+  var POSSIBLE_DATA_PATHS = [
+    'data/board.json',
+    '../data/board.json',
+    '../../data/board.json',
+    '../../../data/board.json',
+    '/data/board.json'
+  ];
+
+  function load() {
+    var ix = 0;
+    (function tryNext() {
+      // conservative internal-relative fetch (file:// or http:// both work)
+      var candidate = POSSIBLE_DATA_PATHS[ix++];
+      if (!candidate) { renderLoadError('no data/board.json found in common locations'); return; }
+      fetch(candidate, { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) { tryNext(); return; }   // try the next candidate path
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || !data.board) { tryNext(); return; }
+          onData(data);
+        })
+        .catch(function () { tryNext(); });
+    })();
+  }
+
+  function renderLoadError(msg) {
+    document.getElementById('genMeta').textContent = 'board load failed';
+    document.getElementById('board').innerHTML =
+      '<div class="empty">' + escapeHtml(msg) + '.<br>' +
+      'Run <code>python3 scripts/build_board_json.py</code> at the repo root,<br>' +
+      'then open this file from the repo root.<br>' +
+      '(Expected location: <code>&lt;root&gt;/data/board.json</code>)</div>';
+  }
+
+  function onData(data) {
+    tickets = (data.board || []).map(function (t) {
+      return {
+        id: String(t.id), title: t.title,
+        lane: LANES.some(function (l) { return l.key === t.lane; }) ? t.lane : 'later',
+        actor: t.actor || '', reason: t.reason || '', tag: (t.tag || 'slice').toLowerCase(),
+        _origLane: (LANES.some(function (l) { return l.key === t.lane; }) ? t.lane : 'later')
+      };
+    });
+    document.getElementById('genMeta').textContent = 'generated ' + (data.generated_at || '—');
+    render();
+    buildFilters();
+  }
+
+  function buildFilters() {
+    var counts = {};
+    tickets.forEach(function (t) { counts[t.tag] = (counts[t.tag] || 0) + 1; });
+    var tags = Object.keys(counts).sort();
+    var f = document.getElementById('filters');
+    f.innerHTML = '';
+    var all = document.createElement('button');
+    all.className = 'chip' + (activeFilter === null ? ' active' : '');
+    all.textContent = 'all';
+    all.addEventListener('click', function () { activeFilter = null; render(); buildFilters(); });
+    f.appendChild(all);
+    tags.forEach(function (tag) {
+      var b = document.createElement('button');
+      b.className = 'chip' + (activeFilter === tag ? ' active' : '');
+      b.textContent = tag + ' · ' + counts[tag];
+      b.addEventListener('click', function () {
+        activeFilter = (activeFilter === tag) ? null : tag;
+        render(); buildFilters();
+      });
+      f.appendChild(b);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function makeCard(t) {
+    var d = document.createElement('div');
+    d.className = 'card lane-' + t.lane;
+    d.draggable = true;
+    d.setAttribute('data-id', t.id);
+    d.innerHTML =
+      '<div class="id">' + escapeHtml(t.id) + '</div>' +
+      '<div class="title">' + escapeHtml(t.title) + '</div>' +
+      '<div class="foot"><span class="tag">' + escapeHtml(t.tag || 'slice') + '</span>' +
+      '<span>' + escapeHtml(t.actor || '—') + '</span></div>' +
+      (t.reason && t.reason !== t.lane ? '<div class="foot" style="color:var(--muted)">' + escapeHtml(t.reason) + '</div>' : '');
+    d.addEventListener('dragstart', function () {
+      d.classList.add('dragging');
+      dragId = t.id;
+    });
+    d.addEventListener('dragend', function () { d.classList.remove('dragging'); dragId = null; });
+    return d;
+  }
+
+  function render() {
+    var board = document.getElementById('board');
+    board.innerHTML = '';
+    LANES.forEach(function (l) {
+      var laneEl = document.createElement('section');
+      laneEl.className = 'lane';
+      laneEl.setAttribute('data-lane', l.key);
+      var rows = tickets.filter(function (t) { return t.lane === l.key && (!activeFilter || t.tag === activeFilter); });
+      laneEl.innerHTML = '<h2>' + l.label + ' <span class="count">' + rows.length + '</span></h2>';
+      laneEl.addEventListener('dragover', function (ev) { ev.preventDefault(); });
+      laneEl.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        if (!dragId) return;
+        var t = tickets.find(function (x) { return x.id === dragId; });
+        if (t) t.lane = l.key;
+        render();
+      });
+      board.appendChild(laneEl);
+    });
+    tickets.forEach(function (t) {
+      if (activeFilter && t.tag !== activeFilter) return;
+      var laneEl = board.querySelector('[data-lane="' + t.lane + '"]');
+      if (laneEl) laneEl.appendChild(makeCard(t));
+    });
+  }
+
+  function buildBdCommands() {
+    var lines = [];
+    tickets.forEach(function (t) {
+      if (t.lane === t._origLane) return;                        // idempotent: only CHANGED cards
+      if (t.lane === 'now')   lines.push('bd update ' + t.id + ' --claim');
+      else if (t.lane === 'cut') lines.push('bd close ' + t.id + ' --reason="Triage cut"');
+      else lines.push('bd update ' + t.id + ' --status open');   // next / later
+    });
+    return lines.join('\n') + (lines.length ? '\n' : '');
+  }
+
+  var exportEl = document.getElementById('export');
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var txt = buildBdCommands();
+    document.getElementById('exportText').textContent = txt || '# no cards changed — nothing to apply';
+    exportEl.classList.add('visible');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () {
+        document.getElementById('exportConfirm').textContent = 'Copied to clipboard ✓';
+      }, function () { document.getElementById('exportConfirm').textContent = 'Clipboard blocked — select & copy manually.'; });
+    } else {
+      document.getElementById('exportConfirm').textContent = 'Select the commands and copy manually.';
+    }
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    tickets.forEach(function (t) { t.lane = t._origLane; });
+    render();
+    exportEl.classList.remove('visible');
+  });
+
+  var dragId = null;
+  load();
+})();
+</script>
+</body>
+</html>

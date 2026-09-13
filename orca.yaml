@@ -1,0 +1,39 @@
+# orca.yaml — repo-shared Orca worktree conventions for school-core.
+#
+# These scripts run on every machine that opens this repo, so "local"
+# and "shared" behavior agree. See https://www.onorca.dev/docs/settings
+# (Repository pane) and https://www.onorca.dev/docs/model/worktrees.
+#
+# Env vars available to every hook (from Orca):
+#   $ORCA_ROOT_PATH       primary checkout (project root)
+#   $ORCA_WORKTREE_PATH   the new/archiving worktree
+#   $ORCA_WORKSPACE_NAME  the worktree's display name
+
+scripts:
+  # Runs after a new worktree is created. Idempotent and fail-open: a
+  # dependency hiccup must never block worktree creation, and re-running
+  # setup on an already-provisioned worktree is a no-op.
+  setup: |
+    set -u
+    echo "[setup] workspace=$ORCA_WORKSPACE_NAME path=$ORCA_WORKTREE_PATH"
+    cd "$ORCA_WORKTREE_PATH" 2>/dev/null || { echo "[setup] missing dir; continuing"; exit 0; }
+
+    if [ -f requirements.txt ] && command -v python3 >/dev/null 2>&1; then
+      python3 -m pip install --user --quiet -r requirements.txt \
+        && echo "[setup] deps ok" \
+        || echo "[setup] WARN: pip install failed; continuing"
+    else
+      echo "[setup] no requirements.txt or missing python3; continuing"
+    fi
+    exit 0
+
+  # Runs before a worktree is archived or removed. Probe-only by design:
+  # archiving must never destroy work. Add deliberate cleanup here only
+  # when you know exactly which scratch paths are safe to remove.
+  archive: |
+    echo "[archive] workspace=$ORCA_WORKSPACE_NAME path=$ORCA_WORKTREE_PATH"
+
+# Optional override for the GitHub issue "Complete <url>" button. Kept so
+# every machine resolves the same way once a status automation is wired.
+issueCommand: |
+  Complete {{artifact_url}}

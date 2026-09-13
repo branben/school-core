@@ -1,0 +1,26 @@
+# Vault allowlist — the ONLY files agents may read from the Knowledge Vault.
+#
+# The repository treats `data/vault/` as the default knowledge vault (see
+# `context_orchestrator.DEFAULT_VAULT`). Personal Obsidian vaults contain
+# private data that must never enter this repo or reach agents. This
+# allowlist is the contract that confines the vault to a curated, project-safe
+# subset.
+#
+# Agents (and the vault-indexer) may read only the patterns below. Anything
+# else in `data/vault/` is a policy violation — `check_vault_allowlist.py`
+# fails CI.
+#
+# Rules are glob patterns relative to the vault root. Use `/**` for
+# zero-or-more-path-recursion, e.g. `school/**`.
+
+patterns:
+  # Curated, non-personal knowledge notes (Layer 3 -> Layer 0 bridge).
+  # Add only notes you are comfortable sharing with the repo / agents.
+  - "school/**"
+  - "docs/glossary/**"
+  # Layer 0 anchors and conventions (already versioned in-repo).
+  - "anchors/*.md"
+  - "roles/*.md"
+  # Contract files (never agent-facing) — self-documenting.
+  - ".vault_manifest.json"
+  - "README.md"
