@@ -1,0 +1,79 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M2EA9P1QRKK05JP764RFJVBC",
+  "session_id": "73b377b7-af73-4b1f-8843-3d04be3084aa",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-13T21:20:44.506002Z",
+  "branch": "chore/condense-pipeline",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    ".beads/interactions.jsonl"
+  ],
+  "agent": "Claude Code",
+  "model": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  "turn_id": "692f8e640e69",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 5925,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 42240,
+    "output_tokens": 113,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-13T21:20:44.499067Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 814,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 814,
+    "total_lines_changed": 814,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 3570,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".beads/interactions.jsonl": 5,
+        "director_console/__init__.py": 1,
+        "director_console/__main__.py": 164,
+        "director_console/calibration.py": 175,
+        "director_console/contract.py": 144,
+        "director_console/orca_bridge.py": 287,
+        "director_console/queue.py": 261,
+        "director_console/ripwire_client.py": 63,
+        "director_console/run_log.py": 83,
+        "director_console/ship_safe_adapter.py": 71,
+        "docs/director-console/setup.md": 84,
+        "docs/plans/cut-omniroute-orca-shim.md": 225,
+        "docs/plans/orca-http-shim.md": 224,
+        "docs/sdlc/README.md": 245,
+        "docs/sdlc/gate-3-repro.md": 54,
+        "docs/sdlc/gate-4-tdd.md": 48,
+        "docs/sdlc/gate-5-precommit.md": 47,
+        "docs/sdlc/gate-6-review.md": 40,
+        "docs/sdlc/gate-7-visual.md": 42,
+        "docs/sdlc/gate-8-kpi.md": 43,
+        "docs/sdlc/gate-9-audit.md": 46,
+        "docs/sdlc/gate-repro.md": 377,
+        "docs/sdlc/gate-visual.md": 165,
+        "docs/sdlc/plan.html": 110,
+        "envit.json": 8,
+        "envit.lock.json": 23,
+        "tui/go.mod": 29,
+        "tui/go.sum": 48,
+        "tui/main.go": 458
+      }
+    }
+  ]
+}
