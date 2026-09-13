@@ -31,19 +31,25 @@
       "name": "plannotator/effective-html",
       "source": "https://github.com/plannotator/effective-html.git",
       "ref": "HEAD",
-      "commit": "5ce160a3e76dc1c0f9301f8a1903704ec607636a"
+      "commit": "d95debbaef15af1d201fc6c10c77cf92b524a0d6"
     },
     {
       "name": "plannotator/guides",
       "source": "https://github.com/plannotator/guides.git",
       "ref": "HEAD",
-      "commit": "3fc8c845ef66f0743ec472785aa5f9b7fcda9e21"
+      "commit": "da10932bcb861cc3830bcd50c2249249b2bbb538"
     },
     {
       "name": "redhat-et/ripwire",
       "source": "https://github.com/redhat-et/ripwire.git",
       "ref": "HEAD",
       "commit": "b0f7e2fc264166e10bf1be02aef82bd2112c238a"
+    },
+    {
+      "name": "plannotator/herdr-annotate",
+      "source": "https://github.com/plannotator/herdr-annotate.git",
+      "ref": "HEAD",
+      "commit": "7c8f5a177b8285dc56efc471ef04f7ab44a2b4b6"
     }
   ]
 }

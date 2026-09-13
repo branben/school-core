@@ -36,6 +36,12 @@
       "path": "skills",
       "pick": "*",
       "modelInvocable": false
+    },
+    "plannotator/herdr-annotate": "*",
+    "branben/braintrust-sdk-python": {
+      "path": "skills",
+      "pick": "*",
+      "modelInvocable": false
     }
   }
 }

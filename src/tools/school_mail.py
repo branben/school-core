@@ -43,6 +43,11 @@ RESPONSE_FOOTER = (
 )
 
 
+import os
+
+MAIL_ENABLED = os.environ.get("AGENTMAIL_ENABLED", "true").lower() not in ("0", "false", "no")
+
+
 def _format_findings_table(findings: list[dict]) -> str:
     """Render findings as a compact, column-aligned table."""
     if not findings:
@@ -88,6 +93,9 @@ def notify_verdict(
     /approve /reject /fix. The AgentMail inbound poller
     (src/agentmail_poller.py) processes the reply and triggers merge/dispose.
     """
+    if not MAIL_ENABLED:
+        logger.debug("AGENTMAIL disabled — notify_verdict no-op")
+        return False
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
@@ -159,6 +167,9 @@ def notify_issue_alert(
     once), so it never spams. Best-effort: missing key, network errors, etc.
     degrade to a log line + False — never raises, so the bridge stays resilient.
     """
+    if not MAIL_ENABLED:
+        logger.debug("AGENTMAIL disabled — notify_issue_alert no-op")
+        return False
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
@@ -226,6 +237,9 @@ def notify_pipeline_alert(
     the blocked component and gives the operator a direct diagnostic next step.
     Best-effort, like every other notification surface.
     """
+    if not MAIL_ENABLED:
+        logger.debug("AGENTMAIL disabled — notify_pipeline_alert no-op")
+        return False
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
@@ -277,6 +291,9 @@ def notify_build_failure(
     Best-effort: never raises. Same AgentMail channel as
     :func:`notify_verdict` / :func:`notify_issue_alert`.
     """
+    if not MAIL_ENABLED:
+        logger.debug("AGENTMAIL disabled — notify_build_failure no-op")
+        return False
     try:
         inbox = _resolve_dest_inbox()
     except Exception as e:
