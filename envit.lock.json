@@ -5,7 +5,7 @@
       "name": "ripwire",
       "source": "https://github.com/redhat-et/ripwire.git",
       "ref": "v0.6.0",
-      "commit": "d221eded33fc2483191f6a8a275e70d81e89c077"
+      "commit": "2d2f10e625811b75e0d0eaf6c7449cbb4e440a5c"
     },
     {
       "name": "effective-html",

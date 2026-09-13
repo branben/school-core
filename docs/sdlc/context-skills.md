@@ -107,27 +107,42 @@ log remains markdown by design. Repo map: `docs/templates/phase-map.md`.
 ## CI / machine surface
 
 The committed **manifest + lockfile** reproduce context and skills on any
-machine (`scripts/install_context_tools.sh` then `envit sync --frozen`). The
-CI `context` workflow runs the same install script + `ripwire --scan-skills`
-as a verify gate, so local `data/tools/` and CI can never drift. The binaries
-themselves are **not** tracked in git (durable, SHA-verified install under
-`data/tools/`, chmod 700), matching the repo's orca-cli precedent — a fresh
-machine or runner reproduces them from the script in one step.
+machine (`scripts/install_context_tools.sh` then either `envit sync --frozen`
+where envit's git transport works, or `scripts/verify_context_lock.py --dest
+.envit` which uses system `git` and is deterministic everywhere). The CI
+`context` workflow installs the toolchain then runs
+`scripts/verify_context_lock.py` + `ripwire --scan-skills` as the verify gate,
+so local `data/tools/` and CI can never drift. The binaries themselves are
+**not** tracked in git (durable, SHA-verified install under `data/tools/`,
+chmod 700), matching the repo's orca-cli precedent — a fresh machine or
+runner reproduces them from the script in one step.
 
 ## Status
 
 - **Declaration complete:** `envit.json` commits the declared context/skills
   (ripwire 9 phase skills, `effective-html` 6 authoring skills,
   `plannotator-guide` 1 review skill); `envit.lock.json` pins all three repos.
-- **Materialization** (`envit sync`) is machine-side: an envit/gix transport
-  quirk in THIS container blocks its internal fetch (system `git` clone
-  succeeds; envit's gix fetch fails with "IO error talking to the server").
-  The declaration is valid and portable; sync works where envit's git
-  transport resolves (standard CA store, e.g. GitHub Actions runners / Mac).
-- **Activation path:** `envit sync --frozen` materializes the declared skills
-  into `.agents/skills/` / `.claude/skills/` where agents already look. That
-  copy is scanned (`ripwire --scan-skills`) before use and is not committed
-  to git (`.envit/` ignored).
+- **Materialization** is machine-side. `envit sync` is preferred where its
+  embedded git transport resolves; but envit v0.1.0 has two known bugs, so
+  the shared gate is `scripts/verify_context_lock.py` (pure system `git`):
+  1. **gix HTTP transport** — internal fetch fails with "An IO error occurred
+     when talking to the server" against GitHub HTTPS even when system `git`
+     clones the same repo. Reproducible on GitHub Actions runners and in this
+     container.
+  2. **Tag-object lockfile bug** — for an annotated-tag ref, envit writes the
+     *tag object* SHA into the lockfile instead of the peeled commit; a
+     `--frozen` restore then fails with "was supposed to be kind commit, but
+     was kind tag." `verify_context_lock.py` hard-fails on a tag object in
+     the lockfile, so the bug can never ship silently.
+  The declaration is valid and portable; the script is the deterministic
+  reproduction path (equivalent to `--frozen` semantics: lockfile-only,
+  drift = error).
+- **Activation path:** `verify_context_lock.py --dest .envit` materializes the
+  declared skills into `.envit/skills/` (linked from pinned-checkout repos
+  under `.envit/repos/`). That copy is scanned (`ripwire --scan-skills`)
+  before use and is not committed to git (`.envit/` ignored). On machines
+  where envit's transport works, `envit sync --frozen` is the equivalent
+  one-shot path.
 - **Still deferred:** `tot` publishing (human-only) and any skill-content
   edits to the repo's tracked `.agents/skills/` (kept minimal; new skills
   stay envit-declared rather than vendored).
