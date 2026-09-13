@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skillSources": [
+    {
+      "name": "plannotator/effective-html",
+      "source": "https://github.com/plannotator/effective-html.git",
+      "ref": "HEAD",
+      "commit": "d95debbaef15af1d201fc6c10c77cf92b524a0d6"
+    },
+    {
+      "name": "plannotator/guides",
+      "source": "https://github.com/plannotator/guides.git",
+      "ref": "HEAD",
+      "commit": "da10932bcb861cc3830bcd50c2249249b2bbb538"
+    },
+    {
+      "name": "plannotator/herdr-annotate",
+      "source": "https://github.com/plannotator/herdr-annotate.git",
+      "ref": "HEAD",
+      "commit": "7c8f5a177b8285dc56efc471ef04f7ab44a2b4b6"
+    }
+  ]
+}

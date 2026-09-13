@@ -418,5 +418,33 @@
     "status": "school-failed",
     "error": "network down",
     "timestamp": "2026-09-11T18:50:21.424858+00:00"
+  },
+  {
+    "issue": 42,
+    "repo": "branben/school-core",
+    "status": "school-failed",
+    "error": "network down",
+    "timestamp": "2026-09-11T22:55:34.095014+00:00"
+  },
+  {
+    "issue": 42,
+    "repo": "branben/school-core",
+    "status": "school-failed",
+    "error": "could not boot both teachers",
+    "timestamp": "2026-09-11T22:55:36.931796+00:00"
+  },
+  {
+    "issue": 42,
+    "repo": "branben/school-core",
+    "status": "school-failed",
+    "error": "could not boot both teachers",
+    "timestamp": "2026-09-11T22:55:38.408023+00:00"
+  },
+  {
+    "issue": 42,
+    "repo": "branben/school-core",
+    "status": "school-failed",
+    "error": "could not boot both teachers",
+    "timestamp": "2026-09-11T22:55:39.744517+00:00"
   }
 ]

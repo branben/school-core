@@ -1,0 +1,8 @@
+{
+  "repos": [],
+  "skills": {
+    "plannotator/effective-html": "*",
+    "plannotator/guides": "*",
+    "plannotator/herdr-annotate": "*"
+  }
+}
