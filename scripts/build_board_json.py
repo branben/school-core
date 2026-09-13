@@ -9,8 +9,8 @@ Wire format consumed by docs/templates/triage-board.html:
     {
       "generated_at":  "2026-09-13T00:00:00Z",
       "board": [
-        {"id": "366", "title": "...", "lane": "now",
-         "actor": "coder", "reason": "...", "tag": "security"}
+        {"id": "366", "title": "...", "lane": "later",
+         "actor": "", "reason": "open", "tag": "security"}
       ]
     }
 
@@ -18,13 +18,16 @@ Lanes (the four triage columns from the thariqs 18-editor board):
 
     now   - actively worked this cycle (in_progress / crew_in_flight)
     next  - queued behind a current slice (in_review / retry / blocked)
-    later - not yet touched by the loop (open, unprocessed)
+    later - not yet touched by the loop (open cache issues seed this lane)
     cut   - loop decided the slice is done or not actionable (success / error /
             school-failed / done), with the original status preserved as reason
 
 The board is a VIEW. It never writes the durable store (ADR 0005 property):
 drag in the HTML only changes the LOCAL ordering; the "copy bd commands" export
 emits `bd update <id> --status <lane>` strings for a human or an agent to run.
+
+Data sources: data/last_run.json (loop outcome per issue) +
+data/issues_cache.json (GitHub issue titles + open-state seeding).
 
 Usage:
     python3 scripts/build_board_json.py [--out data/board.json] [--max-cards 250]
@@ -101,6 +104,7 @@ def build_board(
     runs: list[dict],
     titles: dict[str, str] | None = None,
     max_cards: int = 250,
+    queued: list[dict] | None = None,
 ) -> dict:
     """Produce the board.json wire format.
 
@@ -109,6 +113,10 @@ def build_board(
     runs : list[dict]   — parsed data/last_run.json (chronological)
     titles : dict|None  — {issue_number: title} from data/issues_cache.json
     max_cards : int     — truncate to the newest N cards (board stays scannable)
+    queued : list[dict] | None
+        — open cache issues not yet touched by the loop. They seed the "later"
+          lane so the board shows queued work instead of an empty queue. Any
+          issue already present in ``runs`` is not duplicated.
     """
     latest = latest_by_issue(runs)
     cards = []
@@ -119,6 +127,26 @@ def build_board(
         r = dict(run)
         r["title"] = title
         cards.append(card_from_run_dict(r))
+
+    if queued:
+        for item in queued:
+            iid = str(item.get("issue_number") or "")
+            if not iid or iid in latest:
+                continue
+            if str(item.get("state")) != "open":
+                continue
+            title = str(item.get("title") or f"issue {iid}")
+            cards.append(
+                {
+                    "id": iid,
+                    "title": title,
+                    "lane": "later",
+                    "orig_lane": "later",
+                    "actor": "",
+                    "reason": "open",
+                    "tag": infer_tag({"domain": item.get("domain")}, title),
+                }
+            )
     # newest first (runs were chronological; latest dict preserved insertion order
     # of first-seen, so re-sort by generated timestamp desc, then issue desc)
     def _sort_key(c: dict) -> tuple[str, str]:
@@ -190,16 +218,20 @@ def main(argv: list[str] | None = None) -> int:
 
     runs = _load_json(last_path)
     titles: dict[str, str] = {}
+    queued: list[dict] = []
     if cache_path.exists():
         try:
+            cached = _load_json(cache_path)
             titles = {
                 str(x.get("issue_number")): str(x.get("title") or "")
-                for x in _load_json(cache_path)
+                for x in cached
             }
+            queued = [x for x in cached if str(x.get("state")) == "open"]
         except (json.JSONDecodeError, TypeError):
             titles = {}
+            queued = []
 
-    out = build_board(runs, titles, max_cards=args.max_cards)
+    out = build_board(runs, titles, max_cards=args.max_cards, queued=queued)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2))
     print(f"build_board_json: wrote {len(out['board'])} cards -> {out_path}")

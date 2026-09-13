@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<!--
+  Tier-3 implementation-plan template — html-plan discipline.
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE CONVENTION: this file is a RENDER of a markdown source.
+  The .md in git is authoritative and diffable; this .html is a view of it.
+  Source path convention — update to point at YOUR canonical .md:
+
+    <meta name="source" content="docs/plans/2026-09-13-000-<slug>-spec.md">
+
+  html-plan promise: no commitment disappeared, accepted decisions separated
+  from open questions, structure not inflated. Every section below MUST be
+  present; placeholder content marks where to write.
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-09-13-000-<slug>-spec.md">
+<meta name="generated-from" content="docs/plans/...spec.md (canonical markdown source in git)">
+<title>Implementation plan · school-core</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --purple:#a855f7;
+    --card:#16161e;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Geist', -apple-system, 'Segoe UI', sans-serif;
+    line-height:1.55; padding:2rem clamp(1rem, 3vw, 3rem); max-width:980px; margin:0 auto;
+  }
+  header{margin-bottom:2rem; border-bottom:1px solid var(--border); padding-bottom:1.25rem;}
+  header h1{font-size:1.5rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
+  .meta{
+    font-family:'Geist Mono', monospace; font-size:.7rem; color:var(--muted);
+    display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem;
+  }
+  .meta span{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.2rem .5rem;}
+  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:2rem;}
+  nav a{
+    color:var(--muted); text-decoration:none; font-size:.78rem;
+    border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;
+  }
+  nav a:hover{color:var(--accent); border-color:var(--accent);}
+  section{margin-bottom:2.5rem;}
+  section h2{
+    font-size:.8rem; text-transform:uppercase; letter-spacing:.1em; color:var(--accent);
+    margin-bottom:.9rem; padding-bottom:.4rem; border-bottom:1px solid var(--border);
+  }
+  section h3{font-size:1rem; font-weight:600; margin:1.1rem 0 .5rem;}
+  p, li{color:#d5d2cd; font-size:.92rem;}
+  p{margin-bottom:.7rem;}
+  ul,ol{padding-left:1.3rem; margin-bottom:.9rem;}
+  li{margin-bottom:.3rem;}
+  code{
+    font-family:'Geist Mono','SFMono-Regular',monospace; font-size:.82em;
+    background:var(--panel2); border:1px solid var(--border); border-radius:4px;
+    padding:.05rem .3rem; word-break:break-word;
+  }
+  .card{background:var(--card); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;}
+  .accepted{
+    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--green);
+    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;
+  }
+  .accepted .tag{color:var(--green); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:.3rem;}
+  .open{
+    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--amber);
+    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;
+  }
+  .open .tag{color:var(--amber); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:.3rem;}
+  .mockup{
+    background:var(--panel); border:2px dashed var(--blue); border-radius:8px;
+    color:var(--muted); font-size:.8rem; text-align:center;
+    padding:2.5rem 1rem; margin:.75rem 0;
+  }
+  table{width:100%; border-collapse:collapse; font-size:.85rem; margin:.75rem 0 1rem;}
+  th{text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;}
+  th,td{border-bottom:1px solid var(--border); padding:.5rem .6rem; vertical-align:top;}
+  .risk-high{color:var(--red); font-weight:600;}
+  .risk-med{color:var(--amber); font-weight:600;}
+  .risk-low{color:var(--green); font-weight:600;}
+  pre{
+    font-family:'Geist Mono',monospace; font-size:.78rem; line-height:1.6;
+    background:#0c0c12; border:1px solid var(--border); border-radius:8px;
+    padding:.8rem; white-space:pre-wrap; word-break:break-word; color:#c9c6cf;
+  }
+  .footer{border-top:1px solid var(--border); margin-top:2.5rem; padding-top:1rem; color:var(--muted); font-size:.75rem;}
+  @media (max-width: 640px){
+    body{padding:1rem;}
+    table{display:block; overflow-x:auto; white-space:nowrap;}
+    header h1{font-size:1.2rem;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Implementation plan — [feature/slice title]</h1>
+  <p class="subtitle">Tier-3, `html-plan` discipline: accepted decisions are separated from open questions; no commitment disappeared; structure not inflated.</p>
+  <div class="meta">
+    <span>status: DRAFT</span>
+    <span>bead: [id]</span>
+    <span>owner: [you]</span>
+    <span>updated: [date]</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#summary">Summary</a>
+  <a href="#decisions">Accepted decisions</a>
+  <a href="#open-questions">Open questions</a>
+  <a href="#milestones">Milestones</a>
+  <a href="#mockups">Mockups</a>
+  <a href="#risks">Risks</a>
+  <a href="#data-flow">Data flow</a>
+  <a href="#source">Source</a>
+</nav>
+
+<main>
+  <section id="summary" aria-labelledby="summary-h">
+    <h2 id="summary-h">1 · Summary</h2>
+    <p>[Three sentences: the change, the boundary, the outcome. This is the whole plan for a busy reader.]</p>
+  </section>
+
+  <section id="decisions" aria-labelledby="decisions-h">
+    <h2 id="decisions-h">2 · Accepted decisions</h2>
+    <p>Decisions already made — recorded so they do not silently re-open during implementation.</p>
+    <div class="accepted">
+      <span class="tag">Accepted · ADR/decision [id]</span>
+      [The decision, the reason it was made, and the governing doc if any.]
+    </div>
+    <div class="accepted">
+      <span class="tag">Accepted · ADR/decision [id]</span>
+      [Second decision placeholder — separate the "what" from the "why outward".]
+    </div>
+  </section>
+
+  <section id="open-questions" aria-labelledby="open-questions-h">
+    <h2 id="open-questions-h">3 · Open questions</h2>
+    <p>Deliberately kept out of section 2: these are NOT yet decisions and the plan does not pretend otherwise.</p>
+    <div class="open">
+      <span class="tag">Open</span>
+      [Question, options considered, and who/what unblocks it. One open question per block.]
+    </div>
+    <div class="open">
+      <span class="tag">Open</span>
+      [Second open question — owning it is also a commitment: the plan names the decision-owner.]
+    </div>
+  </section>
+
+  <section id="milestones" aria-labelledby="milestones-h">
+    <h2 id="milestones-h">4 · Milestones</h2>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Milestone</th><th>Exit criteria</th><th>Verification</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>M1</td><td>[first vertical slice]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
+        </tr>
+        <tr>
+          <td>M2</td><td>[midpoint milestone]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
+        </tr>
+        <tr>
+          <td>M3</td><td>[shipping milestone]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="mockups" aria-labelledby="mockups-h">
+    <h2 id="mockups-h">5 · Mockups</h2>
+    <p>In production, drop Tier-1 wireframe/prototype renders here (inlined, never hot-linked). At template time these are explicit placeholders.</p>
+    <div class="mockup">[ Mockup 1 — main state ]</div>
+    <div class="mockup">[ Mockup 2 — boundary / empty / error state ]</div>
+  </section>
+
+  <section id="risks" aria-labelledby="risks-h">
+    <h2 id="risks-h">6 · Risk table</h2>
+    <table>
+      <thead>
+        <tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation / trigger to escalate</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>[concrete risk, not a generic worry]</td>
+          <td class="risk-med">med</td><td class="risk-high">high</td>
+          <td>[mitigation or the signal that should escalate it]</td>
+        </tr>
+        <tr>
+          <td>[second concrete risk]</td>
+          <td class="risk-low">low</td><td class="risk-med">med</td>
+          <td>[mitigation or the signal that should escalate it]</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="data-flow" aria-labelledby="data-flow-h">
+    <h2 id="data-flow-h">7 · Data-flow diagrams</h2>
+    <p>Text-shape diagrams at template time; replace each placeholder with a
+       Tier-2 `html-diagram` render or an inline diagram for the real plan.</p>
+    <pre>/* data-flow diagram placeholder */
+[component] --&gt; [store/API] --&gt; [view]
+            \--&gt; [side effect / event] --&gt; [observer]</pre>
+    <pre>/* second data-flow diagram placeholder (failure path) */
+[input] --&gt; [validator] --X bad --&gt; [user-facing error]
+                \-- ok --&gt; [write path]</pre>
+  </section>
+
+  <section id="source" aria-labelledby="source-h">
+    <h2>8 · Canonical source</h2>
+    <p>The markdown source of record for this implementation plan lives at
+       <code>docs/plans/...[slug]-spec.md</code> (see the
+       <code>&lt;meta name="source"&gt;</code> header of this file). Edit the
+       <code>.md</code>; regenerate this render. Any edit to this page without
+       a matching change to the source is drift.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  school-core · Tier-3 implementation-plan template (`html-plan`) · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+</footer>
+</body>
+</html>

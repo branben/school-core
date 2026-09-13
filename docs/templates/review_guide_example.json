@@ -1,0 +1,33 @@
+{
+  "schema": "plannotator-guide/1",
+  "title": "Guided review: README onboarding win + build-cache config",
+  "summary": "Fictional PR #2148: shorten the setup checklist in README.md and adopt a prewarmed build cache in .gitlab-ci.yml. The diff is small; the reading order below makes the pairing between docs and CI config visible. Nothing here critiques the change — each chapter just orients the reviewer to what to look at and in what order.",
+  "chapters": [
+    {
+      "id": "01-docs-first",
+      "title": "Onboarding copy (start here)",
+      "summary": "This chapter is the reason the PR exists. Read README.md with a fresh-contributor eye: what does the exploded checklist claim, and does the shorter version preserve the two commands that actually matter? No judgment — just look for what a new reader will experience.",
+      "files": [
+        {
+          "path": "README.md",
+          "why": "The setup section rewritten to a three-step quickstart; the upstream checklist now lives behind a 'detailed setup' link."
+        }
+      ]
+    },
+    {
+      "id": "02-ci-config",
+      "title": "Build cache wiring",
+      "summary": "The second chapter shows the mechanical support for the docs promise. The config change only makes sense if CI actually caches the same key the local script reads; verify the cache key matches across both files before scrolling on.",
+      "files": [
+        {
+          "path": ".gitlab-ci.yml",
+          "why": "Adds a prewarmed build-cache job keyed on CACHE_KEY; the variable is only meaningful when checkout-local CLI reads the same key."
+        },
+        {
+          "path": "scripts/bootstrap_cache.sh",
+          "why": "Local half of the cache contract: extracts the value of CACHE_KEY from the CI variables file, so a contributor can reproduce the cache locally."
+        }
+      ]
+    }
+  ]
+}
