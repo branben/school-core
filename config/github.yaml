@@ -26,6 +26,7 @@ allowed_author_associations: ["OWNER"]
 
 # Override difficulty based on label presence
 difficulty_overrides:
+  good first issue: easy
   p0: hard
   p1: medium
 
