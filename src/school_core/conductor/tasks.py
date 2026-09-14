@@ -39,13 +39,31 @@ def _build_task_from_issue(issue: dict) -> str:
     ``GitHub: https://github.com/owner/repo/issues/N`` followed by the issue
     body (if any).  We include the URL for traceability and the body for
     context.
+
+    For coder-domain issues, a format reminder is appended to the task prompt.
+    This combats recency bias: models attend to the END of the prompt, so a
+    "documentation / easy" suffix in the issue body can override the system
+    prompt's "output code" instruction. The reminder re-anchors the model.
     """
     title = issue.get("title", "")
     description = issue.get("description", "") or ""
+    domain = issue.get("domain", "")
     parts = [title] if title else []
     if description:
         parts.append(description)
     task = "\n\n".join(parts)
+
+    # Recency-bias fix: coder issues get a format reminder at the END of the
+    # task prompt so the model's last read token is "output code blocks".
+    if domain in ("code-implementation", "python-coding", "python-testing",
+                  "_default"):
+        task += (
+            "\n\n## Output Format (CRITICAL)\n"
+            "You MUST respond with fenced code blocks. Each block MUST start with "
+            "a comment line `# <path>` (e.g. `# README.md`). Output ONLY code — "
+            "no prose, no planning, no markdown headings outside code blocks."
+        )
+
     return task
 
 

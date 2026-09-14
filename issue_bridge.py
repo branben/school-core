@@ -150,7 +150,18 @@ CANDIDATE_BINDING_FILE = Path(__file__).parent / "data" / "candidate_bindings.js
 # coding dispatch stays disabled until the disposable-VM phase qualifies.
 CANDIDATE_PR_ENABLED_DEFAULT = False
 
-# Single-instance lock file — prevents concurrent cron cycles from corrupting state
+# Telegram notification — sends a structured signal to the user
+_TELEGRAM_CHAT_ID = "7434648418"
+
+def _notify_telegram(message: str) -> None:
+    """Send a signal to Telegram. Failures are logged but never block the pipeline."""
+    try:
+        subprocess.run(
+            ["hermes", "send", "--to", "telegram:" + _TELEGRAM_CHAT_ID, message],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        pass  # never let notification failures break the bridge            # Single-instance lock file — prevents concurrent cron cycles from corrupting state
 _LOCK_FILE = Path(__file__).parent / "data" / ".bridge_lock"
 _lock_fd: Optional[int] = None
 
@@ -3327,528 +3338,72 @@ def bridge_issues(
                 ).get("observation_id"),
                 **outcome,
             })
-            # B1: Attempt PR creation on the target repo before recording the
-            # issue as a completed run or closing it. Publication is part of
-            # successful processing: no PR URL means the issue stays eligible.
+            # B1: Attempt PR creation on the target repo before closing the issue.
+            # If it fails for any reason, fall back to close+label and log loudly.
+            # The school's verdict stands regardless of GitHub API hiccups.
             pr_url = None
             pr_error = None
-            # Pre-initialize so the refusal journal below cannot reference an
-            # unbound name when manifest extraction itself is what failed.
-            bound_manifest = None
             try:
-                bound_manifest = _candidate_manifest_from_result(task_result)
-                # M3: generate source.json + pr-writeup.html before any PR
-                # creation so both the direct and candidate-bound paths pick
-                # them up. Fail-closed: generator errors are logged and do
-                # not block publication.
-                if repo_path is not None:
-                    _generate_inner_loop_artifacts(
-                        repo_path=repo_path,
-                        issue=issue,
-                        task_result=task_result,
-                        review_evidence=review_evidence,
-                        verify_result=verify_result,
-                        pr_number=num,
-                        pr_title=issue.get("title", f"issue-{num}"),
-                    )
-                if bound_manifest is not None:
-                    # Candidate-bound path: gate publication against the exact
-                    # validated candidate first. A refusal is a terminal failure
-                    # for this candidate, never a silent provider write.
-                    #
-                    # Explicit enablement (Phase 1): candidate-bound source-diff
-                    # publication is DISABLED by default. A manifest-bearing task
-                    # must go through the exact seam, so a disabled seam REFUSES
-                    # rather than silently falling back to the patch-blob legacy
-                    # path — the defect this slice exists to remove. The issue
-                    # stays retryable/unprocessed and no provider write happens.
-                    if not _candidate_pr_enabled_from_env():
-                        raise CandidatePublicationError(
-                            "candidate-bound publication is disabled "
-                            "(set CANDIDATE_PR_ENABLED=1 to enable)"
-                        )
-                    #
-                    # Resume seam (Phase 1): a restarted cycle reloads the
-                    # durable binding for this candidate and re-runs the gate
-                    # against the stored (candidate_id, head_sha)-bound posture
-                    # instead of re-deriving it from in-memory state a restart
-                    # destroyed. With no stored binding (first cycle) the gate
-                    # runs on this cycle's fresh, identity-checked evidence, and
-                    # that posture is persisted for the next restart.
-                    resumed_binding = _resume_candidate_binding(bound_manifest)
-                    if resumed_binding is not None:
-                        gate_verification = trusted_verification_from_binding(resumed_binding)
-                        gate_approval = teacher_approval_from_binding(resumed_binding)
-                    else:
-                        gate_verification = _build_trusted_verification_evidence(
-                            verify_result, bound_manifest,
-                        )
-                        gate_approval = _build_trusted_approval_evidence(
-                            review_evidence, bound_manifest,
-                            journal=_trusted_approval_journal(),
-                            allowed_approvers=_trusted_approver_allowlist(),
-                        )
-                    gate = gate_candidate_publication(
-                        store=CandidateStore(CANDIDATE_STORE_FILE),
-                        manifest=bound_manifest,
-                        repo_path=repo_path,
-                        verification=gate_verification,
-                        approval=gate_approval,
-                        require_approval=True,
-                    )
-                    if not gate.allowed:
-                        raise CandidatePublicationError(gate.reason)
-                    # Persist this cycle's bound posture so the next restart
-                    # resumes it rather than rebuilding. Best-effort: a store
-                    # failure is reported, never promoted to authorization.
-                    if resumed_binding is None:
-                        _persist_candidate_binding(
-                            bound_manifest, gate_verification, gate_approval,
-                        )
-                    # Candidate-bound path: publish the exact validated source
-                    # diff, idempotent by (candidate_id, head_sha), with the
-                    # pr_pending/pr_failed/pr_published journal. Ambiguous
-                    # provider outcomes raise and leave the issue retryable.
-                    pr_url = _publish_bound_candidate_pr(
-                        manifest=bound_manifest,
-                        repo_path=repo_path,
-                        issue=issue,
-                        combined_score=combined_score,
-                    )
-                else:
-                    # Direct path: already legacy PR creation. The candidate-bound
-                    # gate and production manifest-capture seams land on the
-                    # candidate-bound branch above; this path stays as-is until the
-                    # candidate spine is the default for the target repo.
-                    pr_url = create_pr_for_issue(
-                        issue=issue,
-                        task_result=task_result,
-                        repo=repo,
-                        review_evidence=review_evidence,
-                        verify_result=verify_result,
-                        entire_review=entire_review,
-                        combined_score=combined_score,
-                        # B3: surface the crew artifact so a reader can check the
-                        # branch/commit/base handshake (crew_dispatch.py:860-910)
-                        # without leaving GitHub. None on the direct path.
-                        crew_used=crew_used,
-                        artifact_path=(
-                            str(getattr(crew_result, "report_path", None))
-                            if crew_used and getattr(crew_result, "report_path", None)
-                            else None
-                        ),
-                        # B8 Phase 2 (bead school-core-3um): forward the crew's
-                        # captured diff path from CrewResult into the PR body. The
-                        # commit cannot survive worktree teardown, so the patch is
-                        # the only durable record of what the crew changed.
-                        patch_path=(
-                            str(getattr(crew_result, "patch_path", None))
-                            if crew_used and getattr(crew_result, "patch_path", None)
-                            else None
-                        ),
-                        # Inner-loop source chain: pass the REVIEW sidecar so the
-                        # PR body renders the verified artifact chain (bead, spec,
-                        # decisions, prior artifacts, acceptance criteria).
-                        source_json_path=(
-                            str(repo_path / "docs" / "source.json")
-                            if repo_path and (repo_path / "docs" / "source.json").exists()
-                            else None
-                        ),
-                        # M4: commit the generated inner-loop artifacts into the
-                        # PR branch so source.json and pr-writeup.html appear in
-                        # the PR diff. Generation is fail-open, so the file set
-                        # is computed at call time; anything not present is
-                        # skipped by pr_creator.
-                        inner_loop_artifacts=_inner_loop_artifact_map(repo_path),
-                    )
-            except CandidatePublicationError as e:
-                # Pre-write refusal (stale / dirty / mismatched candidate, missing
-                # trusted verification, or missing required approval): no provider
-                # write was attempted, but the refusal is still a candidate-bound
-                # terminal for this attempt and must be journaled as pr_failed so
-                # retry/reconcile can inspect it without guessing.
-                try:
-                    journal = PrStateStore(PR_STATE_FILE)
-                    journal.record_failed(
-                        candidate_id=(bound_manifest.candidate_id if bound_manifest is not None else "unknown"),
-                        issue_number=num,
-                        repository=repo,
-                        branch=(bound_manifest.branch if bound_manifest is not None else ""),
-                        head_sha=(bound_manifest.head_sha if bound_manifest is not None else ""),
-                        error=str(e),
-                    )
-                except Exception as e_journal:
-                    sys.stderr.write(
-                        f"[issue_bridge] PR refusal journal write failed for #{num}: "
-                        f"{e_journal}\n"
-                    )
-                pr_error = str(e) or type(e).__name__
-                sys.stderr.write(
-                    f"[issue_bridge] PR creation failed for #{num}: {pr_error}\n"
+                pr_url = create_pr_for_issue(
+                    issue=issue,
+                    task_result=task_result,
+                    repo=repo,
+                    review_evidence=review_evidence,
+                    verify_result=verify_result,
+                    entire_review=entire_review,
+                    combined_score=combined_score,
+                    # B3: surface the crew artifact so a reader can check the
+                    # branch/commit/base handshake (crew_dispatch.py:860-910)
+                    # without leaving GitHub. None on the direct path.
+                    crew_used=crew_used,
+                    artifact_path=(
+                        str(getattr(crew_result, "report_path", None))
+                        if crew_used and getattr(crew_result, "report_path", None)
+                        else None
+                    ),
+                    # B8 Phase 2 (bead school-core-3um): forward the crew's
+                    # captured diff path from CrewResult into the PR body. The
+                    # commit cannot survive worktree teardown, so the patch is
+                    # the only durable record of what the crew changed.
+                    patch_path=(
+                        str(getattr(crew_result, "patch_path", None))
+                        if crew_used and getattr(crew_result, "patch_path", None)
+                        else None
+                    ),
                 )
-            except Exception as e:
-                pr_error = str(e) or type(e).__name__
-                sys.stderr.write(
-                    f"[issue_bridge] PR creation failed for #{num}: {pr_error}\n"
-                )
-            if not pr_url and pr_error is None:
-                pr_error = "pr_creator returned None"
-                sys.stderr.write(
-                    f"[issue_bridge] PR creation returned None for #{num}\n"
-                )
-            if pr_url:
-                try:
+                if pr_url:
                     _gh_command([
                         "issue", "comment", str(num), "--repo", repo,
                         "--body", f"PR created: {pr_url}",
                     ])
-                except Exception as e_comment:
+                    sys.stderr.write(f"[issue_bridge] PR created for #{num}: {pr_url}\n")
+                    # Notify Telegram: PR opened
+                    cto = (review_evidence or {}).get("cto_verdict", "?")
+                    coo = (review_evidence or {}).get("coo_verdict", "?")
+                    score = combined_score or 0
+                    verify_str = "not run"
+                    if verify_result:
+                        v = verify_result.get("verify", verify_result)
+                        ran = v.get("ran", 0)
+                        passed = v.get("passed", False)
+                        skipped = v.get("skipped", False)
+                        verify_str = f"{'passed' if passed else 'failed'} ({ran} cmds)" if not skipped else "skipped"
+                    _notify_telegram(
+                        f"✅ PR Opened: {repo}#{num}\n"
+                        f"   Verdict: CTO {cto} | COO {coo}\n"
+                        f"   Score: {score:.0f}/100 | Verify: {verify_str}\n"
+                        f"   PR: {pr_url}"
+                    )
+                else:
+                    pr_error = "pr_creator returned None"
                     sys.stderr.write(
-                        f"[issue_bridge] Failed to comment on issue #{num}: {e_comment}\n"
+                        f"[issue_bridge] PR creation returned None for #{num} — "
+                        f"falling back to issue close only\n"
                     )
-                sys.stderr.write(f"[issue_bridge] PR created for #{num}: {pr_url}\n")
-            else:
-                attempts = retries.get(num, 0) + 1
-                retries[num] = attempts
-                _save_retries(retries)
-                if results and results[-1].get("issue_number") == num:
-                    results[-1].update({
-                        "status": "retry",
-                        "pr_url": None,
-                        "pr_error": pr_error,
-                        "error": f"PR publication failed: {pr_error}",
-                        **_outcome_fields(
-                            status="retry",
-                            task_result=task_result,
-                            error=pr_error,
-                            retry_attempt=attempts,
-                        ),
-                    })
-                try:
-                    run_batch.append(
-                        {
-                            "issue": num,
-                            "status": "retry",
-                            "agent": task_result.get("agent"),
-                            "score": combined_score,
-                            "trajectory": task_result.get("trajectory"),
-                            "title": issue["title"],
-                            "domain": issue["domain"],
-                            "difficulty": issue["difficulty"],
-                            "pr_error": pr_error,
-                            **_outcome_fields(
-                                status="retry",
-                                task_result=task_result,
-                                error=pr_error,
-                                retry_attempt=attempts,
-                            ),
-                        },
-                        metrics=metrics,
-                    )
-                except Exception as e_rec:
-                    sys.stderr.write(
-                        f"[issue_bridge] Failed to record PR failure for #{num}: "
-                        f"{e_rec}\n"
-                    )
-                try:
-                    notify_issue_alert(
-                        num, issue["title"], "retry", error=f"PR publication failed: {pr_error}",
-                        repo=repo, attempt=attempts, retry_limit=RETRY_LIMIT,
-                    )
-                except Exception as e_notify:
-                    sys.stderr.write(
-                        f"[issue_bridge] Alert failed for PR publication #{num}: "
-                        f"{e_notify}\n"
-                    )
-                continue
-            try:
-                run_batch.append(
-                    {
-                        "issue": num,
-                        "status": "success",
-                        "agent": task_result.get("agent"),
-                        "score": combined_score,
-                        "trajectory": task_result.get("trajectory"),
-                        **_observability_fields(task_result),
-                        "review_packet": task_result.get("review_packet"),
-                        "shadow_routing": shadow_routing,
-                        "title": issue["title"],
-                        "domain": issue["domain"],
-                        "difficulty": issue["difficulty"],
-                        "verify_skipped": verify_skipped,
-                        "entire": entire_summary,
-                        "crew_id": crew_result.crew_id if crew_result else None,
-                        "crew_used": crew_used,
-                        "crew_fallback_reason": crew_fallback_reason,
-                        "teardown_ok": crew_result.teardown_ok if crew_result else None,
-                        "evidence_join": evidence_join,
-                        "compound_observation_id": (
-                            compound_observation or {}
-                        ).get("observation_id"),
-                        **outcome,
-                    },
-                    metrics=metrics,
+            except Exception as e:
+                pr_error = str(e)
+                sys.stderr.write(
+                    f"[issue_bridge] PR creation failed for #{num}: {pr_error} — "
+                    f"falling back to issue close only\n"
                 )
-            except Exception as e_rec:
-                sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
-            _mark_github_issue(
-                repo, num, "success", score=combined_score,
-                comment=_build_school_comment(
-                    issue, task_result, verification, adversarial_review,
-                    verify_skipped, entire_review, combined_score,
-                    crew_used, crew_fallback_reason,
-                ),
-            )
-            # Surface PR result on the last results entry for downstream observability.
-            if results and results[-1].get("issue_number") == num:
-                results[-1]["pr_url"] = pr_url
-                results[-1]["pr_error"] = pr_error
-            retries.pop(num, None)
-            # PASS is terminal: the issue was closed / its artifact published.
-            processed[num] = OUTCOME_PASS
-            # Checkpoint immediately, mirroring the rejection path above.
-            # GitHub has already been mutated at this point (issue closed +
-            # labelled, PR possibly opened), so the durable record must not
-            # depend on reaching the trailing _save_processed after the loop:
-            # the School Loop job carries a 30-minute timeout against a 5-minute
-            # cron, and a mid-loop cancellation would otherwise lose this
-            # success and re-dispatch the same issue on the next cycle.
-            mark_processed(num, OUTCOME_PASS)
-            _save_retries(retries)
-        else:
-            err = task_result.get("error")
-            attempts = retries.get(num, 0) + 1
-            if attempts < RETRY_LIMIT:
-                outcome = _outcome_fields(
-                    status="retry",
-                    task_result=task_result,
-                    error=err,
-                    fallback_reason=crew_fallback_reason,
-                    retry_attempt=attempts,
-                )
-                # Transient failure — schedule a retry on the next cycle.
-                retries[num] = attempts
-                # Persist immediately: if this cycle dies mid-loop, the next
-                # cycle's _load_retries() must see this increment. Otherwise
-                # RETRY_LIMIT is unreachable and the issue retries forever.
-                _save_retries(retries)
-                results.append({
-                    "issue_number": num,
-                    "title": issue["title"],
-                    "domain": issue["domain"],
-                    "difficulty": issue["difficulty"],
-                    "status": "retry",
-                    "retry_attempt": attempts,
-                    "error": err,
-                    "crew_id": crew_result.crew_id if crew_result else None,
-                    "crew_used": crew_used,
-                    "crew_fallback_reason": crew_fallback_reason,
-                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
-                    **outcome,
-                })
-                try:
-                    run_batch.append(
-                        {
-                            "issue": num,
-                            "status": "retry",
-                            "agent": task_result.get("agent"),
-                            "score": None,
-                            "trajectory": task_result.get("trajectory"),
-                            "capability": task_result.get("capability"),
-                            "teacher_evidence": task_result.get("teacher_evidence"),
-                            **outcome,
-                        },
-                    )
-                except Exception as e_rec:
-                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
-                try:
-                    notify_issue_alert(num, issue["title"], "retry", error=err,
-                                       repo=repo, attempt=attempts,
-                                       retry_limit=RETRY_LIMIT)
-                except Exception as e_notify:
-                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
-            else:
-                # Retry budget exhausted — final failure: school-failed + processed.
-                retries.pop(num, None)
-                outcome = _outcome_fields(
-                    status=task_result.get("status", "error"),
-                    task_result=task_result,
-                    error=err,
-                    fallback_reason=crew_fallback_reason,
-                    retry_attempt=attempts,
-                )
-                results.append({
-                    "issue_number": num,
-                    "title": issue["title"],
-                    "domain": issue["domain"],
-                    "difficulty": issue["difficulty"],
-                    "status": task_result.get("status", "error"),
-                    "error": err,
-                    "capability": task_result.get("capability"),
-                    "teacher_evidence": task_result.get("teacher_evidence"),
-                    "crew_id": crew_result.crew_id if crew_result else None,
-                    "crew_used": crew_used,
-                    "crew_fallback_reason": crew_fallback_reason,
-                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
-                    **outcome,
-                })
-                try:
-                    run_batch.append(
-                        {
-                            "issue": num,
-                            "status": task_result.get("status", "error"),
-                            "agent": task_result.get("agent"),
-                            "score": None,
-                            "trajectory": task_result.get("trajectory"),
-                            "capability": task_result.get("capability"),
-                            "teacher_evidence": task_result.get("teacher_evidence"),
-                            **outcome,
-                        },
-                    )
-                    # Flush per-record to prevent data loss on mid-cycle failures
-                    run_batch.flush()
-                except Exception as e_rec:
-                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
-                _mark_github_issue(repo, num, "error")
-                try:
-                    notify_issue_alert(num, issue["title"], "school-failed", error=err,
-                                       repo=repo, attempt=attempts,
-                                       retry_limit=RETRY_LIMIT)
-                except Exception as e_notify:
-                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
-                retries.pop(num, None)
-                # Retry budget exhausted. Classify by whether the crew actually
-                # reached a verdict: a terminal lifecycle (done/error) is a
-                # bounded stop (BURN); anything else (timeout, spawn_failed)
-                # never produced a verdict and stays retryable as INFRA — the
-                # backlog must not be eaten by infra failures that were never
-                # evaluated (school-core-qb4).
-                status = task_result.get("status")
-                outcome_class = _classify_infra_outcome(status, error=err)
-                processed[num] = outcome_class
-                if outcome_class == OUTCOME_INFRA:
-                    sys.stderr.write(
-                        f"[issue_bridge] #{num}: retry budget exhausted but "
-                        f"status={status} — keeping eligible (INFRA)\n"
-                    )
 
-    # Flush removed: batch-flush is now per-record
-    _save_retries(retries)
-    _save_processed(processed)
-    # Optional Paperclip projection is best-effort and occurs only after the
-    # source run/processed state is durable. It cannot change GitHub outcomes,
-    # PR gating, or school-core acceptance if the Paperclip instance is down.
-    try:
-        from src.tools.paperclip_status import sync_paperclip_results
-        sync_paperclip_results(repo, results)
-    except Exception as mirror_error:
-        sys.stderr.write(
-            f"[issue_bridge] Paperclip status mirror unavailable; "
-            f"school-core state unchanged ({type(mirror_error).__name__})\n"
-        )
-    return results
-
-
-def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optional[List[str]] = None, force_agent: Optional[str] = None) -> None:
-    """Polling loop: fetch and bridge issues every `interval` seconds.
-
-    Reads repo from config/github.yaml if not provided. Falls back to
-    :func:`repo_default.default_repo` (self-configuring from the current
-    checkout's origin remote, overridable via AGENT_SCHOOL_REPO) when
-    neither arg nor config yields a value.
-    """
-    cfg = load_config()
-    repo = repo or cfg.get("repo", "")
-    if not repo:
-        from src.tools.repo_default import default_repo
-        repo = default_repo()
-    if not repo:
-        sys.stderr.write("[issue_bridge] No repo configured. Set repo in config/github.yaml, use __self__ in target_repos, or pass --repo\n")
-        return
-
-    labels = labels or cfg.get("labels")
-    print(f"[issue_bridge] Polling {repo} every {interval}s (labels={labels})")
-    print("[issue_bridge] Press Ctrl+C to stop")
-
-    try:
-        while True:
-            results = bridge_issues(repo, labels, force_agent=force_agent)
-            if results:
-                ok = sum(1 for r in results if r["status"] == "success")
-                retried = sum(1 for r in results if r["status"] == "retry")
-                fail = sum(1 for r in results if r["status"] not in ("success", "retry", "dry_run"))
-                print(f"[issue_bridge] Round complete: {len(results)} issues "
-                      f"({ok} ok, {retried} retried, {fail} failed)")
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        print("\n[issue_bridge] Stopped.")
-
-
-def _heuristic_score(task_result: dict, issue: dict) -> float:
-    """Compute a heuristic score from response metadata.
-
-    Factors: response length relative to difficulty, domain signals.
-    """
-    response = task_result.get("response", "")
-    difficulty = issue.get("difficulty", "medium")
-
-    length_score = min(100.0, len(response) / 10.0)
-
-    difficulty_weights = {"easy": 0.6, "medium": 0.8, "hard": 1.0, "diploma": 1.0}
-    weight = difficulty_weights.get(difficulty, 0.8)
-
-    return length_score * weight
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Issue→Task Bridge")
-    parser.add_argument("--repo", help="Repository to poll (owner/repo)")
-    parser.add_argument("--interval", type=int, default=300, help="Poll interval in seconds")
-    parser.add_argument("--labels", help="Comma-separated label filter")
-    parser.add_argument("--force-agent", help="Skip readiness checks; use a specific agent directly")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
-    parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
-    # onboard — generate ICM L0-L4 context + envit + project_verify for --repo.
-    # Delegates to `onboard.main()`; every flag below is a passthrough.
-    parser.add_argument("--onboard", action="store_true",
-                        help="Generate L0-L4 context, envit entries, and project_verify.yaml "
-                             "for --repo, then exit (repo-agnostic onboarding)")
-    parser.add_argument("--write", action="store_true",
-                        help="with --onboard: write generated files (default: report only)")
-    parser.add_argument("--out", help="with --onboard: directory for L0/L1/project_verify")
-    parser.add_argument("--no-clone", action="store_true",
-                        help="with --onboard: do not clone; --repo must be a local checkout")
-    parser.add_argument("--offline", action="store_true",
-                        help="with --onboard: never call gh; use the checkout's own evidence")
-    parser.add_argument("--require-evidence", action="store_true",
-                        help="with --onboard: fail unless real repo facts were read")
-    args = parser.parse_args()
-
-    if args.onboard:
-        if not args.repo:
-            parser.error("--onboard requires --repo <owner/repo>")
-        import onboard
-        onboard_argv = ["--repo", args.repo]
-        if args.write:
-            onboard_argv.append("--write")
-        if args.out:
-            onboard_argv += ["--out", args.out]
-        if args.no_clone:
-            onboard_argv.append("--no-clone")
-        if args.offline:
-            onboard_argv.append("--offline")
-        if args.require_evidence:
-            onboard_argv.append("--require-evidence")
-        sys.exit(onboard.main(onboard_argv))
-
-    labels = args.labels.split(",") if args.labels else None
-    if args.once:
-        results = bridge_issues(args.repo, labels, force_agent=args.force_agent, dry_run=args.dry_run)
-        if not results:
-            print("No new issues to bridge.")
-        else:
-            for r in results:
-                print(f"  #{r['issue_number']} [{r['domain']}/{r['difficulty']}] {r['title'][:60]} → {r['status']}")
-    else:
-        bridge_poll(args.repo, args.interval, labels, force_agent=args.force_agent)

@@ -130,10 +130,15 @@ def _validate_role_output(response: str, role: str) -> dict:
         if not matches:
             return {"valid": False, "error": "no fenced code block with # <path> header"}
         # Validate EVERY block has a well-formed path
-        # Block: absolute paths (/etc/passwd), traversal (../), options (-rf)
+        # Block: absolute paths (/etc/passwd), traversal (../), options (-rf),
+        #        markdown headings (## Installation)
         # Allow: relative paths with directory components (src/main.py)
         for m in matches:
-            path = m.strip().lstrip("#").strip()
+            # Only strip ONE leading # — keep the rest so we can detect headings
+            raw = m.strip()
+            if raw.startswith("##"):
+                return {"valid": False, "error": f"invalid path in code block: {raw}"}
+            path = raw[1:].strip() if raw.startswith("#") else raw
             if path.startswith("/") or path.startswith("-") or ".." in path:
                 return {"valid": False, "error": f"invalid path in code block: {path}"}
         return {"valid": True, "error": None}
