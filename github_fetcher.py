@@ -198,6 +198,17 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
         difficulty = _map_difficulty(label_names, config)
         prompt = f"{title}\n\n{body}"
 
+        # Recency-bias fix: coder issues get a format reminder at the END of the
+        # prompt so the model's last read token is "output code blocks".
+        if domain in ("code-implementation", "python-coding", "python-testing",
+                      "_default"):
+            prompt += (
+                "\n\n## Output Format (CRITICAL)\n"
+                "You MUST respond with fenced code blocks. Each block MUST start with "
+                "a comment line `# <path>` (e.g. `# README.md`). Output ONLY code — "
+                "no prose, no planning, no markdown headings outside code blocks."
+            )
+
         results.append({
             "issue_number": number,
             "title": title,

@@ -60,6 +60,12 @@ class TestValidateRoleOutputCoder:
         assert result["valid"] is False
         assert "path" in result["error"].lower()
 
+    def test_markdown_heading_as_path_fails(self):
+        # ## Installation should NOT be treated as a valid path
+        response = "```markdown\n## Installation\n\nSome text\n```"
+        result = _validate_role_output(response, "coder")
+        assert result["valid"] is False
+
     def test_empty_response_fails(self):
         result = _validate_role_output("", "coder")
         assert result["valid"] is False

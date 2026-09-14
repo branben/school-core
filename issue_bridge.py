@@ -82,6 +82,19 @@ from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
+# Telegram notification — sends a structured signal to the user
+_TELEGRAM_CHAT_ID = "7434648418"
+
+def _notify_telegram(message: str) -> None:
+    """Send a signal to Telegram. Failures are logged but never block the pipeline."""
+    try:
+        subprocess.run(
+            ["hermes", "send", "--to", "telegram:" + _TELEGRAM_CHAT_ID, message],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        pass  # never let notification failures break the bridge
+
 # Single-instance lock file — prevents concurrent cron cycles from corrupting state
 _LOCK_FILE = Path(__file__).parent / "data" / ".bridge_lock"
 _lock_fd: Optional[int] = None
@@ -2125,6 +2138,23 @@ def bridge_issues(
                         "--body", f"PR created: {pr_url}",
                     ])
                     sys.stderr.write(f"[issue_bridge] PR created for #{num}: {pr_url}\n")
+                    # Notify Telegram: PR opened
+                    cto = (review_evidence or {}).get("cto_verdict", "?")
+                    coo = (review_evidence or {}).get("coo_verdict", "?")
+                    score = combined_score or 0
+                    verify_str = "not run"
+                    if verify_result:
+                        v = verify_result.get("verify", verify_result)
+                        ran = v.get("ran", 0)
+                        passed = v.get("passed", False)
+                        skipped = v.get("skipped", False)
+                        verify_str = f"{'passed' if passed else 'failed'} ({ran} cmds)" if not skipped else "skipped"
+                    _notify_telegram(
+                        f"✅ PR Opened: {repo}#{num}\n"
+                        f"   Verdict: CTO {cto} | COO {coo}\n"
+                        f"   Score: {score:.0f}/100 | Verify: {verify_str}\n"
+                        f"   PR: {pr_url}"
+                    )
                 else:
                     pr_error = "pr_creator returned None"
                     sys.stderr.write(
@@ -2211,6 +2241,13 @@ def bridge_issues(
             else:
                 # Retry budget exhausted — final failure: school-failed + processed.
                 retries.pop(num, None)
+                # Notify Telegram: issue blocked
+                err = task_result.get("error", "unknown")
+                _notify_telegram(
+                    f"❌ Issue #{num} BLOCKED\n"
+                    f"   Reason: {err[:150]}\n"
+                    f"   Action needed: [fix issue | skip | dispatch manually]"
+                )
                 outcome = _outcome_fields(
                     status=task_result.get("status", "error"),
                     task_result=task_result,
