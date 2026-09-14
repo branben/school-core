@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>School Core — Workspace</title>
+<style>
+
+      :root {
+        color-scheme: dark;
+        --bg: #111114;
+        --sidebar: #151518;
+        --panel: #19191d;
+        --panel-raised: #1f1f24;
+        --line: #2b2b31;
+        --line-strong: #3b3b43;
+        --text: #f0f0f2;
+        --muted: #92929d;
+        --faint: #90909b;
+        --violet: #7c6cf2;
+        --violet-soft: #2a2744;
+        --blue: #5e8df6;
+        --green: #4bb78f;
+        --amber: #d9a441;
+        --red: #df6d78;
+        --focus: #a99cff;
+      }
+
+      * { box-sizing: border-box; }
+      html { min-width: 320px; background: var(--bg); }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        overflow-x: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      button, input { font: inherit; }
+      button { color: inherit; }
+      button:focus-visible, input:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+      svg { display: block; }
+      .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+      .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 232px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        display: flex;
+        height: 100vh;
+        flex-direction: column;
+        padding: 10px 8px;
+        border-right: 1px solid #222227;
+        background: var(--sidebar);
+      }
+
+      .workspace-switcher {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 38px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .workspace-switcher { cursor: default; }
+      .workspace-mark { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 6px; background: #6657e8; font-size: 11px; font-weight: 800; }
+      .workspace-copy { display: grid; min-width: 0; flex: 1; }
+      .workspace-copy strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+      .workspace-copy span { color: var(--faint); font-size: 11px; }
+
+      .new-issue {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        margin: 10px 4px 14px;
+        padding: 0 10px;
+        border: 1px solid #3d394e;
+        border-radius: 7px;
+        background: #25232f;
+        color: #ded9ff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .new-issue:hover { border-color: #5c537e; background: #2d2a3a; }
+      .new-issue kbd { margin-left: auto; color: #8d879e; font-family: inherit; font-size: 10px; }
+
+      .nav-group { margin: 0 0 14px; }
+      .nav-label { padding: 5px 10px; color: #8b8b95; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        min-height: 31px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #a8a8b1;
+        cursor: default;
+        text-align: left;
+        font-size: 12px;
+      }
+      .nav-item[aria-current="page"] { background: #222228; color: #f4f4f5; }
+      .nav-item .count { margin-left: auto; color: #92929d; font-size: 10px; font-variant-numeric: tabular-nums; }
+      .sidebar-footer { margin-top: auto; padding: 12px 10px 5px; border-top: 1px solid #242429; color: #9898a2; font-size: 10px; line-height: 1.5; }
+
+      .main { min-width: 0; }
+      .app-header {
+        position: sticky;
+        z-index: 10;
+        top: 0;
+        display: flex;
+        min-height: 50px;
+        align-items: center;
+        gap: 10px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(17, 17, 20, .96);
+      }
+      .breadcrumbs { display: flex; min-width: 0; align-items: center; gap: 8px; color: var(--faint); font-size: 12px; }
+      .breadcrumbs strong { overflow: hidden; color: #d8d8dd; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .header-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+      .icon-button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #85858f; cursor: pointer; }
+      .icon-button:hover { background: #202025; color: #ededf0; }
+      .study-label { margin-left: 7px; padding: 4px 7px; border: 1px solid #4a4a54; border-radius: 5px; color: #a3a3ad; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+      .mobile-study-note { display: none; }
+      .passive { cursor: default; }
+      .icon-button.passive:hover { background: transparent; color: #85858f; }
+
+      .content-header { padding: 28px 28px 0; }
+      .title-row { display: flex; align-items: center; gap: 12px; }
+      .team-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: #2b2848; color: #b6adff; font-size: 12px; font-weight: 800; }
+      h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.025em; }
+      .title-row .quiet-action { margin-left: auto; }
+      .quiet-action { display: inline-flex; min-height: 30px; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: #18181c; color: #9898a2; cursor: pointer; font-size: 11px; }
+      .quiet-action:hover { border-color: var(--line-strong); color: #e0e0e4; }
+      .summary { max-width: 700px; margin: 8px 0 22px 42px; color: var(--muted); font-size: 12px; }
+
+      .tabs { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--line); }
+      .tab { position: relative; min-height: 36px; padding: 0 11px; border: 0; background: transparent; color: #7f7f89; cursor: pointer; font-size: 12px; }
+      .tab:hover { color: #d6d6da; }
+      .tab[aria-selected="true"] { color: #ededf0; }
+      .tab[aria-selected="true"]::after { position: absolute; right: 9px; bottom: -1px; left: 9px; height: 1px; background: #8d7ff3; content: ""; }
+      .tab-count { margin-left: 5px; color: #92929c; font-size: 10px; }
+
+      .workspace-area { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: calc(100vh - 138px); }
+      .issue-pane { min-width: 0; border-right: 1px solid var(--line); }
+      .list-toolbar { display: flex; min-height: 45px; align-items: center; gap: 7px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+      .toolbar-label { color: #777780; font-size: 11px; }
+      .filter-chip { display: inline-flex; min-height: 26px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: #a0a0aa; font-size: 10px; }
+      .list-toolbar .spacer { flex: 1; }
+      .list-toolbar strong { color: #94949e; font-size: 10px; font-weight: 500; }
+
+      .issue-group-header { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid var(--line); background: #151518; color: #8c8c96; font-size: 11px; font-weight: 600; }
+      .status-dot { width: 10px; height: 10px; border: 2px solid #6f7080; border-radius: 50%; }
+      .status-dot.active { border-color: var(--amber); border-top-color: transparent; }
+      .issue-group-header span:last-child { margin-left: auto; color: #92929c; font-weight: 400; }
+
+      .issue-row {
+        display: grid;
+        grid-template-columns: 22px 70px minmax(190px, 1fr) 90px 88px 30px;
+        gap: 8px;
+        width: 100%;
+        min-height: 43px;
+        align-items: center;
+        padding: 0 14px 0 18px;
+        border: 0;
+        border-bottom: 1px solid #242429;
+        background: transparent;
+        color: #c8c8ce;
+        cursor: pointer;
+        text-align: left;
+      }
+      .issue-row:hover { background: #18181c; }
+      .issue-row[aria-selected="true"] { background: #202026; }
+      .issue-row[hidden] { display: none; }
+      .issue-status { width: 12px; height: 12px; border: 1.7px solid #676772; border-radius: 50%; }
+      .issue-status.progress { border-color: var(--amber); border-top-color: transparent; }
+      .issue-status.todo { border-style: dashed; }
+      .issue-key { color: #94949e; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .issue-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      .issue-tag { width: fit-content; max-width: 86px; overflow: hidden; padding: 2px 6px; border-radius: 4px; background: #23232a; color: #8d8d98; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .priority { color: #90909a; font-size: 10px; }
+      .priority.high { color: var(--red); }
+      .avatar-mini { display: grid; width: 21px; height: 21px; place-items: center; justify-self: end; border-radius: 50%; background: #303039; color: #b9b9c2; font-size: 8px; font-weight: 700; }
+
+      .detail-pane { min-width: 0; background: #17171a; }
+      .detail-head { display: flex; min-height: 45px; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line); color: #767680; font-size: 10px; }
+      .detail-head .icon-button { margin-left: auto; }
+      .detail-body { padding: 24px; }
+      .detail-key { color: #74747e; font-size: 11px; }
+      .detail-body h2 { margin: 9px 0 0; font-size: 21px; font-weight: 620; letter-spacing: -.025em; line-height: 1.25; }
+      .detail-body > p { margin: 14px 0 0; color: #9c9ca6; font-size: 12px; line-height: 1.65; }
+      .property-list { display: grid; gap: 10px; margin: 24px 0; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .property { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; font-size: 11px; }
+      .property dt { color: #92929c; }
+      .property dd { display: flex; align-items: center; gap: 7px; margin: 0; color: #bdbdc5; }
+      .property .pill { padding: 2px 6px; border-radius: 4px; background: var(--violet-soft); color: #bdb4ff; }
+      .activity-title { margin: 0 0 12px; color: #777780; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+      .activity { display: grid; grid-template-columns: 22px 1fr; gap: 10px; margin-top: 12px; color: #888892; font-size: 11px; }
+      .activity .avatar-mini { justify-self: start; }
+      .activity strong { color: #c4c4ca; font-weight: 600; }
+
+      .toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 13px; border: 1px solid #454550; border-radius: 8px; background: #232329; color: #d9d9de; box-shadow: 0 16px 40px rgba(0,0,0,.34); opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity 180ms ease-out, transform 180ms ease-out; }
+      .toast.is-visible { opacity: 1; transform: translateY(0); }
+      body.details-closed .workspace-area { grid-template-columns: minmax(0, 1fr); }
+      body.details-closed .detail-pane { display: none; }
+
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: 190px minmax(0, 1fr); }
+        .workspace-area { grid-template-columns: minmax(0, 1fr) 310px; }
+        .issue-row { grid-template-columns: 20px 62px minmax(160px, 1fr) 78px 26px; }
+        .issue-row .priority { display: none; }
+      }
+
+      @media (max-width: 760px) {
+        .shell { display: block; }
+        .sidebar { display: none; }
+        .study-label { display: none; }
+        .mobile-study-note { display: block; margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); color: #a3a3ad; font-size: 10px; line-height: 1.45; }
+        .app-header { padding: 0 10px; }
+        .content-header { padding: 22px 16px 0; }
+        .summary { margin-left: 0; }
+        .tabs { overflow-x: auto; }
+        .workspace-area { display: block; min-height: 0; }
+        .issue-pane { border-right: 0; }
+        .list-toolbar { padding: 0 12px; }
+        .issue-row { grid-template-columns: 18px 58px minmax(150px, 1fr) 24px; min-height: 48px; padding: 0 12px; }
+        .issue-row .issue-tag, .issue-row .priority { display: none; }
+        .detail-pane { position: fixed; z-index: 24; inset: 0; overflow-y: auto; transform: translateX(100%); transition: transform 220ms cubic-bezier(.16,1,.3,1); }
+        body.details-open .detail-pane { transform: translateX(0); }
+        .detail-head { position: sticky; top: 0; z-index: 2; background: #17171a; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .detail-pane, .toast { transition: none; }
+      }
+    
+
+/* Three-column workspace */
+.workspace-three-col {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 360px;
+  min-height: 100vh;
+}
+
+/* Detail rail */
+.detail-panel {
+  border-left: 1px solid #222227;
+  background: #151518;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.detail-empty {
+  color: var(--muted);
+  text-align: center;
+  margin-top: 60px;
+  font-size: 13px;
+}
+
+.detail-issue h2 {
+  font-size: 16px;
+  margin: 0 0 4px 0;
+}
+
+.detail-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.detail-body {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #1f1f24;
+  border-radius: 6px;
+  border: 1px solid #2b2b31;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.detail-actions button {
+  background: #2a2744;
+  color: #a99cff;
+  border: 1px solid #3b3b3b43;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detail-actions button:hover {
+  background: #3b3b43;
+}
+
+/* Failure groups */
+.failure-group {
+  margin-bottom: 16px;
+  animation: a-tick 0.4s ease both;
+}
+
+.failure-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #1f1f24;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid #2b2b31;
+  border-bottom: 0;
+}
+
+.failure-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.failure-count {
+  font-size: 12px;
+  color: var(--muted);
+  background: #2b2b31;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.failure-fix {
+  padding: 8px 12px;
+  background: #19191d;
+  border: 1px solid #2b2b31;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  margin-bottom: 8px;
+}
+
+.failure-fix button {
+  font-size: 11px;
+  padding: 4px 10px;
+  background: #2a2744;
+  color: #a99cff;
+  border: 1px solid #3b3b43;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.failure-fix button:hover {
+  background: #3b3b43;
+}
+
+/* Issue rows */
+.issue-row {
+  cursor: pointer;
+  border-radius: 0;
+  border-bottom: 1px solid #222227;
+}
+
+.issue-row:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.issue-row:hover {
+  background: #1f1f24;
+}
+
+.issue-row[aria-selected="true"] {
+  background: #2a2744;
+  border-left: 2px solid var(--violet);
+}
+
+/* Status dot animation */
+.status-dot.active {
+  background: var(--violet);
+  box-shadow: 0 0 6px var(--violet);
+  animation: a-dot 2s ease-in-out infinite;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b3b43;
+  display: inline-block;
+}
+
+/* Score trend */
+.score-trend {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  font-family: monospace;
+}
+
+/* Animations */
+@keyframes a-tick {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes a-dot {
+  0%, 100% { transform: scale(1); opacity: .85; }
+  50% { transform: scale(1.55); opacity: 1; }
+}
+
+@keyframes a-grow {
+  0% { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+
+.a-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: a-grow 0.6s cubic-bezier(.32,.72,.3,1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="workspace-three-col">
+
+<!-- SIDEBAR -->
+<aside class="sidebar" aria-label="Workspace navigation">
+<div class="workspace-switcher">
+<span class="workspace-mark">SC</span>
+<span class="workspace-copy"><strong>School Core</strong><span>AI Agent Pipeline</span></span>
+<svg class="icon"><use href="#i-chevron"/></svg>
+</div>
+<button class="new-issue" type="button" data-hermes-send="cd /Users/brandonbennett/school-core && python3 issue_bridge.py --once --dry-run"><svg class="icon"><use href="#i-plus"/></svg>Run bridge</button>
+<nav>
+<div class="nav-group">
+<div class="nav-item" aria-current="page"><svg class="icon"><use href="#i-cycle"/></svg>Active issues<span class="count">45</span></div>
+<div class="nav-item" data-hermes-send="cd /Users/brandonbennett/school-core && python3 scripts/school_health_doc.py"><svg class="icon"><use href="#i-filter"/></svg>Health</div>
+</div>
+<div class="nav-group">
+<div class="nav-label">Actions</div>
+<div class="nav-item" data-hermes-send="cd /Users/brandonbennett/school-core && python3 issue_bridge.py --once"><svg class="icon"><use href="#i-list"/></svg>Run once</div>
+<div class="nav-item" data-hermes-send="cd /Users/brandonbennett/school-core && python3 scripts/build_board_json.py"><svg class="icon"><use href="#i-cycle"/></svg>Rebuild board</div>
+</div>
+<div class="nav-group">
+<div class="nav-label">System</div>
+<div class="nav-item"><span class="status-dot active"></span>Coder: no data</div>
+<div class="nav-item"><span class="status-dot"></span>Profiles: 12</div>
+</div>
+</nav>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main>
+<header class="app-header">
+<div class="breadcrumbs"><span>School Core</span><svg class="icon"><use href="#i-chevron"/></svg><strong>Active issues</strong></div>
+<div class="header-actions">
+<span class="icon-button passive" aria-hidden="true"><svg class="icon"><use href="#i-filter"/></svg></span>
+<span class="icon-button passive" aria-hidden="true"><svg class="icon"><use href="#i-more"/></svg></span>
+</div>
+</header>
+
+<section class="content-header">
+<div class="title-row">
+<span class="team-icon">SC</span>
+<h1>Active issues</h1>
+<button class="quiet-action" type="button" data-hermes-send="cd /Users/brandonbennett/school-core && python3 issue_bridge.py --once"><svg class="icon"><use href="#i-plus"/></svg>Run bridge</button>
+</div>
+<p class="summary">Grouped by failure class. Click an issue to inspect and retry.</p>
+</section>
+
+<div class="workspace-area">
+<section class="issue-pane">
+<div class="list-toolbar"><span class="toolbar-label">Cycle 42</span><span class="spacer"></span><strong>45 issues</strong></div>
+<div class="failure-group" style="animation-delay: 0.0s"><div class="failure-header"><span class="failure-title">Runtime error</span><span class="failure-count">20</span></div><div class="failure-fix"><button data-hermes-send="echo 'View runtime logs'">View logs</button></div><button class="issue-row" type="button" aria-selected="false"><span class="issue-title" style="color: var(--muted)">... and 15 more</span></button></div>
+<div class="failure-group" style="animation-delay: 0.08s"><div class="failure-header"><span class="failure-title">Judge rejected</span><span class="failure-count">8</span></div><div class="failure-fix"><button data-hermes-send="echo 'View judge evidence'">View evidence</button></div><button class="issue-row" type="button" aria-selected="false"><span class="issue-title" style="color: var(--muted)">... and 3 more</span></button></div>
+<div class="failure-group" style="animation-delay: 0.16s"><div class="failure-header"><span class="failure-title">Gate blocked</span><span class="failure-count">7</span></div><div class="failure-fix"><button data-hermes-send="gh issue create --repo branben/sound-royale-ny --title 'test: add hello world function' --label 'ready-for-agent' --label 'good first issue' --body 'Write a Python function `hello()` that returns "hello world". Add a test.'">Create easy issue</button></div><button class="issue-row" type="button" aria-selected="false"><span class="issue-title" style="color: var(--muted)">... and 2 more</span></button></div>
+<div class="failure-group" style="animation-delay: 0.24s"><div class="failure-header"><span class="failure-title">other</span><span class="failure-count">4</span></div><div class="failure-fix"><button data-hermes-send="echo 'View'">View</button></div></div>
+<div class="failure-group" style="animation-delay: 0.32s"><div class="failure-header"><span class="failure-title">Judge disagreement</span><span class="failure-count">4</span></div><div class="failure-fix"><button data-hermes-send="echo 'Review CTO threshold'">Review CTO</button></div></div>
+<div class="failure-group"><div class="failure-header"><span class="failure-title">Other</span><span class="failure-count">45</span></div><button class="issue-row" type="button" aria-selected="false" data-issue="issue-406" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-406</span><span class="issue-title">Issue #406</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-204" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-204</span><span class="issue-title">Issue #204</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-9" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-9</span><span class="issue-title">Issue #9</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-8" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-8</span><span class="issue-title">Issue #8</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-7" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-7</span><span class="issue-title">Issue #7</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-6" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-6</span><span class="issue-title">Issue #6</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-4" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-4</span><span class="issue-title">Issue #4</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-3" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-3</span><span class="issue-title">Issue #3</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-2" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-2</span><span class="issue-title">Issue #2</span></button>
+<button class="issue-row" type="button" aria-selected="false" data-issue="issue-1" onclick="showDetail(this)"><span class="issue-status todo"></span><span class="issue-key">issue-1</span><span class="issue-title">Issue #1</span></button>
+</div>
+
+</section>
+</div>
+</main>
+
+<!-- DETAIL RAIL -->
+<aside class="detail-panel" id="detail-panel">
+<div class="detail-empty">Select an issue to inspect</div>
+</aside>
+</div>
+
+<!-- SVG icons -->
+<svg class="visually-hidden" aria-hidden="true">
+<symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 14h4l2 3h4l2-3h4"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+<symbol id="i-cycle" viewBox="0 0 24 24"><path d="M18 8a7 7 0 1 0 1 7M18 4v4h-4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 7 5 5-5 5"/></symbol>
+</svg>
+
+<script>
+function showDetail(btn) {
+  const issueId = btn.getAttribute('data-issue');
+  const panel = document.getElementById('detail-panel');
+  
+  document.querySelectorAll('.issue-row').forEach(r => r.setAttribute('aria-selected', 'false'));
+  btn.setAttribute('aria-selected', 'true');
+  
+  panel.innerHTML = `
+    <div class="detail-issue">
+      <h2>${issueId}</h2>
+      <div class="detail-meta">Loading from GitHub...</div>
+      <div class="detail-body">Issue body will appear here</div>
+      <div class="score-trend">Score trend: ${coder_trend}</div>
+      <div class="detail-actions">
+        <button data-hermes-send="cd /Users/brandonbennett/school-core && python3 issue_bridge.py --once">Retry</button>
+        <button data-hermes-send="gh issue edit ${issueId} --repo branben/sound-royale-ny --label 'good first issue'">Make easy</button>
+        <button data-hermes-send="gh issue comment ${issueId} --repo branben/sound-royale-ny --body 'Retrying with longcat'">Comment</button>
+        <button data-hermes-send="gh issue close ${issueId} --repo branben/sound-royale-ny">Close</button>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
