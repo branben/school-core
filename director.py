@@ -107,6 +107,69 @@ from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
 from score_finalizer import finalize_score
 
+
+def _validate_role_output(response: str, role: str) -> dict:
+    """Validate that a role's output matches its expected format.
+
+    Returns {"valid": True, "error": None} or {"valid": False, "error": "..."}.
+
+    Called by TaskRunner after call_model() and before _persist_acceptance()
+    to short-circuit garbage output before it wastes tokens on review and
+    PR creation.
+    """
+    if not response or not response.strip():
+        return {"valid": False, "error": "empty response"}
+
+    response = response.strip()
+
+    if role == "coder":
+        import re
+        # Find ALL fenced code blocks with # <path> headers
+        pattern = r"```\s*\w*\s*\n(#\s*[^\s`].*?)\n"
+        matches = re.findall(pattern, response)
+        if not matches:
+            return {"valid": False, "error": "no fenced code block with # <path> header"}
+        # Validate EVERY block has a well-formed path
+        # Block: absolute paths (/etc/passwd), traversal (../), options (-rf)
+        # Allow: relative paths with directory components (src/main.py)
+        for m in matches:
+            path = m.strip().lstrip("#").strip()
+            if path.startswith("/") or path.startswith("-") or ".." in path:
+                return {"valid": False, "error": f"invalid path in code block: {path}"}
+        return {"valid": True, "error": None}
+
+    if role == "searcher":
+        import re
+        cmd_pattern = re.compile(r"^\s*(rg|grep|find|ast-grep|fd|locate|ack)\s", re.MULTILINE)
+        if not cmd_pattern.search(response):
+            return {"valid": False, "error": "no search command found"}
+        return {"valid": True, "error": None}
+
+    if role == "reviewer":
+        import re
+        finding_pattern = re.compile(r"^\s*[-•]\s+\[?(HIGH|MEDIUM|LOW|CRITICAL)", re.MULTILINE | re.IGNORECASE)
+        file_line_pattern = re.compile(r"^\s*[-•]\s+.*:\d+\s*[-—]", re.MULTILINE)
+        if not (finding_pattern.search(response) or file_line_pattern.search(response)):
+            return {"valid": False, "error": "no structured findings"}
+        return {"valid": True, "error": None}
+
+    if role == "executor":
+        import re
+        cmd_pattern = re.compile(r"^\s*(git|npm|pip|docker|curl|wget|make|pytest|python|node|pnpm|yarn)\s", re.MULTILINE)
+        if not cmd_pattern.search(response):
+            return {"valid": False, "error": "no shell command found"}
+        return {"valid": True, "error": None}
+
+    if role == "browser":
+        import re
+        selector_pattern = re.compile(r"(querySelector|getElementById|\$\(|selector|#[\w-]+|\.[\w-]+)", re.IGNORECASE)
+        if not selector_pattern.search(response):
+            return {"valid": False, "error": "no CSS selector or DOM action found"}
+        return {"valid": True, "error": None}
+
+    return {"valid": True, "error": None}
+
+
 # ── TaskRunner class ───────────────────────────────────────────────────────
 # The TaskRunner class is too large to re-export cleanly, so we provide
 # a thin wrapper that delegates to the new implementation.
@@ -554,6 +617,27 @@ class TaskRunner:
                         )
             except Exception as e:
                 self.error = str(e)
+
+        # OUTPUT VALIDATION HOOK — verify role output before wasting tokens on review
+        # and PR creation. This catches "cat README.md" from a coder early.
+        validation = _validate_role_output(self.response, self.role)
+        if not validation["valid"]:
+            self.error = f"output_format_invalid: {validation['error']}"
+            self.store.update_score(self.role, self.domain, 0.0)
+            get_log().task_error(agent=self.role, domain=self.domain, error=self.error)
+            _record_acrouter_outcome(self.role, success=False, quality=0.0)
+            return {
+                "status": "error",
+                "domain": self.domain,
+                "difficulty": self.difficulty,
+                "agent": self.role,
+                "error": self.error,
+                "output_format_valid": False,
+                "old_score": self.old_score,
+                "new_score": self.store.get_score(self.role, self.domain),
+                "trajectory": None,
+                "capability": self.capability,
+            }
 
         self.traj_path = capture_trajectory(
             domain=self.domain, difficulty=self.difficulty, agent=self.role,

@@ -25,6 +25,20 @@ from dotenv import load_dotenv
 ENV_FILE = Path(__file__).parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
+
+# If no Nous key in env, load from shared Hermes auth (keeps bridge working when
+# .env only has an expired OmniRoute key)
+if not os.environ.get("NOUS_API_KEY"):
+    _nous_auth = Path.home() / ".hermes" / "shared" / "nous_auth.json"
+    if _nous_auth.exists():
+        try:
+            import json as _json
+            _auth = _json.loads(_nous_auth.read_text())
+            os.environ["NOUS_API_KEY"] = _auth.get("access_token", "")
+            if not os.environ.get("MODEL_PROVIDER"):
+                os.environ["MODEL_PROVIDER"] = "nous"
+        except Exception:
+            pass
 import fcntl
 import re
 import sys

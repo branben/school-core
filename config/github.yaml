@@ -12,6 +12,7 @@ labels: ["bug", "enhancement"]    # Issue labels to fetch
 
 # Override difficulty based on label presence
 difficulty_overrides:
+  good first issue: easy
   p0: hard
   p1: medium
 
