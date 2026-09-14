@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "school-core:plannotator-guide/guide.json",
+  "$comment": "guide.json shape for the plannotator-guide (Guided Review) authoring skill. Calibration: this is a 'guide, not review' artifact. Each chapter ORIENTS the reviewer — it gives a reading order and the why for a group of changed files — it does NOT critique the diff, restate the whole PR, or assign verdicts. The schema enforces structure (id/title/summary/files), not opinion. Cross-section uniqueness limitation: pure JSON Schema (draft-07) cannot express 'a file must appear in EXACTLY ONE chapter across the whole document' — uniqueness is only expressible per-item within a single array via uniqueItems. A naive oneOf/not pattern over per-chapter anyOf blocks fails on files appearing in zero chapters, and anyOf-with-not diverges on arrays that duplicate pairwise since 'not anyOf' cannot be made to require at least one match with strict exclusivity across unboundedly many chapters. This schema therefore (1) enforces uniqueItems per chapter.files (rejects a file listed twice in the SAME chapter), and (2) documents the hard 'exactly one chapter' coverage rule here for the validator layer (the plannotator-guide tooling enforces cross-chapter uniqueness at load time; school-core's tests duplicate the rule in a structural checker). If a pure-schema-only consumer needs the cross-chapter guarantee today, it must walk chapters[] itself.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "title", "summary", "chapters"],
+  "properties": {
+    "schema": {
+      "const": "plannotator-guide/1",
+      "description": "Schema ref; MUST equal the current guide.json shape version."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line human title for the review, e.g. 'Guided review: ticket 1234'."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "PR-level summary a reviewer reads before starting the first chapter."
+    },
+    "chapters": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered reading path through the diff. Each changed file appears in exactly one chapter (hard coverage rule; see $comment).",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "title", "summary", "files"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Readable chapter id, unique within this guide. ORIENTS; never critiques."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Orientation text: what the reviewer should be looking at in this chapter and why it reads the way it does."
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["path", "why"],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Changed file path, relative to the repo root, matching the diff exactly."
+                },
+                "why": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Why this file is grouped into this chapter (orientation, not critique)."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

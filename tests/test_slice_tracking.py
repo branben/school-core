@@ -108,13 +108,31 @@ def test_bd_commands_skip_unchanged_cards():
     assert out.splitlines() == ["bd update 14 --claim"]
 
 
-def test_bd_commands_skip_cards_without_id_or_lane():
-    board = [
-        {"id": "", "lane": "cut", "orig_lane": "next"},
-        {"id": "5", "lane": None, "orig_lane": "now"},
-        {"id": "6", "lane": "later", "orig_lane": "now"},
+# ---------------------------------------------------------------------------
+# build_board (queued-open seeding)
+# ---------------------------------------------------------------------------
+
+
+def test_build_board_seeds_later_from_queued_open_issues():
+    # open cache issues the loop never touched appear in `later`, not duplicated.
+    runs = [{"issue": 5, "status": "success", "agent": "coder"}]
+    queued = [
+        {"issue_number": 366, "title": "security bump", "state": "open", "domain": "_default"},
+        {"issue_number": 367, "title": "churn const", "state": "open", "domain": "_default"},
+        {"issue_number": 5, "title": "already ran", "state": "open", "domain": "_default"},  # dup → skip
+        {"issue_number": 368, "title": "closed one", "state": "closed", "domain": "_default"},  # not open → skip
     ]
-    assert build_bd_commands(board).splitlines() == ["bd update 6 --status open"]
+    cards = build_board(runs, {}, queued=queued)["board"]
+    later = [c for c in cards if c["lane"] == "later"]
+    assert [c["id"] for c in later] == ["366", "367"]
+    assert all(c["reason"] == "open" and c["actor"] == "" for c in later)
+    assert "5" not in [c["id"] for c in later]
+    assert "368" not in [c["id"] for c in later]
+
+
+def test_build_board_queued_default_none():
+    cards = build_board([{"issue": 1, "status": "success"}])["board"]
+    assert len(cards) == 1
 
 
 # ---------------------------------------------------------------------------

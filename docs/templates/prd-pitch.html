@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<!--
+  Tier-3 PRD template — pitch-doc discipline.
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE CONVENTION: this file is a RENDER of a markdown source.
+  The .md in git is authoritative and diffable; this .html is a view of it.
+  Source path convention — update to point at YOUR canonical .md:
+
+    <meta name="source" content="docs/plans/2026-09-13-000-<slug>-prd.md">
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-09-13-000-<slug>-prd.md">
+<meta name="generated-from" content="docs/plans/...prd.md (canonical markdown source in git)">
+<title>PRD pitch · school-core</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --purple:#a855f7;
+    --card:#16161e;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Geist', -apple-system, 'Segoe UI', sans-serif;
+    line-height:1.55; padding:2rem clamp(1rem, 3vw, 3rem); max-width:960px; margin:0 auto;
+  }
+  header{margin-bottom:2rem; border-bottom:1px solid var(--border); padding-bottom:1.25rem;}
+  header h1{font-size:1.5rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
+  .meta{
+    font-family:'Geist Mono', monospace; font-size:.7rem; color:var(--muted);
+    display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem;
+  }
+  .meta span{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.2rem .5rem;}
+  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:2rem;}
+  nav a{
+    color:var(--muted); text-decoration:none; font-size:.78rem;
+    border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;
+  }
+  nav a:hover{color:var(--accent); border-color:var(--accent);}
+  section{margin-bottom:2.5rem;}
+  section h2{
+    font-size:.8rem; text-transform:uppercase; letter-spacing:.1em; color:var(--accent);
+    margin-bottom:.9rem; padding-bottom:.4rem; border-bottom:1px solid var(--border);
+  }
+  section h3{font-size:1rem; font-weight:600; margin:1.1rem 0 .5rem;}
+  p, li{color:#d5d2cd; font-size:.92rem;}
+  p{margin-bottom:.7rem;}
+  ul,ol{padding-left:1.3rem; margin-bottom:.9rem;}
+  li{margin-bottom:.3rem;}
+  code{
+    font-family:'Geist Mono','SFMono-Regular',monospace; font-size:.82em;
+    background:var(--panel2); border:1px solid var(--border); border-radius:4px;
+    padding:.05rem .3rem; word-break:break-word;
+  }
+  .objection{
+    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--amber);
+    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;
+  }
+  .objection .q{color:var(--amber); font-weight:600; font-size:.85rem;}
+  .objection .a{color:var(--text); font-size:.88rem; margin-top:.3rem;}
+  .pill{
+    display:inline-block; font-size:.64rem; text-transform:uppercase; letter-spacing:.06em;
+    border:1px solid var(--border); border-radius:4px; padding:.1rem .45rem; margin-right:.35rem;
+  }
+  .pill.demo{color:var(--blue); border-color:var(--blue);}
+  .pill.pitch{color:var(--accent); border-color:var(--accent);}
+  .pill.objects{color:var(--amber); border-color:var(--amber);}
+  table{width:100%; border-collapse:collapse; font-size:.85rem; margin:.75rem 0 1rem;}
+  th{text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;}
+  th,td{border-bottom:1px solid var(--border); padding:.5rem .6rem; vertical-align:top;}
+  .footer{
+    border-top:1px solid var(--border); margin-top:2.5rem; padding-top:1rem;
+    color:var(--muted); font-size:.75rem;
+  }
+  @media (max-width: 640px){
+    body{padding:1rem;}
+    table{display:block; overflow-x:auto; white-space:nowrap;}
+    header h1{font-size:1.2rem;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PRD pitch — [Feature/product title]</h1>
+  <p class="subtitle">Tier-3 pitch-doc. Demo → pitch → objections pre-answered. The markdown source is the authority; this page is its render.</p>
+  <div class="meta">
+    <span>status: DRAFT</span>
+    <span>owner: [you]</span>
+    <span>slice: [bead id]</span>
+    <span>updated: [date]</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#demo">Demo</a>
+  <a href="#pitch">Why now / why this</a>
+  <a href="#scope">Scope</a>
+  <a href="#alternatives">GF / BF</a>
+  <a href="#objections">Objections pre-answered</a>
+  <a href="#source">Source</a>
+</nav>
+
+<main>
+  <section id="demo" aria-labelledby="demo-h">
+    <h2 id="demo-h"><span class="pill demo">Demo</span>What a reviewer sees</h2>
+    <p>One short paragraph or a static storyboard of the artifact/feature: the screen,
+       the flow, the <em>one</em> thing a reviewer reacts to first. For a real PRD,
+       embed a Tier-1 wireframe or prototype screenshot here — copied inline, never
+       hot-linked.</p>
+    <ul>
+      <li>Entry surface / trigger</li>
+      <li>Main interaction in 2-3 steps</li>
+      <li>Success state (what “done” looks like)</li>
+    </ul>
+  </section>
+
+  <section id="pitch" aria-labelledby="pitch-h">
+    <h2 id="pitch-h"><span class="pill pitch">Pitch</span>Why now, why this</h2>
+    <h3>Problem</h3>
+    <p>[One honest paragraph on the current friction. Name the pain concretely; no adjectives without evidence.]</p>
+    <h3>Why now</h3>
+    <p>[Timing or dependency that makes today the moment: a seam exists, a cost went down, a partner is ready, a deadline bites.]</p>
+    <h3>Outcome we are buying</h3>
+    <ul>
+      <li>[Measurable or at least observable outcome 1]</li>
+      <li>[Measurable or at least observable outcome 2]</li>
+    </ul>
+  </section>
+
+  <section id="scope" aria-labelledby="scope-h">
+    <h2>Scope</h2>
+    <div class="table-wrap" style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr><th>In scope</th><th>Out of scope (now)</th><th>Explicitly refused</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>[core behavior]</td>
+          <td>[deferred to next slice]</td>
+          <td>[by policy / non-goal — state why in one line]</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section id="alternatives" aria-labelledby="alternatives-h">
+    <h2>GF / BF alternatives</h2>
+    <p>One line per alternative considered and why the PRD picks what it picks.
+       (A full side-by-side compare belongs to a Tier-1 exploration artifact;
+       link or describe it here.)</p>
+    <ul>
+      <li><strong>GF:</strong> [greenfield option] → [verdict in a sentence]</li>
+      <li><strong>BF:</strong> [brownfield option] → [verdict in a sentence]</li>
+      <li><strong>Do nothing:</strong> [cost of standing still]</li>
+    </ul>
+  </section>
+
+  <section id="objections" aria-labelledby="objections-h">
+    <h2><span class="pill objects">Objections pre-answered</span></h2>
+    <p>The pitch's credibility lives here: name the objections a skeptical
+       maintainer actually raises, then answer them before they ask.</p>
+
+    <div class="objection">
+      <p class="q">“…scope/effort — this is bigger than it looks.”</p>
+      <p class="a">[What is actually small/shared/already-built; where the real boundary is.]</p>
+    </div>
+    <div class="objection">
+      <p class="q">“…maintenance — who owns this after the slice closes?”</p>
+      <p class="a">[Owner, regeneration path, and what health checks exist.]</p>
+    </div>
+    <div class="objection">
+      <p class="q">“…this duplicates [existing thing].”</p>
+      <p class="a">[One-line diff vs the existing thing; why the existing thing is not the right layer.]</p>
+    </div>
+  </section>
+
+  <section id="source" aria-labelledby="source-h">
+    <h2>Canonical source</h2>
+    <p>The markdown source of record for this pitch lives at
+       <code>docs/plans/...[slug]-prd.md</code> (see the
+       <code>&lt;meta name="source"&gt;</code> header of this file). Edit the
+       <code>.md</code>; regenerate this render. Changes to this page without
+       a matching change to the source are a drift bug.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  school-core · Tier-3 pitch-doc template · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+</footer>
+</body>
+</html>

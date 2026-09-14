@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<!--
+  Tier-3 PR writeup template — html report register (what / why / how / tested).
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE CONVENTION: this file is a RENDER of a markdown source.
+  The .md in git is authoritative and diffable; this .html is a view of it.
+  Source path convention — update to point at YOUR canonical .md:
+
+    <meta name="source" content="docs/plans/2026-09-13-000-<slug>-pr-writeup.md">
+
+  Living + @hash convention: publish with tot. The living URL is version-less
+  (always the branch tip); append #@hash for the frozen snapshot of a commit.
+  Link both in the PR description when the PR goes out.
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-09-13-000-<slug>-pr-writeup.md">
+<meta name="generated-from" content="docs/plans/...pr-writeup.md (canonical markdown source in git)">
+<title>PR writeup · [PR title]</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --purple:#a855f7;
+    --card:#16161e;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Geist', -apple-system, 'Segoe UI', sans-serif;
+    line-height:1.55; padding:2rem clamp(1rem, 3vw, 3rem); max-width:860px; margin:0 auto;
+  }
+  header{margin-bottom:2rem; border-bottom:1px solid var(--border); padding-bottom:1.25rem;}
+  header h1{font-size:1.4rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
+  .meta{
+    font-family:'Geist Mono', monospace; font-size:.7rem; color:var(--muted);
+    display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem;
+  }
+  .meta span{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.2rem .5rem;}
+  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:2rem;}
+  nav a{
+    color:var(--muted); text-decoration:none; font-size:.78rem;
+    border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;
+  }
+  nav a:hover{color:var(--accent); border-color:var(--accent);}
+  section{margin-bottom:2.5rem;}
+  section h2{
+    font-size:.8rem; text-transform:uppercase; letter-spacing:.1em; color:var(--accent);
+    margin-bottom:.9rem; padding-bottom:.4rem; border-bottom:1px solid var(--border);
+  }
+  section h3{font-size:1rem; font-weight:600; margin:1.1rem 0 .5rem;}
+  p, li{color:#d5d2cd; font-size:.92rem;}
+  p{margin-bottom:.7rem;}
+  ul,ol{padding-left:1.3rem; margin-bottom:.9rem;}
+  li{margin-bottom:.3rem;}
+  code{
+    font-family:'Geist Mono','SFMono-Regular',monospace; font-size:.82em;
+    background:var(--panel2); border:1px solid var(--border); border-radius:4px;
+    padding:.05rem .3rem; word-break:break-word;
+  }
+  .callout{
+    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--blue);
+    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem; font-size:.88rem;
+  }
+  .links{
+    font-family:'Geist Mono',monospace; font-size:.78rem; line-height:1.8;
+    background:#0c0c12; border:1px solid var(--border); border-radius:8px;
+    padding:.8rem; word-break:break-word; color:#c9c6cf; margin-bottom:.6rem;
+  }
+  table{width:100%; border-collapse:collapse; font-size:.85rem; margin:.75rem 0 1rem;}
+  th{text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;}
+  th,td{border-bottom:1px solid var(--border); padding:.5rem .6rem; vertical-align:top;}
+  .shot{
+    background:var(--panel); border:2px dashed var(--blue); border-radius:8px;
+    color:var(--muted); font-size:.8rem; text-align:center;
+    padding:2rem 1rem; margin:.75rem 0;
+  }
+  .footer{border-top:1px solid var(--border); margin-top:2.5rem; padding-top:1rem; color:var(--muted); font-size:.75rem;}
+  @media (max-width: 640px){
+    body{padding:1rem;}
+    table{display:block; overflow-x:auto; white-space:nowrap;}
+    header h1{font-size:1.15rem;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PR writeup — [PR title]</h1>
+  <p class="subtitle">Tier-3 PR-writeup render (report register). A human-facing page a reviewer can point at: what changed, why, how, and what was tested.</p>
+  <div class="meta">
+    <span>PR: #[number]</span>
+    <span>bead: [id]</span>
+    <span>author: [you]</span>
+    <span>updated: [date]</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#what">What</a>
+  <a href="#why">Why</a>
+  <a href="#how">How</a>
+  <a href="#tested">Tested</a>
+  <a href="#screenshots">Screenshots</a>
+  <a href="#links">Living + @hash</a>
+  <a href="#source">Source</a>
+</nav>
+
+<main>
+  <section id="what" aria-labelledby="what-h">
+    <h2 id="what-h">What changed</h2>
+    <ul>
+      <li>[Primary change in one line]</li>
+      <li>[Secondary change, if any]</li>
+      <li>[Behavioral change a user/agent would notice]</li>
+    </ul>
+  </section>
+
+  <section id="why" aria-labelledby="why-h">
+    <h2 id="why-h">Why</h2>
+    <p>[The problem this PR answers — reference the bead / PRD / SPEC it lands, and the decision it implements. One paragraph max.]</p>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <h2 id="how-h">How</h2>
+    <p>[Implementation shape in 2-4 bullets: main files touched, the seam chosen, what was NOT changed on purpose.]</p>
+    <ul>
+      <li>[File/area] → [what changed and why that layer]</li>
+      <li>[File/area] → [what changed and why that layer]</li>
+      <li>[Explicitly untouched] → [so reviewers do not hunt for a ghost]</li>
+    </ul>
+  </section>
+
+  <section id="tested" aria-labelledby="tested-h">
+    <h2 id="tested-h">Tested</h2>
+    <div class="table-wrap" style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr><th>Check</th><th>How</th><th>Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>[behavior]</td><td>[command / manual step]</td><td>PASS / FAIL</td></tr>
+        <tr><td>[behavior]</td><td>[command / manual step]</td><td>PASS / FAIL</td></tr>
+        <tr><td>[regression surface]</td><td>[test suite run]</td><td>PASS / FAIL</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section id="screenshots" aria-labelledby="screenshots-h">
+    <h2 id="screenshots-h">Screenshots</h2>
+    <p>Inline images only (embedded directly in this self-contained file); never hot-linked.</p>
+    <div class="shot">[ Screenshot 1 — before ]</div>
+    <div class="shot">[ Screenshot 2 — after ]</div>
+  </section>
+
+  <section id="links" aria-labelledby="links-h">
+    <h2 id="links-h">Living + @hash URLs</h2>
+    <p>Publish with <code>tot</code>. The living URL tracks the branch tip; the
+       <code>@hash</code> URL freezes this exact commit so a link in a review
+       or comment never rots. Paste both into the PR description.</p>
+    <div class="links">
+      <!-- living (version-less, branch tip) -->
+      tot: <em>tot/&lt;owner&gt;/&lt;repo&gt;/&lt;slug&gt;</em>  (living — branch tip)
+      <br>
+      <!-- frozen snapshot of exactly this commit (channel #commit → @hash) -->
+      tot: <em>tot/&lt;owner&gt;/&lt;repo&gt;/&lt;slug&gt;#@&lt;sha&gt;</em>  (@hash — frozen)
+    </div>
+    <div class="callout">Security: if the writeup contains anything sensitive,
+      share the file path instead of a <code>tot</code> link ("link is the
+      key" is for non-sensitive artifacts only).</div>
+  </section>
+
+  <section id="source" aria-labelledby="source-h">
+    <h2>Canonical source</h2>
+    <p>The markdown source of record for this writeup lives at
+       <code>docs/plans/...[slug]-pr-writeup.md</code> (see the
+       <code>&lt;meta name="source"&gt;</code> header of this file). Edit the
+       <code>.md</code>; regenerate this render. Drift between this page and
+       the source is a bug.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  school-core · Tier-3 PR-writeup template · <code>tot</code> living + <code>@hash</code>
+</footer>
+</body>
+</html>

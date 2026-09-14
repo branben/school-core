@@ -1,0 +1,63 @@
+name: context
+
+# SDLC context/skills declaration verify.
+#
+# The repo declares reproducible agent context + phase skills in
+# envit.json / envit.lock.json (see docs/sdlc/context-skills.md). This
+# job verifies the declaration on every push/PR:
+#   1. scripts/verify_context_lock.py — reproducibility + drift gate. It
+#      resolves every manifest ref against the lockfile's pinned commit (via
+#      system `git`, not envit's gix, which has a v0.1.0 HTTP transport bug),
+#      hard-fails if the locked object is a tag rather than a commit, and
+#      materializes the declared skills into .envit/skills.
+#   2. ripwire --scan-skills — security-scan the materialized skills before
+#      they are usable (third-party skill content is untrusted until scanned).
+#
+# Reads only. No secrets. Mirrors the repo's hermetic hosted-runner style.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: context lock verify + ripwire skill scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install envit + ripwire (script is the single source of truth)
+        # scripts/install_context_tools.sh is the canonical install: downloads
+        # the same pinned releases + SHA-verifies them. Same script used for
+        # local data/tools/ installs and here, so CI and machine never drift.
+        run: |
+          CI=1 bash scripts/install_context_tools.sh
+          # Put binaries on PATH for subsequent steps (CI installs into /tmp/context-tools)
+          echo "/tmp/context-tools" >> "$GITHUB_PATH"
+          echo "/tmp/context-tools/ripwire-0.6.0-linux-x64" >> "$GITHUB_PATH"
+
+      - name: Verify context declaration reproduces + materialize skills
+        # scripts/verify_context_lock.py is the reproducibility gate. It uses
+        # system `git` (which works everywhere) instead of envit's embedded
+        # gix transport (envit v0.1.0: "An IO error occurred when talking to
+        # the server" against GitHub HTTPS even when system git is fine).
+        # Drift, missing lock entries, or a tag-object commit in the lockfile
+        # all fail the job.
+        run: |
+          python3 scripts/verify_context_lock.py --dest .envit
+
+      - name: Security-scan materialized skills (ripwire --scan-skills)
+        # Third-party skills are untrusted until scanned. Exit 0 = clean
+        # (CRITICAL findings would exit 2 and fail the job).
+        run: |
+          SKILLS_DIR=".envit/skills"
+          if [ ! -d "$SKILLS_DIR" ]; then
+            echo "::error::declared skills not materialized by verify_context_lock.py"
+            exit 1
+          fi
+          ripwire --scan-skills="$SKILLS_DIR"

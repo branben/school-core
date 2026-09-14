@@ -86,3 +86,11 @@ scripts/prior_solutions/cocoindex_store/
 .env
 .env.*
 !.env.example
+
+# envit context materialization — manifest (envit.json) + lockfile (envit.lock.json)
+# are committed; the materialized .envit/ store is regenerated per-machine.
+.envit/
+
+# Durable local tool binaries (envit CLI, ripwire CLI + staged skills) — never
+# track binaries; SHA-verified installs live under data/tools (chmod 700).
+data/tools/

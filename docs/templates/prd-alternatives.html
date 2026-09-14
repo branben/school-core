@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<!--
+  Tier-1 PRD alternatives template — side-by-side compare (greenfield/backend vs frontend).
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE: none (Tier-1 decision surface). The pick you make here lands
+  in a bead/.md; the throwaway .html is not canonical. See docs/templates/TIER.md.
+
+  Form: 2-3 meaningfully different alternatives, side-by-side, tradeoffs inline.
+  Each alternative names its product decision + one-sentence tradeoff. Use the
+  guide's "lay two directions next to each other so you can point at one".
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="none (Tier 1)">
+<title>PRD alternatives · GF/BF side-by-side</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
+    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
+    --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Geist',-apple-system,'Segoe UI',sans-serif; line-height:1.55; padding:2rem clamp(1rem,3vw,3rem); max-width:1100px; margin:0 auto;}
+  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.6rem;}
+  nav a{color:var(--muted); text-decoration:none; font-size:.78rem; border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;}
+  nav a:hover{color:var(--accent); border-color:var(--accent);}
+  header{margin-bottom:1.6rem; border-bottom:1px solid var(--border); padding-bottom:1.1rem;}
+  header h1{font-size:1.4rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
+  .meta{font-family:'Geist Mono',monospace; font-size:.7rem; color:var(--muted); margin-top:.6rem;}
+  .cars{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:1.1rem; margin-bottom:1.5rem;}
+  .car{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:1.1rem; display:flex; flex-direction:column; gap:.8rem;}
+  .car h2{font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; color:var(--accent);}
+  .car .trade{font-size:.8rem; color:var(--muted);}
+  .car ul{list-style:none; padding:0; display:flex; flex-direction:column; gap:.45rem;}
+  .car li{font-size:.85rem; color:#d5d2cd; padding-left:1.1rem; position:relative;}
+  .car li::before{content:'▸'; position:absolute; left:0; color:var(--muted);}
+  .car .win{color:var(--green);}
+  .car .loss{color:var(--red);}
+  .car .pick{font-size:.74rem; border:1px solid var(--accent); color:var(--accent); border-radius:6px; padding:.35rem .7rem; text-align:center; margin-top:auto; cursor:pointer; background:none;}
+  .car .pick:hover{background:var(--accent); color:#0a0a0f;}
+  .car .pick.locked{background:var(--accent); color:#0a0a0f; font-weight:600;}
+  .car.recommended{border-color:var(--accent);}
+  .decidewith{display:flex; gap:.5rem; align-items:baseline; font-size:.82rem; background:var(--panel2); border:1px solid var(--border); border-left:3px solid var(--amber); border-radius:6px; padding:.6rem .9rem; margin-bottom:1.4rem;}
+  .decidewith strong{color:var(--amber);}
+  .verdict{display:none; font-size:.9rem; border:1px solid var(--accent); background:#0f1a05; color:var(--accent); border-radius:6px; padding:.7rem 1rem; margin-bottom:1.4rem;}
+  .verdict.visible{display:block;}
+  .footer{border-top:1px solid var(--border); margin-top:1.8rem; padding-top:.9rem; color:var(--muted); font-size:.75rem;}
+  @media (max-width:700px){ body{padding:1rem;} header h1{font-size:1.15rem;} .cars{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>PRD alternatives — [feature]</h1>
+  <p class="subtitle">Two (or three) meaningfully different directions side-by-side. Point at one.</p>
+  <p class="meta">Tier-1 · canonical source: none · the pick lands in the PRD/bead</p>
+</header>
+
+<nav aria-label="Sections">
+  <a href="#compare">Compare</a>
+  <a href="#decide">Decide with</a>
+</nav>
+
+<main>
+<div class="cars" id="compare">
+  <article class="car" data-name="greenfield">
+    <h2>GF · Greenfield</h2>
+    <p class="trade">Tradeoff: fastest to iterate, no legacy constraints — but rebuilds what exists and carries naming/discovery debt.</p>
+    <ul>
+      <li>[what's new]</li>
+      <li class="win">+ [win: no legacy coupling]</li>
+      <li class="loss">− [cost: duplicate of existing thing]</li>
+    </ul>
+    <button class="pick" aria-pressed="false">Pick GF</button>
+  </article>
+
+  <article class="car" data-name="backend">
+    <h2>BF·Backend-first</h2>
+    <p class="trade">Tradeoff: extends the existing contract, preserves data lineage — but the change is bigger and slower to demo.</p>
+    <ul>
+      <li>[what lands first]</li>
+      <li class="win">+ [win: reuses the store]</li>
+      <li class="loss">− [cost: needs migration/flag]</li>
+    </ul>
+    <button class="pick" aria-pressed="false">Pick Backend-first</button>
+  </article>
+
+  <article class="car recommended" data-name="hybrid">
+    <h2>Hybrid</h2>
+    <p class="trade">Tradeoff: new path for the new case, existing path for the old — most work now, least throwaway later.</p>
+    <ul>
+      <li>[routing decision]</li>
+      <li class="win">+ [win: no breakage]</li>
+      <li class="loss">− [cost: two paths to learn]</li>
+    </ul>
+    <button class="pick" aria-pressed="false">Pick Hybrid</button>
+  </article>
+</div>
+
+<div class="decidewith" id="decide"><strong>Decide with:</strong> [owner / group] — before [phase gate]. Unresolved: [the open question that changes the pick].</div>
+
+<div class="verdict" id="verdict" tabindex="0">Picked <strong id="verdictName"></strong>. This throwaway file is done — record the pick in the PRD / bead, then discard this artifact.</div>
+</main>
+
+<footer class="footer">Tier-1 decision surface. The winner migrates to the canonical PRD (.md). Do NOT keep this file as an artifact of record.</footer>
+
+<script>
+(function(){
+  var verdict = document.getElementById('verdict');
+  var nameEl = document.getElementById('verdictName');
+  var cars = document.querySelectorAll('.car');
+  function clearPick(){ cars.forEach(function(c){ c.classList.remove('recommended'); var b=c.querySelector('.pick'); b.classList.remove('locked'); b.textContent = (c.querySelector('.pick').getAttribute('data-label')||'Pick '+c.dataset.name.replace(/^./,function(m){return m.toUpperCase();}).replace('-first','-first')); b.setAttribute('aria-pressed','false'); }); }
+  cars.forEach(function(c){
+    var btn = c.querySelector('.pick');
+    var label = 'Pick ' + c.dataset.name.replace(/^./,function(m){return m.toUpperCase();}).replace('-first','-first');
+    btn.setAttribute('data-label', label);
+    btn.textContent = label;
+    btn.addEventListener('click', function(){
+      clearPick();
+      c.classList.add('recommended');
+      btn.classList.add('locked'); btn.textContent='✓ Picked'; btn.setAttribute('aria-pressed','true');
+      nameEl.textContent = c.dataset.name;
+      verdict.classList.add('visible');
+      verdict.focus();
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+  Tier-1 wireframe template — compare structural directions before visual design.
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE: none (throwaway for ONE decision). The prompt that made it
+  is the seed, not the file. See docs/templates/TIER.md (Tier 1).
+
+  Form contract (per html-wireframe skill + Effective HTML guide):
+  - restrained grayscale, system type, plain borders, simple blocks
+  - NO brand color, gradients, shadows, illustrations, decorative polish
+  - two or three MEANINGFULLY different directions, one file, keyboard selector
+  - realistic labels/content; placeholder only for real assets
+  - annotations only when they expose an assumption/open question
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="none (Tier 1)">
+<title>Exploration wireframes · structural directions</title>
+<style>
+  :root{
+    --bg:#101014; --panel:#18181c; --panel2:#232327; --border:#38383e;
+    --text:#e8e6e3; --muted:#9a989c;
+    /* grayscale only — this is a wireframe */
+  }
+  *{box-sizing:border-box; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height:1.5; padding:2rem clamp(1rem, 3vw, 3rem); max-width:1100px; margin:0 auto;
+  }
+  header{margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:1rem;}
+  header h1{font-size:1.35rem; font-weight:650; letter-spacing:-.01em;}
+  header .subtitle{color:var(--muted); font-size:.88rem; margin-top:.35rem;}
+  .meta{font-family:ui-monospace,'SFMono-Regular',monospace; font-size:.68rem; color:var(--muted); margin-top:.6rem;}
+  /* direction selector — keyboard operable */
+  .tabs{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:.6rem;}
+  .tabs button{
+    background:var(--panel); color:var(--muted); border:1px solid var(--border);
+    font:inherit; font-size:.8rem; padding:.35rem .8rem; border-radius:6px; cursor:pointer;
+  }
+  .tabs button:hover{border-color:#555;}
+  .tabs button.active{background:#2a2a30; color:var(--text); border-color:#4a4a52; outline:2px solid #4a4a52; outline-offset:1px;}
+  .tabs button:focus-visible{outline:2px solid var(--text); outline-offset:2px;}
+  .dir{display:none;}
+  .dir.active{display:block;}
+  .dir h2{font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text); margin-bottom:.35rem;}
+  .dir .tradelabel{color:var(--muted); font-size:.78rem; margin-bottom:1.2rem;}
+  .frame{border:1px solid var(--border); border-radius:8px; background:var(--panel); padding:1rem; margin-bottom:1.2rem;}
+  .frame-label{font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.6rem;}
+  /* simple wireframe blocks */
+  .wf{display:flex; flex-direction:column; gap:.6rem;}
+  .wf .topbar{display:flex; gap:.6rem; align-items:center; border:1px solid var(--border); background:var(--bg); border-radius:4px; padding:.5rem .7rem;}
+  .wf .logo{width:3.2rem; height:1rem; background:#3a3a40; border-radius:2px;}
+  .wf .nav{flex:1; display:flex; gap:.5rem; justify-content:flex-end;}
+  .wf .nav .item{width:2.6rem; height:.7rem; background:#333; border-radius:2px;}
+  .wf .hero{border:1px solid var(--border); background:var(--bg); border-radius:4px; padding:1.4rem 1rem; display:flex; flex-direction:column; gap:.7rem;}
+  .wf .hero .h1{width:55%; height:1.1rem; background:#3f3f46;}
+  .wf .hero .p{width:80%; height:.7rem; background:#333;}
+  .wf .hero .p2{width:65%; height:.7rem; background:#333;}
+  .wf .cta{width:7rem; height:1.6rem; background:#4a4a52; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:.7rem; color:#cfcfd4;}
+  .wf .cols{display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem;}
+  .wf .col{border:1px solid var(--border); background:var(--bg); border-radius:4px; padding:.7rem; display:flex; flex-direction:column; gap:.5rem;}
+  .wf .col .bar{height:.8rem; background:#333; width:80%;}
+  .wf .col .bar.w60{width:60%;}.wf .col .bar.w40{width:40%;}
+  .wf .split{display:grid; grid-template-columns:1fr 1fr; gap:.6rem;}
+  .wf .panel{border:1px solid var(--border); background:var(--bg); border-radius:4px; padding:.8rem; display:flex; flex-direction:column; gap:.5rem;}
+  .wf .kpi{font-family:ui-monospace,monospace; font-size:1.1rem; color:#cfcfd4; border:1px solid var(--border); background:#1c1c20; border-radius:4px; padding:.7rem; text-align:center;}
+  /* annotation */
+  .note{border-left:3px solid #555; background:var(--panel2); border-radius:0 4px 4px 0; padding:.5rem .8rem; margin-top:.8rem; font-size:.78rem; color:var(--muted);}
+  .note strong{color:var(--text); font-weight:600;}
+  .reason{border:1px solid var(--border); border-radius:6px; padding:.7rem 1rem; background:var(--panel); font-size:.82rem; color:var(--muted); margin:1.2rem 0; display:flex; gap:.6rem; align-items:baseline;}
+  .reason strong{color:var(--text); font-weight:600; flex-shrink:0;}
+  .footer{border-top:1px solid var(--border); margin-top:1.8rem; padding-top:.9rem; color:var(--muted); font-size:.75rem;}
+  @media (max-width: 700px){
+    body{padding:1rem;}
+    .wf .cols, .wf .split{grid-template-columns:1fr;}
+    header h1{font-size:1.15rem;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Structural exploration — [question under review]</h1>
+  <p class="subtitle">Three wireframe directions for the same brief. Compare layout, hierarchy, navigation, and reflow — before any visual design.</p>
+  <p class="meta">Tier-1 disposable · canonical source: none · review question: [what should be on the screen / how should the task work]</p>
+</header>
+
+<nav class="tabs" aria-label="Choose direction" id="tabs">
+  <button class="active" data-dir="a" aria-controls="dir-a" aria-selected="true">A · overview-first</button>
+  <button data-dir="b" aria-controls="dir-b" aria-selected="false">B · task-first</button>
+  <button data-dir="c" aria-controls="dir-c" aria-selected="false">C · split-pane</button>
+</nav>
+
+<main>
+<!-- ========== DIRECTION A ========== -->
+<section class="dir active" id="dir-a" role="tabpanel" aria-label="Direction A">
+  <h2>A · Overview-first</h2>
+  <p class="tradelabel">Tradeoff: best for orienting newcomers; the primary action sits below the fold.</p>
+  <div class="frame">
+    <div class="wf">
+      <div class="topbar"><div class="logo"></div><span style="font-size:.75rem;color:var(--muted)">[product name]</span><div class="nav"><span class="item"></span><span class="item"></span><span class="item"></span><span class="item"></span></div></div>
+      <div class="hero"><div class="h1"></div><div class="p"></div><div class="p2"></div><span class="cta">Primary action</span></div>
+      <div class="cols">
+        <div class="col"><span style="font-size:.7rem;color:var(--muted)">Feature one</span><div class="bar"></div><div class="bar w60"></div></div>
+        <div class="col"><span style="font-size:.7rem;color:var(--muted)">Feature two</span><div class="bar"></div><div class="bar w60"></div></div>
+        <div class="col"><span style="font-size:.7rem;color:var(--muted)">Feature three</span><div class="bar"></div><div class="bar w60"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><strong>Annotation — assumption:</strong> the review question is about first-run orientation, so content density is low here. [Change if the real question is task speed.]</div>
+</section>
+
+<!-- ========== DIRECTION B ========== -->
+<section class="dir" id="dir-b" role="tabpanel" aria-label="Direction B">
+  <h2>B · Task-first</h2>
+  <p class="tradelabel">Tradeoff: one dominant path, minimal distraction; secondary functions are tucked into the top-right menu.</p>
+  <div class="frame">
+    <div class="wf">
+      <div class="topbar"><div class="logo"></div><div class="nav"><span class="item"></span><span class="item"></span></div></div>
+      <div class="hero" style="padding:1.8rem 1rem; align-items:center; text-align:center;">
+        <div class="h1" style="width:70%;margin:0 auto;"></div>
+        <div class="p" style="width:85%;margin:0 auto;"></div>
+        <span class="cta" style="margin-top:.4rem;">Start</span>
+      </div>
+      <div class="note" style="margin-top:.6rem;"><strong>Open question:</strong> should the task run inside this screen or navigate to a dedicated flow?</div>
+    </div>
+  </div>
+  <div class="note"><strong>Annotation — behavior:</strong> the primary CTA is the only color-anchor; everything else recedes on purpose. [Structure question: does making one path dominate hurt discovery?]</div>
+</section>
+
+<!-- ========== DIRECTION C ========== -->
+<section class="dir" id="dir-c" role="tabpanel" aria-label="Direction C">
+  <h2>C · Split-pane</h2>
+  <p class="tradelabel">Tradeoff: strongest for working against live content (two things at once); most complex at mobile width.</p>
+  <div class="frame">
+    <div class="wf">
+      <div class="topbar"><div class="logo"></div><div class="nav"><span class="item"></span><span class="item"></span></div></div>
+      <div class="split">
+        <div class="panel">
+          <span style="font-size:.72rem;color:var(--muted)">List / index</span>
+          <div class="kpi">KPI</div>
+          <div class="bar"></div><div class="bar w60"></div><div class="bar w40"></div>
+        </div>
+        <div class="panel">
+          <span style="font-size:.72rem;color:var(--muted)">Detail / editor</span>
+          <div class="h1" style="height:.9rem;width:70%;background:#3f3f46;"></div>
+          <div class="bar"></div><div class="bar w60"></div>
+          <div class="note" style="margin-top:.4rem;"><strong>Annotation:</strong> master-detail pattern. What happens when the panel is the whole screen on mobile?</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><strong>Annotation — responsive:</strong> on ≤700px the split collapses to stacked panels; verify the hierarchy survives.</div>
+</section>
+
+<div class="reason"><strong>Review question:</strong> [the structural decision this exploration exists to settle]. Pick a direction, then hand the winner to <code>html-plan</code> / <code>html-prototype</code> as appropriate.</div>
+</main>
+
+<footer class="footer">
+  Tier-1 disposable wireframe · canonical source: none · the prompt that made it is the seed, not the file. See docs/templates/TIER.md.
+</footer>
+
+<script>
+(function(){
+  var tabs = document.getElementById('tabs');
+  var btns = tabs.querySelectorAll('button');
+  var panels = document.querySelectorAll('main .dir');
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var d = btn.getAttribute('data-dir');
+      btns.forEach(function(b){ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+      btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+      panels.forEach(function(p){ p.classList.remove('active'); });
+      document.getElementById('dir-'+d).classList.add('active');
+    });
+  });
+  document.addEventListener('keydown', function(e){
+    // Arrow keys switch directions when focus is in the tab bar
+    var active = document.activeElement;
+    if (active && active.closest('#tabs')) {
+      var idx = Array.prototype.indexOf.call(btns, active);
+      if (e.key === 'ArrowRight' && idx < btns.length-1){ e.preventDefault(); btns[idx+1].focus(); btns[idx+1].click(); }
+      if (e.key === 'ArrowLeft' && idx > 0){ e.preventDefault(); btns[idx-1].focus(); btns[idx-1].click(); }
+    }
+  });
+})();
+</script>
+</body>
+</html>

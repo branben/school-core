@@ -1,0 +1,87 @@
+name: cloud-lane
+
+# U7: event → slice → cloud implementation → PR, without the Mac.
+#
+# When a dispatchable issue gets the `cloud` label, this workflow:
+#   1. decodes `cloud` from the label
+#   2. installs the beads CLI (the shared task DB; write path = `bd`)
+#   3. claims and re-opens the slice with bd (idempotent)
+#   4. runs the trust-envelope dispatch helper which starts an OpenHands Cloud
+#      conversation for low-risk slices (auto-apply) or adds `human-approve` and
+#      leaves the issue open (high-risk / not-ready pause)
+#
+# The workflow layout matches the repo's existing CI style (school-loop.yml):
+# reads are default; the write-scoped GITHUB_TOKEN is requested explicitly and
+# used only for PR/issue reads plus the muted comment. The optional
+# OPENHANDS_API_KEY secret (OpenHands Cloud) is the only deployment secret.
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number to dispatch"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  dispatch:
+    # If no OpenHands Cloud key exists, fail INFRASTRUCTURE loudly rather than
+    # silently skipping (verify-gate discipline).
+    if: contains(github.event.label.name, 'cloud') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install beads CLI
+        run: |
+          export BD_DO_NOT_AUTOCONFIGURE=1
+          curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+          printf 'PATH=%s\n' "$HOME/.local/bin:$PATH" >> "$GITHUB_ENV"
+
+      - name: Determine repo and issue
+        id: vars
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            ISSUE="${{ inputs.issue }}"
+          else
+            ISSUE="${{ github.event.issue.number }}"
+          fi
+          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+          echo "repo=${{ github.repository }}" >> "$GITHUB_OUTPUT"
+
+      - name: Claim slice with bd
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue="${{ steps.vars.outputs.issue }}"
+          bd update "$issue" --claim || true
+          bd update "$issue" --status open || true
+
+      - name: Dispatch to OpenHands Cloud (trust envelope decides)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENHANDS_CLOUD_API_KEY: ${{ secrets.OPENHANDS_API_KEY }}
+        run: |
+          python3 scripts/dispatch_cloud_slice.py \
+            --repo "${{ steps.vars.outputs.repo }}" \
+            --issue "${{ steps.vars.outputs.issue }}"
+
+      - name: Comment dispatch outcome
+        if: always() && steps.dispatch.outcome != 'success' && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Workflow failed before dispatch helper could comment; leave a
+          # visible breadcrumb on the issue. (Comment-only, no write else.)
+          gh issue comment "${{ steps.vars.outputs.issue }}" \
+            --repo "${{ steps.vars.outputs.repo }}" \
+            --body "[cloud-lane] dispatch step failed — see workflow run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

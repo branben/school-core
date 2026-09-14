@@ -1,5 +1,12 @@
 [
   {
+    "issue_number": 419,
+    "title": "docs: add installation section to README",
+    "domain": "_default",
+    "difficulty": "medium",
+    "state": "open"
+  },
+  {
     "issue_number": 415,
     "title": "docs: add JSDoc to MIN_ROUNDS/MAX_ROUNDS constants",
     "domain": "_default",

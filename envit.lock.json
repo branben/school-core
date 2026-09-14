@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "repos": [
+    {
+      "name": "ripwire",
+      "source": "https://github.com/redhat-et/ripwire.git",
+      "ref": "v0.6.0",
+      "commit": "2d2f10e625811b75e0d0eaf6c7449cbb4e440a5c"
+    },
+    {
+      "name": "effective-html",
+      "source": "https://github.com/plannotator/effective-html.git",
+      "ref": "HEAD",
+      "commit": "d95debbaef15af1d201fc6c10c77cf92b524a0d6"
+    },
+    {
+      "name": "guides",
+      "source": "https://github.com/plannotator/guides.git",
+      "ref": "HEAD",
+      "commit": "da10932bcb861cc3830bcd50c2249249b2bbb538"
+    }
+  ]
+}
