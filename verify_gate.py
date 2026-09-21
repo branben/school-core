@@ -77,8 +77,18 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
         except Exception as e:  # pragma: no cover - config is trusted but defensive
             print(f"[verify_gate] project_verify parse failed: {e}")
 
-    # Infer from package.json files (root + sub-projects)
-    for pkg in sorted(repo_path.rglob("package.json")):
+    # Infer from package.json files
+    # Root-config gate: only look for package.json (including sub-projects)
+    # when the root itself declares one. This prevents Python repos with a
+    # frontend subdirectory from failing when `npm run lint` runs in a
+    # Python worktree without the TypeScript toolchain. Sub-projects are
+    # still discovered when root is also a JS repo (e.g. Orca mobile, where
+    # root and mobile/ each typecheck independently).
+    if (repo_path / "package.json").exists():
+        pkg_iter = sorted(repo_path.rglob("package.json"))
+    else:
+        pkg_iter = []
+    for pkg in pkg_iter:
         if "node_modules" in pkg.parts:
             continue
         try:
@@ -102,7 +112,12 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
                 })
 
     # Infer from pyproject.toml (pytest / mypy / ruff)
-    for cfg in sorted(repo_path.rglob("pyproject.toml")):
+    # Same root-config gate: only look for pyproject.toml when root declares one.
+    if (repo_path / "pyproject.toml").exists():
+        cfg_iter = sorted(repo_path.rglob("pyproject.toml"))
+    else:
+        cfg_iter = []
+    for cfg in cfg_iter:
         if ".venv" in cfg.parts or "site-packages" in cfg.parts:
             continue
         text = cfg.read_text(errors="replace")
