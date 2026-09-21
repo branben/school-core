@@ -1,5 +1,17 @@
 import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from project root
+ENV_FILE = Path(__file__).parent / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+
+# Also load from ~/.omniroute/.env if it exists (for OmniRoute keys)
+OMNIRoute_ENV = Path.home() / ".omniroute" / ".env"
+if OMNIRoute_ENV.exists():
+    load_dotenv(OMNIRoute_ENV)
 from concurrent.futures import ThreadPoolExecutor
 import re
 import sys
@@ -1261,8 +1273,9 @@ def run_task(
         selected = (scored + unscored)[:3]
         prior_blob = "\n\n---\n### Prior Approaches\n" + "\n".join(
             f"- [{t.get('timestamp','?')[:10]}] **{t.get('agent','?') or '?'}** "
-            f"(score={t.get('task_score') or 0:.1f}): {t.get('response','')[:240]}"
+            f"(score={t.get('task_score') or 0:.1f}): {(t.get('response') or '')[:240]}"
             for t in selected
+            if t.get('response') is not None
         ) + "\n---"
         system_prompt = system_prompt + prior_blob
 

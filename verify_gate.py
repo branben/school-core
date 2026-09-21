@@ -35,6 +35,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -76,8 +77,18 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
         except Exception as e:  # pragma: no cover - config is trusted but defensive
             print(f"[verify_gate] project_verify parse failed: {e}")
 
-    # Infer from package.json files (root + sub-projects)
-    for pkg in sorted(repo_path.rglob("package.json")):
+    # Infer from package.json files
+    # Root-config gate: only look for package.json (including sub-projects)
+    # when the root itself declares one. This prevents Python repos with a
+    # frontend subdirectory from failing when `npm run lint` runs in a
+    # Python worktree without the TypeScript toolchain. Sub-projects are
+    # still discovered when root is also a JS repo (e.g. Orca mobile, where
+    # root and mobile/ each typecheck independently).
+    if (repo_path / "package.json").exists():
+        pkg_iter = sorted(repo_path.rglob("package.json"))
+    else:
+        pkg_iter = []
+    for pkg in pkg_iter:
         if "node_modules" in pkg.parts:
             continue
         try:
@@ -85,16 +96,28 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
         except Exception:
             continue
         sub = pkg.parent.relative_to(repo_path)
+        # Detect package manager from lockfile
+        if (pkg.parent / "pnpm-lock.yaml").exists():
+            runner = "pnpm"
+        elif (pkg.parent / "yarn.lock").exists():
+            runner = "yarn"
+        else:
+            runner = "npm"
         for key in ("typecheck", "lint", "test", "check"):
             if key in scripts:
                 commands.append({
-                    "name": f"{sub}/npm:{key}",
-                    "cmd": f"npm run {key}",
+                    "name": f"{sub}/{runner}:{key}",
+                    "cmd": f"{runner} run {key}" if runner != "pnpm" else f"pnpm {key}",
                     "cwd": str(sub) or ".",
                 })
 
     # Infer from pyproject.toml (pytest / mypy / ruff)
-    for cfg in sorted(repo_path.rglob("pyproject.toml")):
+    # Same root-config gate: only look for pyproject.toml when root declares one.
+    if (repo_path / "pyproject.toml").exists():
+        cfg_iter = sorted(repo_path.rglob("pyproject.toml"))
+    else:
+        cfg_iter = []
+    for cfg in cfg_iter:
         if ".venv" in cfg.parts or "site-packages" in cfg.parts:
             continue
         text = cfg.read_text(errors="replace")
@@ -108,14 +131,18 @@ def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[
 
 
 # Scratch-copy noise the verify commands never need (VCS metadata, venvs,
-# node_modules, caches). A full copytree of a large checkout (e.g. a fat dev
-# checkout with .git + accumulated data) would otherwise stall the gate for
-# minutes before the first compile check runs.
+# caches). node_modules is included when present in the cache (installed by
+# repo_reader.clone_repo for TypeScript projects) so the hermetic gate can
+# run typecheck/test/lint without network access.
 _VERIFY_COPY_IGNORE = shutil.ignore_patterns(
-    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
+    ".git", ".hg", ".svn", ".venv", "venv", "env",
     "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store",
 )
+
+def _has_node_modules(repo_path: Path) -> bool:
+    """Check if the repo has a node_modules directory (pre-installed by clone_repo)."""
+    return (repo_path / "node_modules").is_dir()
 
 
 def _find_nix() -> Optional[str]:
@@ -218,6 +245,8 @@ def _build_verify_script(
     starts: list[str] = []
     ends: list[str] = []
     script_lines = ["set +e"]
+    # Ensure local node_modules/.bin is in PATH for TS projects
+    script_lines.append(f'export PATH="{work}/node_modules/.bin:$PATH"')
     for index, cmd in enumerate(commands):
         cwd = (work / cmd["cwd"]).resolve()
         start = f"__SCHOOL_VERIFY_START_{index}__"
@@ -287,10 +316,20 @@ def run_verify_gate(
             "hermetic verify layer.",
         )
 
+    # Check flake.nix exists before attempting nix develop
     flake_ref = _flake_ref(flake_path)
+    if not Path(flake_ref).exists() and not (Path(flake_path) / "flake.nix").exists():
+        return _skipped_verdict(
+            "(flake)",
+            f"No flake.nix found at {flake_path} — verify gate SKIPPED. "
+            "Add a flake.nix with verifyShell to run hermetic verification.",
+        )
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
-    scratch = Path(tempfile.mkdtemp(prefix="school-verify-"))
+    # Use main filesystem for space (var/folders can be small)
+    scratch_base = Path("/Users/brandonbennett/tmp")
+    scratch_base.mkdir(parents=True, exist_ok=True)
+    scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:
         copied_bytes = 0
 
@@ -300,11 +339,38 @@ def run_verify_gate(
                 copied_bytes += max(0, Path(src).stat().st_size)
             except OSError:
                 pass
-            return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+            # Use hardlinks to save disk space (node_modules can be hundreds of MB)
+            # copytree only calls this for files, dirs are handled automatically
+            try:
+                os.link(src, dst)
+                return dst
+            except OSError:
+                # Fallback to copy if hardlink fails (different filesystem, etc.)
+                return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
+        # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
+        # Skip if too large (>500MB) to avoid disk issues
+        ignore_patterns = _VERIFY_COPY_IGNORE
+        if _has_node_modules(repo_path):
+            nm_path = repo_path / "node_modules"
+            total_size = sum(f.stat().st_size for f in nm_path.rglob("*") if f.is_file())
+            if total_size < 500 * 1024 * 1024:  # 500MB limit
+                ignore_patterns = shutil.ignore_patterns(
+                    *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
+                      "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
+                      ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
+                )
+                sys.stderr.write(
+                    f"[verify_gate] node_modules will be hardlinked ({total_size / 1024 / 1024:.1f}MB)\n"
+                )
+            else:
+                sys.stderr.write(
+                    f"[verify_gate] node_modules too large ({total_size / 1024 / 1024:.0f}MB) — skipping copy\n"
+                )
 
         shutil.copytree(
             repo_path, scratch / "repo", dirs_exist_ok=True,
-            ignore=_VERIFY_COPY_IGNORE,
+            ignore=ignore_patterns,
             copy_function=_copy_with_measurement,
         )
         work = scratch / "repo"

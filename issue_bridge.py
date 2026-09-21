@@ -18,6 +18,14 @@ Usage:
 
 import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from project root
+ENV_FILE = Path(__file__).parent / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+import fcntl
 import re
 import sys
 import time
@@ -59,6 +67,34 @@ from bookbag import locked_update_bookbag
 from pr_creator import create_pr_for_issue
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
+
+# Single-instance lock file — prevents concurrent cron cycles from corrupting state
+_LOCK_FILE = Path(__file__).parent / "data" / ".bridge_lock"
+_lock_fd: Optional[int] = None
+
+def _acquire_lock() -> bool:
+    """Acquire exclusive lock on the bridge lock file. Returns True if acquired."""
+    global _lock_fd
+    _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(str(_LOCK_FILE), os.O_CREAT | os.O_WRONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(fd, str(os.getpid()).encode())
+        _lock_fd = fd
+        return True
+    except (OSError, IOError):
+        return False
+
+def _release_lock() -> None:
+    """Release the bridge lock file."""
+    global _lock_fd
+    if _lock_fd is not None:
+        try:
+            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            os.close(_lock_fd)
+        except (OSError, IOError):
+            pass
+        _lock_fd = None
 
 # GitHub lifecycle labels so the repo's issue list reflects the school's work.
 # Success → closed + school-done (queryable "the school finished this").
@@ -1394,6 +1430,17 @@ def bridge_issues(
                         preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
                     )
+                elif crew_result is not None and crew_result.status == "resolved":
+                    # The crew determined the work was already satisfied. This is
+                    # a terminal success state — mark processed, close the issue,
+                    # and do NOT re-dispatch.
+                    crew_used = True
+                    task_result = {
+                        "status": "resolved",
+                        "response": crew_result.report_path.read_text() if crew_result.report_path else "Work already present.",
+                        "review": {"verdict": "PASS", "score": 100.0, "findings": []},
+                    }
+                    sys.stderr.write(f"[issue_bridge] #{num}: crew reported already satisfied — closing\n")
                 else:
                     task_result = run_task(
                         prompt=enriched_prompt,
@@ -1414,6 +1461,10 @@ def bridge_issues(
                 # Transient failure (gateway hiccup, Orca unavailable, …):
                 # schedule a retry on the next cycle. Not processed, not labeled.
                 retries[num] = attempts
+                # Persist immediately: if this cycle dies mid-loop, the next
+                # cycle's _load_retries() must see this increment. Otherwise
+                # RETRY_LIMIT is unreachable and the issue retries forever.
+                _save_retries(retries)
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],
@@ -2064,6 +2115,10 @@ def bridge_issues(
                 )
                 # Transient failure — schedule a retry on the next cycle.
                 retries[num] = attempts
+                # Persist immediately: if this cycle dies mid-loop, the next
+                # cycle's _load_retries() must see this increment. Otherwise
+                # RETRY_LIMIT is unreachable and the issue retries forever.
+                _save_retries(retries)
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],

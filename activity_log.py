@@ -1,21 +1,6 @@
-"""
-activity_log.py — Real-time activity stream for Agent School.
-
-Maintains a JSON activity log that captures what each agent is doing,
-with plain-language descriptions suitable for a live dashboard.
-
-Usage:
-    from activity_log import ActivityLog, ActivityType
-
-    log = ActivityLog()
-    log.start_task(agent="foundry-coder-7b", domain="python-testing", difficulty="hard")
-    # ... agent works ...
-    log.finish_task(agent="foundry-coder-7b", domain="python-testing", score=70.0, success=True)
-    log.staff_run(plugin="janitor", summary="Pruned 3 stale trajectories")
-    log.idle(agent="foundry-coder-0.5b", reason="waiting for next task")
-"""
-
 import json
+import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from enum import Enum
@@ -48,6 +33,7 @@ class ActivityType(str, Enum):
 
     # Student (disposable leaf) lifecycle — observability for async dispatch
     STUDENT_STAGE = "student_stage"
+
 
 # ── Semantic description templates ──
 
@@ -141,16 +127,38 @@ class ActivityLog:
         # Rotate if too many entries
         if len(self._entries) > MAX_ENTRIES:
             self._entries = self._entries[-MAX_ENTRIES // 2:]
-        self.path.write_text(json.dumps({
+        payload = json.dumps({
             "entries": self._entries,
             "last_updated": datetime.now(timezone.utc).isoformat(),
-        }, indent=2, ensure_ascii=False))
+        }, indent=2, ensure_ascii=False)
+        # Atomic write: write to temp file in same dir, then os.replace.
+        # Avoids partial-write races where an observer reads a truncated file.
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self.path.parent), prefix=".activity_log_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_path, self.path)
+        except BaseException:
+            # Clean up temp file on any failure; original file untouched.
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def _add(self, entry: dict) -> dict:
-        entry["id"] = len(self._entries) + 1
-        if "timestamp" not in entry:
-            entry["timestamp"] = datetime.now(timezone.utc).isoformat()
         with self._lock:
+            # ID is max(existing id, len) + 1 so it stays monotonic even after
+            # rotation truncates the tail. Assignment inside the lock prevents
+            # concurrent producers from seeing the same next-ID and colliding.
+            next_id = (self._entries[-1]["id"] + 1) if self._entries else 1
+            entry["id"] = next_id
+            if "timestamp" not in entry:
+                entry["timestamp"] = datetime.now(timezone.utc).isoformat()
             self._entries.append(entry)
             self._save()
         return entry

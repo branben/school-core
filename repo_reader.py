@@ -137,6 +137,10 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     spawn a crew, so a pristine re-clone is impossible anyway; the refreshed
     base is the safe fallback.
 
+    For TypeScript/JavaScript projects (package.json present), installs
+    dependencies into the cache so the hermetic verify gate can run
+    typecheck/test/lint without network access.
+
     Args:
         repo_slug: ``owner/repo`` to clone.
         force_fresh: If True, remove the cache dir and re-clone from origin
@@ -188,11 +192,36 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
             sys.stderr.write(f"[repo_reader] Failed to clone {repo_slug}: {result.stderr.strip()[:200]}\n")
             shutil.rmtree(repo_path, ignore_errors=True)
             return None
-        return repo_path
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         sys.stderr.write(f"[repo_reader] Clone error for {repo_slug}: {e}\n")
         shutil.rmtree(repo_path, ignore_errors=True)
         return None
+
+    # Install dependencies for TypeScript/JavaScript projects so the hermetic
+    # verify gate can run typecheck/test/lint without network access.
+    if (repo_path / "package.json").exists():
+        lockfile = repo_path / "pnpm-lock.yaml"
+        if lockfile.exists():
+            install_cmd = ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"]
+        elif (repo_path / "package-lock.json").exists():
+            install_cmd = ["npm", "ci", "--prefer-offline", "--no-audit", "--no-fund"]
+        elif (repo_path / "yarn.lock").exists():
+            install_cmd = ["yarn", "install", "--frozen-lockfile", "--prefer-offline"]
+        else:
+            install_cmd = ["npm", "install", "--prefer-offline", "--no-audit", "--no-fund"]
+        try:
+            subprocess.run(
+                install_cmd,
+                cwd=str(repo_path),
+                capture_output=True,
+                timeout=300,
+                check=False,
+                text=True,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass  # Install failure is non-fatal; verify gate will skip if deps missing
+
+    return repo_path
 
 
 def get_file_tree(repo_path: Path, max_depth: int = 3) -> str:

@@ -27,6 +27,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence
 
+from dotenv import load_dotenv
+
+# Load .env file from project root
+ENV_FILE = Path(__file__).parent / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+
+# Also load from ~/.omniroute/.env if it exists (for OmniRoute keys)
+OMNIRoute_ENV = Path.home() / ".omniroute" / ".env"
+if OMNIRoute_ENV.exists():
+    load_dotenv(OMNIRoute_ENV)
+
 from capabilities import CapabilityBundle
 
 try:
@@ -410,14 +422,21 @@ def _write_brief(
         "checkout. Create your branch with `git checkout -b "
         f"fm/{crew_id}` and work there. Never push to any remote and never "
         "open a PR.\n\n"
+        "## Safety guard\n\n"
+        "NEVER run `git stash`, `git checkout` (outside your own branch), "
+        "`git reset`, or `git clean` outside this worktree. If you need to "
+        "inspect another branch or PR, use `git fetch origin <ref>` and "
+        "read files with `git show` instead of checking out. Violating this "
+        "will corrupt the live repository.\n\n"
         "## Status file\n\n"
         "Report progress by appending one short line to the status file:\n\n"
         f"    {status_file}\n\n"
-        "Use exactly these verbs: `working:`, `blocked:`, `needs-decision:`,"
-        " `resolved:`, `done:`, `failed:`. Append `blocked:` when you are stuck "
+        "Use exactly these verbs: `working:`, `blocked:`, `needs-decision:`, "
+        "`resolved:`, `done:`, `failed:`. Append `blocked:` when you are stuck "
         "and stop. Append `needs-decision:` only for human decisions and stop. "
-        "Each append wakes the supervisor, so report sparingly: only phase "
-        "changes and the terminal states.\n\n"
+        "Write `working:` at each major phase change (branch created, "
+        "implementation complete, tests run) — the supervisor uses these "
+        "to distinguish active work from silent failure.\n\n"
         "## Report\n\n"
         "Write your delivery report (what you changed, the checks you ran, and "
         "the evidence) to:\n\n"
@@ -1075,6 +1094,7 @@ def _poll(
     started = now_fn()
     blocked_at: Optional[float] = None
     spoke = False
+    mid_work = False
     poll_sleep = poll_interval if poll_interval > 0 else min(max(timeout, 0.1), 0.1)
     max_attempts = max(1, int(max(timeout, 0.0) / max(poll_sleep, 0.1)) + 2)
     attempts = 0
@@ -1083,7 +1103,7 @@ def _poll(
         status, detail = _read_status_detail(_status_path(crew_id))
         if status is not None:
             spoke = True
-        if status in {"done", "failed"}:
+        if status in {"done", "failed", "resolved"}:
             return status, None, detail
         if status in {"blocked", "needs-decision"}:
             blocked_at = blocked_at if blocked_at is not None else now_fn()
@@ -1091,6 +1111,9 @@ def _poll(
                 return "blocked", "blocked", detail
         elif status == "resolved":
             blocked_at = None
+            mid_work = True
+        elif status == "working":
+            mid_work = True
         # A crew that has never spoken is not "working" — it is missing. Cut it
         # loose at the startup deadline instead of reserving the whole cycle
         # budget for a process that may not exist.
@@ -1098,6 +1121,11 @@ def _poll(
             return "timeout", "spawn_silent", detail
         # working, paused, resolved, unknown, and absent status all remain live.
         sleep_fn(poll_sleep)
+    # Timeout fired. If the crew wrote working:/resolved: but never reached
+    # a terminal state, return blocked (recoverable) so the supervisor
+    # preserves the worktree. Genuine silence and needs-decision stay timeout.
+    if mid_work:
+        return "blocked", "poll_timeout_mid_work", detail
     return "timeout", "timeout", ""
 
 
@@ -1262,6 +1290,14 @@ def dispatch_crew(
             now_fn=now_fn,
             sleep_fn=sleep_fn,
         )
+        # Re-read the status file to capture the wrapper's post-exit handshake.
+        # The wrapper writes blocked:/failed: AFTER Hermes exits, which can
+        # land after the poll loop's timeout fires. Only apply when poll returned
+        # a non-terminal status — don't overwrite a valid terminal result.
+        if terminal_status not in {"done", "failed", "blocked", "needs-decision", "resolved"}:
+            _post_exit_status = _read_status(_status_path(crew_id))
+            if _post_exit_status in {"done", "failed", "blocked", "needs-decision"}:
+                terminal_status = _post_exit_status
         # B9: a crew that spawned without error yet produced no status file
         # within startup_grace is a *silent agent*, not a generic spawn
         # failure. Rename the code so it is distinguishable in the ledger;
@@ -1335,6 +1371,22 @@ def dispatch_crew(
                 fallback_reason = "report_missing"
                 terminal_status = "failed"
                 log.warning("crew %s reached done without report.md", crew_id)
+        elif terminal_status == "resolved":
+            # The crew determined the work was already satisfied. This is a
+            # terminal success state — the crew did its job by identifying
+            # that no changes were needed. Capture the report if present.
+            fallback_reason = "already_satisfied"
+            candidate = _task_dir(crew_id) / "report.md"
+            if candidate.exists():
+                try:
+                    if candidate.stat().st_size <= MAX_REPORT_BYTES:
+                        report_path = candidate
+                        report_text = candidate.read_text(encoding="utf-8")
+                        report_identity = _artifact_identity(report_text)
+                        if report_identity:
+                            artifact_identity = report_identity
+                except OSError:
+                    pass
         elif terminal_status == "failed":
             fallback_reason = "crew_failed"
     except Exception as exc:
@@ -1414,7 +1466,13 @@ def dispatch_crew(
                 str(patch_path.relative_to(DATA_DIR)) if patch_path else None
             ),
         })
-    teardown_ok = teardown_worktree(worktree_id)
+    teardown_ok = False
+    if terminal_status == "blocked":
+        # Tri-state: blocked means mid-work (recoverable). Preserve the
+        # worktree so the next dispatch can pick up where this one left off.
+        log.info("crew %s blocked (mid-work) — preserving worktree", crew_id)
+    else:
+        teardown_ok = teardown_worktree(worktree_id)
     _update_run(crew_id, {"teardown_ok": teardown_ok})
     return CrewResult(
         crew_id=crew_id,
