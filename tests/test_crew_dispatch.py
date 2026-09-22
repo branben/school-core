@@ -1544,3 +1544,30 @@ def test_brief_encourages_intermediate_status_writes(monkeypatch, tmp_path):
         "Brief must tell crews to write working: at phase changes "
         "so the supervisor can distinguish mid-work from silent failure"
     )
+
+
+def test_brief_signal_first_precedes_worktree(monkeypatch, tmp_path):
+    """8vd: the immediate 'working: started' signal must appear BEFORE the
+    Worktree verify section — crews that take >120s to speak get killed, so
+    the envelope must not make them run shell round-trips before their first
+    append."""
+    configure_paths(monkeypatch, tmp_path)
+
+    crew_dispatch._write_brief(
+        crew_id="fm-test-001",
+        project_dir=tmp_path / "project",
+        issue_number=999,
+        task_text="Test task",
+    )
+
+    brief_path = tmp_path / "fm-home" / "data" / "fm-test-001" / "brief.md"
+    text = brief_path.read_text()
+    assert "## Signal first" in text, "Brief missing '## Signal first' section"
+    assert "## Worktree" in text, "Brief missing '## Worktree' section"
+    signal_pos = text.index("## Signal first")
+    worktree_pos = text.index("## Worktree")
+    assert signal_pos < worktree_pos, (
+        f"'## Signal first' (pos {signal_pos}) must precede '## Worktree' "
+        f"(pos {worktree_pos}) so the crew's first append is before any shell "
+        f"round-trips"
+    )
