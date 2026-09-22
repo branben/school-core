@@ -301,7 +301,7 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             data = json.dumps(
                 self._build_board_json_payload(), ensure_ascii=False
             )
-            self.wfile.write(f"event: board\\ndata: {data}\\n\\n".encode())
+            self.wfile.write(f"event: board\ndata: {data}\n\n".encode())
             self.wfile.flush()
 
         # ── Track activity-log size ──────────────────────────────────────
@@ -361,7 +361,7 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                                 new_entries, ensure_ascii=False
                             )
                             self.wfile.write(
-                                f"event: activity\\ndata: {payload}\\n\\n".encode()
+                                f"event: activity\ndata: {payload}\n\n".encode()
                             )
                             self.wfile.flush()
                     except (json.JSONDecodeError, OSError):
