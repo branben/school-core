@@ -96,24 +96,43 @@ set -e
 # still requires the crew's own report.md + done: identity evidence).
 if [[ -n "${FM_STATUS_FILE:-}" ]]; then
   if mkdir -p "$(dirname "$FM_STATUS_FILE")" 2>/dev/null; then
+    # Decide from the LAST status-verb line, not the last physical line.
+    # Non-verb lines (the dispatcher's `repo=` attribution join,
+    # crew_dispatch.py:1308-1320) can be appended after a terminal verb, and
+    # earlier dispatch cycles can share this crew_id, so `tail -n 1` plus an
+    # anywhere-grep misreads a finished crew as unterminated mid-work and
+    # appends a bogus handshake after its done: line. Mirrors
+    # crew_dispatch._STATUS_RE (crew_dispatch.py:106-113): the six documented
+    # verbs, case-insensitive, optional leading timestamp, optional [tag]
+    # suffix before the colon.
+    LAST_VERB=""
+    if [[ -f "$FM_STATUS_FILE" ]]; then
+      LAST_VERB="$(LC_ALL=C awk '
+        {
+          line = tolower($0)
+          sub(/^[ \t]+/, "", line)
+          if (line ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][T ][0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]+)?Z?[ \t]+/) {
+            sub(/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][T ][0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]+)?Z?[ \t]+/, "", line)
+          } else if (line ~ /^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z?[ \t]+/) {
+            sub(/^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z?[ \t]+/, "", line)
+          }
+          if (match(line, /^(working|blocked|needs-decision|resolved|done|failed)/)) {
+            verb = substr(line, RSTART, RLENGTH)
+            rest = substr(line, RLENGTH + 1)
+            if (rest ~ /^[ \t]*:/ || rest ~ /^[ \t]+\[[^]]*\][ \t]*:/) {
+              last = verb
+            }
+          }
+        }
+        END { if (last != "") print last }
+      ' "$FM_STATUS_FILE" 2>/dev/null || true)"
+    fi
     TERMINAL=""
     MIDWORK=""
-    if [[ -f "$FM_STATUS_FILE" ]]; then
-      LAST_LINE="$(tail -n 1 "$FM_STATUS_FILE" 2>/dev/null | sed 's/^[[:space:]]*//' || true)"
-      case "$LAST_LINE" in
-        done:*|failed:*|blocked:*|needs-decision:*) TERMINAL="yes" ;;
-      esac
-      # Tri-state: any working:/resolved: line without a terminal = mid-work
-      case "$LAST_LINE" in
-        working:*|resolved:*) MIDWORK="yes" ;;
-      esac
-      # Also check for mid-work anywhere in the file (not just last line)
-      if [[ -z "$MIDWORK" && -z "$TERMINAL" ]]; then
-        if grep -qE '^(working|resolved):' "$FM_STATUS_FILE" 2>/dev/null; then
-          MIDWORK="yes"
-        fi
-      fi
-    fi
+    case "$LAST_VERB" in
+      done|failed|blocked|needs-decision) TERMINAL="yes" ;;
+      working|resolved) MIDWORK="yes" ;;
+    esac
     if [[ -z "$TERMINAL" ]]; then
       if [[ -n "$MIDWORK" ]]; then
         printf 'blocked: hermes-exit-%s-mid-work\n' "$HERMES_EXIT" >> "$FM_STATUS_FILE" \
