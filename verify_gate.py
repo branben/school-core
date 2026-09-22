@@ -326,9 +326,16 @@ def run_verify_gate(
         )
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
-    # Use main filesystem for space (var/folders can be small)
-    scratch_base = Path("/Users/brandonbennett/tmp")
-    scratch_base.mkdir(parents=True, exist_ok=True)
+    # Use main filesystem for space (var/folders can be small).
+    # Prefer the user's home (macOS self-hosted runner keeps big disks
+    # there); fall back to system temp on other hosts (GitHub's ubuntu
+    # runners cannot mkdir /Users — PermissionError, CI runs 35674316695+).
+    scratch_base = Path(os.environ.get("SCHOOL_VERIFY_SCRATCH") or (Path.home() / "tmp"))
+    try:
+        scratch_base.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        scratch_base = Path(tempfile.gettempdir()) / "school-verify"
+        scratch_base.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:
         copied_bytes = 0
