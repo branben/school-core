@@ -106,6 +106,7 @@ class TestCreatePR:
             "https://github.com/user/test/pull/42",         # gh pr create
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-10-fix-the-thing"},  # create ref
             {"object": {"sha": "branchsha456"}},                  # read branch ref
             {"sha": "treesha789"},                                # read tree
@@ -128,6 +129,7 @@ class TestCreatePR:
             "https://github.com/user/test/pull/99",         # gh pr create
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-15-add-feature"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "treesha789"},
@@ -184,6 +186,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/8",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-8-noop"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
@@ -215,6 +218,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/9",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-9-real"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree999", "tree": [
@@ -240,6 +244,7 @@ class TestCreatePRGuards:
             "https://github.com/user/test/pull/10",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-10-unk"},
             {"object": {"sha": "branchsha456"}},
             None,
@@ -283,6 +288,7 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/11",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-11-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},                    # read branch tree
@@ -326,6 +332,7 @@ class TestCreatePRCrewPatch:
             "https://github.com/user/test/pull/12",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-12-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},
@@ -362,6 +369,7 @@ class TestCreatePRCrewPatch:
             "basesha123\n",
         ]
         mock_api.side_effect = [
+            None,  # branch does not exist yet (GET check)
             {"ref": "refs/heads/school/issue-13-crew"},
             {"object": {"sha": "branchsha456"}},
             {"sha": "basetree789"},
