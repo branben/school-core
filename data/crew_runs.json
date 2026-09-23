@@ -329,7 +329,7 @@
     "teardown_ok": true
   },
   {
-    "crew_id": "fm-loop-20260923-170641-339",
+    "crew_id": "fm-loop-20260923-191405-339",
     "issue_number": 339,
     "status": "failed",
     "fleet_worktree_id": "wt-1",
@@ -375,8 +375,8 @@
       ],
       "schema_version": 1
     },
-    "started_at": "2026-09-23T17:07:03.172758+00:00",
-    "started_monotonic": 32.6913135,
+    "started_at": "2026-09-23T19:15:39.280962+00:00",
+    "started_monotonic": 111.790708166,
     "orca_worktree_present": true,
     "fallback_reason": "crew_failed",
     "spawn_stderr": null,
