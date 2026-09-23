@@ -2,6 +2,7 @@
 # Core is mostly Python 3.9+ stdlib. These are the only third-party needs.
 PyYAML>=6.0
 pytest>=7.0          # for the test suite
+python-dotenv>=1.0   # load_dotenv in issue_bridge/director/crew_dispatch (280934e)
 
 # Optional integrations (gracefully skipped if absent):
 #   - engram  (persistent memory adapter; detected at runtime)

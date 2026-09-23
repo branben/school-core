@@ -87,6 +87,11 @@ scripts/prior_solutions/cocoindex_store/
 .env.*
 !.env.example
 
+# age-encrypted secrets (age public key + ciphertext) — the directory name is a
+# magnet for future plaintext drops; ignore the whole dir so `git add -A` can
+# never stage it. Never committed as of 2026-09-22; keep it that way.
+.secrets/
+
 # envit context materialization — manifest (envit.json) + lockfile (envit.lock.json)
 # are committed; the materialized .envit/ store is regenerated per-machine.
 .envit/

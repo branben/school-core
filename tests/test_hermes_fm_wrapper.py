@@ -311,4 +311,105 @@ def test_tristate_integration_all_outcomes(tmp_path):
     assert s.read_text().endswith("failed: hermes-exit-7-no-terminal-status\n")
 
 
+def test_wrapper_does_not_append_after_done_followed_by_attribution_join(tmp_path):
+    """Regression (observed 2026-09-20, fm-tier2-simple-test-20260920-999.status):
+    a valid ``done:`` followed by the dispatcher's non-verb ``repo=``
+    attribution join (crew_dispatch.py:1308-1320) made the old ``tail -1``
+    read treat the finished crew as unterminated, while the anywhere
+    ``working:/resolved:`` grep matched the SAME cycle's earlier lines —
+    appending a bogus ``blocked: hermes-exit-0-mid-work`` after a crew that
+    demonstrably finished (its commit verified on disk). The wrapper must
+    decide from the LAST STATUS-VERB line, ignoring non-verb lines."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text=(
+            "working: isolation verified, creating branch fm/fm-tier2-simple-test-20260920-999\n"
+            "working: implementation complete, commit d9ba5e84 on fm/fm-tier2-simple-test-20260920-999\n"
+            "done: branch=fm/fm-tier2-simple-test-20260920-999 "
+            "commit=d9ba5e84288b5ac404f614e722c60a9be0d8c890 "
+            "base=e9702b6d498bbb20a6b64d8f1f8df0cb6deef979\n"
+            "repo=/Users/brandonbennett/school-core\n"
+        ),
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    text = status.read_text(encoding="utf-8")
+    assert text.endswith("repo=/Users/brandonbennett/school-core\n")
+    assert "blocked:" not in text
+    assert "failed:" not in text
+
+
+def test_wrapper_recognizes_timestamped_done_as_terminal(tmp_path):
+    """The dispatcher's _STATUS_RE (crew_dispatch.py:106-113) tolerates a
+    leading timestamp on verb lines; the wrapper's last-verb scan must too,
+    or a timestamped ``done:`` reads as silence and gets a bogus handshake
+    appended after it."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text=(
+            "working: coding\n"
+            "2026-09-20 13:36:49 done: branch=fm/task commit=abc123 base=def456\n"
+            "repo=/Users/brandonbennett/school-core\n"
+        ),
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    text = status.read_text(encoding="utf-8")
+    assert text.endswith("repo=/Users/brandonbennett/school-core\n")
+    assert "blocked:" not in text
+    assert "failed:" not in text
+
+
+def test_wrapper_reads_latest_verb_across_dispatch_cycles(tmp_path):
+    """Two dispatch cycles can share one crew_id (observed:
+    fm-tier2-fix-verify-20260920-v2-68.status). A fresh ``working:`` line
+    after a previous cycle's terminal verb means the crew is mid-work AGAIN —
+    the scan must take the LAST verb, not short-circuit on the earlier
+    terminal one."""
+    _, status, env = _wrapper_env(
+        tmp_path,
+        hermes_exit=0,
+        status_text=(
+            "repo=/Users/brandonbennett/school-core\n"
+            "working: branch created fm/fm-tier2-fix-verify-20260920-v2-68\n"
+            "blocked: hermes-exit-0-mid-work\n"
+            "repo=/Users/brandonbennett/school-core\n"
+            "working: branch created, reading pipeline docs\n"
+        ),
+    )
+
+    result = subprocess.run(
+        [str(WRAPPER), "brief"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    lines = status.read_text(encoding="utf-8").splitlines()
+    assert lines[-1] == "blocked: hermes-exit-0-mid-work"
+
+
 

@@ -415,6 +415,12 @@ def _write_brief(
         # absolute home path into a durable artifact.
         f"Project: {project_dir.name}\n\n"
         f"{task_text.rstrip()}\n\n"
+        "## Signal first\n\n"
+        "Before any other work, append this line to the status file to signal the "
+        "supervisor you are alive — crews that take >120s to speak get killed, so "
+        "this MUST be your first tool call:\n\n"
+        "    working: started\n\n"
+        f"Status file: {status_file}\n\n"
         "## Worktree\n\n"
         "You are in a disposable Orca git worktree of the project. Verify "
         "isolation first: run `pwd -P` and `git rev-parse --show-toplevel`; "
