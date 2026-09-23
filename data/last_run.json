@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py — health report for retry_issues.json",
+    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -498,8 +498,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -627,8 +627,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -756,8 +756,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -792,7 +792,7 @@
           "severity": "HIGH",
           "issue_class": "runtime_failure",
           "citation": "exit_code=1",
-          "description": "SyntaxError: invalid character '—' (U+2014)"
+          "description": "SyntaxError: invalid character '\u2014' (U+2014)"
         }
       ],
       "routing_feedback": {
@@ -856,7 +856,7 @@
     "status": "school-failed",
     "agent": "openhands",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260824_150414_854961--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -884,8 +884,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1035,8 +1035,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1111,7 +1111,7 @@
     "status": "school-failed",
     "agent": "openhands",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260824_174845_007448--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1139,8 +1139,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1322,8 +1322,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1460,7 +1460,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 85.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260825_152604_787410--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1488,8 +1488,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1620,8 +1620,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1651,7 +1651,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 85.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260826_105852_093087--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1679,8 +1679,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1780,12 +1780,11 @@
     "timestamp": "2026-08-26T11:01:47.822851+00:00"
   },
   {
-    "issue": 415,
-    "status": "school-failed",
+    "issue": 342,
+    "status": "retry",
     "agent": "coder",
-    "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
-    "trajectory": "data/trajectories/20260906_122334_997724--code-implementation--coder.json",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_141243_063860--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
       "domain": "code-implementation",
@@ -1812,8 +1811,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1828,9 +1827,126 @@
       ],
       "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
     },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-30T14:12:43.809629+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "error",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_141310_077022--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-30T14:13:10.661571+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_141753_940182--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
     "teacher_evidence": {
       "schema_version": 1,
-      "reviewed_at": "2026-09-06T12:24:36.962286+00:00",
+      "reviewed_at": "2026-08-30T14:18:26.778618+00:00",
       "agent": "coder",
       "domain": "code-implementation",
       "difficulty": "medium",
@@ -1889,28 +2005,88 @@
       },
       "persisted_to_trajectory": true
     },
-    "compound_observation_id": "obs-000001",
+    "compound_observation_id": "obs-000008",
     "lifecycle": "failed",
     "quality": 0.88,
-    "failure_edge": "runtime",
-    "failure_mode": "unknown",
-    "fallback_reason": "crew_failed",
-    "next_action": "repair_runtime",
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
     "retry_attempt": 0,
-    "timestamp": "2026-09-06T12:24:36.988789+00:00"
+    "timestamp": "2026-08-30T14:18:27.429607+00:00"
   },
   {
-    "issue": 419,
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-30T15:53:33.551342+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-30T15:54:32.782776+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "retry",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-30T15:59:18.280460+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "error",
+    "agent": null,
+    "score": null,
+    "trajectory": null,
+    "lifecycle": "failed",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 2,
+    "timestamp": "2026-08-30T16:01:36.474046+00:00"
+  },
+  {
+    "issue": 342,
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
-    "trajectory": "data/trajectories/20260914_044800_810931--code-implementation--coder.json",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_160405_118421--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
       "domain": "code-implementation",
       "difficulty": "medium",
-      "score": 40.56134999999999,
+      "score": 25.0,
       "school_role": "Teacher",
       "task_role": "coder",
       "profile": "student-coder",
@@ -1932,8 +2108,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1946,11 +2122,11 @@
         "terminal",
         "todo"
       ],
-      "selection_reason": "domain=code-implementation; task_role=coder; score=40.6; difficulty=medium"
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
     },
     "teacher_evidence": {
       "schema_version": 1,
-      "reviewed_at": "2026-09-14T04:48:16.061287+00:00",
+      "reviewed_at": "2026-08-30T16:08:30.077475+00:00",
       "agent": "coder",
       "domain": "code-implementation",
       "difficulty": "medium",
@@ -1976,13 +2152,13 @@
           "severity": "CRITICAL",
           "issue_class": "verify_failed",
           "citation": "cmd: npm run lint",
-          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\n\u001b[41m                                                                               \u001b[0m\n\u001b[41m\u001b[37m                This is not the tsc command you are looking for           "
+          "description": "> vite_react_shadcn_ts@0.0.0 lint\n> npx tsc --noEmit && eslint .\n\n\nOops! Something went wrong! :(\n\nESLint: 9.39.4\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@humanfs/node' imported from /private/var/folders/fq/6lkw8rws7gq144cbtzfyb"
         },
         {
           "severity": "CRITICAL",
           "issue_class": "verify_failed",
           "citation": "cmd: npm run test",
-          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nsh: line 1: vitest: command not found"
+          "description": "> vite_react_shadcn_ts@0.0.0 test\n> vitest run\n\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@vitest/utils' imported from /private/var/folders/fq/6lkw8rws7gq144cb"
         },
         {
           "severity": "HIGH",
@@ -2009,87 +2185,29 @@
       },
       "persisted_to_trajectory": true
     },
-    "compound_observation_id": "obs-000001",
+    "compound_observation_id": "obs-000009",
     "lifecycle": "failed",
     "quality": 0.88,
-    "failure_edge": "runtime",
-    "failure_mode": "unknown",
-    "fallback_reason": "crew_failed",
-    "next_action": "repair_runtime",
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
     "retry_attempt": 0,
-    "timestamp": "2026-09-14T04:48:16.068917+00:00"
+    "timestamp": "2026-08-30T16:08:30.968663+00:00"
   },
   {
-    "issue": 339,
-    "status": "retry",
-    "agent": "coder",
-    "score": null,
-    "trajectory": "data/trajectories/20260923_145949_234864--code-implementation--coder.json",
-    "capability": {
-      "version": "1.0.0",
-      "domain": "code-implementation",
-      "difficulty": "medium",
-      "score": 14.12128930361028,
-      "school_role": "Student",
-      "task_role": "coder",
-      "profile": "student-coder",
-      "skills": [
-        "YAGNI",
-        "KISS",
-        "Compile-Before-Critic",
-        "Nix-Verify-Shell",
-        "DRY",
-        "TDD Chicago School",
-        "TDD London School",
-        "Use Case"
-      ],
-      "allowed_tools": [
-        "python",
-        "testing",
-        "git"
-      ],
-      "gate_min": 0,
-      "gate_max": 24,
-      "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
-      ],
-      "hermes_toolsets": [
-        "clarify",
-        "delegation",
-        "engram",
-        "file",
-        "memory",
-        "serena",
-        "skills",
-        "terminal",
-        "todo"
-      ],
-      "selection_reason": "domain=code-implementation; task_role=coder; score=14.1; difficulty=medium"
-    },
-    "teacher_evidence": null,
-    "lifecycle": "retry",
-    "quality": 0.0,
-    "failure_edge": "runtime",
-    "failure_mode": "unknown",
-    "fallback_reason": "crew_failed",
-    "next_action": "retry_same",
-    "retry_attempt": 1,
-    "timestamp": "2026-09-23T15:00:19.366978+00:00"
-  },
-  {
-    "issue": 339,
+    "issue": 342,
     "status": "school-failed",
-    "agent": "openhands",
-    "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
-    "trajectory": "data/trajectories/20260923_153940_786308--code-implementation--coder.json",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_161615_283815--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
       "domain": "code-implementation",
       "difficulty": "medium",
-      "score": 14.12128930361028,
-      "school_role": "Student",
+      "score": 25.0,
+      "school_role": "Teacher",
       "task_role": "coder",
       "profile": "student-coder",
       "skills": [
@@ -2107,11 +2225,11 @@
         "testing",
         "git"
       ],
-      "gate_min": 0,
-      "gate_max": 24,
+      "gate_min": 25,
+      "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2124,22 +2242,23 @@
         "terminal",
         "todo"
       ],
-      "selection_reason": "domain=code-implementation; task_role=coder; score=14.1; difficulty=medium"
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
     },
     "teacher_evidence": {
       "schema_version": 1,
-      "reviewed_at": "2026-09-23T15:51:40.840079+00:00",
-      "agent": "openhands",
+      "reviewed_at": "2026-08-30T16:18:00.795219+00:00",
+      "agent": "coder",
       "domain": "code-implementation",
       "difficulty": "medium",
       "accepted": false,
-      "cto_verdict": "PASS",
-      "coo_verdict": "PASS",
-      "cto_score": 100.0,
-      "coo_score": 100.0,
-      "combined_score": 100.0,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 88.0,
+      "combined_score": 88.0,
       "finding_counts": {
-        "CRITICAL": 1,
+        "CRITICAL": 2,
+        "HIGH": 2,
         "LOW": 1
       },
       "findings": [
@@ -2152,8 +2271,440 @@
         {
           "severity": "CRITICAL",
           "issue_class": "verify_failed",
-          "citation": "cmd: (verify_shell)",
-          "description": "verify shell timed out after 630s"
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.88
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000010",
+    "lifecycle": "failed",
+    "quality": 0.88,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-30T16:18:01.492910+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "success",
+    "agent": "coder",
+    "score": 66.5,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260830_174722_695519--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-30T17:48:40.444833+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": true,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "LOW": 2
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "verify_gate_error",
+          "citation": "exception",
+          "description": "[('~/.cache/branben__school-core/repos/branben__sound-royale-ny/node_modules/.pnpm/@typescript-eslint+eslint-plugin@8.62.1_@typescript-eslint+parser@8.62.1_eslint@9.39.4__ed1245df0"
+        }
+      ],
+      "routing_feedback": {
+        "success": true,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "review_packet": null,
+    "shadow_routing": {
+      "schema_version": 1,
+      "mode": "shadow",
+      "live_routing_unchanged": true,
+      "insufficient_data": false,
+      "samples": 77,
+      "growth": {
+        "samples": 33,
+        "slope": 0.9454,
+        "difficulty_adjusted_mean": 61.6222
+      },
+      "difficulty": {
+        "easy": {
+          "attempted": 9,
+          "succeeded": 4,
+          "success_rate": 0.4444
+        },
+        "medium": {
+          "attempted": 68,
+          "succeeded": 13,
+          "success_rate": 0.1912
+        },
+        "hard": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "diploma": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "blocker": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        }
+      },
+      "retry": {
+        "attempted": 77,
+        "retried": 24,
+        "rate": 0.3117
+      },
+      "confidence": {
+        "samples": 1,
+        "mean": 0.5,
+        "slope": 0.0
+      },
+      "skills": {},
+      "tools": {
+        "offered": [
+          "git",
+          "python",
+          "testing"
+        ],
+        "used": [],
+        "usage_evidence": "absent"
+      },
+      "recommendation": {
+        "current_agent": "coder",
+        "recommended_agent": "coder",
+        "changed": false,
+        "reason": "offline_shadow_score",
+        "candidates_with_history": 1
+      }
+    },
+    "title": "churn: extract MIN_ROUNDS=1 / MAX_ROUNDS=10 bounds",
+    "domain": "code-implementation",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": null,
+    "teardown_ok": null,
+    "evidence_join": {
+      "schema_version": 1,
+      "control": {
+        "route_id": "route-coder-code-implementation-29171b38",
+        "bd_id": null,
+        "plan_id": null,
+        "plan_unit": null,
+        "wayfinder_id": null,
+        "knowledge_anchor": null,
+        "primary_workflow": null,
+        "chosen_skill": null
+      },
+      "runtime": {
+        "dispatcher": "direct-orca",
+        "cycle_session_id": "loop-20260830-174603",
+        "firstmate_crew_id": null,
+        "orca_worktree_id": null,
+        "orca_terminal_id": null,
+        "hermes_session_id": null
+      },
+      "artifact": {
+        "repository": "branben/sound-royale-ny",
+        "base_ref": null,
+        "branch": null,
+        "commit": null,
+        "report_ref": null,
+        "trajectory_ref": "~/school-core/data/trajectories/20260830_174722_695519--code-implementation--coder.json",
+        "bookbag_ref": "~/.hermes/bookbag/__global__/coder-code-implementation-29171b38.json",
+        "changed_files": []
+      },
+      "verification": {
+        "project_gate": "unavailable",
+        "project_gate_reason": null,
+        "entire_status": "pass",
+        "entire_finding_count": 0,
+        "finding_classes": []
+      },
+      "judgment": {
+        "cto_verdict": "PASS",
+        "coo_verdict": "PASS",
+        "accepted": true,
+        "score": 100.0,
+        "critical_findings": 0
+      },
+      "outcome": {
+        "lifecycle": "completed",
+        "quality": 1.0,
+        "failure_edge": "none",
+        "failure_mode": "none",
+        "fallback_reason": null,
+        "next_action": "close"
+      }
+    },
+    "compound_observation_id": "obs-000011",
+    "lifecycle": "completed",
+    "quality": 1.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "close",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-30T17:50:21.347889+00:00",
+    "pipeline_metrics": {
+      "schema_version": 1,
+      "events": 28,
+      "calls": {
+        "two_judge_review": 1,
+        "verify_gate": 2,
+        "entire": 1,
+        "adversarial_review": 1,
+        "output_verification": 1
+      },
+      "timings_ms": {
+        "context": 53434.491,
+        "student_model": 25136.59,
+        "review": 8401.687,
+        "student_generation": 127256.048,
+        "verify": 95584.304,
+        "entire": 55.842,
+        "output_verification": 15.667,
+        "scoring": 1535.311,
+        "persistence": 0.031,
+        "total": 257401.02
+      },
+      "model": {
+        "call_count": 4,
+        "retry_count": 0,
+        "prompt_chars": 56602,
+        "output_chars": 1149,
+        "roles": {
+          "coder": 1,
+          "reviewer": 3
+        }
+      },
+      "verification": {
+        "gate_invocations": 2,
+        "shell_starts": 0,
+        "commands": 0,
+        "copied_bytes": 0
+      },
+      "context": {
+        "sources": {
+          "codebase": {
+            "hits": 1,
+            "misses": 0,
+            "latency_ms": 0.0
+          },
+          "archival": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 12.813
+          },
+          "serena": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 24183.733
+          },
+          "vault": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 0.0
+          }
+        }
+      },
+      "crew": {
+        "spawn_count": 0,
+        "poll_count": 0,
+        "blocked_wait_count": 0,
+        "fallback_count": 0,
+        "teardown_count": 0,
+        "in_flight_count": 0
+      },
+      "quality": {
+        "accepted": true,
+        "critical_findings": 0,
+        "retry_count": 0
+      }
+    }
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_020835_543999--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T02:11:40.781442+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
         }
       ],
       "routing_feedback": {
@@ -2161,21 +2712,566 @@
         "quality": 1.0
       },
       "routing_context": {
-        "agent": "openhands",
+        "agent": "coder",
         "domain": "code-implementation",
         "difficulty": "medium",
         "selection_scope": "agent"
       },
       "persisted_to_trajectory": true
     },
-    "compound_observation_id": "obs-000001",
+    "compound_observation_id": "obs-000012",
     "lifecycle": "failed",
     "quality": 1.0,
-    "failure_edge": "runtime",
-    "failure_mode": "unknown",
-    "fallback_reason": "crew_failed",
-    "next_action": "repair_runtime",
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
     "retry_attempt": 0,
-    "timestamp": "2026-09-23T15:51:41.041718+00:00"
+    "timestamp": "2026-08-31T02:11:41.543808+00:00"
+  },
+  {
+    "issue": 342,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_023803_186254--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T02:41:28.596988+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 88.0,
+      "combined_score": 88.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "node:internal/modules/cjs/loader:1520\n  throw err;\n  ^\n\nError: Cannot find module '/nix/store/rpnjga7blxhp1m4p5kmvr9br2xqp0wp2-pnpm-11.20.0/bin/pnpm'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1517:15)\n    at wrapResol"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "> vite_react_shadcn_ts@0.0.0 test ~/tmp/school-verify-k6yep5q8/repo\n> vitest run\n\nnode:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find package '@vitest/utils' imported from ~/tmp/"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "empty_output",
+          "citation": "N/A",
+          "description": "No output produced"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.88
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000013",
+    "lifecycle": "failed",
+    "quality": 0.88,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T02:41:29.622679+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 91.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=91.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031311_136115--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T03:14:10.422944+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "PASS",
+      "cto_score": 82.0,
+      "coo_score": 100.0,
+      "combined_score": 91.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 1,
+        "MEDIUM": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "backend/game_engine/bingo_utils.py: Extracted BINGO_LINE_COUNT=5 constant"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "backend/game_engine/views.py: Imported and used BINGO_LINE_COUNT from bingo_utils"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.91
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000014",
+    "lifecycle": "failed",
+    "quality": 0.91,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": null,
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T03:14:11.243632+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031533_787125--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-08-31T03:16:04.511240+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 70.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_031735_716732--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T03:18:05.110410+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 76.0,
+      "coo_score": 64.0,
+      "combined_score": 70.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "LOW": 1,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Extracted BINGO_LINE_COUNT=5 in bingo_utils.py and used it in check_bingo()"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Created frontend constant in src/types/game.ts and imported in BingoBoard.tsx"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Showed import in views.py for validation"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Missing verification against models.py as required by task"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "No evidence of checking existing BINGO_LINE_COUNT value in models.py before extraction"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.7
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000015",
+    "lifecycle": "failed",
+    "quality": 0.7,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T03:18:05.799625+00:00"
+  },
+  {
+    "issue": 340,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20260831_040507_240441--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-08-31T04:06:36.082992+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "LOW": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "language_not_supported",
+          "citation": "detected_language=typescript",
+          "description": "Orca sandbox only supports Python; skipping execution for typescript project"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm lint",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: pnpm test",
+          "description": "[WARN] The \"pnpm\" field in package.json is no longer read by pnpm. The following keys were ignored: \"pnpm.overrides\", \"pnpm.onlyBuiltDependencies\". See https://pnpm.io/settings for the new home of each setting.\n\n> vite_react_shadcn_ts@0.0.0"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000016",
+    "lifecycle": "failed",
+    "quality": 1.0,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-08-31T04:06:36.724603+00:00"
   }
 ]
