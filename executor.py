@@ -192,6 +192,7 @@ def _a2a_call(
     system_prompt: Optional[str] = None,
     timeout: int = 120,
     task_id: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     tid = task_id or f"task-{uuid.uuid4().hex[:12]}"
 
@@ -200,18 +201,28 @@ def _a2a_call(
         parts.append({"type": "text", "text": system_prompt})
     parts.append({"type": "text", "text": task_text})
 
+    params = {
+        "id": tid,
+        "sessionId": f"ses-{uuid.uuid4().hex[:12]}",
+        "message": {
+            "role": "user",
+            "parts": parts,
+        },
+    }
+    # The A2A smart-routing skill defaults to model "auto", which picks from
+    # the free pool — fine when the pool is healthy, but a dead pool (expired
+    # openrouter connections, 403 free-tier walls) turns every fallback into a
+    # timeout. An explicit model pins the fallback to a known-live provider.
+    # Env-overridable so ops can repoint without a code change.
+    a2a_model = model or os.environ.get("A2A_FALLBACK_MODEL")
+    if a2a_model:
+        params["metadata"] = {"model": a2a_model}
+
     body = {
         "jsonrpc": "2.0",
         "id": "a2a-1",
         "method": "message/send",
-        "params": {
-            "id": tid,
-            "sessionId": f"ses-{uuid.uuid4().hex[:12]}",
-            "message": {
-                "role": "user",
-                "parts": parts,
-            },
-        },
+        "params": params,
     }
     req = urllib.request.Request(
         A2A_BASE,
