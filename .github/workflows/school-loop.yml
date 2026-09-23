@@ -191,6 +191,12 @@ jobs:
       # The secret that unlocks model calls — REQUIRED (execution fails loudly
       # without it). Same wiring as CI's integration job.
       OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      # Pin the A2A direct-fallback to a known-live model. The smart-routing
+      # skill defaults to "auto" (free pool), which routes into expired
+      # openrouter connections / 403 free-tier walls — every fallback then
+      # burns the full timeout and dies (#339 retry loop, Aug 24 → Sep 23).
+      # executor.py reads this and passes it as params.metadata.model.
+      A2A_FALLBACK_MODEL: gemini/gemini-3-flash-preview
       # Model API key for the spawned agent — Hermes needs this to make LLM calls.
       # Without it, the agent starts, gets 402, exits silently (no status file).
       # The spawned agent uses this key via the school-core gateway to reach Nous.
