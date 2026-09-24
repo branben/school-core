@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  worktree GC — hourly janitor for stale git worktree rot.
+  Install:  cp scripts/com.school-core.worktree-gc.plist ~/Library/LaunchAgents/
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.school-core.worktree-gc.plist
+  Status:   launchctl print gui/$(id -u)/com.school-core.worktree-gc | grep -E 'state|last exit'
+  Dry-run:  school-core/.venv/bin/python school-core/worktree_gc.py
+-->
+<dict>
+    <key>Label</key>
+    <string>com.school-core.worktree-gc</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/brandonbennett/school-core/.venv/bin/python</string>
+        <string>/Users/brandonbennett/school-core/worktree_gc.py</string>
+        <string>--apply</string>
+        <string>--quiet</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>7</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/brandonbennett/school-core/logs/worktree_gc.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/brandonbennett/school-core/logs/worktree_gc.launchd.log</string>
+</dict>
+</plist>
