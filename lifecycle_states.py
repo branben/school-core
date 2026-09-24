@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+import sys
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    # py3.9/3.10 (CI matrix floor is 3.9): StrEnum is 3.11+. Emulate the
+    # str-mixin contract with Enum + str mixin, which is the documented
+    # pre-3.11 pattern and keeps LifecycleState.MERGED == "merged" true.
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        __str__ = str.__str__
 
 
 class LifecycleState(StrEnum):
