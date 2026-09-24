@@ -909,8 +909,15 @@ def _run_adversarial_review(
         from executor import call_model
 
         # Use cloud model for adversarial review (fast, reliable); avoid local foundry models
-        # which can hang with 300s timeouts on M1
-        _call_model = lambda prompt, system_prompt=None, **kw: call_model("auto/best-free", prompt, system_prompt=system_prompt, timeout=120, **kw)
+        # which can hang with 300s timeouts on M1.
+        # DO NOT hardcode an auto-pool model here: executor.call_model applies the
+        # A2A_FALLBACK_MODEL env pin only when no explicit model is passed, so a
+        # hardcoded "auto/best-free" silently bypasses the pin and sends judge lens
+        # calls to the dead free pool (live evidence: #339 attempt 5, run
+        # 35948346108 — six lens_transport_retry, three lens_review_failed,
+        # circuit_breaker_double_pass, judges PASS/100, review REJECTED).
+        _judge_model = os.environ.get("A2A_FALLBACK_MODEL", "auto/best-free")
+        _call_model = lambda prompt, system_prompt=None, **kw: call_model(_judge_model, prompt, system_prompt=system_prompt, timeout=120, **kw)
         reviewer = AdversarialReviewer(call_model_fn=_call_model)
         review_result = reviewer.review(
             output=task_result["response"],
