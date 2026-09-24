@@ -3504,5 +3504,22 @@
     "next_action": "retry_same",
     "retry_attempt": 1,
     "timestamp": "2026-09-24T03:23:32.212059+00:00"
+  },
+  {
+    "issue": 339,
+    "status": "blocked",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "capability": null,
+    "teacher_evidence": null,
+    "lifecycle": "blocked",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "crew_failed",
+    "next_action": "repair_runtime",
+    "retry_attempt": 2,
+    "timestamp": "2026-09-24T03:33:55.208076+00:00"
   }
 ]
