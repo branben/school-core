@@ -319,10 +319,10 @@ class DispatchOffice:
                 return DispatchOutcome(crew_result=crew_result)
             except CrewUnavailableError as e:
                 last_err = "spawn_failure"
-                sys_stderr(f"[dispatch-office] #{issue_number}: crew spawn failed ({e})\\n")
+                sys_stderr(f"[dispatch-office] #{issue_number}: crew spawn failed ({e})\n")
             except Exception as e:  # never let one issue kill the cycle
                 last_err = "crew_unexpected"
-                sys_stderr(f"[dispatch-office] #{issue_number}: crew dispatch raised ({e})\\n")
+                sys_stderr(f"[dispatch-office] #{issue_number}: crew dispatch raised ({e})\n")
                 break
         return DispatchOutcome(fallback_reason=last_err or "retry_budget_exhausted")
 

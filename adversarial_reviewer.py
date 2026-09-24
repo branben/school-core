@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional
@@ -385,8 +387,40 @@ class AdversarialReviewer:
         system_prompt = self._build_system_prompt(lens_prompt, difficulty=difficulty)
         user_prompt = self._build_user_prompt(output, task, codebase_context)
 
+        # Bounded transport retry. A transient gateway error (504 queue
+        # expiry, 502 dead pool, connection reset) must not instantly become
+        # the PASS/0-findings fallback — that fallback is indistinguishable
+        # from real approval and forces the parse-fail guard to reject work
+        # the judges actually passed (live: #339, runs 35907781989 and
+        # 35926732851 — three lenses died on 15s queue expiry, both judges
+        # PASS, review REJECTED). Retry transport errors with backoff; only
+        # a persistent failure falls back. Parse-failure retries are handled
+        # separately below (different failure mode, different remedy).
+        transport_attempts: list[str] = []
+
+        def _call_with_transport_retry() -> str:
+            max_attempts = int(os.environ.get("LENS_TRANSPORT_RETRIES", "2"))  # 1 try + N retries
+            backoff_s = float(os.environ.get("LENS_TRANSPORT_BACKOFF_S", "5"))
+            for attempt in range(max_attempts + 1):
+                try:
+                    return self._call_model(user_prompt, system_prompt=system_prompt)
+                except Exception as exc:
+                    transport_attempts.append(f"{type(exc).__name__}: {str(exc)[:120]}")
+                    if attempt < max_attempts:
+                        logger.warning(
+                            "lens_transport_retry",
+                            extra={
+                                "lens": lens_type.value,
+                                "attempt": attempt + 1,
+                                "error": str(exc)[:200],
+                            },
+                        )
+                        time.sleep(backoff_s * (attempt + 1))
+                        continue
+                    raise
+
         try:
-            raw = self._call_model(user_prompt, system_prompt=system_prompt)
+            raw = _call_with_transport_retry()
             result = self._parse_lens_output(raw, lens_type.value, difficulty=difficulty)
 
             # Retry on parse failure: confidence=0.0 + no findings + non-trivial
