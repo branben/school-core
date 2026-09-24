@@ -142,7 +142,12 @@ def decide(
 # ── Fact gathering (git + os) ────────────────────────────────────────────────
 
 def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    """Run a command; an unlaunchable binary degrades to a failed result so
+    callers hit their fail-closed paths instead of the sweep crashing."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    except (OSError, subprocess.SubprocessError) as e:
+        return subprocess.CompletedProcess(cmd, -1, "", f"unlaunchable: {e}")
 
 
 def gather_facts(
@@ -193,23 +198,27 @@ def gather_facts(
     except OSError:
         facts["age_hours"] = None  # fail closed
 
-    # live cwd inside?
-    if live_paths:
+    # live cwd inside? None = inspection unavailable → decide() fails closed
+    if live_paths is None:
+        facts["active"] = None
+    else:
         wt_s = str(wt_real)
         facts["active"] = any(
             p == wt_s or p.startswith(wt_s + os.sep) for p in live_paths
         )
-    else:
-        facts["active"] = False  # lsof unavailable → treat as none, but only
-        # after git_ok checks passed; conservative callers can override
     return facts
 
 
-def live_cwds(run: Callable[..., subprocess.CompletedProcess] = _run) -> set[str]:
-    """All cwd paths of running processes (user-visible). Empty set = unknown."""
+def live_cwds(run: Callable[..., subprocess.CompletedProcess] = _run) -> Optional[set[str]]:
+    """All cwd paths of running processes (user-visible).
+
+    None means inspection FAILED (lsof missing/denied) — callers must treat
+    that as 'unknown' and fail closed. An empty set on success is a real
+    (if unusual) answer: no process cwds were visible.
+    """
     r = run(["lsof", "-w", "-d", "cwd", "-Fn"])
     if r.returncode != 0:
-        return set()
+        return None
     return {
         line[1:] for line in r.stdout.splitlines()
         if line.startswith("n/") and os.path.isdir(line[1:])
