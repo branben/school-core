@@ -605,6 +605,13 @@ def _run_two_judge_review(
     def _run_both_judges():
         # CTO and COO are independent lenses. The fixed bound of two prevents
         # review fan-out while allowing their model calls to overlap.
+        # SCHOOL_REVIEW_SERIAL=1 runs them one-at-a-time instead: under a
+        # rate-limited gateway (15s queue expiry), concurrent lens calls
+        # pile up and 504; serial keeps queue depth at 1-2.
+        if os.environ.get("SCHOOL_REVIEW_SERIAL", "").strip() == "1":
+            return _run_judge([LensType.CORRECTNESS, LensType.SECURITY]), _run_judge(
+                [LensType.COMPLETENESS]
+            )
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="school-review") as pool:
             cto_future = pool.submit(_run_judge, [LensType.CORRECTNESS, LensType.SECURITY])
             coo_future = pool.submit(_run_judge, [LensType.COMPLETENESS])
