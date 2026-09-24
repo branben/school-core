@@ -392,3 +392,28 @@ def test_flake_ref_prefers_directory(tmp_path):
     # Unknown path keeps the legacy <path>/flake.nix shape so nix's error
     # message still names the file.
     assert _flake_ref(tmp_path / "missing.nix") == tmp_path / "missing.nix" / "flake.nix"
+
+
+def test_scratch_base_env_overridable_and_portable(tmp_path, monkeypatch):
+    """The scratch base must not be a hardcoded absolute home path.
+
+    verify_gate.py:330 hardcoded /Users/brandonbennett/tmp (added 27623e1,
+    Aug 30, for local disk space). On any other machine — including the
+    Linux GitHub runners — mkdir('/Users') raises PermissionError and ALL
+    run_verify_gate tests fail (10 failed on main CI runs since Sep 23).
+
+    Contract: SCHOOL_VERIFY_SCRATCH overrides the base; the default is the
+    platform temp dir, which exists everywhere.
+    """
+    import tempfile as _tempfile
+
+    from verify_gate import scratch_base_path
+
+    # Default: portable, exists on every platform (Linux runners included)
+    default = scratch_base_path()
+    assert str(default) != "/Users/brandonbennett/tmp"
+    assert default.exists(), "default scratch base must already exist"
+
+    # Env override wins (operator with a big local disk keeps their path)
+    monkeypatch.setenv("SCHOOL_VERIFY_SCRATCH", str(tmp_path / "custom"))
+    assert scratch_base_path() == Path(tmp_path / "custom")
