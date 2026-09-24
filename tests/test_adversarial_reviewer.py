@@ -379,6 +379,67 @@ class TestAdversarialReviewerCleanOutput:
         assert result.suggestions == []
 
 
+class TestAdversarialReviewerTransportRetry:
+    """Transient transport errors (504 RATE_LIMIT_EXECUTION_TIMEOUT, 502 dead
+    pool, connection resets) must be retried with backoff before falling back
+    to the PASS/0-findings result.
+
+    Observed live (runs 35907781989, 35926732851 — issue #339): three lens
+    calls hit the gateway's 15s queue expiry, all fell back instantly, and the
+    parse-fail guard rejected work both judges had passed. The retry-on-parse
+    path (line ~394) only covers unparseable output, not transport exceptions.
+    """
+
+    def test_transient_error_then_success_retries_and_succeeds(self):
+        """First call raises a 504-shaped error, second succeeds → lens result
+        comes from the successful call, NOT the PASS/0-findings fallback."""
+        calls = []
+
+        def flaky_call(prompt, system_prompt=None, **kw):
+            calls.append(prompt[:30])
+            if len(calls) == 1:
+                raise RuntimeError(
+                    'A2A HTTP 500: {"jsonrpc":"2.0","error":{"code":-32603,'
+                    '"message":"Skill execution failed: API [504]: Request '
+                    "exceeded OmniRoute's local rate-limit execution expiration"
+                )
+            return '{"findings": [{"section": "settings", "issue_class": "magic_number", "severity": "MEDIUM", "citation": "line 3", "description": "Magic number", "suggestion": "Extract constant"}]}'
+
+        reviewer = AdversarialReviewer(call_model_fn=flaky_call)
+        result = reviewer.review(
+            output="MAX_SPECTATORS = 10",
+            task={"title": "T", "body": "B", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS],
+        )
+        assert len(calls) == 2, f"expected retry after transient error, got {len(calls)} calls"
+        assert result.lens_used == "correctness"
+        assert len(result.findings) == 1, "result must come from the retried call, not the fallback"
+        assert result.findings[0].severity == Severity.MEDIUM
+
+    def test_persistent_error_falls_back_after_retries(self):
+        """All attempts raise → PASS/0-findings fallback (unchanged behavior),
+        but only after the retry budget is spent."""
+        calls = []
+
+        def dead_call(prompt, system_prompt=None, **kw):
+            calls.append(1)
+            raise RuntimeError("A2A HTTP 500: Skill execution failed: API [504]")
+
+        reviewer = AdversarialReviewer(call_model_fn=dead_call)
+        result = reviewer.review(
+            output="x = 1",
+            task={"title": "T", "body": "B", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS],
+        )
+        assert len(calls) >= 2, "retry budget must be used before fallback"
+        assert result.verdict == Verdict.PASS
+        assert result.findings == []
+        # Fallback confidence: _parse_lens_output's no-findings branch yields
+        # 0.5 (adversarial_reviewer.py:650) — the point is LOW-confidence
+        # fallback, not a specific constant.
+        assert result.confidence <= 0.5
+
+
 class TestAdversarialReviewerCircuitBreaker:
     def test_circuit_breaker_triggers_second_lens(self):
         """When first lens returns PASS/0-findings, second lens is applied."""
