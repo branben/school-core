@@ -5,6 +5,8 @@ encodes a way a careless GC could destroy work. The None/fail-closed contract
 is the thing under test.
 """
 
+import subprocess
+
 import pytest
 
 from worktree_gc import (
@@ -127,9 +129,6 @@ class FakeRunner:
         self.calls.append(cmd)
         key = tuple(cmd[:4])
         return self.responses.get(key, subprocess.CompletedProcess(cmd, 1, "", "no fake"))
-
-
-import subprocess  # noqa: E402
 
 
 class TestGatherFacts:
