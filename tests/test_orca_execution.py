@@ -476,6 +476,7 @@ class TestConductorOrcaFlow:
       - OmniRoute API reachable (for call_model)
     """
 
+    @pytest.mark.timeout(300)
     @pytest.mark.skipif(
         not os.environ.get("OMNIROUTE_API_KEY", "") or os.environ.get("ORCA_DISABLED"),
         reason="OMNIROUTE_API_KEY missing or Orca disabled — skipping integration test",
