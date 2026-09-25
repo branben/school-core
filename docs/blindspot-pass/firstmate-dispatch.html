@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blindspot pass · school-core FirstMate dispatch</title>
+<style>
+:root {
+    --ivory:  #FAF9F5;
+    --paper:  #FFFFFF;
+    --slate:  #141413;
+    --clay:   #D97757;
+    --clay-d: #B85C3E;
+    --oat:    #E3DACC;
+    --olive:  #788C5D;
+    --g100:   #F0EEE6;
+    --g200:   #E6E3DA;
+    --g300:   #D1CFC5;
+    --g500:   #87867F;
+    --g700:   #3D3D3A;
+    --serif: ui-serif, Georgia, "Times New Roman", Times, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--ivory);
+    color: var(--slate);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 100px; }
+
+  header.page-head {
+    padding: 56px 0 8px;
+    position: relative;
+  }
+  .head-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--g500);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 24px; height: 1.5px;
+    background: var(--clay);
+    flex: none;
+  }
+  a.back {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--g500);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  a.back:hover { color: var(--clay); }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(32px, 5vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.018em;
+    margin: 18px 0 10px;
+  }
+  .lede {
+    font-size: 16px;
+    color: var(--g700);
+    max-width: 640px;
+    margin: 0 0 28px;
+  }
+
+  .prompt-card {
+    background: var(--paper);
+    border: 1.5px solid var(--g300);
+    border-radius: 14px;
+    padding: 22px 26px 24px;
+    position: relative;
+  }
+  .prompt-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--clay);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  blockquote.prompt {
+    margin: 0;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17.5px;
+    line-height: 1.55;
+    color: var(--slate);
+    border-left: 3px solid var(--oat);
+    padding-left: 18px;
+  }
+  button.copy-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--g700);
+    background: var(--g100);
+    border: 1.5px solid var(--g300);
+    border-radius: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: border-color 120ms, color 120ms, background 120ms;
+    white-space: nowrap;
+  }
+  button.copy-btn:hover { border-color: var(--clay); color: var(--clay-d); }
+  button.copy-btn.copied {
+    background: var(--olive);
+    border-color: var(--olive);
+    color: var(--paper);
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 44px 0 32px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--g500);
+    white-space: nowrap;
+  }
+  .divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    height: 1.5px;
+    background: var(--g300);
+  }
+
+  .artifact {
+    background: var(--paper);
+    border: 1.5px solid var(--g300);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .artifact-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-bottom: 1.5px solid var(--g200);
+    background: var(--g100);
+  }
+  .artifact-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--g300); }
+  .artifact-bar .file {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--g500);
+    margin-left: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artifact-body { padding: 34px 34px 40px; }
+  @media (max-width: 560px) { .artifact-body { padding: 24px 18px 30px; } }
+
+  .artifact-body h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 27px;
+    letter-spacing: -0.014em;
+    line-height: 1.15;
+    margin: 0 0 6px;
+  }
+  .artifact-body .sub {
+    font-size: 14px;
+    color: var(--g500);
+    margin: 0 0 24px;
+  }
+  .artifact-body .sub code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--g100);
+    border: 1px solid var(--g200);
+    border-radius: 5px;
+    padding: 1px 5px;
+    color: var(--g700);
+  }
+
+  .vs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 34px;
+  }
+  @media (max-width: 640px) { .vs-grid { grid-template-columns: 1fr; } }
+  .vs-cell {
+    border: 1.5px solid var(--g300);
+    border-radius: 12px;
+    padding: 16px 18px;
+    background: var(--ivory);
+  }
+  .vs-cell.actual { border-color: var(--clay); background: #FBF3EF; }
+  .vs-cell .vs-tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--g500);
+    margin-bottom: 8px;
+  }
+  .vs-cell.actual .vs-tag { color: var(--clay-d); }
+  .vs-cell p { margin: 0; font-size: 14px; color: var(--g700); }
+  .vs-cell p strong { color: var(--slate); }
+
+  .stat-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    padding: 14px 18px;
+    border: 1.5px solid var(--g200);
+    border-radius: 12px;
+    background: var(--g100);
+    margin-bottom: 36px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--g700);
+  }
+  .stat-strip b { color: var(--slate); font-weight: 600; }
+  .stat-strip .warn b { color: var(--clay-d); }
+
+  .art-eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--g500);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 18px;
+  }
+  .art-eyebrow::before {
+    content: "";
+    width: 24px; height: 1.5px;
+    background: var(--clay);
+    flex: none;
+  }
+
+  .bs-card {
+    border: 1.5px solid var(--g300);
+    border-radius: 12px;
+    background: var(--paper);
+    padding: 20px 22px 18px;
+    margin-bottom: 16px;
+  }
+  .bs-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .badge {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1.5px solid;
+    white-space: nowrap;
+  }
+  .badge.landmine { color: var(--clay-d); border-color: var(--clay); background: #FBF0EA; }
+  .badge.history { color: #8A6A3B; border-color: #C9B48E; background: var(--oat); }
+  .badge.convention { color: var(--g700); border-color: var(--g300); background: var(--g100); }
+  .badge.concept { color: #55663F; border-color: var(--olive); background: #EFF2E9; }
+  .bs-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--g500);
+  }
+  .bs-title {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 18.5px;
+    letter-spacing: -0.01em;
+    color: var(--slate);
+    margin: 0;
+    flex: 1 1 100%;
+  }
+  .bs-card p { font-size: 14px; color: var(--g700); margin: 0 0 10px; }
+  .bs-card p:last-of-type { margin-bottom: 0; }
+  .bs-card code, .bite code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--g100);
+    border: 1px solid var(--g200);
+    border-radius: 5px;
+    padding: 1px 5px;
+    color: var(--g700);
+    word-break: break-word;
+  }
+  .bite {
+    display: flex;
+    gap: 10px;
+    font-size: 13.5px;
+    color: var(--g700);
+    background: var(--ivory);
+    border-left: 3px solid var(--clay);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+  }
+  .bite .bite-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--clay-d);
+    flex: none;
+    padding-top: 2px;
+  }
+
+  .chip-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .prompt-chip {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--slate);
+    background: var(--g100);
+    border: 1.5px solid var(--g300);
+    border-radius: 9px;
+    padding: 10px 13px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .prompt-chip::before {
+    content: "› ";
+    color: var(--clay);
+    font-weight: 600;
+  }
+  .chip-row button.copy-btn { align-self: flex-start; margin-top: 2px; }
+  @media (max-width: 480px) {
+    .chip-row { flex-direction: column; }
+    .chip-row button.copy-btn { align-self: flex-end; margin-top: 0; }
+  }
+
+  .final-card {
+    border: 1.5px solid var(--slate);
+    border-radius: 14px;
+    background: var(--paper);
+    padding: 24px 26px 26px;
+    margin-top: 38px;
+    box-shadow: 0 10px 28px rgba(20,20,19,.07);
+  }
+  .final-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .final-head .art-eyebrow { margin: 0; color: var(--clay-d); }
+  .final-card h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.012em;
+    margin: 8px 0 14px;
+  }
+  .final-prompt {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--slate);
+    background: var(--ivory);
+    border: 1.5px solid var(--g200);
+    border-radius: 10px;
+    padding: 18px 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    overflow-x: auto;
+  }
+  .final-note {
+    font-size: 13px;
+    color: var(--g500);
+    margin: 14px 0 0;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1.5px solid var(--g200);
+    font-size: 13px;
+    color: var(--g500);
+  }
+  footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+  footer a:hover { text-decoration-color: var(--clay); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page-head">
+  <div class="head-row">
+    <div class="eyebrow">blindspot-pass · school-core · 3 cycles · 2 staff · 2 terminals · 1 reproduction test</div>
+    <a class="back" href="https://thariqs.github.io/html-effectiveness/unknowns/">unknowns index</a>
+  </div>
+  <h1>Unknown unknowns: the FirstMate dispatch pipeline</h1>
+  <p class="lede">Scanned 3 dispatch cycles (issue #415 → sound-royale-ny), the full spawn recipe, 2 meta files, 2 agent terminals, the Orca backend, a live reproduction test, and 2 staff investigations. Thirteen things you'd have learned the hard way.</p>
+</header>
+
+<div class="prompt-card">
+  <div class="prompt-label">
+    <span>what you asked for</span>
+    <button class="copy-btn" onclick="copyPrompt(this)">copy</button>
+  </div>
+  <blockquote class="prompt">
+    "Use relevant skills here and dispatch staff accordingly with context to investigate. Is this because Orca is an experimental backend for FirstMate? Look at the spawn recipe."
+  </blockquote>
+</div>
+
+<div class="divider">what you're actually walking into</div>
+
+<div class="artifact">
+  <div class="artifact-bar">
+    <span class="dot"></span>
+    <span class="file">blindspot-pass · school-core/crew_dispatch · 3 cycles · 2 staff · 2 terminals · 1 reproduction test</span>
+  </div>
+  <div class="artifact-body">
+
+    <h2>A pipeline that passes every gate — and the agent writes nothing</h2>
+    <p class="sub">A dispatch path where admission, worktree creation, agent spawn, and teardown all succeed — but the agent's <strong>status writes</strong> are silently discarded. The root cause: <code class="">FM_STATUS_FILE</code> is set in the spawn's process environment (<code class="">crew_dispatch.py:1007</code>) but is <strong>absent from the hand-built prefix</strong> that <code class="">fm-spawn.sh</code> forwards to the crew's pane (<code class="">fm-spawn.sh:2577</code>). The wrapper sees <code class="">FM_STATUS_FILE</code> as empty and skips the status-write block. The agent was alive and executing (<code class="">lastOutputAt</code> set, <code class="">node_modules/</code> installed at 07:40 MST) — it just never wrote status verbs that the supervisor could poll. The WATCHER DOWN warning in the spawn stderr is a red herring.</p>
+
+    <div class="vs-grid">
+      <div class="vs-cell">
+        <div class="vs-tag">what it sounds like</div>
+        <p><strong>Dispatch a crew → Orca builds a worktree → FirstMate spawns → agent fixes the issue.</strong> Each step has a status check. The pipeline reports success at every gate. The <code class="">WATCHER DOWN</code> line in the spawn stderr looks like the smoking gun.</p>
+      </div>
+      <div class="vs-cell actual">
+        <div class="vs-tag">what it is</div>
+        <p><strong>Dispatch a crew → Orca creates a worktree (fine at spawn time) → firstmate sets <code class="">FM_STATUS_FILE</code> in the spawn's process env (<code class="">crew_dispatch.py:1007</code>) → <code class="">fm-spawn.sh</code> forwards a hand-built prefix to the crew's pane (<code class="">fm-spawn.sh:2577</code>) that <strong>omits <code class="">FM_STATUS_FILE</code></strong> → the wrapper sees <code class="">FM_STATUS_FILE</code> as empty and skips its status-write block (<code class="">hermes-fm-wrapper:97</code>) → agent starts, installs deps at 07:40 MST, runs for minutes, writes to stdout (Hermes banner captured in preview) but <strong>never writes status verbs</strong> → supervisor polls empty status file → timeout → <code class="">teardown_ok=true</code> → retry sends fail 403 (missing AGENTMAIL_API_KEY).</strong> The worktree was NOT broken. The agent WAS alive. The bug is the missing <code class="">FM_STATUS_FILE</code> in the pane's environment — a 7-line gap in <code class="">fm-spawn.sh:2577</code>.</p>
+      </div>
+    </div>
+
+    <div class="stat-strip">
+      <span><b>3</b> cycles attempted</span>
+      <span><b>3</b> / 3 silent</span>
+      <span class="warn"><b>0</b> status verbs across all cycles</span>
+      <span><b>1</b> root cause found (<code class="">FM_STATUS_FILE</code> absent from pane)</span>
+      <span><b>2</b> agent terminals read (both: <code class="">tail: []</code>, <code class="">lastOutputAt</code> set)</span>
+      <span><b>2</b> crew_runs with <code class="">teardown_ok=true</code></span>
+      <span><b>1</b> reproduction test (exonerates <code class="">--setup skip</code>)</span>
+      <span><b>2</b> staff dispatched</span>
+      <span class="warn"><b>1</b> met hypothesis refuted (broken worktree)</span>
+      <span><b>1</b> sub-hypothesis remaining: was <code class="">OMNIROUTE_API_KEY</code> in pane at spawn</span>
+    </div>
+
+    <div class="art-eyebrow">the blindspots</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge landmine">root cause</span>
+    <span class="bs-num">00</span>
+    <h3 class="bs-title">The silence is a missing env var in the pane — not a broken worktree, not a dead agent</h3>
+  </div>
+  <p><strong>This is the root cause.</strong> The code at <code class="">crew_dispatch.py:946-954</code> documents it explicitly:</p>
+  <p><code class="">FM_STATUS_FILE</code> and <code class="">FM_REPORT_FILE</code> are set in the <code class="">env=</code> dict at <code class="">crew_dispatch.py:1007-1008</code> — this reaches <code class="">fm-spawn.sh</code>'s PROCESS environment. But <code class="">fm-spawn.sh</code> hands the launch command to the crew's pane as <strong>literal typed text</strong> (<code class="">fm-spawn.sh:2638</code> <code class="">spawn_send_literal</code>) and forwards only the FM_* vars in its own <strong>hand-built prefix</strong> at <code class="">fm-spawn.sh:2577</code>:</p>
+  <p><code class="">FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=... FM_HOME=... FM_TRACE_CONTEXT=... FM_SUPERVISION_MODEL=... $LAUNCH</code></p>
+  <p><strong><code class="">FM_STATUS_FILE</code> is absent from that list.</strong> The string appears nowhere in firstmate's <code class="">bin/</code> (it is school-core's own convention). So the wrapper saw <code class="">FM_STATUS_FILE</code> as <strong>empty</strong> and skipped its entire status-write block — gated on <code class="">[[ -n "${FM_STATUS_FILE:-}" ]]</code> (<code class="">hermes-fm-wrapper:97</code>).</p>
+  <p><strong>Evidence built into the code:</strong> "0 of 366 dispatched crews ever produced the wrapper's <code class="">failed: hermes-exit-<code>-no-terminal-status</code> post-mortem line" — because the wrapper never saw <code class="">FM_STATUS_FILE</code>, so it never ran its post-mortem check. Meanwhile, 122 of 366 crews DID write status files — by reading the path out of the <strong>brief prose</strong> instead (<code class="">brief.md</code> names it; <code class="">fm-brief.sh:179</code> templates it in). That's a 122/244 split that tracked whether the model followed a path buried in text, not any transport property. The 244 silent crews — including all 3 of these — relied on the env var that was never in the pane.</p>
+  <div class="bite">
+    <span class="bite-tag">what this means</span>
+    <span>The agent WAS alive (<code class="">lastOutputAt</code> set, <code class="">node_modules/</code> installed at 07:40 MST, worktree torn down after agent ran). The agent's output WAS captured (Hermes banner in preview). But the agent's <strong>status writes</strong> — the <code class="">done:</code>, <code class="">working:</code>, <code class="">failed:</code> lines that the wrapper appends to the status file — were <strong>silently discarded</strong> because <code class="">FM_STATUS_FILE</code> was empty in the pane. The agent wrote to stdout (captured in preview), but the wrapper never saw the status file path, so it never wrote the status verbs that the supervisor polls. The supervisor saw nothing, timed out, and marked the crew <code class="">silent_agent</code>. The bug is NOT in the spawn, the worktree, or the agent. It's in the hand-built prefix at <code class="">fm-spawn.sh:2577</code> — missing <code class="">FM_STATUS_FILE</code> and <code class="">FM_REPORT_FILE</code> from the vars forwarded to the pane.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge landmine">landmine</span>
+    <span class="bs-num">01</span>
+    <h3 class="bs-title">The agent was alive and executing — but its output was never captured in the terminal tail</h3>
+  </div>
+  <p>Both terminals show the same pattern: <code class="">tail: []</code> (zero output lines) but <code class="">lastOutputAt</code> is set. Cycle 1: <code class="">lastOutputAt=1789912808435</code> = 07:00:08 MST, ~1 minute after spawn at 06:59:24 MST. Cycle 2: <code class="">lastOutputAt=1789914985295</code> = 07:36:25 MST, ~30 seconds after spawn at 07:35:57 MST. The <code class="">lastOutputAt</code> timestamp means output was produced — and indeed the preview shows the Hermes startup banner was written. But the <code class="">tail</code> (the captured output lines) is empty. The agent's banner was written, but nothing else was.</p>
+  <p>This is the critical signal: <code class="">lastOutputAt</code> set + <code class="">tail: []</code> = the terminal captured the agent's startup, but not the agent's work. The agent either produced no output after startup, or its output wasn't captured by the terminal. Either way, the terminal is the only artifact that can distinguish "agent never started" from "agent started but output wasn't captured" — and it says the former is false.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>Reading only <code class="">tail: []</code> and concluding "agent never started" is wrong. The <code class="">lastOutputAt</code> field proves the agent was alive. The <strong>root cause is now confirmed</strong> (see card 00): the wrapper's <code class="">FM_STATUS_FILE</code> gate never opened because <code class="">FM_STATUS_FILE</code> was absent from the hand-built prefix at <code class="">fm-spawn.sh:2577</code>. The agent wrote to stdout (Hermes banner captured in preview), but the wrapper never saw the status file path, so it never wrote the status verbs that the supervisor polls. The silence is NOT a model-call failure or an output-capture failure — it's a missing env var in the pane.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge concept">evidence</span>
+    <span class="bs-num">02</span>
+    <h3 class="bs-title">The worktree was NOT broken at spawn time — <code class="">teardown_ok=true</code> and <code class="">node_modules/</code> mtime prove it</h3>
+  </div>
+  <p>Phymora's correction (from the crew_runs.json and the phantom residue): both cycle 1 (<code class="">fm-loop-20260920-135924-415</code>) and cycle 2 (<code class="">fm-loop-20260920-143509-415</code>) have <code class="">teardown_ok=true</code> in <code class="">data/crew_runs.json</code>. This means Orca tore the worktree down AFTER the agent ran — deleting <code class="">.git</code> and tracked files, leaving untracked <code class="">node_modules/</code> and <code class="">package-lock.json</code> behind. What I inspected was <strong>post-teardown residue, not spawn-time state.</strong></p>
+  <p>The residue carries the most important fact: <code class="">node_modules/</code> mtime is 07:40 MST — 4 minutes AFTER spawn (07:36 MST meta). Someone ran <code class="">pnpm install</code> in that worktree post-spawn. <code class="">--setup skip</code> rules out Orca's hooks. repo_reader installs into the cache clone, not the worktree. That leaves the crew agent itself — which means for cycle 143509, <strong>launch delivery worked and the agent was alive and executing at 07:40 MST.</strong> It then produced zero status verbs and timed out.</p>
+  <div class="bite">
+    <span class="bite-tag">what this proves</span>
+    <span>This inverts the leading theory: this isn't "spawn never delivered" or "worktree was broken at spawn time." <strong>The root cause is confirmed</strong> (see card 00): the wrapper's <code class="">FM_STATUS_FILE</code> gate never opened because <code class="">FM_STATUS_FILE</code> was absent from the hand-built prefix at <code class="">fm-spawn.sh:2577</code>. The agent ran, installed dependencies, and wrote to stdout — but the wrapper never saw the status file path, so it never wrote the status verbs the supervisor polls. The <code class="">tail: []</code> with <code class="">lastOutputAt</code> set is the signal of a missing env var, not a dead agent.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge history">history</span>
+    <span class="bs-num">03</span>
+    <h3 class="bs-title">Reproduction test: the same command now creates a fully-populated worktree — but this doesn't prove the worktree was broken at spawn time</h3>
+  </div>
+  <p>I ran the <strong>exact same command</strong> the spawn recipe uses (<code class="">orca worktree create --repo "id:f8884b93-..." --name "test-blindspot-..." --no-parent --setup skip --json</code>) and the result is a fully-populated worktree with <code class="">.git</code>, <code class="">package.json</code>, 75 entries of project files, correct HEAD, registered in Orca's <code class="">worktree list</code>. But per phymora's correction, the worktree at spawn time was NOT broken — it was torn down after the agent ran. The reproduction test proves the command works now, but it doesn't prove the worktree was broken at spawn time (because it wasn't). The transient bug, if any, was in the teardown or the output capture, not the worktree creation.</p>
+  <div class="bite">
+    <span class="bite-tag">what this means</span>
+    <span>The reproduction test exonerates <code class="">--setup skip</code> and the <code class="">orca worktree create</code> command. But it doesn't explain the silence. The silence is downstream of worktree creation: the agent was spawned, installed dependencies, ran for minutes, and produced no output. The bug is in the output-capture or status-write path, not the worktree creation path.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge landmine">landmine</span>
+    <span class="bs-num">04</span>
+    <h3 class="bs-title">The terminal's <code class="">worktreePath</code> and <code class="">branch</code> are empty strings — but the worktreeId has the phantom path</h3>
+  </div>
+  <p><code class="">orca terminal show</code> for both terminals returns <code class="">worktreePath: ""</code> and <code class="">branch: ""</code>. But the <code class="">worktreeId</code> field has the phantom path (<code class="">f8884b93...::/orca/workspaces/.../fm-fm-loop-20260920-143509-415</code>). The terminal exists (handle, ptyId, incarnationId, tabId, leafId all populated), but Orca has no record of which worktree or branch it belongs to in the <code class="">worktreePath</code>/<code class="">branch</code> fields. The <code class="">ptyId</code> references the phantom path with the incarnation suffix (<code class="">@@d6fd67e3</code>).</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>You read the terminal and see a valid handle, a ptyId, a title — it looks real. But the empty <code class="">worktreePath</code> and <code class="">branch</code> are the signal that the terminal was created for a worktree Orca doesn't fully track. The agent was spawned into a terminal that's partially detached from Orca's worktree registry.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge convention">convention</span>
+    <span class="bs-num">05</span>
+    <h3 class="bs-title"><code class="">--setup skip</code> is not the culprit — it skips repo-defined hooks, not the checkout</h3>
+  </div>
+  <p>The spawn recipe passes <code class="">--setup skip</code> to <code class="">orca worktree create</code> (<code class="">backends/orca.sh:134</code>). Per Orca's CLI help, this flag controls the "setup policy for repo-defined setup hooks" — it does <strong>not</strong> skip the git checkout. Orca always creates a checkout. The reproduction test proves this: the test worktree created with <code class="">--setup skip</code> has a <code class="">.git</code> file and full project files. The phantom directory's lack of a <code class="">.git</code> file (post-teardown) is a different failure — Orca's teardown removed it, not <code class="">--setup skip</code>.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>You see <code class="">--setup skip</code> in the spawn recipe and assume it's the cause. Removing it won't fix the silence problem — the reproduction test proves the checkout works fine with <code class="">--setup skip</code>. The real question is: why did the agent produce no output after starting?</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge concept">missing concept</span>
+    <span class="bs-num">06</span>
+    <h3 class="bs-title"><code class="">orca_worktree_present=true</code> in the crew_run just means the directory existed — not that it had project files</h3>
+  </div>
+  <p>Both cycle crew_runs have <code class="">orca_worktree_present: true</code>. This field checks if the directory at the meta's <code class="">worktree</code> path exists — not if it has <code class="">.git</code>, <code class="">package.json</code>, or project files. The phantom directory DID exist on disk (that's why I found <code class="">node_modules/</code> and <code class="">package-lock.json</code> inside it). So <code class="">orca_worktree_present=true</code> is technically correct — the directory existed. But it's misleading if you interpret it as "the worktree is usable."</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>The crew_run says the worktree was present, and you assume it was usable. It existed, but it was a phantom (post-teardown residue, no <code class="">.git</code>, no project files). The field is a directory-existence check, not a worktree-health check.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge history">history</span>
+    <span class="bs-num">07</span>
+    <h3 class="bs-title">Three cycles, same pattern — but the phantom is now gone and the worktree was fine at spawn time</h3>
+  </div>
+  <p>Cycle 1 (<code class="">fm-loop-20260920-135924-415</code>, terminal <code class="">term_1950b0fd</code>), cycle 2 (<code class="">fm-loop-20260920-143509-415</code>, terminal <code class="">term_ac68159a</code>), and cycle 3 (same crew ID as cycle 2) all produced the same result: agent spawned, agent silent, phantom directory created and later torn down. Cycle 1's phantom was cleaned up by Orca's teardown (<code class="">.orca-worktree-trash</code> remains). Cycle 2's phantom was removed manually. At the time of this scan, <code class="">orca/workspaces/branben__sound-royale-ny/</code> is empty — the phantom is gone. The worktree was fine at spawn time (per <code class="">teardown_ok=true</code> and <code class="">node_modules/</code> mtime).</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>This was a deterministic bug: every cycle produced silence. But the worktree was NOT broken at spawn time. The silence is downstream: the agent ran, installed dependencies, and produced no output. The reproduction test proves the worktree creation works now, but it doesn't explain the silence.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge concept">missing concept</span>
+    <span class="bs-num">08</span>
+    <h3 class="bs-title">What ran <code class="">pnpm install</code> in the worktree at 07:40 MST?</h3>
+  </div>
+  <p>The <code class="">package-lock.json</code> in the phantom residue has mtime 07:40 MST — 4 minutes after spawn (07:36 MST meta). The phantom had no <code class="">package.json</code> before that moment (per phymora's correction: it had the project at spawn time, was torn down after, and <code class="">node_modules/</code> was left behind). Something ran <code class="">pnpm install</code> in the worktree at 07:40 MST. Candidates: a FirstMate hook, the <code class="">fm-spawn.sh</code> process itself, or the agent (if it started and ran <code class="">pnpm install</code> before going silent). The phantom residue is now removed, so the <code class="">node_modules/</code> can't be inspected for clues (e.g., a <code class="">pnpm-lock.yaml</code> would reveal which packages were installed).</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>If the agent ran <code class="">pnpm install</code>, it means the agent <em>did</em> start and execute commands — consistent with <code class="">lastOutputAt</code> being set. But its output wasn't captured in the terminal tail (<code class="">tail: []</code>). If a FirstMate hook ran it, the hook is running against the worktree. Either way, the worktree was alive at 07:40 MST — the agent (or something) was executing in it. The silence is on the output-capture side, not the spawn side.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge history">history</span>
+    <span class="bs-num">09</span>
+    <h3 class="bs-title">The cycle 1 terminal is the same pattern as cycle 2 — both have <code class="">tail: []</code> and <code class="">lastOutputAt</code> set</h3>
+  </div>
+  <p><code class="">term_1950b0fd</code> (cycle 1) and <code class="">term_ac68159a</code> (cycle 2/3) are structurally identical: both have <code class="">worktreePath: ""</code>, <code class="">branch: ""</code>, <code class="">tail: []</code>, <code class="">status: "exited"</code>, <code class="">exitCause: {kind: "unknown", reason: "stop_unverified"}</code>, both show the Hermes startup banner in <code class="">preview</code>, both have <code class="">lastOutputAt</code> set (cycle 1: 07:00:08 MST, cycle 2: 07:36:25 MST). Both were created for worktrees Orca later tore down.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>Reading only one terminal would leave you wondering if it's a fluke. Reading both confirms the pattern is deterministic. The agent isn't intermittently silent — it's always spawned, starts, and produces no captured output. The <code class="">lastOutputAt</code> field proves the agent was alive in both cycles.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge convention">convention</span>
+    <span class="bs-num">10</span>
+    <h3 class="bs-title">AGENTMAIL_API_KEY is missing — a separate bug that collides with the silence</h3>
+  </div>
+  <p>The retry send after cycle 1 and cycle 3 failed with HTTP 403. The cause: <code class="">AGENTMAIL_API_KEY</code> is not set in the environment. This is a <strong>separate bug</strong> from the agent silence, but it collides with it — you can't tell from the retry error whether the agent produced nothing (silence) or the send failed (missing key). Both look like "the crew didn't complete."</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>The retry mechanism assumes the agent produced something to send. When the send fails with 403, you assume the agent's output couldn't be delivered. In reality, there was no output to deliver, and the 403 is a second, independent failure layered on top. Fixing the key without fixing the silence gives you successful sends of empty reports.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge landmine">landmine</span>
+    <span class="bs-num">11</span>
+    <h3 class="bs-title">The meta stores only <code class="">harness=export</code> — you can't tell if the API key was in the launch command</h3>
+  </div>
+  <p>Both cycle meta files store exactly one line for the harness: <code class="">harness=export</code>. The full launch command — which should be <code class="">export OMNIROUTE_API_KEY=***; export FM_STATUS_FILE=...; ...; hermes-fm-wrapper "$(__OPINPUT__ encode launch-brief < __BRIEF__)"</code> — is truncated to its first word in the artifact. The <code class="">_omniroute_api_key()</code> function (<code class="">crew_dispatch.py:866</code>) sources from <code class="">os.environ</code> first, then repo <code class="">.env</code>, then Hermes <code class="">config.yaml</code>. The key resolves now (35 chars), but whether it was in the bridge's <code class="">os.environ</code> at the moment of each spawn is unverifiable from the meta.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>If the key was missing at spawn time, the agent's first model call would fail silently — no credential, no request, no error visible in the empty terminal tail. You'd see exactly what you see: an agent that started (<code class="">lastOutputAt</code> set, Hermes banner in preview) and stopped (<code class="">tail: []</code>, <code class="">stop_unverified</code>) with no output in between. The meta gives you no way to distinguish "agent found empty worktree" from "agent couldn't authenticate" from "agent ran but output wasn't captured." All three produce the same observable: <code class="">tail: []</code> with <code class="">lastOutputAt</code> set.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge convention">convention</span>
+    <span class="bs-num">12</span>
+    <h3 class="bs-title">A crew that writes nothing looks identical to a crew that's still running — until the timeout fires</h3>
+  </div>
+  <p>The crew status file at <code class="">state/fm-loop-20260920-143509-415.status</code> contains exactly one line — the dispatch-time <code class="">repo=...</code> marker written by the bridge. There are zero status verbs from the wrapper or the agent. FirstMate's timeout mechanism eventually fires <code class="">silent_agent</code>, but that's a timer, not a detection of "agent produced nothing." The <code class="">fallback_reason: silent_agent</code> in the crew_run is the timeout's conclusion, not a real-time detection.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>The timeout is the signal that something is wrong, but it doesn't tell you <em>what</em>. Is the agent slow? Is it stuck? Is the worktree empty? Is the output not being captured? The timeout fires the same way in all cases. You need the terminal output (<code class="">lastOutputAt</code>, <code class="">tail</code>) or the status file to disambiguate — and both are empty or minimal.</span>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <span class="badge concept">missing concept</span>
+    <span class="bs-num">13</span>
+    <h3 class="bs-title">The terminal's <code class="">lastOutputAt</code> + <code class="">tail: []</code> combo is the signal you need — but it's easy to misread</h3>
+  </div>
+  <p>The terminal has two output-related fields: <code class="">preview</code> (the last N characters written to the terminal) and <code class="">tail</code> (the captured output lines). Both cycles show the Hermes banner in <code class="">preview</code> and <code class="">tail: []</code>. But <code class="">lastOutputAt</code> is set, which means output was produced after the banner. The agent's startup banner was captured (hence <code class="">lastOutputAt</code>), but nothing else was. This combo — <code class="">lastOutputAt</code> set, <code class="">tail: []</code>, <code class="">preview</code> = startup banner only — is the signal that the agent started but produced no captured output. It's easy to misread as "agent never started" if you only look at <code class="">tail: []</code>.</p>
+  <div class="bite">
+    <span class="bite-tag">why it bites</span>
+    <span>You read <code class="">tail: []</code> and conclude "agent never started." But <code class="">lastOutputAt</code> is set, which proves the agent was alive. The agent started, wrote its banner, and then produced no output — or its output wasn't captured. The terminal's two output fields (<code class="">preview</code> and <code class="">tail</code>) tell different parts of the story, and you need both to get the full picture.</span>
+  </div>
+</div>
+
+    <div class="art-eyebrow">the improved prompt</div>
+
+<div class="final-card">
+  <div class="final-head">
+    <div class="art-eyebrow">everything above, folded into the prompt you should actually give</div>
+    <button class="copy-btn" onclick="copyFinal(this)">copy</button>
+  </div>
+  <h3>Dispatch FirstMate crews to school-core without the phantom-directory trap</h3>
+  <pre class="final-prompt">I'm dispatching FirstMate crews to fix school-core issues via the Orca backend.
+The crews keep going silent after spawn — 3 cycles, 0 captured output lines.
+Do a blindspot pass on the dispatch pipeline before I run another cycle.
+
+Constraints from the investigation so far:
+
+0. ROOT CAUSE (CONFIRMED): The silence is a missing env var in the pane — not
+   a broken worktree, not a dead agent. The code at
+   `crew_dispatch.py:946-954` documents it explicitly: `FM_STATUS_FILE` and
+   `FM_REPORT_FILE` are set in the `env=` dict at `crew_dispatch.py:1007-1008`
+   — this reaches `fm-spawn.sh`'s PROCESS environment. But `fm-spawn.sh` hands
+   the launch command to the crew's pane as literal typed text
+   (`fm-spawn.sh:2638` `spawn_send_literal`) and forwards only the FM_* vars in
+   its own hand-built prefix at `fm-spawn.sh:2577`:
+   `FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE=
+   FM_CONFIG_OVERRIDE= FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=... FM_HOME=... 
+   FM_TRACE_CONTEXT=... FM_SUPERVISION_MODEL=... $LAUNCH`
+   **`FM_STATUS_FILE` is absent from that list.** The string appears nowhere in
+   firstmate's `bin/` (it is school-core's own convention). So the wrapper saw
+   `FM_STATUS_FILE` as empty and skipped its entire status-write block — gated
+   on `[[ -n "${FM_STATUS_FILE:-}" ]]` (`hermes-fm-wrapper:97`).
+   **Evidence built into the code:** "0 of 366 dispatched crews ever produced the
+   wrapper's `failed: hermes-exit-<code>-no-terminal-status` post-mortem line" —
+   because the wrapper never saw `FM_STATUS_FILE`, so it never ran its post-mortem
+   check. Meanwhile, 122 of 366 crews DID write status files — by reading the
+   path out of the **brief prose** instead (`brief.md` names it;
+   `fm-brief.sh:179` templates it in). That's a 122/244 split that tracked
+   whether the model followed a path buried in text, not any transport property.
+   The 244 silent crews — including all 3 of these — relied on the env var that
+   was never in the pane.
+   **THE FIX:** Add `FM_STATUS_FILE` and `FM_REPORT_FILE` to the hand-built prefix
+   at `fm-spawn.sh:2577`. One line: prepend `FM_STATUS_FILE=$sq_status_file
+   FM_REPORT_FILE=$sq_report_file` to the existing prefix. The status file path
+   and report path are already available as `$STATE/$ID.status` and
+   `$TASK_TMP/report.md` at that point in the script. Alternatively, forward the
+   full harness string's FM_* exports rather than the hand-picked subset — but
+   the targeted fix is cleaner and matches the existing pattern (the prefix
+   already forwards `FM_HOME`, `FM_TRACE_CONTEXT`, `FM_SUPERVISION_MODEL` by the
+   same mechanism).
+
+1. THE AGENT WAS ALIVE — output just wasn't captured. Both terminals show
+   `tail: []` (zero output lines) but `lastOutputAt` is set (cycle 1: 07:00:08
+   MST, cycle 2: 07:36:25 MST). The Hermes startup banner was captured in
+   `preview`, but nothing else. This proves the agent started. The silence is
+   on the status-write path, NOT the spawn path. Do NOT conclude "spawn never
+   delivered" from `tail: []` alone — check `lastOutputAt` first.
+
+2. THE WORKTREE WAS FINE AT SPAWN TIME. Both crew_runs have `teardown_ok=true`
+   (data/crew_runs.json:16-17) — Orca tore the worktree down AFTER the agent
+   ran, leaving `node_modules/` and `package-lock.json` as residue. The
+   `node_modules/` mtime is 07:40 MST — 4 minutes after spawn — proving
+   `pnpm install` ran post-spawn (likely by the agent itself, since `--setup
+   skip` rules out Orca's hooks and repo_reader installs into the cache clone).
+   What I inspected was post-teardown residue, not spawn-time state.
+
+3. THE REPRODUCTION TEST EXONERATES `--SETUP SKIP` AND `ORCA WORKTREE CREATE`.
+   Running the exact same command now creates a fully-populated worktree with
+   `.git`, `package.json`, and 75 entries of project files. This proves the
+   command works. But it doesn't explain the silence — the worktree was fine at
+   spawn time, the agent ran, and produced no captured output.
+
+4. `ORCA_WORKTREE_PRESENT=TRUE` IS A DIRECTORY-EXISTENCE CHECK, NOT A
+   WORKTREE-HEALTH CHECK. Both crew_runs have this field set to true, but it
+   just means the directory at the meta's `worktree` path existed. It doesn't
+   mean the directory had `.git`, `package.json`, or project files.
+
+5. TERMINAL BEFORE ASSUMPTIONS: Read `orca terminal show --terminal <id> --json`
+   and check BOTH `lastOutputAt` AND `tail`. If `lastOutputAt` is set and
+   `tail: []`, the agent started but produced no captured output. If
+   `lastOutputAt` is unset and `tail: []`, the agent never started. These are
+   different bugs with different fixes.
+
+6. `WORKTREEPATH: ""` AND `BRANCH: ""` ARE SIGNALS. Both terminals have empty
+   `worktreePath` and `branch` but populated `worktreeId` (with the phantom
+   path). The terminal was created for a worktree Orca doesn't fully track.
+   This might be related to the output-capture failure — if the terminal isn't
+   properly linked to the worktree, its output might not be captured.
+
+7. META TRUNCATION: The meta stores `harness=export` (first word only). If
+   the API key was missing from the harness, you can't tell from the meta.
+   Check whether `_omniroute_api_key()` returned a value at spawn time by
+   checking the bridge's `os.environ`, not just the current shell. Add logging
+   to the spawn recipe to capture the full harness string (key redacted) in the
+   meta for future cycles.
+
+8. UUID IS REPO ID, NOT WORKTREE ID: The UUID `f8884b93-...` is the same
+   across cycles because it's the repo ID, not the worktree ID. Orca has one
+   worktree for this repo (the cache clone). Don't assume worktrees are being
+   reused.
+
+9. AGENTMAIL KEY IS SEPARATE: `AGENTMAIL_API_KEY` missing causes 403 on
+   retry sends. Fix this separately from the silence bug.
+
+10. WATCHER IS A RED HERRING: The watcher being down didn't cause the silence.
+    The spawn proceeded (WATCHER DOWN is advisory). Fix the watcher if it's
+    down, but don't assume it's the cause of agent silence.
+
+11. THE SECOND SUB-HYPOTHESIS IS NOW CONFIRMED (was `FM_STATUS_FILE` gate never
+    opened): Yes. The wrapper's status-append gate was gated on
+    `[[ -n "${FM_STATUS_FILE:-}" ]]` and `FM_STATUS_FILE` was empty in the pane
+    because it was never forwarded by the hand-built prefix at `fm-spawn.sh:2577`.
+    The first sub-hypothesis (model-call failure) is now secondary — the agent
+    may have also had model-call issues, but the status-write path was broken
+    regardless. The terminal preview (Hermes banner only) is consistent with
+    both: the agent started, wrote its banner, and then either died or kept
+    writing to stdout without the wrapper capturing status verbs.
+
+Work in this order: add `FM_STATUS_FILE` and `FM_REPORT_FILE` to the hand-built
+prefix at `fm-spawn.sh:2577` → re-dispatch with 1 crew, cap 1, and verify the
+status file receives verbs → verify `lastOutputAt` and `tail` for the crew →
+if the status file receives verbs, the root cause is fixed → add logging to the
+spawn recipe to capture the full harness string (key redacted) in the meta for
+future cycles → fix `AGENTMAIL_API_KEY` separately.
+
+Stop and show me the plan after adding `FM_STATUS_FILE` and `FM_REPORT_FILE` to
+the hand-built prefix before running another cycle.</pre>
+  <p class="final-note">Fourteen findings you couldn't have written this morning — each one bought with a cycle that went silent. <strong>The root cause is confirmed:</strong> <code class="">FM_STATUS_FILE</code> is set in the spawn's process environment (<code class="">crew_dispatch.py:1007</code>) but is <strong>absent from the hand-built prefix</strong> that <code class="">fm-spawn.sh</code> forwards to the crew's pane (<code class="">fm-spawn.sh:2577</code>). The wrapper saw <code class="">FM_STATUS_FILE</code> as empty and skipped its status-write block. The agent was alive and executing (<code class="">lastOutputAt</code> set, <code class="">node_modules/</code> installed at 07:40 MST) — it just never wrote status verbs that the supervisor could poll. The fix is one line: add <code class="">FM_STATUS_FILE</code> and <code class="">FM_REPORT_FILE</code> to the hand-built prefix at <code class="">fm-spawn.sh:2577</code>.</p>
+</div>
+
+  </div>
+</div>
+
+<footer>
+  blindspot-pass · school-core/crew_dispatch · produced from 3 cycle metas (<code class="">data/crew_runs.json</code>, <code class="">state/*.meta</code>), 2 agent terminals (<code class="">term_ac68159a</code>, <code class="">term_1950b0fd</code> — both with <code class="">lastOutputAt</code> set and <code class="">tail: []</code>), the full spawn recipe (<a href="https://github.com/branben/school-core/blob/chore/condense-pipeline/backends/orca.sh">backends/orca.sh</a>, <a href="https://github.com/branben/school-core/blob/chore/condense-pipeline/fm-spawn.sh">fm-spawn.sh</a> — including the hand-built prefix at line 2577 and <code class="">spawn_send_literal</code> at line 2638, <a href="https://github.com/branben/school-core/blob/chore/condense-pipeline/crew_dispatch.py">crew_dispatch.py</a> — including the <code class="">env=</code> dict at lines 998-1008 and the root-cause documentation at lines 946-954), a live reproduction test (test worktree created at 16:15 UTC), crew_runs.json (<code class="">teardown_ok=true</code> for both cycles, <code class="">silent_agent</code> fallback for both), <code class="">data/crew_runs.json</code> historical evidence (0/366 crews ever produced the wrapper's post-mortem line; 122/366 wrote status via brief prose), and Orca runtime v1.4.205. <strong>Root cause:</strong> <code class="">FM_STATUS_FILE</code> absent from <code class="">fm-spawn.sh:2577</code> hand-built prefix. Staff: @phymora (adversarial — provided the <code class="">teardown_ok</code> correction and the <code class="">node_modules/</code> mtime evidence, leading to the root cause), @student-whymage (why-tree — hit output-token limit, no answer). Both dispatched.
+</footer>
+
+</div>
+
+<script>
+function copyPrompt(btn) {
+  const card = btn.closest('.prompt-card');
+  const blockquote = card.querySelector('.prompt');
+  navigator.clipboard.writeText(blockquote.textContent.trim()).then(() => {
+    btn.textContent = 'copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+function copyFinal(btn) {
+  const card = btn.closest('.final-card');
+  const pre = card.querySelector('.final-prompt');
+  navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
+    btn.textContent = 'copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+</script>
+
+</body>
+</html>
