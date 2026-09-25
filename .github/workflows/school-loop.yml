@@ -98,11 +98,12 @@ jobs:
   # the alert. The red signal for a blocked cycle comes from THIS job instead,
   # which fails without being a dependency of either downstream job.
   #
-  # HARDENING REQUIRED: RUNNER_ADMIN_TOKEN currently holds the repo owner's
-  # gh token. Replace with a fine-grained PAT scoped to this repo with ONLY
-  # "Administration: Read" — a full personal token in CI secrets on a public
-  # repo is over-scoped, and rotating the gh token would silently break the
-  # liveness check.
+  # RUNNER_ADMIN_TOKEN MUST be a fine-grained PAT scoped to this repo only,
+  # with "Administration" repository permissions (read-only) and no other
+  # permissions — never the owner's personal gh token. A full personal token
+  # in CI secrets is over-scoped, and rotating the gh token would silently
+  # break the liveness check. Swap/verify/revoke per the runbook:
+  # docs/security/runner-token-rotation.md
   gate-blocked:
     # Signals a blocked cycle WITHOUT breaking the board publisher.
     # `loop` depends on `gate` (which succeeds), NOT on this job — so the board
