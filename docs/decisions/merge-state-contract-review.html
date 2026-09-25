@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>School Core — Merge-State Contract Review</title>
+  <style>
+    :root { --ivory: #FAF9F5; --paper: #FFFFFF; --slate: #141413; --clay: #D97757; --clay-d: #B85C3E; --oat: #E3DACC; --olive: #788C5D; --g100: #F0EEE6; --g200: #E6E3DA; --g300: #D1CFC5; --g500: #87867F; --g700: #3D3D3A; --serif: ui-serif, Georgia, "Times New Roman", Times, serif; --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0px; background: var(--ivory); color: var(--slate); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    .wrap { max-width: 1120px; margin: 0px auto; padding: 0px 32px 140px; }
+    header.masthead { padding: 80px 0px 56px; border-bottom: 1.5px solid var(--g300); margin-bottom: 12px; position: relative; overflow: visible; }
+    .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g500); margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+    .eyebrow::before { content: ""; width: 24px; height: 1.5px; background: var(--clay); }
+    h1 { font-family: var(--serif); font-weight: 500; font-size: clamp(38px, 5.4vw, 62px); line-height: 1.06; letter-spacing: -0.018em; margin: 0px 0px 8px; max-width: 17ch; }
+    h1 em { font-style: italic; color: var(--clay); }
+    .intro { font-size: 16.5px; color: var(--g700); margin: 22px 0px 0px; max-width: 620px; }
+    .intro a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+    .intro a:hover { text-decoration-color: var(--clay); }
+    .hero-grid { display: grid; grid-template-columns: 1fr 340px; gap: 48px; align-items: end; }
+    @media (max-width: 880px) { .hero-grid { grid-template-columns: 1fr; } }
+    .hero-fig { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: end; }
+    @media (max-width: 880px) { .hero-fig { max-width: 400px; margin-top: 28px; } }
+    .hero-fig .pane { border-radius: 10px; border: 1.5px solid var(--g300); background: var(--paper); padding: 14px; aspect-ratio: 4 / 5; display: flex; flex-direction: column; gap: 7px; position: relative; }
+    .hero-fig .pane.md { background: var(--g100); transform: rotate(-2.5deg) translateY(6px); }
+    .hero-fig .pane.html { transform: rotate(1.5deg); border-color: var(--slate); box-shadow: rgba(20, 20, 19, 0.1) 0px 12px 32px; }
+    .hero-fig .tag { position: absolute; top: -10px; left: 12px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; background: var(--ivory); padding: 2px 7px; border: 1.5px solid var(--g300); border-radius: 6px; color: var(--g500); }
+    .hero-fig .pane.html .tag { border-color: var(--slate); color: var(--slate); }
+    .hero-fig .l { height: 6px; border-radius: 3px; background: var(--g300); }
+    .hero-fig .l.w90 { width: 90%; }
+    .hero-fig .l.w75 { width: 75%; }
+    .hero-fig .l.w60 { width: 60%; }
+    .hero-fig .l.w82 { width: 82%; }
+    .hero-fig .l.w70 { width: 70%; }
+    .hero-fig .l.w50 { width: 50%; }
+    .hero-fig .pane.html .l { background: var(--g200); }
+    .hero-fig .pane.html .blk { border-radius: 5px; flex: 1 1 0%; background: linear-gradient(135deg, var(--oat), #ECE1CF); position: relative; overflow: hidden; }
+    .hero-fig .pane.html .blk::after { content: ""; position: absolute; left: 18%; right: 18%; top: 28%; height: 40%; border: 2px solid var(--clay); border-radius: 50%; opacity: 0.7; }
+    .hero-fig .pane.html .row { display: flex; gap: 6px; align-items: flex-end; }
+    .hero-fig .pane.html .bar { flex: 1 1 0%; border-radius: 3px 3px 0px 0px; }
+    .hero-fig .pane.html .bar.b1 { height: 14px; background: var(--olive); }
+    .hero-fig .pane.html .bar.b2 { height: 26px; background: var(--clay); }
+    .hero-fig .pane.html .bar.b3 { height: 18px; background: var(--oat); }
+    .hero-fig .pane.html .bar.b4 { height: 30px; background: var(--slate); }
+    nav.toc { display: flex; flex-wrap: wrap; gap: 8px; padding: 26px 0px 0px; }
+    nav.toc a { font-size: 12.5px; padding: 7px 14px; border: 1.5px solid var(--g300); border-radius: 999px; text-decoration: none; color: var(--g700); background: var(--paper); transition: border-color 120ms, color 120ms, background 120ms; display: inline-flex; align-items: center; gap: 7px; }
+    nav.toc a .n { font-family: var(--mono); font-size: 10px; color: var(--g500); }
+    nav.toc a:hover { border-color: var(--slate); color: var(--slate); }
+    nav.toc a:hover .n { color: var(--clay); }
+    section { margin-top: 72px; scroll-margin-top: 28px; }
+    .sec-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 10px; }
+    .sec-head .idx { font-family: var(--mono); font-size: 13px; color: var(--clay); font-weight: 600; width: 34px; flex-shrink: 0; }
+    .sec-head h2 { font-family: var(--serif); font-weight: 500; font-size: 27px; margin: 0px; letter-spacing: -0.012em; }
+    .sec-head .count { font-family: var(--mono); font-size: 11px; color: var(--g500); background: var(--g100); padding: 2px 8px; border-radius: 999px; }
+    .sec-intro { font-size: 14.5px; color: var(--g700); max-width: 700px; margin: 0px 0px 24px 50px; }
+    @media (max-width: 640px) { .sec-intro { margin-left: 0px; } }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(316px, 1fr)); gap: 20px; margin-left: 50px; }
+    @media (max-width: 640px) { .grid { margin-left: 0px; } }
+    a.card { display: flex; flex-direction: column; background: var(--paper); border: 1.5px solid var(--g300); border-radius: 14px; text-decoration: none; color: inherit; transition: transform 150ms, box-shadow 150ms, border-color 150ms; overflow: hidden; }
+    a.card:hover { transform: translateY(-3px); box-shadow: rgba(20, 20, 19, 0.1) 0px 10px 30px; border-color: var(--slate); }
+    .thumb { height: 132px; background: var(--g100); border-bottom: 1.5px solid var(--g200); display: flex; align-items: center; justify-content: center; padding: 16px; transition: background 150ms; }
+    a.card:hover .thumb { background: var(--oat); }
+    .thumb svg { width: 100%; height: 100%; overflow: visible; }
+    .thumb svg .st { stroke: var(--g500); fill: none; stroke-width: 2.5; }
+    .thumb svg .fl { fill: var(--g300); }
+    .thumb svg .cl { fill: var(--clay); }
+    .thumb svg .ol { fill: var(--olive); }
+    .thumb svg .oa { fill: var(--oat); stroke: var(--g500); stroke-width: 2.5; }
+    .thumb svg .sl { fill: var(--slate); }
+    .thumb svg .wh { fill: var(--paper); stroke: var(--g500); stroke-width: 2.5; }
+    .thumb svg .ln { stroke: var(--g500); stroke-width: 2.5; fill: none; stroke-linecap: round; }
+    .thumb svg .lc { stroke: var(--clay); stroke-width: 2.5; fill: none; stroke-linecap: round; }
+    .thumb svg .da { stroke-dasharray: 4, 4; }
+    a.card:hover .thumb svg .fl { fill: var(--g500); }
+    a.card:hover .thumb svg .oa { fill: var(--paper); }
+    .body { padding: 18px 20px 16px; display: flex; flex-direction: column; flex: 1 1 0%; }
+    .title { font-family: var(--serif); font-size: 19px; font-weight: 500; line-height: 1.22; color: var(--slate); margin-bottom: 7px; letter-spacing: -0.008em; }
+    .desc { font-size: 13.5px; color: var(--g700); line-height: 1.5; margin-bottom: 16px; flex: 1 1 0%; }
+    .file { font-family: var(--mono); font-size: 11px; color: var(--g500); border-top: 1px solid var(--g100); padding-top: 11px; display: flex; align-items: center; justify-content: space-between; }
+    .file .arrow { transition: transform 150ms; color: var(--g300); }
+    a.card:hover .file { color: var(--clay); }
+    a.card:hover .file .arrow { transform: translateX(3px); color: var(--clay); }
+    footer { margin-top: 100px; border-top: 1.5px solid var(--g300); padding-top: 36px; display: flex; justify-content: space-between; align-items: baseline; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--g500); }
+    footer .k { font-family: var(--serif); font-style: italic; color: var(--g700); font-size: 15px; }
+    footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+
+    /* Decision-document extensions, using the reference tokens and geometry. */
+    .status-line { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; border: 1.5px solid var(--g300); border-radius: 999px; padding: 7px 12px; background: var(--paper); color: var(--g700); font: 12px var(--mono); }
+    .pill strong { color: var(--clay-d); font-weight: 600; }
+    .decision-card { background: var(--paper); border: 1.5px solid var(--g300); border-radius: 14px; padding: 20px; box-shadow: 0 1px 0 rgba(20,20,19,.02); }
+    .decision-card + .decision-card { margin-top: 16px; }
+    .decision-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+    .decision-head h3 { font: 500 21px/1.2 var(--serif); margin: 0; letter-spacing: -.01em; }
+    .decision-id { color: var(--clay); font: 11px var(--mono); white-space: nowrap; }
+    .decision-card p { color: var(--g700); font-size: 14px; margin: 9px 0 14px; }
+    .recommendation { border-left: 3px solid var(--olive); background: #F4F6EE; padding: 10px 12px; color: var(--g700); font-size: 13px; margin: 0 0 15px; }
+    .recommendation strong { color: var(--slate); }
+    fieldset { border: 0; padding: 0; margin: 0; }
+    legend { font: 11px var(--mono); color: var(--g500); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .choice { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--g700); }
+    .choice:hover { background: var(--g100); }
+    .choice:has(input:checked) { background: #F8EEE9; border-color: #E8B29D; color: var(--slate); }
+    .choice input { margin-top: 4px; accent-color: var(--clay-d); }
+    .choice small { display: block; color: var(--g500); margin-top: 2px; }
+    textarea { width: 100%; min-height: 82px; resize: vertical; border: 1.5px solid var(--g300); border-radius: 8px; padding: 10px 12px; background: var(--ivory); color: var(--slate); font: 13px/1.5 var(--sans); }
+    textarea:focus, input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid rgba(217,119,87,.35); outline-offset: 2px; }
+    .notes { margin-top: 14px; }
+    .flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: 6px 0 14px; }
+    .state { min-width: 132px; padding: 13px 12px; border: 1.5px solid var(--g300); background: var(--paper); position: relative; }
+    .state:first-child { border-radius: 10px 0 0 10px; }
+    .state:last-child { border-radius: 0 10px 10px 0; }
+    .state + .state { border-left: 0; }
+    .state .num { color: var(--clay); font: 10px var(--mono); }
+    .state strong { display: block; font: 15px/1.2 var(--serif); margin-top: 7px; }
+    .state small { display: block; color: var(--g500); font-size: 11px; margin-top: 5px; }
+    .state.gate { background: #F4F6EE; border-color: #B9C6A6; }
+    .state.side { background: #F8EEE9; border-color: #E8B29D; }
+    .table-wrap { overflow-x: auto; margin-left: 50px; border: 1.5px solid var(--g300); border-radius: 12px; background: var(--paper); }
+    table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13px; }
+    th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--g200); }
+    th { background: var(--g100); color: var(--g700); font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 600; color: var(--slate); }
+    .tagline { display: inline-block; color: var(--clay-d); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+    .callout { border: 1.5px solid var(--g300); border-left: 4px solid var(--clay); background: var(--paper); padding: 15px 17px; border-radius: 10px; color: var(--g700); font-size: 14px; }
+    .callout strong { color: var(--slate); }
+    .feedback-bar { position: sticky; bottom: 14px; z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 14px; background: rgba(250,249,245,.94); border: 1.5px solid var(--g300); border-radius: 12px; box-shadow: 0 8px 25px rgba(20,20,19,.08); backdrop-filter: blur(10px); }
+    .feedback-bar span { color: var(--g700); font-size: 12px; }
+    button { border: 1.5px solid var(--slate); border-radius: 999px; background: var(--slate); color: var(--paper); cursor: pointer; padding: 9px 14px; font: 12px var(--mono); }
+    button.secondary { background: var(--paper); color: var(--slate); border-color: var(--g300); }
+    button:hover { background: var(--clay-d); border-color: var(--clay-d); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @media (max-width: 640px) { .wrap { padding: 0 18px 100px; } header.masthead { padding-top: 48px; } .table-wrap { margin-left: 0; } .decision-head { display: block; } .decision-id { display: block; margin-top: 7px; } .feedback-bar { align-items: flex-start; flex-direction: column; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="masthead">
+      <div class="eyebrow">School Core / architecture review / 24 Sep 2026</div>
+      <div class="hero-grid">
+        <div>
+          <h1>Before we build the <em>merge spine</em>.</h1>
+          <p class="intro">A decision document for the remaining golden-path choices. Select a direction, add context, then copy one reviewable response back to the agent. The contract stays in Bead <strong>school-core-qpq</strong>; this page is the human feedback surface.</p>
+          <div class="status-line" aria-label="Document status">
+            <span class="pill"><strong>STATUS</strong> proposed</span>
+            <span class="pill"><strong>BEAD</strong> school-core-qpq</span>
+            <span class="pill"><strong>INPUT</strong> 7 decisions</span>
+          </div>
+        </div>
+        <div class="hero-fig" aria-label="From scattered state to one confirmed path">
+          <div class="pane md">
+            <span class="tag">today</span>
+            <div class="l w90"></div><div class="l w75"></div><div class="l w60"></div><div class="l w82"></div><div class="l w70"></div><div class="l w50"></div>
+          </div>
+          <div class="pane html">
+            <span class="tag">golden path</span>
+            <div class="l w90"></div>
+            <div class="blk"></div>
+            <div class="row"><i class="bar b1"></i><i class="bar b2"></i><i class="bar b3"></i><i class="bar b4"></i></div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Document sections">
+      <a href="#decisions"><span class="n">01</span> Decision queue</a>
+      <a href="#state"><span class="n">02</span> State model</a>
+      <a href="#failures"><span class="n">03</span> Failure matrix</a>
+      <a href="#amendments"><span class="n">04</span> WDE amendments</a>
+      <a href="#feedback"><span class="n">05</span> Copy feedback</a>
+    </nav>
+
+    <main>
+      <section id="decisions">
+        <div class="sec-head"><span class="idx">01</span><h2>Decision queue</h2><span class="count">7 choices</span></div>
+        <p class="sec-intro">These are the policy choices the implementation agents should not guess. The recommended option is a starting point, not a decision.</p>
+
+        <article class="decision-card" data-decision="required-checks">
+          <div class="decision-head"><h3>Which GitHub checks are required?</h3><span class="decision-id">D-01</span></div>
+          <p>Missing checks must fail closed. Choose whether School Core names them explicitly or delegates to branch protection.</p>
+          <div class="recommendation"><strong>Recommended:</strong> use an explicit required-check list stored with the candidate policy, and fail if the list is empty or unavailable.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="required-checks" value="explicit-list" checked> Explicit required-check list <small>Best evidence and easiest to test.</small></label>
+            <label class="choice"><input type="radio" name="required-checks" value="branch-protection"> Trust GitHub branch protection <small>Less local policy, but weaker evidence detail.</small></label>
+            <label class="choice"><input type="radio" name="required-checks" value="hybrid"> Both <small>Most conservative; more configuration and failure modes.</small></label>
+          </fieldset>
+          <div class="notes"><label for="notes-required-checks"><span class="sr-only">Notes for required checks</span></label><textarea id="notes-required-checks" data-notes="required-checks" placeholder="Names, environments, or exceptions to add…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="approval-policy">
+          <div class="decision-head"><h3>What exactly can one human approval authorize?</h3><span class="decision-id">D-02</span></div>
+          <p>The approval is consumed atomically and must name one candidate and one exact head SHA.</p>
+          <div class="recommendation"><strong>Recommended:</strong> one configured human approval authorizes exactly one candidate SHA, with no reusable “approve the branch” wildcard.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="approval-policy" value="one-sha" checked> One approval → one exact SHA <small>Clearest replay and stale-head behavior.</small></label>
+            <label class="choice"><input type="radio" name="approval-policy" value="reviewer-set"> One approval from a configured reviewer set <small>Supports team policy; needs quorum rules.</small></label>
+            <label class="choice"><input type="radio" name="approval-policy" value="branch-wildcard"> Approve a branch until superseded <small>Fast, but unsafe when the head changes.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="approval-policy" placeholder="Reviewer roles, quorum, expiry, or revocation rules…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="artifact-policy">
+          <div class="decision-head"><h3>Are artifact-only PRs valid golden-path candidates?</h3><span class="decision-id">D-03</span></div>
+          <p>Some existing PR paths publish generated output or a captured patch rather than the exact code diff.</p>
+          <div class="recommendation"><strong>Recommended:</strong> reject artifact-only candidates from the code merge state machine; give artifacts a separate review-only terminal state.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="artifact-policy" value="separate" checked> Separate artifact path <small>Prevents an artifact PR from satisfying code merge proof.</small></label>
+            <label class="choice"><input type="radio" name="artifact-policy" value="same-path"> Allow them in the same path <small>Requires explicit artifact merge semantics.</small></label>
+            <label class="choice"><input type="radio" name="artifact-policy" value="code-only"> Code only <small>Simplest contract; generated artifacts need another workflow.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="artifact-policy" placeholder="Which artifact categories, if any, need review-only support?…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="merge-methods">
+          <div class="decision-head"><h3>Which merge methods are allowed initially?</h3><span class="decision-id">D-04</span></div>
+          <p>Each method needs a different machine-verifiable proof. The first implementation should avoid pretending they are equivalent.</p>
+          <div class="recommendation"><strong>Recommended:</strong> start with merge commit only; add squash, rebase, fast-forward, and merge queue one at a time with dedicated proof tests.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="merge-methods" value="merge-commit-only" checked> Merge commit only <small>Smallest proof surface and easiest recovery.</small></label>
+            <label class="choice"><input type="radio" name="merge-methods" value="merge-and-squash"> Merge commit + squash <small>Common policy; requires tree/patch equivalence.</small></label>
+            <label class="choice"><input type="radio" name="merge-methods" value="all-declared"> All declared methods <small>Broadest support; highest proof complexity.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="merge-methods" placeholder="Preferred production merge method and migration order…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="retention">
+          <div class="decision-head"><h3>How long should evidence remain durable?</h3><span class="decision-id">D-05</span></div>
+          <p>Evidence must outlive retries and incident review, but the activity log should not become an unbounded secret store.</p>
+          <div class="recommendation"><strong>Recommended:</strong> retain candidate, evidence, authorization, and operation records for 180 days; retain redacted summaries longer if needed.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="retention" value="180-days" checked> 180 days <small>Enough for quarterly audit and repair work.</small></label>
+            <label class="choice"><input type="radio" name="retention" value="90-days"> 90 days <small>Lower storage cost; weaker historical reconstruction.</small></label>
+            <label class="choice"><input type="radio" name="retention" value="one-year"> One year <small>Strong auditability; more retention and redaction work.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="retention" placeholder="Storage location, redaction policy, or deletion owner…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="authority">
+          <div class="decision-head"><h3>Who may invoke merge and closure?</h3><span class="decision-id">D-06</span></div>
+          <p>The current AgentMail poller runs with principal authority. The new coordinator should not inherit that authority accidentally.</p>
+          <div class="recommendation"><strong>Recommended:</strong> allow only an explicit repository-and-actor allowlist; the coordinator performs the write after approval verification.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="authority" value="allowlist" checked> Repository + actor allowlist <small>Explicit, auditable, and easy to revoke.</small></label>
+            <label class="choice"><input type="radio" name="authority" value="repo-only"> Any authenticated actor in the repository <small>Convenient; weaker separation of duties.</small></label>
+            <label class="choice"><input type="radio" name="authority" value="principal-only"> Principal service only <small>Strong central control; larger operational bottleneck.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="authority" placeholder="Actors, roles, service identities, or break-glass process…"></textarea></div>
+        </article>
+
+        <article class="decision-card" data-decision="out-of-band-close">
+          <div class="decision-head"><h3>What happens if a Bead is closed outside the coordinator?</h3><span class="decision-id">D-07</span></div>
+          <p>Beads is authoritative for closure, but a manual close must not silently certify that code merged.</p>
+          <div class="recommendation"><strong>Recommended:</strong> record an invariant violation, block finalization, and require an explicit reconciliation record; never treat the close as merge proof.</div>
+          <fieldset><legend>Choose one</legend>
+            <label class="choice"><input type="radio" name="out-of-band-close" value="block-reconcile" checked> Block and reconcile <small>Preserves the golden-path invariant.</small></label>
+            <label class="choice"><input type="radio" name="out-of-band-close" value="adopt-with-audit"> Adopt with audit warning <small>More available, but weakens closure semantics.</small></label>
+            <label class="choice"><input type="radio" name="out-of-band-close" value="manual-override"> Manual override <small>Useful for recovery; needs named authority and expiry.</small></label>
+          </fieldset>
+          <div class="notes"><textarea data-notes="out-of-band-close" placeholder="Reconciliation owner, override policy, and audit requirements…"></textarea></div>
+        </article>
+      </section>
+
+      <section id="state">
+        <div class="sec-head"><span class="idx">02</span><h2>State model under review</h2><span class="count">one path</span></div>
+        <p class="sec-intro">The happy path is linear. The feedback is about the policy choices around that path, not about replacing it with a dashboard scheduler.</p>
+        <div class="flow" aria-label="Candidate to closed state flow">
+          <div class="state"><span class="num">01</span><strong>candidate_created</strong><small>immutable identity</small></div>
+          <div class="state gate"><span class="num">02</span><strong>local_gate_passed</strong><small>exact SHA evidence</small></div>
+          <div class="state"><span class="num">03</span><strong>pr_open</strong><small>remote head matches</small></div>
+          <div class="state gate"><span class="num">04</span><strong>ci_passed</strong><small>required checks</small></div>
+          <div class="state side"><span class="num">05</span><strong>approved</strong><small>atomic one-time use</small></div>
+          <div class="state"><span class="num">06</span><strong>merge_requested</strong><small>journaled operation</small></div>
+          <div class="state gate"><span class="num">07</span><strong>merge_confirmed</strong><small>method-specific proof</small></div>
+          <div class="state side"><span class="num">08</span><strong>bead_closed</strong><small>only after merge</small></div>
+          <div class="state"><span class="num">09</span><strong>closed</strong><small>terminal</small></div>
+        </div>
+        <div class="callout"><strong>Non-happy paths are part of the model:</strong> rejected, fix_requested, superseded, cancelled, abandoned, stale, unknown, and failed must never be silently converted into success.</div>
+      </section>
+
+      <section id="failures">
+        <div class="sec-head"><span class="idx">03</span><h2>Failure matrix</h2><span class="count">fail closed</span></div>
+        <p class="sec-intro">A failure is safe when the system knows what it does not know and refuses to advance.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Situation</th><th>Contract response</th><th>Allowed next action</th></tr></thead>
+            <tbody>
+              <tr><td>New head after gate</td><td>Prior evidence becomes <code>stale</code>.</td><td>Create a new candidate and re-gate.</td></tr>
+              <tr><td>Base branch moves</td><td>Candidate is stale unless a new base policy is recorded.</td><td>Recreate or explicitly rebase, then re-run evidence.</td></tr>
+              <tr><td>Approval already consumed</td><td>CAS returns <code>already_consumed</code>.</td><td>Return the existing operation result; perform no write.</td></tr>
+              <tr><td>GitHub read timeout</td><td>Remote state is <code>unknown</code>.</td><td>Read-only reconciliation before any write.</td></tr>
+              <tr><td>Merge API timeout</td><td>Merge is <code>unknown</code>, not confirmed.</td><td>Re-read PR state and resulting commit.</td></tr>
+              <tr><td>Squash proof unavailable</td><td>Merge remains <code>unknown</code>.</td><td>Do not close the Bead.</td></tr>
+              <tr><td>Bead closed out of band</td><td>Record an invariant violation.</td><td>Block and require explicit reconciliation.</td></tr>
+              <tr><td>Branch owned by another candidate</td><td>Publication is <code>blocked</code>.</td><td>Never reset or overwrite the branch.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="amendments">
+        <div class="sec-head"><span class="idx">04</span><h2>WDE amendments</h2><span class="count">changes required</span></div>
+        <p class="sec-intro">The latest adversarial pass changed the contract in three ship-blocking ways. These are not optional polish.</p>
+        <div class="grid">
+          <article class="decision-card"><div class="decision-head"><h3>Atomic approval</h3><span class="decision-id">CRITICAL</span></div><p>Approval is a compare-and-set resource. Exactly one worker may consume it for one operation; duplicate delivery performs no external write.</p><div class="file"><span>approval_id + operation_id</span><span>single use →</span></div></article>
+          <article class="decision-card"><div class="decision-head"><h3>Merge proof</h3><span class="decision-id">CRITICAL</span></div><p>Merge commit, fast-forward, squash, rebase, and merge queue each require their own machine-verifiable proof. API success is not enough.</p><div class="file"><span>method + proof</span><span>confirm →</span></div></article>
+          <article class="decision-card"><div class="decision-head"><h3>Out-of-band close</h3><span class="decision-id">CRITICAL</span></div><p>A Bead closed outside the coordinator is an invariant violation. It cannot be treated as evidence that code merged.</p><div class="file"><span>closed ≠ merged</span><span>reconcile →</span></div></article>
+          <article class="decision-card"><div class="decision-head"><h3>Failure paths</h3><span class="decision-id">HIGH</span></div><p>Reject, fix, supersede, cancel, and abandoned need explicit transitions so old candidates cannot masquerade as current work.</p><div class="file"><span>new head → new candidate</span><span>explicit →</span></div></article>
+        </div>
+      </section>
+
+      <section id="feedback">
+        <div class="sec-head"><span class="idx">05</span><h2>Copy your feedback</h2><span class="count">ready for handoff</span></div>
+        <p class="sec-intro">Choose the options above, add any notes, then copy a compact Markdown response. Nothing is sent anywhere; the button only copies text to your clipboard.</p>
+        <div class="feedback-bar" aria-live="polite">
+          <span id="feedback-status"><strong>0 / 7</strong> decisions touched</span>
+          <div><button type="button" class="secondary" id="select-defaults">Reset to recommendations</button> <button type="button" id="copy-feedback">Copy feedback</button></div>
+        </div>
+      </section>
+    </main>
+
+    <footer><span class="k">Make the safe path the easy path.</span><span>Source: Bead <strong>school-core-qpq</strong> · feedback stays local until copied</span></footer>
+  </div>
+
+  <script>
+    (function () {
+      const names = ['required-checks', 'approval-policy', 'artifact-policy', 'merge-methods', 'retention', 'authority', 'out-of-band-close'];
+      const status = document.getElementById('feedback-status');
+      function updateStatus() {
+        const touched = names.filter(name => {
+          const radio = document.querySelector('input[name="' + name + '"]:checked');
+          const note = document.querySelector('[data-notes="' + name + '"]');
+          return (radio && !radio.defaultChecked) || (note && note.value.trim());
+        }).length;
+        status.innerHTML = '<strong>' + touched + ' / 7</strong> decisions touched';
+      }
+      document.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', updateStatus));
+      document.getElementById('select-defaults').addEventListener('click', function () {
+        document.querySelectorAll('input[type="radio"]').forEach(radio => { radio.checked = radio.defaultChecked; });
+        document.querySelectorAll('textarea').forEach(note => { note.value = ''; });
+        updateStatus();
+      });
+      document.getElementById('copy-feedback').addEventListener('click', async function () {
+        const lines = ['# School Core merge-state contract feedback', '', 'Reviewed: school-core-qpq', ''];
+        document.querySelectorAll('.decision-card[data-decision]').forEach(card => {
+          const name = card.dataset.decision;
+          const selected = card.querySelector('input:checked');
+          const note = card.querySelector('[data-notes]');
+          lines.push('## ' + card.querySelector('h3').textContent);
+          lines.push('Choice: ' + (selected ? selected.value : 'not selected'));
+          if (note && note.value.trim()) lines.push('Notes: ' + note.value.trim());
+          lines.push('');
+        });
+        const output = lines.join('\n');
+        try {
+          await navigator.clipboard.writeText(output);
+          status.innerHTML = '<strong>Copied.</strong> Paste it into the Bead or agent handoff.';
+        } catch (_) {
+          const helper = document.createElement('textarea');
+          helper.value = output;
+          document.body.appendChild(helper);
+          helper.select();
+          document.execCommand('copy');
+          helper.remove();
+          status.innerHTML = '<strong>Copied.</strong> Paste it into the Bead or agent handoff.';
+        }
+      });
+      updateStatus();
+    }());
+  </script>
+</body>
+</html>

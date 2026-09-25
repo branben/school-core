@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>School Core — The tweakable merge-spine plan</title>
+  <style>
+    :root { --ivory: #FAF9F5; --paper: #FFFFFF; --slate: #141413; --clay: #D97757; --clay-d: #B85C3E; --oat: #E3DACC; --olive: #788C5D; --g100: #F0EEE6; --g200: #E6E3DA; --g300: #D1CFC5; --g500: #87867F; --g700: #3D3D3A; --serif: ui-serif, Georgia, "Times New Roman", Times, serif; --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0px; background: var(--ivory); color: var(--slate); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    .wrap { max-width: 980px; margin: 0px auto; padding: 0px 24px 100px; }
+    @media (max-width: 480px) { .wrap { padding: 0px 16px 80px; } }
+    header.page-head { padding: 56px 0px 40px; position: relative; }
+    .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g500); margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+    .eyebrow::before { content: ""; width: 24px; height: 1.5px; background: var(--clay); flex-shrink: 0; }
+    a.back { position: absolute; top: 60px; right: 0px; font-family: var(--mono); font-size: 12px; color: var(--g500); text-decoration: none; }
+    a.back:hover { color: var(--clay); }
+    @media (max-width: 640px) { a.back { position: static; display: inline-block; margin-bottom: 16px; } }
+    h1 { font-family: var(--serif); font-weight: 500; font-size: clamp(32px, 5vw, 46px); line-height: 1.08; letter-spacing: -0.018em; margin: 0px 0px 14px; }
+    .lede { font-size: 16.5px; color: var(--g700); max-width: 640px; margin: 0px 0px 32px; }
+    .prompt-card { background: var(--paper); border: 1.5px solid var(--g300); border-radius: 14px; padding: 22px 26px 24px; position: relative; }
+    .prompt-card .p-label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--clay); margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+    .prompt-card .p-label::before { content: ""; width: 24px; height: 1.5px; background: var(--clay); }
+    .prompt-card blockquote { margin: 0px; font-family: var(--serif); font-style: italic; font-size: 17.5px; line-height: 1.5; color: var(--slate); max-width: 62ch; }
+    button.copy-btn { position: absolute; top: 18px; right: 20px; font-family: var(--mono); font-size: 11.5px; background: var(--g100); color: var(--g700); border: 1.5px solid var(--g300); border-radius: 8px; padding: 5px 12px; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+    button.copy-btn:hover { border-color: var(--clay); color: var(--clay-d); }
+    button.copy-btn.copied { background: var(--olive); border-color: var(--olive); color: rgb(255, 255, 255); }
+    @media (max-width: 640px) { button.copy-btn { position: static; margin-top: 14px; } }
+    .produced { display: flex; align-items: center; gap: 16px; margin: 48px 0px 36px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g500); white-space: nowrap; }
+    .produced::before, .produced::after { content: ""; height: 1px; background: var(--g300); flex: 1 1 0%; }
+    .artifact { background: var(--paper); border: 1.5px solid var(--g300); border-radius: 14px; padding: 34px 38px 40px; }
+    @media (max-width: 640px) { .artifact { padding: 22px 18px 28px; } }
+    .artifact h2.plan-title { font-family: var(--serif); font-weight: 500; font-size: clamp(24px, 3.6vw, 32px); letter-spacing: -0.015em; margin: 0px 0px 4px; }
+    .plan-sub { font-size: 14px; color: var(--g500); margin: 0px 0px 20px; }
+    .plan-sub code { font-family: var(--mono); font-size: 12.5px; background: var(--g100); border-radius: 5px; padding: 1px 6px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 0px 0px 22px; }
+    .chip { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--g700); background: var(--g100); border: 1.5px solid var(--g200); border-radius: 999px; padding: 6px 16px; }
+    .chip .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--g500); }
+    .chip .v { font-weight: 600; color: var(--slate); }
+    .chip .v.risk { color: var(--clay-d); }
+    .sort-banner { background: var(--oat); border: 1.5px solid var(--g300); border-radius: 12px; padding: 16px 20px; margin: 0px 0px 40px; font-size: 14.5px; color: var(--g700); display: flex; gap: 14px; align-items: flex-start; }
+    .sort-banner .glyph { font-family: var(--mono); font-size: 15px; line-height: 1.35; color: var(--clay-d); white-space: pre; flex-shrink: 0; padding-top: 1px; }
+    .sort-banner strong { color: var(--slate); }
+    .plan-sec { margin: 0px 0px 46px; }
+    .plan-sec:last-of-type { margin-bottom: 0px; }
+    .sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+    .sec-letter { font-family: var(--mono); font-size: 13px; font-weight: 600; background: var(--slate); color: var(--ivory); width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sec-letter.soft { background: var(--g300); color: var(--g700); }
+    .sec-head h3 { font-family: var(--serif); font-weight: 500; font-size: 22px; letter-spacing: -0.01em; margin: 0px; }
+    .sec-head .likelihood { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border-radius: 6px; padding: 3px 9px; }
+    .likelihood.hi { background: var(--clay); color: rgb(255, 255, 255); }
+    .likelihood.lo { background: var(--g100); color: var(--g500); border: 1px solid var(--g200); }
+    .sec-intro { font-size: 14px; color: var(--g500); margin: 0px 0px 22px; max-width: 66ch; }
+    h4.sub { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--g500); margin: 34px 0px 14px; display: flex; align-items: center; gap: 10px; }
+    h4.sub::before { content: ""; width: 16px; height: 1.5px; background: var(--clay); }
+    h4.sub:first-of-type { margin-top: 0px; }
+    .schema-wrap { display: grid; grid-template-columns: minmax(0px, 340px) 1fr; gap: 22px; align-items: start; }
+    @media (max-width: 720px) { .schema-wrap { grid-template-columns: 1fr; } }
+    .table-box { border: 1.5px solid var(--slate); border-radius: 10px; overflow: hidden; font-family: var(--mono); font-size: 12.5px; background: var(--paper); }
+    .table-box .t-name { background: var(--slate); color: var(--ivory); padding: 8px 14px; font-size: 12.5px; letter-spacing: 0.03em; }
+    .table-box .t-name .new-badge { float: right; background: var(--olive); color: rgb(255, 255, 255); font-size: 9.5px; letter-spacing: 0.1em; border-radius: 4px; padding: 2px 6px; margin-top: 1px; }
+    .col-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 14px; border-top: 1px solid var(--g200); color: var(--g700); }
+    .col-row .cn { color: var(--slate); }
+    .col-row .ct { color: var(--g500); white-space: nowrap; }
+    .col-row.flag { background: rgb(251, 241, 236); border-left: 3px solid var(--clay); padding-left: 11px; }
+    .col-row.flag .cn { color: var(--clay-d); font-weight: 600; }
+    .col-row.alt-note { background: var(--g100); color: var(--g500); font-style: italic; border-left: 3px solid var(--g300); padding-left: 11px; display: block; }
+    .fk { color: var(--g500); font-size: 11px; }
+    [data-variant="main"] .v-alt { display: none; }
+    [data-variant="alt"] .v-main { display: none; }
+    .choice-card { border: 1.5px solid var(--g300); border-radius: 12px; padding: 16px 18px 18px; margin-bottom: 14px; background: var(--ivory); }
+    .choice-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .choice-flag { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; background: var(--clay); color: rgb(255, 255, 255); border-radius: 6px; padding: 3px 8px; }
+    .choice-head .ch-title { font-weight: 600; font-size: 14.5px; }
+    button.alt-toggle { margin-left: auto; font-family: var(--mono); font-size: 11.5px; background: var(--paper); color: var(--clay-d); border: 1.5px solid var(--clay); border-radius: 8px; padding: 5px 12px; cursor: pointer; transition: background 0.15s; }
+    button.alt-toggle:hover { background: rgb(251, 241, 236); }
+    @media (max-width: 560px) { button.alt-toggle { margin-left: 0px; } }
+    .choice-body { font-size: 13.5px; color: var(--g700); }
+    .choice-body .pick-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--olive); margin-bottom: 3px; }
+    .choice-body .pick-label.alt-l { color: var(--clay-d); }
+    .choice-body ul { margin: 8px 0px 0px; padding-left: 18px; }
+    .choice-body li { margin-bottom: 4px; }
+    .choice-body li::marker { color: var(--g500); }
+    .tradeoff { color: var(--g500); font-size: 12.5px; margin-top: 8px; }
+    .tradeoff strong { color: var(--clay-d); font-weight: 600; }
+    .code-grid { display: grid; grid-template-columns: minmax(0px, 1fr) 230px; gap: 18px; align-items: start; margin-bottom: 22px; }
+    @media (max-width: 720px) { .code-grid { grid-template-columns: 1fr; } }
+    .code-block { background: var(--slate); border-radius: 10px; padding: 16px 0px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: var(--g200); }
+    .code-block .cl-line { padding: 0px 18px; white-space: pre; }
+    .code-block .cl-line.flagged { background: rgba(217, 119, 87, 0.16); border-left: 3px solid var(--clay); padding-left: 15px; }
+    .code-block .cm { color: rgb(138, 138, 130); }
+    .code-block .kw { color: rgb(232, 180, 160); }
+    .code-block .ty { color: rgb(199, 203, 163); }
+    .code-block .st { color: rgb(217, 199, 167); }
+    .code-block .fnum { display: inline-block; font-size: 10px; font-weight: 700; background: var(--clay); color: rgb(255, 255, 255); border-radius: 50%; width: 15px; height: 15px; line-height: 15px; text-align: center; margin-left: 10px; vertical-align: 1px; }
+    .margin-notes { display: flex; flex-direction: column; gap: 12px; }
+    .m-note { font-size: 12.5px; color: var(--g700); background: var(--g100); border: 1px solid var(--g200); border-radius: 10px; padding: 10px 12px; }
+    .m-note .n-num { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--clay); color: rgb(255, 255, 255); border-radius: 50%; width: 15px; height: 15px; line-height: 15px; text-align: center; margin-right: 7px; vertical-align: 1px; }
+    .m-note code { font-family: var(--mono); font-size: 11.5px; background: var(--paper); border: 1px solid var(--g200); border-radius: 4px; padding: 0px 4px; }
+    .flow-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0px; margin-bottom: 8px; }
+    @media (max-width: 720px) { .flow-strip { grid-template-columns: 1fr 1fr; gap: 18px 0px; } }
+    @media (max-width: 420px) { .flow-strip { grid-template-columns: 1fr; } }
+    .flow-step { position: relative; padding: 0px 18px 0px 0px; }
+    .flow-step + .flow-step { padding-left: 18px; }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; right: -1px; top: 34px; color: var(--g500); font-size: 15px; transform: translateX(50%); }
+    @media (max-width: 720px) { .flow-step:nth-child(2)::after { display: none; } .flow-step { padding: 0px 14px 0px 0px; } }
+    @media (max-width: 420px) { .flow-step::after { display: none !important; } .flow-step { padding: 0px; } }
+    .fs-num { font-family: var(--mono); font-size: 11px; color: var(--g500); margin-bottom: 6px; }
+    .fs-card { border: 1.5px solid var(--g300); border-radius: 10px; background: var(--ivory); padding: 12px 13px; min-height: 108px; }
+    .fs-card.weak { border: 1.5px dashed var(--clay); background: rgb(251, 241, 236); }
+    .fs-card .fs-t { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+    .fs-card .fs-d { font-size: 12px; color: var(--g500); line-height: 1.45; }
+    .weak-tag { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; background: var(--clay); color: rgb(255, 255, 255); border-radius: 5px; padding: 2px 7px; margin-bottom: 6px; }
+    .flow-note { font-size: 13px; color: var(--g700); background: var(--g100); border-left: 3px solid var(--clay); border-radius: 0px 8px 8px 0px; padding: 10px 14px; margin-top: 16px; max-width: 64ch; }
+    .seq { list-style: none; margin: 0px; padding: 0px; }
+    .seq li { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: baseline; padding: 9px 0px; border-bottom: 1px solid var(--g200); font-size: 14px; }
+    .seq li:last-child { border-bottom-width: medium; border-bottom-style: none; border-bottom-color: currentcolor; }
+    .seq .s-num { font-family: var(--mono); font-size: 12px; color: var(--paper); background: var(--g500); border-radius: 6px; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; position: relative; top: 3px; }
+    .seq .s-body strong { font-weight: 600; }
+    .seq .s-body .dep { color: var(--g500); font-size: 12.5px; }
+    .seq .s-est { font-family: var(--mono); font-size: 12px; color: var(--g500); white-space: nowrap; }
+    @media (max-width: 480px) { .seq li { grid-template-columns: 30px 1fr; } .seq .s-est { grid-column: 2; } }
+    details.mech { border: 1.5px solid var(--g300); border-radius: 12px; background: var(--g100); }
+    details.mech summary { cursor: pointer; padding: 14px 18px; font-size: 14px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 10px; }
+    details.mech summary::-webkit-details-marker { display: none; }
+    details.mech summary::before { content: "▸"; color: var(--g500); font-size: 13px; transition: transform 0.15s; display: inline-block; }
+    details.mech[open] summary::before { transform: rotate(90deg); }
+    details.mech summary .count { font-family: var(--mono); font-size: 11px; color: var(--g500); font-weight: 400; margin-left: auto; }
+    .mech-list { list-style: none; margin: 0px; padding: 4px 18px 16px 40px; }
+    .mech-list li { font-size: 13.5px; color: var(--g700); padding: 6px 0px; border-top: 1px solid var(--g200); }
+    .mech-list li:first-child { border-top-width: medium; border-top-style: none; border-top-color: currentcolor; }
+    .mech-list code { font-family: var(--mono); font-size: 12px; background: var(--paper); border: 1px solid var(--g200); border-radius: 4px; padding: 0px 5px; }
+    .mech-list .why { color: var(--g500); font-size: 12px; }
+    .tweak-card { margin-top: 44px; border: 1.5px solid var(--slate); border-radius: 14px; background: var(--ivory); padding: 22px 24px 24px; }
+    .tweak-card h3 { font-family: var(--serif); font-weight: 500; font-size: 21px; letter-spacing: -0.01em; margin: 0px 0px 4px; }
+    .tweak-card > p { font-size: 13.5px; color: var(--g500); margin: 0px 0px 16px; }
+    .tweak-row { display: flex; gap: 12px; align-items: flex-start; background: var(--paper); border: 1.5px solid var(--g300); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .tweak-row:last-child { margin-bottom: 0px; }
+    .tweak-row .t-num { font-family: var(--mono); font-size: 11px; font-weight: 700; background: var(--oat); color: var(--g700); border-radius: 6px; padding: 2px 8px; flex-shrink: 0; margin-top: 2px; }
+    .tweak-row .t-body { font-size: 13.5px; color: var(--g700); }
+    .tweak-row .t-body .t-q { font-family: var(--serif); font-style: italic; color: var(--slate); }
+    .tweak-row button.copy-btn { position: static; flex-shrink: 0; margin: 0px 0px 0px auto; }
+    @media (max-width: 560px) { .tweak-row { flex-wrap: wrap; } .tweak-row button.copy-btn { margin-left: 40px; } }
+    footer.site-foot { margin-top: 56px; padding-top: 24px; border-top: 1.5px solid var(--g300); font-size: 13.5px; color: var(--g500); }
+    footer.site-foot a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+    footer.site-foot a:hover { text-decoration-color: var(--clay); }
+    .status-note { background: #F4F6EE; border-left: 3px solid var(--olive); border-radius: 0 8px 8px 0; padding: 10px 14px; color: var(--g700); font-size: 13px; margin: 0 0 22px; }
+    .status-note strong { color: var(--slate); }
+    .proof-table { display: grid; grid-template-columns: 150px 1fr; gap: 0; border: 1.5px solid var(--g300); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+    .proof-table > div { padding: 9px 12px; border-top: 1px solid var(--g200); font-size: 12.5px; color: var(--g700); }
+    .proof-table > div:nth-child(-n+2) { border-top: 0; background: var(--g100); font: 11px var(--mono); color: var(--g500); text-transform: uppercase; letter-spacing: .06em; }
+    .proof-table > div:nth-child(odd) { border-right: 1px solid var(--g200); font-weight: 600; color: var(--slate); }
+    @media (max-width: 560px) { .proof-table { grid-template-columns: 110px 1fr; } }
+    .feedback-status { font: 11px var(--mono); color: var(--g500); margin-top: 12px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page-head">
+      <div class="eyebrow">Know your unknowns · Pre-implementation</div>
+      <a class="back" href="https://thariqs.github.io/html-effectiveness/unknowns/index.html#pre">← all pre-implementation demos</a>
+      <h1>The tweakable merge-spine plan</h1>
+      <p class="lede">The intervention is chosen: make School Core's candidate → PR → exact-SHA approval/CI → merge → Beads closure path safe. This plan is sorted by what is most likely to change, not by execution order. Read the judgment calls first; the mechanical work can wait.</p>
+      <div class="status-note"><strong>BLUF:</strong> approve the contract, then build one coordinator that refuses to merge or close anything unless the exact candidate SHA has current evidence. The first release should support merge commits only; expand merge methods only after the proof is boring.</div>
+      <div class="prompt-card">
+        <div class="p-label">ELI10</div>
+        <blockquote>Think of the merge spine like a luggage tag. Every change gets a tag with its exact fingerprint. Tests, PR checks, approval, merge, and Beads closure must all show the same fingerprint. If the fingerprint changes, the old approval is a stale note—not permission.</blockquote>
+      </div>
+      <div class="prompt-card">
+        <div class="p-label">What Claude produced</div>
+        <blockquote>“Keep the plan easy to revise: make the state contract explicit, prove the exact candidate, and make every external write idempotent before replacing the old approval shortcut.”</blockquote>
+        <button class="copy-btn" data-copy="Keep the plan easy to revise: make the state contract explicit, prove the exact candidate, and make every external write idempotent before replacing the old approval shortcut.">copy</button>
+      </div>
+    </header>
+
+    <div class="produced">Implementation plan</div>
+    <main class="artifact">
+      <h2 class="plan-title">School Core merge spine</h2>
+      <p class="plan-sub">Safe candidate publication and closure · Bead <code>school-core-qpq</code> · downstream slices <code>school-core-4be</code> → <code>school-core-4ck</code></p>
+      <div class="chips">
+        <span class="chip"><span class="k">Scope</span><span class="v">9 Beads</span></span>
+        <span class="chip"><span class="k">Primary risk</span><span class="v risk">false closure</span></span>
+        <span class="chip"><span class="k">Review mode</span><span class="v">tweak before build</span></span>
+        <span class="chip"><span class="k">State</span><span class="v">WDE changes required</span></span>
+      </div>
+      <div class="sort-banner"><span class="glyph">↑ tweak<br>↓ trust</span><span><strong>Read A before B.</strong> The first section contains the decisions most likely to change. Section B is the safe execution order. Section C is the mechanical work that should not drive the design.</span></div>
+
+      <section class="plan-sec" id="decisions">
+        <div class="sec-head"><span class="sec-letter">A</span><h3>Decisions you'll probably want to change</h3><span class="likelihood hi">High tweak likelihood</span></div>
+        <p class="sec-intro">The recommendations below reflect your approval of the prior review. Toggle an alternative only if you want to change the contract before implementation starts.</p>
+
+        <h4 class="sub">A1 · Approval state — atomic CAS, not a boolean read</h4>
+        <div class="schema-wrap">
+          <div class="table-box">
+            <div class="t-name">approval <span class="new-badge">single-use</span></div>
+            <div class="col-row"><span class="cn">approval_id</span><span class="ct">uuid</span></div>
+            <div class="col-row"><span class="cn">candidate_id</span><span class="ct">fk</span></div>
+            <div class="col-row flag"><span class="cn">head_sha</span><span class="ct">exact</span></div>
+            <div class="col-row"><span class="cn">state</span><span class="ct">issued → consumed</span></div>
+            <div class="col-row"><span class="cn">operation_id</span><span class="ct">fk</span></div>
+            <div class="col-row alt-note">Only current, unconsumed approval may authorize one merge operation.</div>
+          </div>
+          <div>
+            <div class="choice-card" data-variant="main" data-choice="a1">
+              <div class="choice-head"><span class="choice-flag">PLAN'S PICK</span><span class="ch-title">Compare-and-set consumption</span><button class="alt-toggle" data-target="a1">show alternative</button></div>
+              <div class="choice-body v-main">
+                <div class="pick-label">The boundary</div>
+                <p>Approval changes from <code>issued</code> to <code>consumed</code> in one atomic operation with the merge reservation. Exactly one worker wins; every loser performs no external write.</p>
+                <p class="tradeoff"><strong>Cost:</strong> the state store needs a real transaction or compare-and-set primitive. <strong>Benefit:</strong> duplicate delivery and concurrent workers cannot approve twice.</p>
+                <p class="tradeoff">Pick this if: replay safety is non-negotiable. One line to change it: “use a lease instead of CAS.”</p>
+              </div>
+              <div class="choice-body v-alt">
+                <div class="pick-label alt-l">Alternative</div>
+                <p>Use a short-lived coordinator lease and a consumed timestamp. This is easier to retrofit onto a simple file store, but recovery after a crashed worker is harder and the lease is not the same thing as durable single-use authorization.</p>
+                <p class="tradeoff"><strong>Cost:</strong> more reconciliation and expiry logic. <strong>Benefit:</strong> less demanding storage primitive.</p>
+              </div>
+            </div>
+            <div class="code-grid">
+              <div class="code-block" aria-label="Atomic approval pseudo-code">
+                <div class="cl-line cm">// exactly one worker may proceed</div>
+                <div class="cl-line"><span class="kw">UPDATE</span> approval</div>
+                <div class="cl-line"><span class="kw">SET</span> state = <span class="st">'consumed'</span>,</div>
+                <div class="cl-line">    operation_id = ?</div>
+                <div class="cl-line flagged"><span class="kw">WHERE</span> approval_id = ?</div>
+                <div class="cl-line flagged"><span class="kw">AND</span> state = <span class="st">'issued'</span></div>
+                <div class="cl-line flagged"><span class="kw">AND</span> candidate_id = ?</div>
+                <div class="cl-line flagged"><span class="kw">AND</span> head_sha = ?</div>
+              </div>
+              <div class="margin-notes">
+                <div class="m-note"><span class="n-num">1</span><code>candidate_id + head_sha</code> prevents wildcard approval.</div>
+                <div class="m-note"><span class="n-num">2</span><code>operation_id</code> makes a retry resume one operation.</div>
+                <div class="m-note"><span class="n-num">3</span>Zero updated rows means conflict; never fall back to a second write.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h4 class="sub">A2 · Merge proof — one method first</h4>
+        <div class="choice-card" data-variant="main" data-choice="a2">
+          <div class="choice-head"><span class="choice-flag">PLAN'S PICK</span><span class="ch-title">Merge commit only</span><button class="alt-toggle" data-target="a2">show alternative</button></div>
+          <div class="choice-body v-main">
+            <div class="pick-label">The boundary</div>
+            <p>Start with a true merge commit. Require the PR to report merged, the merge commit to exist remotely, the approved head to be an ancestor, and the first parent to equal the recorded base.</p>
+            <p class="tradeoff"><strong>Cost:</strong> teams using squash or rebase need a later slice. <strong>Benefit:</strong> the proof is direct and the first coordinator has one merge semantics to test.</p>
+            <p class="tradeoff">Pick this if: correctness beats breadth for the first production path. One line to change it: “support squash too.”</p>
+          </div>
+          <div class="choice-body v-alt">
+            <div class="pick-label alt-l">Alternative</div>
+            <p>Support merge commit and squash from the first release. Squash requires the first parent/base plus exact tree or patch equivalence; the approved head is not an ancestor and must not be treated as one.</p>
+            <p class="tradeoff"><strong>Cost:</strong> more proof logic and test fixtures. <strong>Benefit:</strong> matches common repository policy sooner.</p>
+          </div>
+        </div>
+        <div class="proof-table" aria-label="Merge method proof matrix">
+          <div>Method</div><div>Required proof</div>
+          <div>Merge commit</div><div>Remote merged state + approved head ancestor + recorded base parent.</div>
+          <div>Fast-forward</div><div>Remote base ref equals approved head; no unexpected commits.</div>
+          <div>Squash</div><div>Remote merged state + first parent/base + exact tree or patch equivalence.</div>
+          <div>Rebase</div><div>Final remote sequence has exact patch equivalence and provider metadata.</div>
+          <div>Queue</div><div>Provider completion event + strongest available machine proof; otherwise unknown.</div>
+        </div>
+
+        <h4 class="sub">A3 · Authority and out-of-band closure</h4>
+        <div class="choice-card" data-variant="main" data-choice="a3">
+          <div class="choice-head"><span class="choice-flag">PLAN'S PICK</span><span class="ch-title">Coordinator-only writes + reconciliation</span><button class="alt-toggle" data-target="a3">show alternative</button></div>
+          <div class="choice-body v-main">
+            <div class="pick-label">The boundary</div>
+            <p>Only the coordinator may consume approval, request merge, and close the Bead. A close performed by an older path or a human is recorded as an invariant violation and blocks finalization until reconciled.</p>
+            <p class="tradeoff"><strong>Cost:</strong> recovery requires an explicit reconciliation workflow. <strong>Benefit:</strong> no legacy shortcut can silently certify a merge.</p>
+            <p class="tradeoff">Pick this if: Beads closure is a result, not an authorization. One line to change it: “allow a named manual override.”</p>
+          </div>
+          <div class="choice-body v-alt">
+            <div class="pick-label alt-l">Alternative</div>
+            <p>Adopt an out-of-band close with an audit warning and let a later merge confirmation repair the candidate record. This improves emergency throughput but makes “closed” temporarily ambiguous.</p>
+            <p class="tradeoff"><strong>Cost:</strong> weaker invariant. <strong>Benefit:</strong> humans can unblock a stuck issue without a special tool.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="plan-sec" id="sequencing">
+        <div class="sec-head"><span class="sec-letter">B</span><h3>Sequencing</h3><span class="likelihood lo">Execution order</span></div>
+        <p class="sec-intro">This is the order I would build it in. Each step leaves a testable seam. The two publication/gate slices can run in parallel after the identity contract exists.</p>
+        <div class="flow-strip" aria-label="High-level execution flow">
+          <div class="flow-step"><div class="fs-num">01</div><div class="fs-card"><div class="fs-t">Contract + journal</div><div class="fs-d">CAS, state names, failure dispositions.</div></div></div>
+          <div class="flow-step"><div class="fs-num">02</div><div class="fs-card"><div class="fs-t">Candidate identity</div><div class="fs-d">SHA, base, branch ownership, diff digest.</div></div></div>
+          <div class="flow-step"><div class="fs-num">03</div><div class="fs-card weak"><span class="weak-tag">parallel</span><div class="fs-t">Gate + PR</div><div class="fs-d">Local evidence and exact candidate publication.</div></div></div>
+          <div class="flow-step"><div class="fs-num">04</div><div class="fs-card"><div class="fs-t">Verify + merge</div><div class="fs-d">CI, approval, method proof, closure.</div></div></div>
+        </div>
+        <p class="flow-note"><strong>Why step 3 is weak:</strong> the current PR helper can publish response-derived artifacts instead of the exact candidate diff. That is why PR publication must be treated as a safety boundary, not a convenience adapter.</p>
+        <ol class="seq">
+          <li><span class="s-num">1</span><span class="s-body"><strong>Approve the contract and implement shared state primitives.</strong> <span class="dep">Bead: school-core-qpq · acceptance, CAS, journal, failure dispositions</span></span><span class="s-est">gate</span></li>
+          <li><span class="s-num">2</span><span class="s-body"><strong>Create immutable candidate identity and branch ownership.</strong> <span class="dep">Bead: school-core-4be · depends on qpq</span></span><span class="s-est">1 slice</span></li>
+          <li><span class="s-num">3</span><span class="s-body"><strong>Bind local no-mistakes evidence to the candidate.</strong> <span class="dep">Bead: school-core-dx7 · parallel after 4be</span></span><span class="s-est">parallel</span></li>
+          <li><span class="s-num">4</span><span class="s-body"><strong>Publish the exact candidate through a real PR.</strong> <span class="dep">Bead: school-core-4f4 · parallel after 4be</span></span><span class="s-est">parallel</span></li>
+          <li><span class="s-num">5</span><span class="s-body"><strong>Verify exact-SHA CI and human approval.</strong> <span class="dep">Bead: school-core-0l2 · depends on dx7 + 4f4</span></span><span class="s-est">gate</span></li>
+          <li><span class="s-num">6</span><span class="s-body"><strong>Implement durable merge confirmation and Beads closure.</strong> <span class="dep">Bead: school-core-5xw · method-specific proof + journal</span></span><span class="s-est">core</span></li>
+          <li><span class="s-num">7</span><span class="s-body"><strong>Replace /approve and project state to the board.</strong> <span class="dep">Beads: school-core-4ck + school-core-6of · after coordinator</span></span><span class="s-est">cutover</span></li>
+        </ol>
+      </section>
+
+      <section class="plan-sec" id="mechanical">
+        <div class="sec-head"><span class="sec-letter">C</span><h3>Mechanical work (trust me)</h3><span class="likelihood lo">Low judgment</span></div>
+        <p class="sec-intro">These are the pieces that should be boring once the contract is approved. They are listed so the plan does not hide them inside the high-risk slices.</p>
+        <details class="mech" open>
+          <summary>Implementation and verification chores <span class="count">9 tasks</span></summary>
+          <ul class="mech-list">
+            <li><code>candidate_id</code> generation and storage adapter <span class="why">— deterministic identity, no overwrite.</span></li>
+            <li><code>operation_id</code> journal and replay tests <span class="why">— duplicate and crash recovery.</span></li>
+            <li>Fake GitHub client for PR, check, approval, and merge responses <span class="why">— no live mutation in unit tests.</span></li>
+            <li>Remote graph/tree/patch proof helpers <span class="why">— method-specific merge confirmation.</span></li>
+            <li>Evidence redaction and bounded-output helper <span class="why">— safe timeline and PR persistence.</span></li>
+            <li>Lifecycle mapping table update <span class="why">— resolved/success and legacy states.</span></li>
+            <li>Read-only board/API projection fields <span class="why">— candidate, evidence, and uncertainty.</span></li>
+            <li>Dry-run mode for the coordinator <span class="why">— operator rehearsal without writes.</span></li>
+            <li>End-to-end fake-GitHub test <span class="why">— candidate through Beads closure.</span></li>
+          </ul>
+        </details>
+      </section>
+
+      <div class="status-note"><strong>Current decision:</strong> use the recommended paths in A1–A3. The remaining work is implementation, not more policy invention. If a later agent discovers a contradiction, it should record a deviation and stop at the affected boundary rather than silently choosing a new interpretation.</div>
+
+      <section class="tweak-card">
+        <h3>Tweak these three things</h3>
+        <p>The highest-leverage replies you could send. Copy one, edit it, and send it back if the contract should change.</p>
+        <div class="tweak-row"><span class="t-num">①</span><span class="t-body"><span class="t-q">“Use a lease instead of atomic CAS for approval consumption.”</span><br><span class="tradeoff">Only if the state store cannot provide a transaction or compare-and-set primitive.</span></span><button class="copy-btn" data-copy="Use a lease instead of atomic CAS for approval consumption.">copy</button></div>
+        <div class="tweak-row"><span class="t-num">②</span><span class="t-body"><span class="t-q">“Support squash merge in the first production path.”</span><br><span class="tradeoff">Requires exact tree or patch equivalence because the approved head is not an ancestor.</span></span><button class="copy-btn" data-copy="Support squash merge in the first production path; require exact tree or patch equivalence.">copy</button></div>
+        <div class="tweak-row"><span class="t-num">③</span><span class="t-body"><span class="t-q">“Allow a named manual override when a Bead is closed out of band.”</span><br><span class="tradeoff">Define the named authority, expiry, and audit record before enabling it.</span></span><button class="copy-btn" data-copy="Allow a named manual override when a Bead is closed out of band; define authority, expiry, and audit first.">copy</button></div>
+        <div class="feedback-status" id="copy-status">Copy a tweak above if the plan needs revision.</div>
+      </section>
+    </main>
+    <footer class="site-foot">School Core · source contract: <a href="https://thariqs.github.io/html-effectiveness/unknowns/08-implementation-plan.html">the tweakable plan example</a> · feedback stays local until sent</footer>
+  </div>
+  <script>
+    (function () {
+      function copy(text, button) {
+        function done() { button.textContent = 'copied'; button.classList.add('copied'); setTimeout(function () { button.textContent = 'copy'; button.classList.remove('copied'); }, 1400); }
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done);
+        else { const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); done(); }
+      }
+      document.querySelectorAll('[data-copy]').forEach(function (button) { button.addEventListener('click', function () { copy(button.dataset.copy, button); document.getElementById('copy-status').textContent = 'Copied. Edit the sentence before sending it back.'; }); });
+      document.querySelectorAll('.alt-toggle').forEach(function (button) { button.addEventListener('click', function () { var card = document.querySelector('[data-choice="' + button.dataset.target + '"]'); var next = card.dataset.variant === 'alt' ? 'main' : 'alt'; card.dataset.variant = next; button.textContent = next === 'alt' ? "show plan's pick" : 'show alternative'; }); });
+    }());
+  </script>
+</body>
+</html>

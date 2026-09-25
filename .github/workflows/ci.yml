@@ -67,12 +67,12 @@ jobs:
       - name: Check school-core-mac runner liveness
         id: check
         env:
-          # The runners API needs repo-admin scope; the default GITHUB_TOKEN
-          # gets 403. RUNNER_ADMIN_TOKEN currently holds the repo owner's gh
-          # token. HARDENING REQUIRED: replace it with a dedicated fine-grained
-          # PAT scoped to this repo with ONLY "Administration: Read" — a full
-          # personal token in CI secrets on a public repo is over-scoped, and
-          # rotating the gh token would silently break this gate. See README.
+          # The runners API needs repo admin access; the default GITHUB_TOKEN
+          # gets 403. RUNNER_ADMIN_TOKEN MUST be a fine-grained PAT scoped to
+          # this repo only, with "Administration" repository permissions
+          # (read-only) and no other permissions — never the owner's personal
+          # gh token. Swap/verify/revoke per the runbook:
+          # docs/security/runner-token-rotation.md
           GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
         run: |
           ONLINE=$(gh api repos/${{ github.repository }}/actions/runners \

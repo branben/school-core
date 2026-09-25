@@ -37,6 +37,66 @@ BOARD_LAST_RUN_PATH = Path(__file__).parent / "data" / "last_run.json"
 BOARD_CACHE_PATH = Path(__file__).parent / "data" / "issues_cache.json"
 
 
+def _load_timeline_events() -> list[dict]:
+    """Load and normalize activity events for timeline consumers.
+
+    The activity log is append-only but has accumulated older shapes over time.
+    Keep the timeline projection tolerant: malformed files and non-dict records
+    are ignored, and missing optional learning fields become empty strings.
+    """
+    if not ACTIVITY_LOG_PATH.exists():
+        return []
+    try:
+        data = json.loads(ACTIVITY_LOG_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    raw_entries = data.get("entries", []) if isinstance(data, dict) else []
+    if not isinstance(raw_entries, list):
+        return []
+
+    events: list[dict] = []
+    for raw in raw_entries:
+        if not isinstance(raw, dict):
+            continue
+        raw_type = raw.get("type", raw.get("kind", "activity"))
+        raw_type = getattr(raw_type, "value", raw_type)
+        raw_issue = raw.get("issue", raw.get("bead", raw.get("issue_id", "")))
+        evidence = raw.get("evidence", [])
+        if not isinstance(evidence, list):
+            evidence = []
+        events.append({
+            "id": raw.get("id"),
+            "timestamp": str(raw.get("timestamp", "")),
+            "kind": str(raw_type),
+            "type": str(raw_type),
+            "issue": str(raw_issue) if raw_issue not in (None, "") else "",
+            "agent": str(raw.get("agent", raw.get("actor", ""))),
+            "domain": str(raw.get("domain", "")),
+            "summary": str(raw.get("summary", raw.get("message", raw.get("description", "")))),
+            "plan_expected": str(raw.get("plan_expected", "")),
+            "code_revealed": str(raw.get("code_revealed", "")),
+            "decision": str(raw.get("decision", "")),
+            "revisit": str(raw.get("revisit", "")),
+            "evidence": [str(item) for item in evidence],
+            "description": str(raw.get("description", "")),
+        })
+    return events
+
+
+def _filter_timeline_events(
+    events: list[dict],
+    issue: str = "",
+    kind: str = "",
+) -> list[dict]:
+    """Return matching events in append order."""
+    if issue:
+        events = [event for event in events if event["issue"] == str(issue)]
+    if kind:
+        events = [event for event in events if event["kind"] == str(kind)]
+    return events
+
+
 def _load_board_data() -> tuple[list[dict], list[int], list[dict]]:
     """Load board data from local JSON files.
 
@@ -90,6 +150,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self._serve_activity_since(qs)
         elif path == "/api/agents":
             self._serve_agents()
+        elif path == "/api/timeline":
+            self._serve_timeline(qs)
         elif path == "/health":
             self._serve_health()
         elif path == "/api/board.json":
@@ -128,6 +190,28 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                 self._json_response({"entries": []})
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
+
+    def _serve_timeline(self, qs):
+        """GET /api/timeline — normalized events, newest first.
+
+        Query parameters: ``n`` (1-200, default 50), ``issue``, and ``kind``.
+        Missing or corrupt activity logs produce an empty, successful projection.
+        """
+        raw_n = qs.get("n", [50])[0]
+        try:
+            n = int(raw_n)
+        except (TypeError, ValueError):
+            n = 50
+        n = max(1, min(n, 200))
+        issue = qs.get("issue", [""])[0].strip()
+        kind = qs.get("kind", [""])[0].strip()
+        events = _filter_timeline_events(_load_timeline_events(), issue=issue, kind=kind)
+        newest_first = list(reversed(events))[:n]
+        self._json_response({
+            "events": newest_first,
+            "total": len(events),
+            "filters": {"issue": issue, "kind": kind, "n": n},
+        })
 
     def _serve_agents(self):
         try:
@@ -199,7 +283,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self.wfile.write(f"Failed to load board data: {e}".encode())
             return
 
-        html = build_board_html(issues_cache, processed, last_run)
+        timeline = list(reversed(_load_timeline_events()))[:50]
+        html = build_board_html(issues_cache, processed, last_run, timeline=timeline)
         body = html.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -229,7 +314,8 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                     "crew_in_flight": [],
                     "school_failed": [],
                     "done": [],
-                }
+                },
+                "timeline": list(reversed(_load_timeline_events()))[:50],
             }
 
         processed_set: set[int] = set(processed)
@@ -258,7 +344,10 @@ class ActivityHandler(SimpleHTTPRequestHandler):
                 "s": lr_entry.get("score") if lr_entry else None,
             })
 
-        return {"columns": columns}
+        return {
+            "columns": columns,
+            "timeline": list(reversed(_load_timeline_events()))[:50],
+        }
 
     def _serve_stream(self):
         """GET /stream — SSE live-update endpoint.

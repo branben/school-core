@@ -47,6 +47,7 @@ from agentmail_client import (
     req,
     resolve_dest_inbox,
 )
+from approve_command import ApprovalCommandError, execute_approve
 
 logger = logging.getLogger("agentmail_poller")
 
@@ -191,49 +192,43 @@ def _extract_bead_id(text: str) -> str:
     return ""
 
 
-def _execute_approval(reply: dict, repo_root: str) -> str:
-    """Execute the approval command. This runs WITH principal authority."""
+def _execute_approval(
+    reply: dict, repo_root: str, *, coordinator=None,
+    expected_repository: str = "", allowed_approvers: tuple[str, ...] = (),
+    dry_run: bool = False,
+) -> str:
+    """Execute an approval command through the candidate-bound coordinator.
+
+    The legacy commit/push/close shortcut is intentionally gone. A missing
+    coordinator or incomplete candidate metadata blocks the command without
+    mutating the worktree, remote, or Beads.
+    """
     cmd = reply["command"]
     bead = reply["bead"]
     if not bead:
         return (f"⚠ No bead id resolved for thread '{reply.get('subject', '')}' "
                 f"— skipping (human reply must reference the bead)")
-    repo = Path(repo_root)
 
     if cmd == "approve":
-        # Commit + push + merge
+        if coordinator is None:
+            return f"❌ APPROVE blocked for {bead}: coordinator unavailable; no external write performed"
+        if not expected_repository:
+            return f"❌ APPROVE blocked for {bead}: repository scope is not configured; no external write performed"
+        if not allowed_approvers:
+            return f"❌ APPROVE blocked for {bead}: approver allowlist is not configured; no external write performed"
         try:
-            # Stage all changes
-            subprocess.run(["git", "add", "-A"], cwd=str(repo), check=True, capture_output=True)
-            # Commit: sign if gpg is available, degrade to unsigned otherwise.
-            try:
-                result = subprocess.run(
-                    ["git", "commit", "-S", "-m", f"chore(school): approve student work for {bead}"],
-                    cwd=str(repo), check=True, capture_output=True, text=True,
-                )
-            except subprocess.CalledProcessError as ce:
-                if "gpg" in (ce.stderr or ""):
-                    result = subprocess.run(
-                        ["git", "commit", "-m", f"chore(school): approve student work for {bead}"],
-                        cwd=str(repo), check=True, capture_output=True, text=True,
-                    )
-                else:
-                    raise
-            commit_sha = result.stdout.split("\n")[0] if result.stdout else "committed"
+            result = execute_approve(
+                reply=reply, coordinator=coordinator, expected_bead=bead,
+                expected_repository=expected_repository,
+                allowed_approvers=allowed_approvers, dry_run=dry_run,
+            )
+            status = getattr(result, "status", "unknown")
+            return f"✅ APPROVE {status} for {bead}: candidate={reply.get('candidate_id', '?')} head={reply.get('head_sha', '?')}"
+        except ApprovalCommandError as exc:
+            return f"❌ APPROVE blocked for {bead}: {exc}; no external write performed"
 
-            # Push (user's explicit delegation for bulk merges)
-            subprocess.run(["git", "push"], cwd=str(repo), check=True, capture_output=True)
-
-            # Close the bead
-            subprocess.run(["bd", "close", bead], cwd=str(repo), check=True, capture_output=True)
-
-            msg = f"✅ APPROVED: committed + pushed + bd close {bead}"
-            msg += f"\n  Commit: {commit_sha[:12] if commit_sha else 'N/A'}"
-            return msg
-        except subprocess.CalledProcessError as e:
-            return f"❌ APPROVE failed for {bead}: {e.stderr[:200] if e.stderr else str(e)}"
-
-    elif cmd == "reject":
+    repo = Path(repo_root)
+    if cmd == "reject":
         # Write rejection note to bookbag + unblock kanban
         try:
             note = reply.get("note", "")

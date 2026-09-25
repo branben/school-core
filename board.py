@@ -135,6 +135,15 @@ def _normalize_card(issue: dict, lr_entry: Optional[dict]) -> dict:
         "traj": Path(lr_entry.get("trajectory", "")).name
         if lr_entry and lr_entry.get("trajectory")
         else None,
+        "candidate_id": issue.get("candidate_id", ""),
+        "head_sha": issue.get("head_sha", ""),
+        "base_sha": issue.get("base_sha", ""),
+        "local_gate": issue.get("local_gate", "unknown"),
+        "pr_state": issue.get("pr_state", "unknown"),
+        "ci_state": issue.get("ci_state", "unknown"),
+        "approval_state": issue.get("approval_state", "unknown"),
+        "merge_state": issue.get("merge_state", "unknown"),
+        "beads_state": issue.get("beads_state", "unknown"),
     }
 
 
@@ -175,8 +184,66 @@ def _render_card(card: dict) -> str:
         parts.append(f'<div class="card-score">{score}</div>')
     if traj:
         parts.append(f'<a class="card-session" href="/trajectory/{escape(str(traj))}">session ↗</a>')
+    candidate_id = escape(str(card.get("candidate_id", "")))
+    head_sha = escape(str(card.get("head_sha", "")))
+    merge_state = escape(str(card.get("merge_state", "unknown")))
+    if candidate_id or head_sha:
+        parts.append(
+            '<div class="card-evidence">'
+            f'<span>candidate: {candidate_id or "unknown"}</span>'
+            f'<span>head: {head_sha or "unknown"}</span>'
+            f'<span>merge: {merge_state}</span>'
+            "</div>"
+        )
     parts.append("</div>")
     return "".join(parts)
+
+
+def _render_timeline_event(event: dict) -> str:
+    """Render one activity event as escaped, human-readable timeline HTML."""
+    kind = escape(str(event.get("kind", event.get("type", "activity"))))
+    timestamp = escape(str(event.get("timestamp", "")))
+    issue = escape(str(event.get("issue", "")))
+    agent = escape(str(event.get("agent", "")))
+    summary = escape(str(event.get("summary", event.get("description", ""))))
+    plan_expected = escape(str(event.get("plan_expected", "")))
+    code_revealed = escape(str(event.get("code_revealed", "")))
+    decision = escape(str(event.get("decision", "")))
+    revisit = escape(str(event.get("revisit", "")))
+    evidence = event.get("evidence", [])
+    evidence_html = ""
+    if isinstance(evidence, list) and evidence:
+        evidence_html = (
+            '<div class="timeline-evidence"><strong>Evidence:</strong> '
+            + ", ".join(escape(str(item)) for item in evidence)
+            + "</div>"
+        )
+
+    fields = ""
+    if plan_expected or code_revealed or decision or revisit:
+        fields = (
+            '<div class="timeline-fields">'
+            f'<div><strong>Plan said:</strong> {plan_expected or "—"}</div>'
+            f'<div><strong>Code revealed:</strong> {code_revealed or "—"}</div>'
+            f'<div><strong>Conservative choice:</strong> {decision or "—"}</div>'
+            f'<div><strong>Revisit if:</strong> {revisit or "—"}</div>'
+            "</div>"
+        )
+    identity = " · ".join(part for part in (issue, agent) if part)
+    return (
+        '<article class="timeline-event">'
+        f'<div class="timeline-event-meta"><span class="timeline-kind">{kind}</span>'
+        f'<span>{timestamp}</span><span>{identity}</span></div>'
+        f'<div class="timeline-summary">{summary or "—"}</div>'
+        f"{fields}{evidence_html}"
+        "</article>"
+    )
+
+
+def _render_timeline(events: list[dict]) -> str:
+    if not events:
+        return '<div class="timeline-empty">No activity events yet.</div>'
+    return "".join(_render_timeline_event(event) for event in events)
 
 
 # ── Static assets (CSS + JS) ────────────────────────────────────────────────
@@ -187,6 +254,7 @@ _CSS = r""":root {
   --cream: #f5f1e8;
   --brass: #c0a050;
   --brass-dim: #8a7a40;
+  --timeline-bg: #141612;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; }
@@ -336,6 +404,14 @@ h2 {
 .card-session:hover {
   text-decoration: underline;
 }
+.card-evidence {
+  display: grid;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+  color: var(--brass-dim);
+  font: 0.62rem ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  overflow-wrap: anywhere;
+}
 .empty-col {
   color: var(--brass-dim);
   font-size: 0.8rem;
@@ -363,6 +439,71 @@ h2 {
 }
 .live-indicator.on {
   color: #4caf50;
+}
+.timeline-panel {
+  background: var(--timeline-bg);
+  border: 1px solid var(--brass-dim);
+  border-radius: 8px;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  flex: 0 0 18rem;
+  min-height: 0;
+  overflow: hidden;
+}
+.timeline-panel h2 {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(192, 160, 80, 0.2);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+.timeline-count {
+  color: var(--brass-dim);
+  font: 0.7rem ui-monospace, 'SF Mono', 'Fira Code', monospace;
+}
+.timeline-events {
+  max-height: 13rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-right: 0.25rem;
+}
+.timeline-event {
+  border-left: 2px solid var(--brass-dim);
+  padding: 0.35rem 0.55rem;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 0 5px 5px 0;
+}
+.timeline-event-meta,
+.timeline-evidence {
+  color: var(--brass-dim);
+  font: 0.68rem ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.timeline-kind {
+  color: var(--brass);
+  text-transform: uppercase;
+}
+.timeline-summary {
+  margin: 0.2rem 0;
+  font-size: 0.8rem;
+}
+.timeline-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem 0.8rem;
+  color: var(--cream);
+  font-size: 0.7rem;
+  margin: 0.25rem 0;
+}
+.timeline-fields strong { color: var(--brass); }
+.timeline-empty { color: var(--brass-dim); font-size: 0.8rem; }
+@media (max-width: 800px) {
+  .timeline-fields { grid-template-columns: 1fr; }
+  .timeline-panel { flex-basis: 14rem; }
 }
 """
 
@@ -399,6 +540,53 @@ _JS_POLL = """
       container.innerHTML = html;
     }
   }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function renderTimeline(events) {
+    var panel = document.querySelector('#timeline-events');
+    var count = document.getElementById('timeline-count');
+    if (!panel) return;
+    if (count) count.textContent = String((events || []).length) + ' events';
+    if (!events || !events.length) {
+      panel.innerHTML = '<div class="timeline-empty">No activity events yet.</div>';
+      return;
+    }
+    panel.innerHTML = events.map(function(event) {
+      event = event || {};
+      var kind = escapeHtml(event.kind || event.type || 'activity');
+      var timestamp = escapeHtml(event.timestamp || '');
+      var identity = [event.issue || '', event.agent || ''].filter(Boolean).map(escapeHtml).join(' · ');
+      var summary = escapeHtml(event.summary || event.description || '—');
+      var fields = '';
+      if (event.plan_expected || event.code_revealed || event.decision || event.revisit) {
+        fields = '<div class="timeline-fields">'
+          + '<div><strong>Plan said:</strong> ' + escapeHtml(event.plan_expected || '—') + '</div>'
+          + '<div><strong>Code revealed:</strong> ' + escapeHtml(event.code_revealed || '—') + '</div>'
+          + '<div><strong>Conservative choice:</strong> ' + escapeHtml(event.decision || '—') + '</div>'
+          + '<div><strong>Revisit if:</strong> ' + escapeHtml(event.revisit || '—') + '</div>'
+          + '</div>';
+      }
+      var evidence = Array.isArray(event.evidence) && event.evidence.length
+        ? '<div class="timeline-evidence"><strong>Evidence:</strong> ' + event.evidence.map(escapeHtml).join(', ') + '</div>'
+        : '';
+      return '<article class="timeline-event">'
+        + '<div class="timeline-event-meta"><span class="timeline-kind">' + kind + '</span>'
+        + '<span>' + timestamp + '</span><span>' + identity + '</span></div>'
+        + '<div class="timeline-summary">' + summary + '</div>' + fields + evidence + '</article>';
+    }).join('');
+  }
+  function loadTimeline() {
+    fetch('/api/timeline?n=50')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { if (data && data.events) renderTimeline(data.events); })
+      .catch(function() {});
+  }
   function live(on) {
     var ind = document.getElementById('live-indicator');
     if (ind) ind.className = 'live-indicator' + (on ? ' on' : '');
@@ -410,10 +598,23 @@ _JS_POLL = """
       try {
         var data = JSON.parse(e.data);
         if (data && data.columns) rerender(data.columns);
+        if (data && data.timeline) renderTimeline(data.timeline);
       } catch(_) {}
     });
     es.addEventListener('activity', function(e) {
-      // Optional: could append to a #live-log div here
+      try {
+        var entries = JSON.parse(e.data);
+        if (!Array.isArray(entries) || !entries.length) return;
+        var panel = document.getElementById('timeline-events');
+        if (!panel) return;
+        var current = Array.from(panel.querySelectorAll('.timeline-event')).length;
+        if (current < 50) {
+          fetch('/api/timeline?n=50')
+            .then(function(r) { return r.json(); })
+            .then(function(data) { if (data && data.events) renderTimeline(data.events); })
+            .catch(function() {});
+        }
+      } catch(_) {}
     });
     es.onopen = function() { live(true); };
     es.onerror = function() { live(false); };
@@ -424,10 +625,12 @@ _JS_POLL = """
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data && data.columns) rerender(data.columns);
+        if (data && data.timeline) renderTimeline(data.timeline);
       })
       .catch(function() {});
   }
   setInterval(poll, 15000);
+  loadTimeline();
 })();
 </script>
 """
@@ -451,6 +654,7 @@ def build_board_html(
     issues: list[dict],
     processed: list[int],
     last_run: list[dict],
+    timeline: Optional[list[dict]] = None,
 ) -> str:
     """Generate a self-contained kanban board HTML page.
 
@@ -460,6 +664,7 @@ def build_board_html(
     * Four CSS-grid columns: To Do, In Progress, In Review, Done.
     * Task cards with number, title, domain/difficulty badges, agent, score.
     * Vanilla JS polling ``/api/board.json`` every 15 seconds.
+    * Optional structured activity timeline, refreshed by ``/api/timeline``.
 
     Parameters
     ----------
@@ -531,6 +736,11 @@ def build_board_html(
         '<div class="board-grid">\n'
         f'{"".join(col_html_parts)}'
         "</div>\n"
+        '<section class="timeline-panel" aria-labelledby="timeline-heading">\n'
+        '<h2 id="timeline-heading">Deviation / event timeline'
+        f'<span id="timeline-count" class="timeline-count">{len(timeline or [])} events</span></h2>'
+        f'<div id="timeline-events" class="timeline-events">{_render_timeline(timeline or [])}</div>'
+        "</section>\n"
         f"{_JS_POLL}\n"
         "</body>\n"
         "</html>"

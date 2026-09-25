@@ -145,6 +145,22 @@ def _has_node_modules(repo_path: Path) -> bool:
     return (repo_path / "node_modules").is_dir()
 
 
+def scratch_base_path() -> Path:
+    """Writable scratch base for verify-gate copies.
+
+    SCHOOL_VERIFY_SCRATCH overrides (e.g. an operator pointing at a large
+    local disk). Default is the platform temp dir, which exists on every
+    machine — the previous hardcoded ``/Users/brandonbennett/tmp`` broke
+    every non-macOS host, including the Linux GitHub runners (mkdir
+    '/Users' -> PermissionError; 10 test failures on main CI since the
+    path landed in 27623e1).
+    """
+    env = os.environ.get("SCHOOL_VERIFY_SCRATCH", "").strip()
+    if env:
+        return Path(env)
+    return Path(tempfile.gettempdir())
+
+
 def _find_nix() -> Optional[str]:
     """Locate a usable nix binary: PATH first, then the standard Determinate path.
 
@@ -327,7 +343,7 @@ def run_verify_gate(
 
     # Copy clone to a writable scratch dir so tests can emit artifacts.
     # Use main filesystem for space (var/folders can be small)
-    scratch_base = Path("/Users/brandonbennett/tmp")
+    scratch_base = scratch_base_path()
     scratch_base.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:

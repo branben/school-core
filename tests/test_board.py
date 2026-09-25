@@ -126,3 +126,27 @@ class TestBuildBoardHtml:
         html = build_board_html(issues, [], [])
         assert "Mystery Issue" in html
         assert "#99" in html
+
+    def test_renders_deviation_timeline_with_learning_fields(self):
+        html = build_board_html(
+            [], [], [],
+            timeline=[{
+                "kind": "deviation",
+                "issue": "school-core-s6k",
+                "agent": "parallel-agent",
+                "summary": "The <plan> changed",
+                "plan_expected": "Use the shared cap",
+                "code_revealed": "The shared cap is disabled",
+                "decision": "Keep the local lease",
+                "revisit": "When admission returns",
+                "evidence": ["crew_dispatch.py:123"],
+            }],
+        )
+        assert "Deviation / event timeline" in html
+        assert "Plan said:" in html
+        assert "Code revealed:" in html
+        assert "Conservative choice:" in html
+        assert "Revisit if:" in html
+        assert "The &lt;plan&gt; changed" in html
+        assert "crew_dispatch.py:123" in html
+        assert "<script>alert" not in html
