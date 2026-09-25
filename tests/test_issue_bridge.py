@@ -2216,7 +2216,12 @@ class TestCrewDispatchPath:
              patch("repo_reader.build_codebase_context", return_value=""), \
              patch("repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(401)):
+             patch("director.run_task", return_value=self._task_ok(401)), \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
             bridge_issues("user/test", crew_enabled=None, store=store)
         mock_crew.assert_not_called()
 
