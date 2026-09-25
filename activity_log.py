@@ -34,6 +34,9 @@ class ActivityType(str, Enum):
     # Student (disposable leaf) lifecycle — observability for async dispatch
     STUDENT_STAGE = "student_stage"
 
+    # Structured learning events for parallel implementation work
+    DEVIATION = "deviation"
+
 
 # ── Semantic description templates ──
 
@@ -211,6 +214,55 @@ class ActivityLog:
             "status": "error",
         })
 
+    def record_deviation(
+        self,
+        *,
+        issue: str,
+        agent: str,
+        summary: str,
+        plan_expected: str,
+        code_revealed: str,
+        decision: str,
+        revisit: str,
+        evidence: Optional[list[str]] = None,
+        domain: str = "",
+    ) -> dict:
+        """Persist a structured deviation and the learning it produced.
+
+        A deviation is not just a log line. It records what the plan expected,
+        what the implementation revealed, the conservative choice made, and the
+        condition that should cause the team to revisit that choice.
+        """
+        fields = {
+            "summary": summary,
+            "plan_expected": plan_expected,
+            "code_revealed": code_revealed,
+            "decision": decision,
+            "revisit": revisit,
+        }
+        for name, value in fields.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if not isinstance(issue, str) or not issue.strip():
+            raise ValueError("issue must be a non-empty string")
+        if not isinstance(agent, str) or not agent.strip():
+            raise ValueError("agent must be a non-empty string")
+
+        return self._add({
+            "type": ActivityType.DEVIATION,
+            "issue": issue.strip(),
+            "agent": agent.strip(),
+            "domain": domain,
+            "summary": summary.strip(),
+            "plan_expected": plan_expected.strip(),
+            "code_revealed": code_revealed.strip(),
+            "decision": decision.strip(),
+            "revisit": revisit.strip(),
+            "evidence": list(evidence or []),
+            "description": f"{agent.strip()} deviation on {issue.strip()}: {summary.strip()}",
+            "status": "deviation",
+        })
+
     def gate_cross(self, agent: str, domain: str, from_gate: str, to_gate: str, score: float) -> dict:
         return self._add({
             "type": ActivityType.GATE_CROSS,
@@ -333,6 +385,34 @@ class ActivityLog:
     def since(self, timestamp: str) -> list:
         """Get all entries since an ISO timestamp."""
         return [e for e in self._entries if e.get("timestamp", "") > timestamp]
+
+    def timeline(
+        self,
+        n: int = 50,
+        issue: Optional[str] = None,
+        kind: Optional[str] = None,
+    ) -> list:
+        """Return the newest activity events, optionally filtered.
+
+        ``issue`` accepts either a Beads ID or a GitHub issue number because
+        existing producers use both identity forms. Older activity records
+        without these fields remain valid and are simply filtered out when a
+        filter is requested.
+        """
+        entries = self._entries
+        if issue is not None:
+            wanted = str(issue)
+            entries = [
+                e for e in entries
+                if str(e.get("issue", e.get("bead", ""))) == wanted
+            ]
+        if kind is not None:
+            wanted_kind = str(kind)
+            def _kind_value(entry: dict) -> str:
+                value = entry.get("type", "")
+                return str(getattr(value, "value", value))
+            entries = [e for e in entries if _kind_value(e) == wanted_kind]
+        return entries[-n:]
 
     def all_entries(self) -> list:
         return list(self._entries)
