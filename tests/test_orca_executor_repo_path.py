@@ -34,11 +34,32 @@ def _git_toplevel() -> str:
     return out.stdout.strip()
 
 
+def _is_bare_git_root(path: Path) -> bool:
+    """True when `path` is itself the output of git rev-parse --show-toplevel."""
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=str(path), capture_output=True, text=True, timeout=10,
+    )
+    return out.returncode == 0 and out.stdout.strip() == str(path).rstrip("/")
+
+
 def test_repo_path_module_constant_resolves_to_git_root():
-    """Module-level REPO_PATH points at the real school-core checkout."""
+    """Module-level REPO_PATH points at the real checkout.
+
+    Asserts the *invariant* — REPO_PATH is the git root that contains this
+    module — not a hardcoded directory name. A teacher/student worktree is a
+    legitimate git root under an arbitrary name (e.g. /tmp/sc-pathfix), so
+    requiring the name "school-core" fails in every worktree while asserting
+    nothing about correctness. The guard that matters is that REPO_PATH is a
+    git toplevel and is the same one git reports for this module.
+    """
     toplevel = _git_toplevel()
     assert str(orca_executor.REPO_PATH).rstrip("/") == toplevel.rstrip("/")
-    assert str(orca_executor.REPO_PATH).endswith("school-core")
+    assert Path(orca_executor.REPO_PATH).is_dir()
+    # REPO_PATH must be a git root itself, not a nested directory.
+    assert (Path(orca_executor.REPO_PATH) / ".git").exists() or _is_bare_git_root(
+        orca_executor.REPO_PATH
+    )
 
 
 def test_repo_path_instance_access_works_without_live_orca():
@@ -51,7 +72,9 @@ def test_repo_path_instance_access_works_without_live_orca():
     """
     mgr = OrcaExecutionManager.__new__(OrcaExecutionManager)
     # Previously raised AttributeError after REPO_PATH became module-level.
-    assert str(mgr.REPO_PATH).endswith("school-core")
+    # The guard is the lookup path (instance -> class -> module), not the
+    # checkout's directory name; a worktree root is equally valid.
+    assert str(mgr.REPO_PATH).rstrip("/") == _git_toplevel().rstrip("/")
     assert mgr.REPO_PATH == orca_executor.REPO_PATH
 
 
