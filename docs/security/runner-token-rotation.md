@@ -27,6 +27,13 @@ chat message.
 
 ## Rotation procedure
 
+> **Shortcut:** after copying the new token in the UI (step 1), run
+> `scripts/set_runner_secret.sh` — it performs steps 2–4 (verify against the
+> runners API, set the secret from stdin, confirm) in one command, never puts
+> the token on a command line, and clears the clipboard afterwards. It refuses
+> to set the secret if the API rejects the token. The manual steps below are
+> the fallback for environments without the script.
+
 1. In GitHub, open **Settings → Developer settings → Fine-grained personal
    access tokens** and create the token with the scope above.
 2. Before changing the repository secret, verify the new token locally without
