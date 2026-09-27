@@ -157,6 +157,35 @@ jobs:
       - name: Run live-Orca + OmniRoute integration tests
         run: .venv/bin/python -m pytest -m live tests/test_orca_execution.py -v
 
+  review-gate:
+    # Mechanical PR gate. Reports one stable check name so it can be added to
+    # required_status_checks -- currently that list is EMPTY, so a red CI run
+    # does not block a merge. This job is the first thing that can.
+    #
+    # No model is involved on purpose: a judgement call is not a merge
+    # criterion, and this must work when every review bot is rate-limited.
+    name: review-gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git diff base...head` resolves the merge base.
+          fetch-depth: 0
+
+      - name: Mechanical review gate
+        run: |
+          python scripts/review_gate.py \
+            --base "origin/${{ github.base_ref }}" \
+            --head "origin/${{ github.event.pull_request.head.sha }}"
+
+      - name: Gate report (always shown, even on failure)
+        if: always()
+        run: python scripts/review_gate.py \
+          --base "origin/${{ github.base_ref }}" \
+          --head "origin/${{ github.event.pull_request.head.sha }}" \
+          --json || true
+
   notify:
     # One AgentMail alert per failed push-to-main run — the school's human
     # operator gets pinged when CI goes red. PR failures are normal dev

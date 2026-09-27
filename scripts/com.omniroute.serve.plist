@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- OmniRoute gateway — KeepAlive so it survives crashes, sessions, and reboots.
+     Replaces the manually-launched supervisor (started Sep 19, died with sessions).
+     Restart: launchctl kickstart -k gui/$(id -u)/com.omniroute.serve -->
+<dict>
+    <key>Label</key>
+    <string>com.omniroute.serve</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/brandonbennett/.local/share/fnm/node-versions/v24.19.0/installation/bin:/Users/brandonbennett/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/brandonbennett/.local/bin/omniroute</string>
+        <string>serve</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/brandonbennett/school-core/logs/omniroute-serve.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/brandonbennett/school-core/logs/omniroute-serve.log</string>
+</dict>
+</plist>
