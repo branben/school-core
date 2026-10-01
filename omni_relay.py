@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -62,11 +63,38 @@ class TransportError(Exception):
     """
 
 
-def _redact(obj: Any) -> Any:
-    """Return a copy of `obj` with secret-bearing header values replaced.
+#: Substrings marking a credential inside free text. `_redact` scrubs by key
+#: NAME, which does nothing for a secret an upstream echoed inside a message
+#: string ("bad key sk-abc123"). These patterns catch that case.
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"(?i)\b(?:bearer|api[_-]?key|token)\s*[:=]?\s*[A-Za-z0-9_\-]{12,}"),
+)
 
-    Used for evidence snapshots and error context. Payload content is left
-    intact: it is the task's own data, not a credential.
+
+def _scrub_value(text: str) -> str:
+    """Redact credential-shaped substrings inside a free-text value."""
+    if not isinstance(text, str):
+        return text
+    out = text
+    for pattern in _SECRET_VALUE_PATTERNS:
+        out = pattern.sub("[REDACTED]", out)
+    return out
+
+
+def _redact(obj: Any) -> Any:
+    """Return a copy of `obj` with credentials removed.
+
+    Two layers, because either alone is insufficient:
+
+      * by KEY NAME -- catches `{"authorization": "Bearer sk-..."}`, the shape
+        we control when building a request.
+      * by VALUE SHAPE -- catches a secret an UPSTREAM echoed back inside a
+        message string. That text is not ours, so key-name matching misses it,
+        and it lands in exception messages that get logged.
+
+    Payload content is left intact: it is the task's own data, not a
+    credential.
     """
     if isinstance(obj, dict):
         out = {}
@@ -78,6 +106,8 @@ def _redact(obj: Any) -> Any:
         return out
     if isinstance(obj, list):
         return [_redact(v) for v in obj]
+    if isinstance(obj, str):
+        return _scrub_value(obj)
     return obj
 
 
@@ -191,9 +221,22 @@ class OmniRouteTransport:
                 status = getattr(resp, "status", 200)
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
-            # Never echo the credential or the full body into the message.
+            # Include a redacted snippet of the upstream body: without it a
+            # quota exhaustion ("out of credits") and a routing error are
+            # indistinguishable, and every failure looks the same. `_redact`
+            # guards against a body that echoes a credential back.
+            detail = ""
+            try:
+                raw_err = exc.read()
+                if raw_err:
+                    parsed_err = json.loads(raw_err)
+                    detail = _redact(parsed_err.get("error", parsed_err))
+                    detail = json.dumps(detail)[:300]
+            except Exception:  # noqa: BLE001 — detail is best-effort
+                detail = ""
+            suffix = f": {detail}" if detail else ""
             raise TransportError(
-                f"upstream HTTP {exc.code}") from None
+                f"upstream HTTP {exc.code}{suffix}") from None
         except Exception as exc:  # noqa: BLE001 — every fault is fatal
             raise TransportError(
                 f"upstream transport failure: {type(exc).__name__}") from None
@@ -239,6 +282,20 @@ class OmniRouteTransport:
         self.returned_model = parsed.get("model")
         self.last_usage = parsed.get("usage")
         return content.encode("utf-8")
+
+
+# The read-only tool registry lives in `omni_relay_tools` (it is the largest
+# part of this capability and reads better on its own), but it is re-exported
+# here so callers have a single import surface.
+from omni_relay_tools import (  # noqa: E402
+    ToolError,
+    ToolRegistry,
+    build_tool_request,
+    TOOL_DEFINITIONS,
+)
+
+__all__ += ["ToolError", "ToolRegistry", "build_tool_request",
+            "TOOL_DEFINITIONS"]
 
 
 def from_env(**over: Any) -> OmniRouteTransport:

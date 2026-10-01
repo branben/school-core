@@ -226,6 +226,68 @@ def test_tool_call_only_response_raises_rather_than_returning_empty():
         t("complete", b"hello")
 
 
+def test_http_error_includes_redacted_upstream_detail():
+    """A bare "HTTP 404" hides the cause.
+
+    Without the upstream body, quota exhaustion and a routing error are
+    indistinguishable -- which is exactly why every transport failure looked
+    identical until this was fixed.
+    """
+    import io
+    import urllib.error
+
+    def raise_http(*a, **k):
+        raise urllib.error.HTTPError(
+            "http://x", 429, "Too Many Requests", {},
+            io.BytesIO(json.dumps(
+                {"error": {"message": "out of credits"}}).encode()))
+    t = _transport()
+    t._open = raise_http
+    with pytest.raises(TransportError, match="out of credits"):
+        t("complete", b"hello")
+
+
+def test_http_error_detail_is_redacted():
+    """An upstream body echoing a credential must not reach the message.
+
+    The fixture uses a realistic key shape because redaction is pattern-based:
+    an arbitrary marker like "SUPERSECRETKEY123" matches nothing and would let
+    the test pass while proving nothing. See the note in test_redact_scrubs_
+    credential_shaped_values for what this does and does not guarantee.
+    """
+    import io
+    import urllib.error
+
+    def raise_http(*a, **k):
+        raise urllib.error.HTTPError(
+            "http://x", 500, "Err", {},
+            io.BytesIO(json.dumps(
+                {"error": {"message": "bad key sk-live0123456789abcdef"}}).encode()))
+    t = _transport()
+    t._open = raise_http
+    with pytest.raises(TransportError) as exc:
+        t("complete", b"hello")
+    assert "sk-live0123456789abcdef" not in str(exc.value)
+    assert "[REDACTED]" in str(exc.value)
+
+
+def test_redact_scrubs_credential_shaped_values():
+    """Redaction is PATTERN-based: it catches known key shapes, not any string.
+
+    Being explicit about the limit matters -- it is a best-effort scrub, not a
+    guarantee. An upstream inventing an unrecognised token format would still
+    leak, which is why the error detail is also length-capped and the tests
+    above assert the marker is present rather than trusting absence alone.
+    """
+    out = _redact({"message": "key is sk-live0123456789abcdef, retry"})
+    assert "sk-live0123456789abcdef" not in json.dumps(out)
+    assert _redact({"m": "Authorization: Bearer abcdef0123456789xyz"})[
+        "m"].endswith("[REDACTED]")
+    # Ordinary payload text must survive untouched.
+    assert _redact({"message": "rate limit exceeded, try later"})[
+        "message"] == "rate limit exceeded, try later"
+
+
 # --- the happy path, hermetically ----------------------------------------
 
 
