@@ -127,6 +127,7 @@ _RETIREMENT_MARKERS = (
     "model has been retired",
     "model is deprecated",
     "no longer available",
+    "unavailable for free",
     "model not found",
     "not_found",
     "model does not exist",

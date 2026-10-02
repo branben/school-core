@@ -68,6 +68,15 @@ class TestClassification:
             "429 rate limit. This model's free period has ended."
         ) == "retired"
 
+    def test_unavailable_for_free_is_retired(self):
+        # VERBATIM from OmniRoute call_logs, 2026-10-01T17:20:34. Found by
+        # querying the provider's own log, not by guessing a phrasing -- this
+        # exact retirement shape was classified `unknown` until then.
+        assert _classify_upstream_failure(
+            "[404]: This model is unavailable for free. "
+            "The paid version is available now - use this slug in your request"
+        ) == "retired"
+
     def test_unrecognised_text_is_unknown_not_retired(self):
         assert _classify_upstream_failure("something odd happened") == "unknown"
 
