@@ -1,11 +1,67 @@
 """Shared fixtures for school-core tests."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from scoring import ScoreStore
+
+
+def _is_git_broker_wrapper(entry: str) -> bool:
+    """True when ``entry/git`` is a script shim, not the real git binary.
+
+    The Paperclip runtime prepends a Node credential-broker wrapper (a
+    ``#!/usr/bin/env node`` script named ``git``) to PATH. It strips
+    ``GIT_AUTHOR_*``/``GIT_COMMITTER_*`` from the child env and re-sets them to
+    the empty string, repopulating them only when its GitHub broker answers.
+    A real git is a compiled binary (ELF/Mach-O), never a ``#!`` script.
+    """
+    candidate = Path(entry) / "git"
+    try:
+        if not candidate.is_file():
+            return False
+        with candidate.open("rb") as handle:
+            head = handle.read(64)
+    except OSError:
+        return False
+    return head.startswith(b"#!") and b"node" in head
+
+
+@pytest.fixture(autouse=True)
+def hermetic_git_identity(monkeypatch):
+    """Make every git subprocess independent of the ambient runtime identity.
+
+    Two independent hazards in the Paperclip agent environment make the seam
+    suite red in a clean shell's absence:
+
+    1. ``GIT_AUTHOR_NAME``/``GIT_AUTHOR_EMAIL``/``GIT_COMMITTER_NAME``/
+       ``GIT_COMMITTER_EMAIL`` (and ``GIT_CONFIG_COUNT``) are exported
+       **empty-but-set**. Git honours an empty (set) identity and refuses to
+       commit: ``fatal: empty ident name (for <>) not allowed`` (exit 128).
+    2. A Node git credential-broker wrapper sits first on PATH and re-zeroes
+       the identity whenever its broker is unavailable — even when the caller
+       passes an explicit ``GIT_AUTHOR_*`` or a ``git -c user.name`` override.
+
+    Tests must not depend on either: this fixture clears the empty identity
+    vars and drops the broker wrapper from PATH so ``git`` resolves to the real
+    binary. The suite never needs brokered GitHub credentials.
+    """
+    for var in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "GIT_CONFIG_COUNT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    raw_path = os.environ.get("PATH", "")
+    entries = [entry for entry in raw_path.split(os.pathsep) if entry]
+    kept = [entry for entry in entries if not _is_git_broker_wrapper(entry)]
+    if len(kept) != len(entries):
+        monkeypatch.setenv("PATH", os.pathsep.join(kept))
 
 
 @pytest.fixture
@@ -68,6 +124,13 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     import crew_dispatch
     import issue_bridge
 
+    # Bridge tests must never use pr_creator's independent `gh` subprocess
+    # boundary. Tests that exercise publication failures override this seam.
+    monkeypatch.setattr(
+        issue_bridge,
+        "create_pr_for_issue",
+        lambda **kwargs: "https://github.com/test/repo/pull/1",
+    )
     monkeypatch.setattr(crew_dispatch, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
     monkeypatch.setattr(issue_bridge, "CREW_RUNS_FILE", data_dir / "crew_runs.json")
 
