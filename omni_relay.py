@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -109,6 +110,105 @@ def _redact(obj: Any) -> Any:
     if isinstance(obj, str):
         return _scrub_value(obj)
     return obj
+
+
+# --- fleet health reporting -------------------------------------------------
+# A real call already pays for the knowledge that a model died upstream, so it
+# records that fact for `scripts/fleet_model_probe.py` to read. The probe's 6h
+# TTL is a guess; this is evidence. Nothing here may affect the call's outcome.
+#
+# Same markers as the probe script. Duplicated deliberately: importing a
+# `scripts/` module from a production import path would couple the relay to the
+# repo layout, and the relay is meant to be droppable. The tests below pin the
+# behaviour of this copy; if the probe's markers change, its own tests should be
+# re-run against these strings.
+_RETIREMENT_MARKERS = (
+    "free period has ended",
+    "model has been retired",
+    "model is deprecated",
+    "no longer available",
+    "model not found",
+    "not_found",
+    "model does not exist",
+    "unknown model",
+)
+
+_TRANSIENT_MARKERS = (
+    "rate limit",
+    "too many requests",
+    "429",
+    "out of credits",
+    "per-model billing",
+    "quota",
+    "insufficient",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "temporarily unavailable",
+    "didn't answer",
+    "service unavailable",
+    "503",
+    "internal server error",
+    "bad gateway",
+)
+
+_FLEET_LEDGER_PATH = os.path.expanduser("~/.hermes/fleet/model-probe.json")
+
+# Bound so a long upstream message cannot bloat a long-lived file.
+_LEDGER_DETAIL_LIMIT = 400
+
+
+def _classify_upstream_failure(text: str) -> str:
+    """`retired` | `transient` | `unknown`.
+
+    Retirement is checked first on purpose: a body can carry both a quota
+    message and a retirement notice, and only one of those means the model is
+    never coming back.
+    """
+    low = text.lower()
+    if any(marker in low for marker in _RETIREMENT_MARKERS):
+        return "retired"
+    if any(marker in low for marker in _TRANSIENT_MARKERS):
+        return "transient"
+    return "unknown"
+
+
+def _report_model_failure(model: str, detail: str) -> None:
+    """Record an observed retirement in the fleet ledger. Best-effort.
+
+    Only a `retired` verdict writes. A transient fault is deliberately dropped:
+    writing it would mark a healthy model dead for a full TTL on the strength
+    of one rate limit.
+
+    Never raises. This is observability on a production path -- a crash here
+    would turn a successful inference into a failed one, which is the exact
+    inversion this module exists to prevent.
+    """
+    try:
+        if _classify_upstream_failure(detail) != "retired":
+            return
+        # Sanitize again before disk: the ledger outlives the request, and
+        # `_redact` was applied to the body, not necessarily to this string.
+        safe = _scrub_value(str(detail))
+        entry = {
+            "verdict": "retired",
+            "detail": safe[:_LEDGER_DETAIL_LIMIT],
+            "checked_at": time.time(),
+            "source": "observed",
+        }
+        try:
+            with open(_FLEET_LEDGER_PATH, encoding="utf-8") as fh:
+                cache = json.load(fh)
+            if not isinstance(cache, dict):
+                cache = {}
+        except (OSError, ValueError):
+            cache = {}
+        cache[model] = entry
+        os.makedirs(os.path.dirname(_FLEET_LEDGER_PATH), exist_ok=True)
+        with open(_FLEET_LEDGER_PATH, "w", encoding="utf-8") as fh:
+            json.dump(cache, fh, indent=2, sort_keys=True)
+    except Exception:  # noqa: BLE001 — observability must never break a call
+        pass
 
 
 def build_completion_request(
@@ -235,6 +335,9 @@ class OmniRouteTransport:
             except Exception:  # noqa: BLE001 — detail is best-effort
                 detail = ""
             suffix = f": {detail}" if detail else ""
+            # Report before raising: this call already paid for the knowledge.
+            # Never alters the outcome — `_report_model_failure` cannot raise.
+            _report_model_failure(self.model, f"upstream HTTP {exc.code}{suffix}")
             raise TransportError(
                 f"upstream HTTP {exc.code}{suffix}") from None
         except Exception as exc:  # noqa: BLE001 — every fault is fatal
