@@ -38,10 +38,24 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+# Imported at the top, not re-exported from the bottom: `complete_with_tools`
+# is a method on this class and calls into the registry, so the name has to
+# resolve at class-definition time on Python 3.9.
+from omni_relay_tools import (  # noqa: E402
+    ToolError,
+    ToolRegistry,
+    build_tool_request,
+    TOOL_DEFINITIONS,
+)
+
 __all__ = [
     "OmniRouteTransport",
     "TransportError",
     "build_completion_request",
+    "ToolError",
+    "ToolRegistry",
+    "build_tool_request",
+    "TOOL_DEFINITIONS",
 ]
 
 #: Operations the relay may ask the upstream for. Anything else is refused
@@ -212,6 +226,22 @@ def _report_model_failure(model: str, detail: str) -> None:
         pass
 
 
+def _first_choice(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Pull choice[0] out of a parsed response, or raise.
+
+    One implementation of the shape checks, shared by the single-completion
+    path and the tool loop, so the two cannot drift on what counts as a
+    malformed upstream.
+    """
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise TransportError("upstream response carried no choices")
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise TransportError("upstream choice was malformed")
+    return choice
+
+
 def build_completion_request(
     *, operation: str, prompt: str, model: str, max_tokens: int = 4000,
 ) -> dict[str, Any]:
@@ -250,6 +280,7 @@ class OmniRouteTransport:
         base_url: str = "http://localhost:20128",
         timeout: float = 180.0,
         max_tokens: int = 4000,
+        max_tool_turns: int = 8,
     ) -> None:
         if not isinstance(model, str) or not model.strip():
             raise ValueError("model must be a non-empty string")
@@ -260,6 +291,9 @@ class OmniRouteTransport:
         self.base_url = base_url.rstrip("/")
         self.timeout = float(timeout)
         self.max_tokens = int(max_tokens)
+        #: Upper bound on tool round-trips per completion. A model that never
+        #: emits a final answer must exhaust this and raise, not spin.
+        self.max_tool_turns = max(1, int(max_tool_turns))
         #: Both are recorded on every call so a substituted model is visible
         #: in evidence rather than hidden behind a friendly route name.
         self.requested_model = model
@@ -288,25 +322,13 @@ class OmniRouteTransport:
         """Indirection so tests can inject a fake response object."""
         return urllib.request.urlopen(req, timeout=timeout)
 
-    def __call__(self, operation: str, payload: bytes) -> bytes:
-        """Perform one completion. Any fault raises `TransportError`."""
-        if not self._api_key:
-            raise TransportError("no upstream credential configured")
+    def _exchange(self, body: dict[str, Any]) -> dict[str, Any]:
+        """POST one built body upstream and return the parsed response.
 
-        if not isinstance(payload, (bytes, bytearray, memoryview)):
-            raise TransportError(
-                f"payload must be bytes-like, got {type(payload).__name__}")
-        try:
-            prompt = bytes(payload).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise TransportError("payload is not valid UTF-8") from exc
-
-        body = build_completion_request(
-            operation=operation,
-            prompt=prompt,
-            model=self.model,          # pinned, never caller-supplied
-            max_tokens=self.max_tokens,
-        )
+        Extracted so the single-completion path and the tool-loop path share
+        one HTTP, one error report, and one set of upstream-failure checks.
+        Duplicating them is how the two paths would drift.
+        """
         req = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
             data=json.dumps(body).encode("utf-8"),
@@ -358,13 +380,34 @@ class OmniRouteTransport:
         except (ValueError, TypeError) as exc:
             raise TransportError("upstream returned malformed JSON") from exc
 
-        choices = parsed.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise TransportError("upstream response carried no choices")
+        return parsed
 
-        choice = choices[0]
-        if not isinstance(choice, dict):
-            raise TransportError("upstream choice was malformed")
+    def __call__(self, operation: str, payload: bytes) -> bytes:
+        """Perform one completion. Any fault raises `TransportError`.
+
+        Unchanged by the tool loop: this path serves NO tools, so a
+        `finish=tool_calls` response is still a fault rather than a
+        half-finished conversation. Call `complete_with_tools` to serve them.
+        """
+        if not self._api_key:
+            raise TransportError("no upstream credential configured")
+
+        if not isinstance(payload, (bytes, bytearray, memoryview)):
+            raise TransportError(
+                f"payload must be bytes-like, got {type(payload).__name__}")
+        try:
+            prompt = bytes(payload).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise TransportError("payload is not valid UTF-8") from exc
+
+        body = build_completion_request(
+            operation=operation,
+            prompt=prompt,
+            model=self.model,          # pinned, never caller-supplied
+            max_tokens=self.max_tokens,
+        )
+        parsed = self._exchange(body)
+        choice = _first_choice(parsed)
 
         finish = choice.get("finish_reason")
         if finish == "length":
@@ -387,19 +430,99 @@ class OmniRouteTransport:
         self.last_usage = parsed.get("usage")
         return content.encode("utf-8")
 
+    # -- tool loop -----------------------------------------------------------
+
+    def complete_with_tools(
+        self, prompt: str, tools: Any, *, max_turns: int | None = None,
+    ) -> bytes:
+        """Run a bounded tool loop on this transport and return the answer.
+
+        This is the honest tool path: the allowlisted schemas go out on the
+        wire, the model's `tool_calls` are served by the registry, and the
+        results come back as tool-role messages until the model stops.
+
+        Deliberately a separate method rather than an overload of `__call__`.
+        `__call__` is the one-function `RelayTransport` capability whose
+        contract is "one completion or a fault"; folding a loop into it would
+        make a tool-using answer indistinguishable from a plain one, and the
+        bytes-returning surface has no place to carry the turn log. `__call__`
+        keeps its exact fail-closed behaviour on `finish=tool_calls`, because
+        with no registry attached it genuinely serves no tools.
+
+        `tools` is any object exposing `definitions()` and `turn(calls)` --
+        `ToolRegistry` in practice. Requiring only that narrow pair keeps the
+        loop testable against a fake registry.
+        """
+        if not self._api_key:
+            raise TransportError("no upstream credential configured")
+        if not isinstance(prompt, str) or not prompt.strip():
+            # Checked before any socket is opened, so a blank prompt costs
+            # no quota and proves nothing about the model.
+            raise TransportError("prompt must be a non-empty string")
+        if tools is None or not hasattr(tools, "definitions"):
+            raise TransportError(
+                "a tool registry is required for the tool loop")
+
+        limit = int(max_turns if max_turns is not None
+                    else self.max_tool_turns)
+        if limit < 1:
+            raise TransportError("max_turns must be at least 1")
+
+        schemas = tools.definitions()
+        messages: list[dict[str, Any]] = [
+            {"role": "user", "content": prompt}]
+
+        for _turn in range(limit):
+            body = build_tool_request(
+                operation="complete",
+                prompt=prompt,
+                model=self.model,          # pinned, never caller-supplied
+                max_tokens=self.max_tokens,
+                tools=schemas,
+                messages=messages,
+            )
+            parsed = self._exchange(body)
+            choice = _first_choice(parsed)
+
+            finish = choice.get("finish_reason")
+            if finish == "length":
+                # Truncation mid-loop is exactly as fatal as at the end: a
+                # half-finished answer is not an answer.
+                raise TransportError(
+                    "upstream response was truncated (finish=length)")
+
+            message = choice.get("message")
+            if not isinstance(message, dict):
+                raise TransportError("upstream message was malformed")
+
+            if finish != "tool_calls":
+                content = message.get("content")
+                if not isinstance(content, str) or not content:
+                    raise TransportError("upstream returned no content")
+                self.returned_model = parsed.get("model")
+                self.last_usage = parsed.get("usage")
+                return content.encode("utf-8")
+
+            calls = message.get("tool_calls")
+            if not isinstance(calls, list) or not calls:
+                raise TransportError(
+                    "upstream asked for tools but sent none")
+            # The assistant turn that made the calls is part of the
+            # conversation. Dropping it leaves the upstream looking at a
+            # tool result answering a call it never made.
+            messages.append({"role": "assistant", "tool_calls": calls})
+            # `turn` validates first, then serves; a refused call comes back
+            # as readable error CONTENT so the model can correct itself.
+            messages.extend(tools.as_messages(tools.turn(calls)))
+
+        raise TransportError(
+            f"tool loop exceeded {limit} turns without a final answer")
+
 
 # The read-only tool registry lives in `omni_relay_tools` (it is the largest
-# part of this capability and reads better on its own), but it is re-exported
-# here so callers have a single import surface.
-from omni_relay_tools import (  # noqa: E402
-    ToolError,
-    ToolRegistry,
-    build_tool_request,
-    TOOL_DEFINITIONS,
-)
-
-__all__ += ["ToolError", "ToolRegistry", "build_tool_request",
-            "TOOL_DEFINITIONS"]
+# part of this capability and reads better on its own). It is imported at the
+# top of this module and re-exported in `__all__` so callers have a single
+# import surface.
 
 
 def from_env(**over: Any) -> OmniRouteTransport:
