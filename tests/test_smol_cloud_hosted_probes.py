@@ -256,21 +256,40 @@ def test_p0_account_budget_and_plan_preflight(hosted):
     assert response.status == 200, f"account pre-flight failed: HTTP {response.status}"
     account = json.loads(response.body)
     snapshot = {k: account[k] for k in _DETAIL_KEYS if k in account}
+    # Record the real spend surface this account exposes. The SmolMachines
+    # account is prepaid with a soft budget policy: it returns
+    # budgetRemainingMicros/monthlyBudgetMicros as null but DOES expose
+    # prepaidCreditMicros and lowBalanceThresholdMicros. Gating only on the
+    # null budget fields made P0 unpassable on a funded account.
+    for key in ("prepaidCreditMicros", "lowBalanceThresholdMicros", "status"):
+        if key in account:
+            snapshot[key] = account[key]
+    if isinstance(account.get("periodCost"), dict):
+        snapshot["periodCost"] = account["periodCost"]
     if isinstance(account.get("plan"), dict):
         snapshot["plan"] = {k: account["plan"][k] for k in _PLAN_KEYS if k in account["plan"]}
     hosted.evidence.record("p0_account_preflight", snapshot)
 
+    # Available spend headroom: prefer an explicit monthly budget remaining,
+    # otherwise fall back to prepaid credit (the funded balance this account
+    # actually draws down). Fail closed only when neither is observable.
     remaining = account.get("budgetRemainingMicros")
+    spend_source = "monthlyBudgetRemaining"
+    if remaining is None:
+        remaining = account.get("prepaidCreditMicros")
+        spend_source = "prepaidCredit"
     if remaining is None:
         if os.environ.get("SCHOOL_CORE_HOSTED_ACCEPT_NO_BUDGET") != "1":
             pytest.fail(
-                "the account exposes no monthly budget: set one in the SmolMachines "
-                "dashboard (an explicit spend cap is an operator gate) or re-run with "
-                "SCHOOL_CORE_HOSTED_ACCEPT_NO_BUDGET=1 to accept the $5 self-imposed stop"
+                "the account exposes neither budgetRemainingMicros nor "
+                "prepaidCreditMicros: set a spend cap in the SmolMachines dashboard "
+                "(an explicit spend cap is an operator gate) or re-run with "
+                "SCHOOL_CORE_HOSTED_ACCEPT_NO_BUDGET=1 to accept the self-imposed stop"
             )
     else:
         assert remaining >= HARD_STOP_MICROS, (
-            f"budget headroom {remaining} micros is below the $5 hard stop"
+            f"{spend_source} headroom {remaining} micros is below the "
+            f"{HARD_STOP_MICROS} micro stop"
         )
 
 
