@@ -205,7 +205,10 @@ class VerifierEvidence:
         )
 
 
-def _verifier_collection_script(manifest: TrustedCheckManifest) -> str:
+def _verifier_collection_script(
+    manifest: TrustedCheckManifest,
+    input_path: str = "/run/school-core-verify-input/candidate.tar",
+) -> str:
     """Guest-side: materialize the exact candidate, run each trusted check with
     its own output on stderr, and emit one marker line per check on stdout.
 
@@ -214,7 +217,7 @@ def _verifier_collection_script(manifest: TrustedCheckManifest) -> str:
     lines = [
         "set -e",
         "mkdir -p /workspace",
-        "tar -xf /run/school-core-verify-input/candidate.tar -C /workspace",
+        f"tar -xf {shlex.quote(input_path)} -C /workspace",
     ]
     for check in manifest.trusted_checks:
         target = "/workspace" if check["cwd"] == "." else f"/workspace/{check['cwd']}"

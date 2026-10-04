@@ -31,6 +31,12 @@ from student_vm_runner import (
     _repo_git,
     _validate_archive,
 )
+from verifier_vm import (
+    TrustedCheckManifest,
+    VerifierEvidence,
+    _verifier_collection_script,
+    _parse_check_markers,
+)
 
 __all__ = ["SmolCloudRunner", "SmolCloudResponse", "SmolCloudTransport"]
 
@@ -680,3 +686,150 @@ class SmolCloudRunner:
             os.write(fd, line.encode("utf-8"))
         finally:
             os.close(fd)
+
+    def verify(
+        self,
+        *,
+        manifest: TrustedCheckManifest,
+        candidate_archive: bytes,
+        candidate_id: str,
+        head_sha: str,
+        timeout_seconds: int = 300,
+    ) -> VerifierEvidence:
+        """Run the school's trusted checks in a fresh verifier guest.
+
+        Creates a separate machine with the ``scv-`` prefix, uploads the
+        candidate archive, runs the verifier collection script, parses check
+        markers, and destroys the machine. Every lifecycle failure blocks.
+        """
+        if not isinstance(manifest, TrustedCheckManifest):
+            raise ValueError("manifest must be a TrustedCheckManifest")
+        if not isinstance(candidate_archive, (bytes, bytearray, memoryview)):
+            raise ValueError("candidate_archive must be bytes-like")
+        archive = bytes(candidate_archive)
+        if not archive:
+            raise StudentVMBlocked("candidate archive is empty")
+        _validate_archive(archive, _JSON_RESPONSE_LIMIT)
+
+        token = self._credential()
+        guest_id = f"scv-{manifest.task_id}-{uuid.uuid4().hex[:8]}"
+        machine_id: str | None = None
+        create_attempted = False
+        pending: StudentVMBlocked | None = None
+        checks_run: tuple[str, ...] = ()
+        disposition = "failed"
+        created = False
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="school-core-verify-") as raw_stage:
+                staging = Path(raw_stage)
+                candidate_path = staging / "candidate.tar"
+                candidate_path.write_bytes(archive)
+
+                headers = {"Authorization": f"Bearer {token}"}
+                create_payload = {
+                    "name": guest_id,
+                    "source": {"type": self.source_type, "reference": self.image_reference},
+                    "resources": {"cpus": 1, "memoryMb": 1024, "diskGb": 2},
+                    "network": {"mode": "blocked"},
+                    "ttlSeconds": timeout_seconds + _TTL_SETUP_GRACE_SECONDS,
+                    "ephemeral": True,
+                }
+
+                create_attempted = True
+                try:
+                    created_resp = self._json_request(
+                        "POST", "/v1/machines",
+                        headers=headers, payload=create_payload,
+                        accepted_statuses=(201,),
+                        timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
+                    )
+                except _CloudApiStatusError as error:
+                    if error.status < 500 and error.status != 429:
+                        create_attempted = False
+                    raise
+                raw_id = created_resp.get("id")
+                if not isinstance(raw_id, str) or not _MACHINE_ID_RE.fullmatch(raw_id):
+                    self._quarantine(guest_id, None, "verifier create returned an invalid id")
+                    create_attempted = False
+                    raise StudentVMBlocked("verifier create returned an invalid machine id")
+                machine_id = raw_id
+
+                self._json_request(
+                    "POST", f"/v1/machines/{quote(machine_id, safe='')}/start",
+                    headers=headers, payload={},
+                    accepted_statuses=(200,),
+                    timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
+                )
+                self._wait_until_ready(machine_id, headers)
+
+                input_root = f"/v1/machines/{quote(machine_id, safe='')}/files"
+                self._upload(
+                    input_root + "/tmp/school-core-verify-input/candidate.tar",
+                    archive,
+                    headers=headers,
+                    accepted_statuses=(200, 204),
+                )
+
+                verifier_script = _verifier_collection_script(
+                    manifest, input_path="/tmp/school-core-verify-input/candidate.tar"
+                )
+                exec_result = self._json_request(
+                    "POST",
+                    f"/v1/machines/{quote(machine_id, safe='')}/exec?output=text",
+                    headers=headers,
+                    payload={
+                        "command": ["sh", "-c", verifier_script],
+                        "timeoutSeconds": timeout_seconds,
+                    },
+                    accepted_statuses=(200,),
+                    timeout_seconds=timeout_seconds + _CONTROL_TIMEOUT_SECONDS,
+                )
+                exit_code = exec_result.get("exitCode")
+                if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+                    raise StudentVMBlocked("verifier exec returned an invalid exit code")
+                if exit_code != 0:
+                    raise StudentVMBlocked(f"verifier guest execution failed with exit status {exit_code}")
+                stdout = exec_result.get("stdout", "")
+                if not isinstance(stdout, str) or len(stdout.encode("utf-8")) > _STDERR_LIMIT:
+                    raise StudentVMBlocked("verifier guest output exceeded the configured limit")
+                stderr = exec_result.get("stderr", "")
+                if not isinstance(stderr, str) or len(stderr.encode("utf-8")) > _STDERR_LIMIT:
+                    raise StudentVMBlocked("verifier guest diagnostics exceeded the configured limit")
+
+                checks_run, disposition = _parse_check_markers(stdout.encode("utf-8"), manifest)
+
+        except StudentVMBlocked as exc:
+            pending = exc
+        except Exception as error:
+            raise StudentVMBlocked(
+                f"SmolMachines Cloud verifier blocked: {type(error).__name__}"
+            ) from None
+        finally:
+            if machine_id is not None:
+                try:
+                    self._delete(machine_id, token)
+                except Exception as error:
+                    self._quarantine(guest_id, machine_id, f"delete failed: {type(error).__name__}")
+                    cause = error if isinstance(error, StudentVMBlocked) else None
+                    raise StudentVMBlocked(
+                        f"cleanup_quarantined: verifier machine delete failed for {guest_id}"
+                    ) from cause
+            elif create_attempted:
+                self._quarantine(guest_id, None, "verifier create outcome unknown; provider TTL is the fallback")
+
+        if pending is not None:
+            raise pending
+
+        return VerifierEvidence(
+            task_id=manifest.task_id,
+            repository=manifest.repository,
+            base_sha=manifest.base_sha,
+            candidate_id=candidate_id,
+            head_sha=head_sha,
+            manifest_sha256=manifest.digest(),
+            archive_sha256=sha256(archive).hexdigest(),
+            disposition=disposition,
+            checks_run=checks_run,
+            guest_id=guest_id,
+        )

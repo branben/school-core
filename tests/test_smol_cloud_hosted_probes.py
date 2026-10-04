@@ -54,6 +54,8 @@ from smol_cloud_runner import (
     DEFAULT_MAX_SPEND_MICROS as HARD_STOP_MICROS,
 )
 from student_vm_runner import StudentTaskRequest, StudentVMBlocked
+from verifier_vm import TrustedCheckManifest, dispatch_and_verify_student_task
+from candidate_manifest import CandidateStore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # The stop is enforced by the adapter (smol_cloud_runner.DEFAULT_MAX_SPEND_MICROS);
@@ -344,6 +346,63 @@ def test_p1_lifecycle_export_import_destroy(hosted, tmp_path):
         "bundle_sha256": result.bundle_sha256,
         "archive_sha256": hashlib.sha256(result.candidate_archive_bytes).hexdigest(),
         "candidate_files": names,
+    })
+
+
+def test_p1_full_dispatch_and_verify_flow(hosted, tmp_path):
+    """SCH-31: full dispatch_and_verify_student_task flow on SmolCloud.
+
+    Runs the real end-to-end path: student guest -> export -> clean import ->
+    separate trusted verification -> destroy. This closes boundary item 1
+    from docs/student-vm-boundary.md:94.
+    """
+    repo, base_sha = _task_repo(tmp_path)
+    runner = _runner(hosted, tmp_path)
+
+    manifest = TrustedCheckManifest(
+        task_id="hosted-probe",
+        repository="example/project",
+        base_sha=base_sha,
+        trusted_checks=({"name": "file-exists", "cmd": "test -f vm-result.txt", "cwd": "."},),
+    )
+
+    store = CandidateStore(tmp_path / "candidates.json")
+    candidate_id = "candidate-" + uuid.uuid4().hex[:16]
+
+    flow = dispatch_and_verify_student_task(
+        student_runner=runner,
+        request=_request(
+            repo, base_sha,
+            command=("sh", "-c", "printf 'written in guest\\n' > vm-result.txt"),
+        ),
+        verifier=runner,  # type: ignore[arg-type]  # SmolCloudRunner.verify satisfies VerifierSeam
+        trusted_manifest=manifest,
+        repo_path=repo,
+        destination=tmp_path / "materialized",
+        candidate_store=store,
+        candidate_id=candidate_id,
+        bead_id="SCH-31",
+        issue_number=31,
+        branch="candidate/SCH-31",
+    )
+
+    assert flow.evidence.disposition == "current"
+    assert flow.evidence.checks_run == ("file-exists",)
+    assert flow.evidence.guest_id.startswith("scv-")
+    assert flow.candidate.manifest.candidate_id == candidate_id
+    assert flow.candidate.manifest.head_sha != base_sha
+
+    deletes = [e for e in hosted.journal if e["method"] == "DELETE"]
+    assert len(deletes) >= 2, "expected at least 2 deletes (student + verifier)"
+
+    hosted.evidence.record("p1_full_flow", {
+        "image": hosted.image,
+        "student_guest_id": flow.task_result.guest_id,
+        "verifier_guest_id": flow.evidence.guest_id,
+        "candidate_id": candidate_id,
+        "head_sha": flow.candidate.manifest.head_sha,
+        "disposition": flow.evidence.disposition,
+        "checks_run": list(flow.evidence.checks_run),
     })
 
 
