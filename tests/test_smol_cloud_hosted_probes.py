@@ -47,11 +47,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from smol_cloud_runner import SmolCloudRunner, _UrllibSmolCloudTransport
+from smol_cloud_runner import (
+    SmolCloudRunner,
+    _UrllibSmolCloudTransport,
+    _sanitize_error_body,
+    DEFAULT_MAX_SPEND_MICROS as HARD_STOP_MICROS,
+)
 from student_vm_runner import StudentTaskRequest, StudentVMBlocked
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HARD_STOP_MICROS = 5_000_000  # $5 session hard stop, in provider micro-units
+# The stop is enforced by the adapter (smol_cloud_runner.DEFAULT_MAX_SPEND_MICROS);
+# this alias exists only so the probe's headroom assertion names the same number.
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SCHOOL_CORE_HOSTED_PROBES") != "1",
@@ -64,7 +70,7 @@ _DETAIL_KEYS = (
 )
 _PLAN_KEYS = ("maxConcurrentMachines", "maxCpus", "maxMemoryMb", "maxDiskGb")
 _ENTRY_KEYS = {"method", "path", "status", "request_bytes", "response_bytes",
-               "duration_ms", "detail"}
+               "duration_ms", "detail", "error_detail"}
 
 
 class RecordingTransport:
@@ -107,6 +113,8 @@ class RecordingTransport:
         }
         if detail:
             entry["detail"] = detail
+        if response.status >= 400:
+            entry["error_detail"] = _sanitize_error_body(response.body)
         self.journal.append(entry)
         return response
 

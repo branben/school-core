@@ -14,7 +14,12 @@ import traceback
 
 import pytest
 
-from smol_cloud_runner import SmolCloudResponse, SmolCloudRunner
+from smol_cloud_runner import (
+    SmolCloudResponse,
+    SmolCloudRunner,
+    _CloudApiStatusError,
+    _sanitize_error_body,
+)
 from student_vm_runner import StudentTaskRequest, StudentVMBlocked
 
 IMAGE = "registry.example.invalid/school/student@sha256:" + "a" * 64
@@ -277,7 +282,7 @@ def test_create_payload_pins_blocked_network_ttl_ephemeral_and_resources(task_re
     fake_clock = FakeClock()
     repo, base_sha = task_repo
     transport = FakeTransport()
-    runner = _runner(tmp_path, transport, fake_clock)
+    runner = _runner(tmp_path, transport, fake_clock, source_type="image")
 
     runner.execute(_request(repo, base_sha, timeout_seconds=60, cpus=2, memory_mib=1024, storage_gib=4))
 
@@ -902,3 +907,221 @@ def test_quarantine_record_is_private_parseable_and_secret_free(task_repo, tmp_p
     assert record["machine_id"] == transport.machine_id
     assert record["reason"].startswith("delete failed:")
     assert record["recorded_at"]
+
+
+# ---------------------------------------------------------------------------
+# spend ceiling
+# ---------------------------------------------------------------------------
+
+
+def test_settled_cost_is_read_from_the_nested_cost_object(task_repo, tmp_path):
+    # The live API returns the settled bill nested: {"cost": {"totalMicros": N}}.
+    # Reading a top-level key silently enforced nothing against the real API.
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"cost": {"totalMicros": 921}, "usage": {"machineCount": 1}}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    runner.execute(_request(repo, base_sha))
+
+    assert runner._settled_spend_micros == 921
+
+
+def test_spend_ceiling_refuses_create_after_cumulative_cost_reaches_cap(task_repo, tmp_path):
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"cost": {"totalMicros": 1000}}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=1000)
+
+    # First task runs and settles exactly to the cap.
+    runner.execute(_request(repo, base_sha, task_id="task-a"))
+    assert runner._settled_spend_micros == 1000
+
+    # Second task must be refused BEFORE any billable create is issued.
+    with pytest.raises(StudentVMBlocked, match="spend ceiling reached"):
+        runner.execute(_request(repo, base_sha, task_id="task-b"))
+
+    assert len(transport.calls_for("create")) == 1
+
+
+def test_spend_guard_issues_no_request_when_already_over_cap(task_repo, tmp_path):
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=5)
+    runner._settled_spend_micros = 5
+
+    with pytest.raises(StudentVMBlocked, match="spend ceiling reached"):
+        runner.execute(_request(repo, base_sha))
+
+    assert transport.calls == []
+
+
+def test_absent_settled_cost_does_not_accumulate_and_does_not_block(task_repo, tmp_path):
+    # A 204 / cost-free delete must not fabricate spend, and must not wedge the
+    # runner: an unknown amount leaves the accumulator untouched.
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()  # default delete_response is 204, empty body
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=1000)
+
+    runner.execute(_request(repo, base_sha, task_id="task-a"))
+    runner.execute(_request(repo, base_sha, task_id="task-b"))
+
+    assert runner._settled_spend_micros == 0
+    assert len(transport.calls_for("create")) == 2
+
+
+def test_legacy_flat_total_micros_is_still_accepted(task_repo, tmp_path):
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"totalMicros": 2500}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    runner.execute(_request(repo, base_sha))
+
+    assert runner._settled_spend_micros == 2500
+
+
+def test_max_spend_micros_must_be_a_positive_integer():
+    for bad in (0, -1, True, 2.5, "3"):
+        with pytest.raises(ValueError, match="positive integer"):
+            SmolCloudRunner(
+                image_reference=IMAGE, transport=FakeTransport(), max_spend_micros=bad
+            )
+
+
+def test_invalid_nested_settled_cost_is_rejected(task_repo, tmp_path):
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"cost": {"totalMicros": -5}}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked) as excinfo:
+        runner.execute(_request(repo, base_sha))
+
+    assert "cleanup_quarantined" in str(excinfo.value)
+    assert "invalid settled usage" in _chain_texts(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# error body surfacing
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_error_body_extracts_json_error_field():
+    body = json.dumps({"error": "image pull failed", "code": "BAD_REQUEST"}).encode()
+    result = _sanitize_error_body(body)
+    assert "image pull failed" in result
+
+
+def test_sanitize_error_body_extracts_message_field():
+    body = json.dumps({"message": "rate limited"}).encode()
+    result = _sanitize_error_body(body)
+    assert "rate limited" in result
+
+
+def test_sanitize_error_body_falls_back_to_raw_text():
+    body = b"plain text error"
+    result = _sanitize_error_body(body)
+    assert "plain text error" in result
+
+
+def test_sanitize_error_body_bounds_length():
+    body = b"x" * 5000
+    result = _sanitize_error_body(body)
+    assert len(result) <= 2001  # _ERROR_BODY_LIMIT + ellipsis
+
+
+def test_sanitize_error_body_redacts_api_keys():
+    body = json.dumps({"error": "invalid key smk_abc123def456"}).encode()
+    result = _sanitize_error_body(body)
+    assert "smk_abc123def456" not in result
+    assert "[REDACTED]" in result
+
+
+def test_sanitize_error_body_redacts_bearer_tokens():
+    body = json.dumps({"error": "auth failed for Bearer tok_abc123"}).encode()
+    result = _sanitize_error_body(body)
+    assert "tok_abc123" not in result
+    assert "Bearer [REDACTED]" in result
+
+
+def test_sanitize_error_body_handles_empty():
+    assert _sanitize_error_body(b"") == ""
+
+
+def test_sanitize_error_body_handles_malformed_json():
+    body = b"{not valid json"
+    result = _sanitize_error_body(body)
+    assert "{not valid json" in result
+
+
+def test_cloud_api_status_error_carries_detail(task_repo, tmp_path):
+    body = json.dumps({"error": "the pull can never succeed"}).encode()
+    transport = FakeTransport()
+    transport.failures["create"] = SmolCloudResponse(400, body)
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(_CloudApiStatusError) as excinfo:
+        runner.execute(_request(repo, base_sha))
+
+    assert excinfo.value.status == 400
+    assert "the pull can never succeed" in excinfo.value.detail
+    assert "the pull can never succeed" in str(excinfo.value)
+
+
+def test_upload_error_includes_sanitized_body(task_repo, tmp_path):
+    body = json.dumps({"error": "quota exceeded"}).encode()
+    transport = FakeTransport()
+    transport.failures["upload"] = SmolCloudResponse(403, body)
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked) as excinfo:
+        runner.execute(_request(repo, base_sha))
+
+    assert "quota exceeded" in str(excinfo.value)
+
+
+def test_download_error_includes_sanitized_body(task_repo, tmp_path):
+    body = json.dumps({"error": "file not found"}).encode()
+    transport = FakeTransport()
+    transport.failures["download"] = SmolCloudResponse(404, body)
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked) as excinfo:
+        runner.execute(_request(repo, base_sha))
+
+    assert "file not found" in str(excinfo.value)
+
+
+def test_delete_error_includes_sanitized_body(task_repo, tmp_path):
+    body = json.dumps({"error": "machine locked"}).encode()
+    transport = FakeTransport()
+    transport.failures["delete"] = SmolCloudResponse(423, body)
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked) as excinfo:
+        runner.execute(_request(repo, base_sha))
+
+    assert "machine locked" in _chain_texts(excinfo.value)

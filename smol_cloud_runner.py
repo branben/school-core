@@ -47,6 +47,42 @@ _JSON_RESPONSE_LIMIT = 1024 * 1024
 _STDERR_LIMIT = 256 * 1024
 _TASK_METADATA_LIMIT = 256 * 1024
 _TTL_SETUP_GRACE_SECONDS = 300
+# Default per-runner spend ceiling, in provider micro-units ($5). This is the
+# single source of truth for the stop; the hosted probe imports it rather than
+# redeclaring a second, unenforced constant.
+DEFAULT_MAX_SPEND_MICROS = 5_000_000
+_ERROR_BODY_LIMIT = 2000  # chars
+
+
+def _sanitize_error_body(body: bytes) -> str:
+    """Extract a bounded, sanitized excerpt from a provider error body.
+
+    Tries to parse the body as JSON and extract the ``error``/``message``/
+    ``detail`` field. Falls back to raw text. Bounds the length and redacts
+    potential secrets (API keys, Bearer tokens) so the excerpt is safe to
+    surface in exceptions, journals, and quarantine records.
+    """
+    if not body:
+        return ""
+    try:
+        text = body.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            for key in ("error", "message", "detail"):
+                value = parsed.get(key)
+                if isinstance(value, str) and value:
+                    text = value
+                    break
+    except (json.JSONDecodeError, ValueError):
+        pass
+    if len(text) > _ERROR_BODY_LIMIT:
+        text = text[:_ERROR_BODY_LIMIT] + "…"
+    text = re.sub(r"smk_[A-Za-z0-9]+", "[REDACTED]", text)
+    text = re.sub(r"Bearer\s+\S+", "Bearer [REDACTED]", text)
+    return text
 
 
 @dataclass(frozen=True)
@@ -56,11 +92,12 @@ class SmolCloudResponse:
 
 
 class _CloudApiStatusError(StudentVMBlocked):
-    """Unaccepted API status; carries the status so callers can classify it."""
+    """Unaccepted API status; carries the status and sanitized error detail."""
 
-    def __init__(self, message: str, status: int) -> None:
-        super().__init__(message)
+    def __init__(self, message: str, status: int, detail: str = "") -> None:
+        super().__init__(f"{message}: {detail}" if detail else message)
         self.status = status
+        self.detail = detail
 
 
 class SmolCloudTransport(Protocol):
@@ -144,7 +181,7 @@ class SmolCloudRunner:
         self,
         *,
         image_reference: str,
-        source_type: str = "image",
+        source_type: str = "smolmachine",
         api_key: str | None = None,
         transport: SmolCloudTransport | None = None,
         quarantine_path: Path | str | None = None,
@@ -153,6 +190,7 @@ class SmolCloudRunner:
         max_storage_gib: int = 8,
         max_timeout_seconds: int = 900,
         readiness_timeout_seconds: int = 120,
+        max_spend_micros: int = DEFAULT_MAX_SPEND_MICROS,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -166,6 +204,7 @@ class SmolCloudRunner:
             ("max_storage_gib", max_storage_gib),
             ("max_timeout_seconds", max_timeout_seconds),
             ("readiness_timeout_seconds", readiness_timeout_seconds),
+            ("max_spend_micros", max_spend_micros),
         ):
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -179,6 +218,11 @@ class SmolCloudRunner:
         self.max_storage_gib = max_storage_gib
         self.max_timeout_seconds = max_timeout_seconds
         self.readiness_timeout_seconds = readiness_timeout_seconds
+        self.max_spend_micros = max_spend_micros
+        # Cumulative settled spend across every machine this instance has
+        # created and torn down. Enforced in _execute before each create; fed
+        # from each delete's includeUsage=true response in _delete.
+        self._settled_spend_micros = 0
         self._sleep = sleep
         self._clock = clock
 
@@ -199,6 +243,18 @@ class SmolCloudRunner:
         if not isinstance(request, StudentTaskRequest):
             raise StudentVMBlocked("request must be a StudentTaskRequest")
         self._validate_limits(request)
+        # Fail closed before any billable machine is created. The guard is
+        # BEFORE the credential read, so a spent-out runner issues no request.
+        # This is an accumulator, not a projection: settled cost is only known
+        # after a machine is deleted, so the ceiling is enforced between runs
+        # (a single run cannot be pre-priced). A runner that reuses one
+        # instance across tasks refuses to start the task that would exceed it.
+        if self._settled_spend_micros >= self.max_spend_micros:
+            raise StudentVMBlocked(
+                "spend ceiling reached: settled "
+                f"{self._settled_spend_micros} micros >= cap "
+                f"{self.max_spend_micros} micros; refusing to create another machine"
+            )
         token = self._credential()
 
         machine_name = f"sc-{request.task_id[:72]}-{uuid.uuid4().hex[:8]}"
@@ -326,7 +382,7 @@ class SmolCloudRunner:
         finally:
             if machine_id is not None:
                 try:
-                    self._delete(machine_id, token)
+                    settled = self._delete(machine_id, token)
                 except Exception as error:
                     self._quarantine(machine_name, machine_id, f"delete failed: {type(error).__name__}")
                     # A successful task result must not escape when teardown is
@@ -337,6 +393,8 @@ class SmolCloudRunner:
                     raise StudentVMBlocked(
                         f"cleanup_quarantined: cloud machine delete failed for {machine_name}"
                     ) from cause
+                if settled is not None:
+                    self._settled_spend_micros += settled
             elif create_attempted:
                 # A transport timeout during create may have left a billable
                 # remote machine; ttlSeconds/ephemeral are the provider-side
@@ -501,6 +559,7 @@ class SmolCloudRunner:
             raise _CloudApiStatusError(
                 f"cloud API returned HTTP {response.status} for {method} {path.split('?')[0]}",
                 response.status,
+                _sanitize_error_body(response.body),
             )
         if not response.body:
             return {}
@@ -531,7 +590,10 @@ class SmolCloudRunner:
             response_limit_bytes=4096,
         )
         if response.status not in accepted_statuses:
-            raise StudentVMBlocked(f"cloud file upload returned HTTP {response.status}")
+            raise StudentVMBlocked(
+                f"cloud file upload returned HTTP {response.status}: "
+                f"{_sanitize_error_body(response.body)}"
+            )
         if len(response.body) > 4096:
             raise StudentVMBlocked("cloud file upload returned an oversized response")
 
@@ -545,12 +607,23 @@ class SmolCloudRunner:
             response_limit_bytes=max_bytes,
         )
         if response.status != 200:
-            raise StudentVMBlocked(f"cloud candidate download returned HTTP {response.status}")
+            raise StudentVMBlocked(
+                f"cloud candidate download returned HTTP {response.status}: "
+                f"{_sanitize_error_body(response.body)}"
+            )
         if len(response.body) > max_bytes:
             raise StudentVMBlocked("cloud candidate archive exceeded its configured size limit")
         return response.body
 
-    def _delete(self, machine_id: str, token: str) -> None:
+    def _delete(self, machine_id: str, token: str) -> int | None:
+        """Delete a machine and return the settled cost in micros, if reported.
+
+        The live API returns the settled bill nested under ``cost``
+        (``{"cost": {"totalMicros": N, ...}, "usage": {...}}``); older/other
+        deployments may omit it or return 204. A present-but-invalid amount is
+        a hard failure; an absent one returns ``None`` (fail closed on unknown,
+        never fabricate a spend figure).
+        """
         response = self.transport.request(
             "DELETE",
             f"/v1/machines/{quote(machine_id, safe='')}?includeUsage=true",
@@ -560,21 +633,32 @@ class SmolCloudRunner:
             response_limit_bytes=_JSON_RESPONSE_LIMIT,
         )
         if response.status not in (200, 204):
-            raise StudentVMBlocked(f"cloud machine delete returned HTTP {response.status}")
+            raise StudentVMBlocked(
+                f"cloud machine delete returned HTTP {response.status}: "
+                f"{_sanitize_error_body(response.body)}"
+            )
         if len(response.body) > _JSON_RESPONSE_LIMIT:
             raise StudentVMBlocked("cloud machine delete response exceeded its configured size limit")
         # When enabled, the API returns the settled bill here. Validate a
         # returned amount, but allow deployments that still return 204.
-        if response.body:
-            try:
-                usage = json.loads(response.body)
-            except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                raise StudentVMBlocked("cloud machine delete returned malformed usage JSON") from error
-            if not isinstance(usage, dict):
-                raise StudentVMBlocked("cloud machine delete returned an unexpected usage shape")
+        if not response.body:
+            return None
+        try:
+            usage = json.loads(response.body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise StudentVMBlocked("cloud machine delete returned malformed usage JSON") from error
+        if not isinstance(usage, dict):
+            raise StudentVMBlocked("cloud machine delete returned an unexpected usage shape")
+        cost = usage.get("cost")
+        amount = cost.get("totalMicros") if isinstance(cost, dict) else None
+        if amount is None:
+            # Accept a top-level amount for deployments that flatten the shape.
             amount = usage.get("totalMicros")
-            if amount is not None and (not isinstance(amount, int) or isinstance(amount, bool) or amount < 0):
-                raise StudentVMBlocked("cloud machine delete returned invalid settled usage")
+        if amount is None:
+            return None
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+            raise StudentVMBlocked("cloud machine delete returned invalid settled usage")
+        return amount
 
     def _quarantine(self, machine_name: str, machine_id: str | None, reason: str) -> None:
         if self.quarantine_path is None:
