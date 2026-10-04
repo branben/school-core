@@ -157,6 +157,8 @@ class StudentTaskResult:
     stderr: str
     duration_ms: int
     bundle_sha256: str
+    repository_tar: bytes = b""
+    task_json: bytes = b""
     candidate_archive: bytes = b""
     _normalized: bool = field(default=False, init=False, repr=False)
 
@@ -185,6 +187,14 @@ class StudentTaskResult:
             raise ValueError(f"duration_ms must be a non-negative int, got {self.duration_ms!r}")
         if not isinstance(self.bundle_sha256, str) or not _SHA_RE_64.fullmatch(self.bundle_sha256):
             raise ValueError(f"bundle_sha256 is invalid: {self.bundle_sha256!r}")
+        if not isinstance(self.repository_tar, (bytes, bytearray, memoryview)):
+            raise ValueError(
+                f"repository_tar must be bytes-like, got {type(self.repository_tar).__name__!r}"
+            )
+        if not isinstance(self.task_json, (bytes, bytearray, memoryview)):
+            raise ValueError(
+                f"task_json must be bytes-like, got {type(self.task_json).__name__!r}"
+            )
         if not isinstance(self.candidate_archive, (bytes, bytearray, memoryview)):
             raise ValueError(
                 f"candidate_archive must be bytes-like, got {type(self.candidate_archive).__name__!r}"
@@ -807,6 +817,13 @@ def materialize_and_verify_student_result(
         raise StudentVMBlocked("student VM result identity does not match the task")
     if not result.candidate_archive:
         raise StudentVMBlocked("student VM result has no candidate archive")
+    if not result.repository_tar or not result.task_json:
+        raise StudentVMBlocked("student VM result is missing bundle inputs for sha256 verification")
+    recomputed_bundle_sha256 = sha256()
+    recomputed_bundle_sha256.update(bytes(result.repository_tar))
+    recomputed_bundle_sha256.update(bytes(result.task_json))
+    if recomputed_bundle_sha256.hexdigest() != result.bundle_sha256:
+        raise StudentVMBlocked("student VM result bundle_sha256 does not match the uploaded bundle")
 
     destination_path = destination.expanduser().absolute()
     if destination_path.exists():
@@ -1336,6 +1353,8 @@ class SmolVmRunner:
                     stderr=exec_result.stderr.decode("utf-8", "replace"),
                     duration_ms=int((time.monotonic() - started) * 1000),
                     bundle_sha256=bundle_sha,
+                    repository_tar=(staging / "repository.tar").read_bytes(),
+                    task_json=(staging / "task.json").read_bytes(),
                     candidate_archive=candidate_archive,
                 )
             except StudentVMBlocked as exc:

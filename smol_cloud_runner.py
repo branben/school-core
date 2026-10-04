@@ -368,6 +368,8 @@ class SmolCloudRunner:
                     stderr=stderr,
                     duration_ms=int((time.monotonic() - created_at) * 1000),
                     bundle_sha256=bundle_sha256,
+                    repository_tar=repository_tar,
+                    task_json=task_json,
                     candidate_archive=downloaded,
                 )
         except StudentVMBlocked:

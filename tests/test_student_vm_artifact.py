@@ -1,4 +1,6 @@
+import hashlib
 import io
+import json
 import subprocess
 import tarfile
 from pathlib import Path
@@ -153,10 +155,15 @@ def test_durable_record_snaps_identity_and_evidence(tmp_path):
         ("README.md", "file", "base state\n"),
         ("solution.py", "file", "def answer(): return 42\n"),
     ])
+    repository_tar = b"fake-repository-tar"
+    task_json = b"fake-task-json"
+    bundle_sha256 = hashlib.sha256(repository_tar + task_json).hexdigest()
     result = StudentTaskResult(
         task_id="task-17", repository="example/project", base_sha=base_sha,
         guest_id="guest-task-17", exit_code=0, stdout="", stderr="student report",
-        duration_ms=12, bundle_sha256="d" * 64, candidate_archive=guest_archive,
+        duration_ms=12, bundle_sha256=bundle_sha256,
+        repository_tar=repository_tar, task_json=task_json,
+        candidate_archive=guest_archive,
     )
     store = CandidateStore(tmp_path / "candidates.json")
 
@@ -281,10 +288,15 @@ def test_durable_record_binds_artifact_digest(tmp_path):
         ("README.md", "file", "base state\n"),
         ("solution.py", "file", "def answer(): return 42\n"),
     ])
+    repository_tar = b"fake-repository-tar"
+    task_json = b"fake-task-json"
+    bundle_sha256 = hashlib.sha256(repository_tar + task_json).hexdigest()
     result = StudentTaskResult(
         task_id="task-17", repository="example/project", base_sha=base_sha,
         guest_id="guest-task-17", exit_code=0, stdout="", stderr="student report",
-        duration_ms=12, bundle_sha256="d" * 64, candidate_archive=guest_archive,
+        duration_ms=12, bundle_sha256=bundle_sha256,
+        repository_tar=repository_tar, task_json=task_json,
+        candidate_archive=guest_archive,
     )
 
     def trusted_test(path, **_kwargs):
@@ -507,3 +519,63 @@ def test_import_accepts_tracked_dotfiles_from_real_base(tmp_path):
     # no submodule init run).
     assert _git(candidate, "status", "--porcelain") == ""
     assert sorted(_git(candidate, "ls-files").splitlines()) == sorted(artifact.files)
+
+
+def test_bundle_sha256_divergence_is_rejected(tmp_path):
+    base = tmp_path / "base"
+    base.mkdir()
+    _git(base, "init", "-q", "-b", "main")
+    _git(base, "config", "user.email", "artifact-test@example.invalid")
+    _git(base, "config", "user.name", "Artifact Test")
+    (base / "README.md").write_text("base state\n")
+    _git(base, "add", ".")
+    _git(base, "commit", "-qm", "base")
+    base_sha = _git(base, "rev-parse", "HEAD")
+
+    guest_archive = _archive([
+        ("README.md", "file", "base state\n"),
+        ("solution.py", "file", "def answer(): return 42\n"),
+    ])
+    repository_tar = b"fake-repository-tar"
+    task_json = b"fake-task-json"
+    correct_digest = hashlib.sha256(repository_tar + task_json).hexdigest()
+    result = StudentTaskResult(
+        task_id="task-17", repository="example/project", base_sha=base_sha,
+        guest_id="guest-task-17", exit_code=0, stdout="", stderr="student report",
+        duration_ms=12, bundle_sha256="e" * 64,
+        repository_tar=repository_tar, task_json=task_json,
+        candidate_archive=guest_archive,
+    )
+
+    def trusted_test(path, **_kwargs):
+        passed = (Path(path) / "solution.py").read_text() == "def answer(): return 42\n"
+        return {"passed": passed, "ran": 1, "failures": []}
+
+    with pytest.raises(StudentVMBlocked, match="bundle_sha256"):
+        materialize_and_verify_student_result(
+            result, repo_path=base, destination=tmp_path / "candidate",
+            candidate_store=CandidateStore(tmp_path / "candidates.json"),
+            expected_task_id="task-17", expected_repository="example/project",
+            expected_base_sha=base_sha, candidate_id="candidate-task-17",
+            bead_id="school-core-sjv.7", issue_number=17,
+            branch="candidate/task-17", runner=trusted_test,
+            commands=[{"name": "trusted", "cmd": "trusted", "cwd": "."}],
+        )
+
+    result = StudentTaskResult(
+        task_id="task-17", repository="example/project", base_sha=base_sha,
+        guest_id="guest-task-17", exit_code=0, stdout="", stderr="student report",
+        duration_ms=12, bundle_sha256=correct_digest,
+        repository_tar=repository_tar, task_json=task_json,
+        candidate_archive=guest_archive,
+    )
+    verified = materialize_and_verify_student_result(
+        result, repo_path=base, destination=tmp_path / "candidate",
+        candidate_store=CandidateStore(tmp_path / "candidates.json"),
+        expected_task_id="task-17", expected_repository="example/project",
+        expected_base_sha=base_sha, candidate_id="candidate-task-17",
+        bead_id="school-core-sjv.7", issue_number=17,
+        branch="candidate/task-17", runner=trusted_test,
+        commands=[{"name": "trusted", "cmd": "trusted", "cwd": "."}],
+    )
+    assert verified.task_result.bundle_sha256 == correct_digest
