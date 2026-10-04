@@ -21,6 +21,10 @@ from smol_cloud_runner import (
     _sanitize_error_body,
 )
 from student_vm_runner import StudentTaskRequest, StudentVMBlocked
+from verifier_vm import (
+    TrustedCheckManifest,
+    VerifierEvidence,
+)
 
 IMAGE = "registry.example.invalid/school/student@sha256:" + "a" * 64
 TOKEN = "smk_" + "b" * 32  # realistic shape so leak assertions are meaningful
@@ -506,7 +510,7 @@ def test_create_with_invalid_machine_id_quarantines_exactly_once(task_repo, tmp_
 
     records = _quarantine_records(tmp_path)
     assert len(records) == 1
-    assert "invalid id" in records[0]["reason"]
+    assert "invalid machine id" in records[0]["reason"]
     assert transport.calls_for("delete") == []
 
 
@@ -1125,3 +1129,228 @@ def test_delete_error_includes_sanitized_body(task_repo, tmp_path):
         runner.execute(_request(repo, base_sha))
 
     assert "machine locked" in _chain_texts(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# verify() lifecycle (hermetic)
+# ---------------------------------------------------------------------------
+#
+# These tests cover SmolCloudRunner.verify() — the trusted-verification seam —
+# through the same FakeTransport used for _execute(). No socket, no real
+# credential, no billable machine is ever created.
+
+
+def _manifest(task_id="task-1", repository="example/project", base_sha=None):
+    if base_sha is None:
+        base_sha = "0" * 40
+    return TrustedCheckManifest(
+        task_id=task_id,
+        repository=repository,
+        base_sha=base_sha,
+        trusted_checks=(
+            {"name": "compile", "cmd": "python -m py_compile solution.py", "cwd": "."},
+            {"name": "lint", "cmd": "true", "cwd": "."},
+        ),
+    )
+
+
+def _marker_stdout(*pairs):
+    """Build verifier stdout from (check_name, exit_code) pairs."""
+    return "".join(f"SCV-CHECK {name} exit={code}\n" for name, code in pairs)
+
+
+def test_verify_runs_full_lifecycle_and_parses_check_markers(tmp_path):
+    fake_clock = FakeClock()
+    transport = FakeTransport(exec_body={
+        "exitCode": 0,
+        "stdout": _marker_stdout(("compile", 0), ("lint", 0)),
+        "stderr": "",
+        "durationMs": 5,
+    })
+    runner = _runner(tmp_path, transport, fake_clock)
+    archive = _candidate_tar()
+    manifest = _manifest()
+
+    evidence = runner.verify(
+        manifest=manifest,
+        candidate_archive=archive,
+        candidate_id="candidate-001",
+        head_sha="f" * 40,
+    )
+
+    # Route sequence: create -> start -> ready -> upload -> exec -> delete
+    routes = transport.routes()
+    assert routes == ["create", "start", "state", "upload", "exec", "delete"]
+    assert len(transport.calls_for("delete")) == 1
+
+    # Machine name carries the scv- prefix (distinct from sc-)
+    create_payload = json.loads(transport.calls_for("create")[0]["body"])
+    assert create_payload["name"].startswith("scv-task-1-")
+    assert not create_payload["name"].startswith("sc-")
+
+    # checks_run / disposition parsed from marker stdout
+    assert evidence.checks_run == ("compile", "lint")
+    assert evidence.disposition == "current"
+
+    # Verifier evidence binds the exact archive and manifest
+    assert evidence.archive_sha256 == hashlib.sha256(archive).hexdigest()
+    assert evidence.manifest_sha256 == manifest.digest()
+    assert evidence.guest_id.startswith("scv-task-1-")
+
+
+def test_verify_records_failed_disposition_when_a_check_fails(tmp_path):
+    fake_clock = FakeClock()
+    transport = FakeTransport(exec_body={
+        "exitCode": 0,
+        "stdout": _marker_stdout(("compile", 0), ("lint", 2)),
+        "stderr": "lint failed\n",
+        "durationMs": 5,
+    })
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    evidence = runner.verify(
+        manifest=_manifest(),
+        candidate_archive=_candidate_tar(),
+        candidate_id="candidate-001",
+        head_sha="f" * 40,
+    )
+
+    assert evidence.checks_run == ("compile", "lint")
+    assert evidence.disposition == "failed"
+
+
+def test_verify_delete_failure_quarantines_with_cleanup_quarantined(tmp_path):
+    fake_clock = FakeClock()
+    transport = FakeTransport(exec_body={
+        "exitCode": 0,
+        "stdout": _marker_stdout(("compile", 0), ("lint", 0)),
+        "stderr": "",
+        "durationMs": 5,
+    })
+    transport.failures["delete"] = SmolCloudResponse(500, b"boom")
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked) as excinfo:
+        runner.verify(
+            manifest=_manifest(),
+            candidate_archive=_candidate_tar(),
+            candidate_id="candidate-001",
+            head_sha="f" * 40,
+        )
+
+    assert "cleanup_quarantined" in str(excinfo.value)
+    records = _quarantine_records(tmp_path)
+    assert len(records) == 1
+    assert records[0]["state"] == "cleanup_quarantined"
+    assert records[0]["provider"] == "smol-cloud"
+    assert records[0]["machine_name"].startswith("scv-task-1-")
+    assert records[0]["reason"].startswith("delete failed:")
+
+
+def test_verify_missing_credential_blocks_before_any_request(tmp_path, monkeypatch):
+    monkeypatch.delenv("SMOL_CLOUD_TOKEN", raising=False)
+    fake_clock = FakeClock()
+    transport = FakeTransport()
+    runner = _runner(tmp_path, transport, fake_clock, api_key=None)
+
+    with pytest.raises(StudentVMBlocked, match="SMOL_CLOUD_TOKEN"):
+        runner.verify(
+            manifest=_manifest(),
+            candidate_archive=_candidate_tar(),
+            candidate_id="candidate-001",
+            head_sha="f" * 40,
+        )
+
+    assert transport.calls == []
+    assert _quarantine_records(tmp_path) == []
+
+
+def test_verify_rejects_empty_archive_before_any_request(tmp_path):
+    fake_clock = FakeClock()
+    transport = FakeTransport()
+    runner = _runner(tmp_path, transport, fake_clock)
+
+    with pytest.raises(StudentVMBlocked, match="candidate archive is empty"):
+        runner.verify(
+            manifest=_manifest(),
+            candidate_archive=b"",
+            candidate_id="candidate-001",
+            head_sha="f" * 40,
+        )
+
+    assert transport.calls == []
+
+
+# ---------------------------------------------------------------------------
+# verify() spend ceiling
+# ---------------------------------------------------------------------------
+
+
+def test_verify_spend_ceiling_refuses_create_before_any_request(tmp_path):
+    # A runner already at the cap refuses to create a verifier machine,
+    # mirroring the _execute() guard but for the verify() path.
+    fake_clock = FakeClock()
+    transport = FakeTransport()
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=1000)
+    runner._settled_spend_micros = 1000
+
+    with pytest.raises(StudentVMBlocked, match="spend ceiling reached"):
+        runner.verify(
+            manifest=_manifest(),
+            candidate_archive=_candidate_tar(),
+            candidate_id="candidate-001",
+            head_sha="f" * 40,
+        )
+
+    assert transport.calls == []
+
+
+def test_verify_accumulates_settled_cost_from_verifier_delete(tmp_path):
+    # verify()'s _guest_machine must feed the verifier delete cost back into
+    # the shared accumulator so the ceiling applies across student+verifier.
+    fake_clock = FakeClock()
+    transport = FakeTransport(exec_body={
+        "exitCode": 0,
+        "stdout": _marker_stdout(("compile", 0)),
+        "stderr": "",
+        "durationMs": 5,
+    })
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"cost": {"totalMicros": 750}}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=10_000)
+
+    runner.verify(
+        manifest=_manifest(),
+        candidate_archive=_candidate_tar(),
+        candidate_id="candidate-001",
+        head_sha="f" * 40,
+    )
+
+    assert runner._settled_spend_micros == 750
+
+
+def test_verify_spend_ceiling_refuses_after_student_task_spent_to_cap(task_repo, tmp_path):
+    # End-to-end: a student task settles exactly to the cap, then verify()
+    # must refuse to spin up a verifier machine for the same runner.
+    fake_clock = FakeClock()
+    transport = FakeTransport()
+    transport.delete_response = SmolCloudResponse(
+        200, json.dumps({"cost": {"totalMicros": 1000}}).encode()
+    )
+    runner = _runner(tmp_path, transport, fake_clock, max_spend_micros=1000)
+
+    runner.execute(_request(task_repo[0], task_repo[1], task_id="task-a"))
+    assert runner._settled_spend_micros == 1000
+
+    with pytest.raises(StudentVMBlocked, match="spend ceiling reached"):
+        runner.verify(
+            manifest=_manifest(task_id="task-a"),
+            candidate_archive=_candidate_tar(),
+            candidate_id="candidate-001",
+            head_sha="f" * 40,
+        )
+
+    # The student task created one machine; verify must not have created a second.
+    assert len(transport.calls_for("create")) == 1
+    assert len(transport.calls_for("delete")) == 1

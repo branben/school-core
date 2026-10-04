@@ -16,11 +16,12 @@ import time
 import uuid
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterator, Protocol
 from urllib.parse import quote
 
 from student_vm_runner import (
@@ -264,136 +265,204 @@ class SmolCloudRunner:
         token = self._credential()
 
         machine_name = f"sc-{request.task_id[:72]}-{uuid.uuid4().hex[:8]}"
+        archive_path = "/tmp/school-core-candidate.tar"
+        guest_script = self._guest_script(request, archive_path)
+        create_payload = {
+            "name": machine_name,
+            "source": {"type": self.source_type, "reference": self.image_reference},
+            "resources": {
+                "cpus": request.cpus,
+                "memoryMb": request.memory_mib,
+                "diskGb": request.storage_gib,
+            },
+            "network": {"mode": "blocked"},
+            "ttlSeconds": request.timeout_seconds + _TTL_SETUP_GRACE_SECONDS,
+            "ephemeral": True,
+        }
+        uploads = [
+            ("/tmp/school-core-input/repository.tar", b""),
+            ("/tmp/school-core-input/task.json", b""),
+        ]
+        with tempfile.TemporaryDirectory(prefix="school-core-smol-cloud-") as raw_stage:
+            staging = Path(raw_stage)
+            bundle_sha256, task_json = self._stage_bundle(request, staging)
+            repository_tar = (staging / "repository.tar").read_bytes()
+            uploads = [
+                ("/tmp/school-core-input/repository.tar", repository_tar),
+                ("/tmp/school-core-input/task.json", task_json),
+            ]
+            with self._guest_machine(
+                token=token,
+                machine_name=machine_name,
+                create_payload=create_payload,
+                uploads=uploads,
+                guest_script=guest_script,
+                exec_timeout_seconds=request.timeout_seconds,
+                wrap_message="SmolMachines Cloud task blocked",
+                track_spend=True,
+            ) as (machine_id, headers, exec_result, created_at):
+                return self._student_post_exec(
+                    machine_id=machine_id,
+                    headers=headers,
+                    exec_result=exec_result,
+                    created_at=created_at,
+                    request=request,
+                    bundle_sha256=bundle_sha256,
+                    repository_tar=repository_tar,
+                    task_json=task_json,
+                    machine_name=machine_name,
+                )
+
+    def _student_post_exec(
+        self,
+        *,
+        machine_id: str,
+        headers: dict[str, str],
+        exec_result: dict[str, Any],
+        created_at: float,
+        request: StudentTaskRequest,
+        bundle_sha256: str,
+        repository_tar: bytes,
+        task_json: bytes,
+        machine_name: str,
+    ) -> StudentTaskResult:
+        downloaded = self._download(
+            f"/v1/machines/{quote(machine_id, safe='')}/files"
+            "/tmp/school-core-candidate.tar",
+            headers=headers,
+            max_bytes=request.max_output_bytes,
+        )
+        _validate_archive(downloaded, request.max_output_bytes)
+        return StudentTaskResult(
+            task_id=request.task_id,
+            repository=request.repository,
+            base_sha=request.base_sha,
+            guest_id=machine_name,
+            exit_code=0,
+            stdout=exec_result.get("stdout", ""),
+            stderr=exec_result.get("stderr", ""),
+            duration_ms=int((time.monotonic() - created_at) * 1000),
+            bundle_sha256=bundle_sha256,
+            repository_tar=repository_tar,
+            task_json=task_json,
+            candidate_archive=downloaded,
+        )
+
+    @contextmanager
+    def _guest_machine(
+        self,
+        *,
+        token: str,
+        machine_name: str,
+        create_payload: dict[str, Any],
+        uploads: list[tuple[str, bytes]],
+        guest_script: str,
+        exec_timeout_seconds: int,
+        wrap_message: str,
+        track_spend: bool = False,
+    ) -> Iterator[tuple[str, dict[str, str], dict[str, Any], float]]:
+        """Shared guest lifecycle: create -> start -> ready -> upload -> exec.
+
+        Yields (machine_id, headers, exec_result, created_at) after a
+        successful exec and stdout/stderr validation. The machine is always
+        deleted (or quarantined) when the context exits, whether normally or
+        via an exception. Foreign exceptions are wrapped in StudentVMBlocked
+        using *wrap_message*; StudentVMBlocked is re-raised unchanged.
+
+        If *track_spend*, the settled cost from delete is accumulated into
+        ``self._settled_spend_micros``.
+        """
         machine_id: str | None = None
         create_attempted = False
         created_at = time.monotonic()
         try:
-            with tempfile.TemporaryDirectory(prefix="school-core-smol-cloud-") as raw_stage:
-                staging = Path(raw_stage)
-                bundle_sha256, task_json = self._stage_bundle(request, staging)
-                repository_tar = (staging / "repository.tar").read_bytes()
-                headers = {"Authorization": f"Bearer {token}"}
-                create_payload = {
-                    "name": machine_name,
-                    "source": {"type": self.source_type, "reference": self.image_reference},
-                    "resources": {
-                        "cpus": request.cpus,
-                        "memoryMb": request.memory_mib,
-                        "diskGb": request.storage_gib,
-                    },
-                    "network": {"mode": "blocked"},
-                    "ttlSeconds": request.timeout_seconds + _TTL_SETUP_GRACE_SECONDS,
-                    "ephemeral": True,
-                }
-
-                create_attempted = True
-                try:
-                    created = self._json_request(
-                        "POST",
-                        "/v1/machines",
-                        headers=headers,
-                        payload=create_payload,
-                        accepted_statuses=(201,),
-                        timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
-                    )
-                except _CloudApiStatusError as error:
-                    if error.status < 500 and error.status != 429:
-                        # A complete 4xx rejection proves no machine exists to
-                        # reconcile. Only unknown outcomes get a record.
-                        create_attempted = False
-                    raise
-                raw_id = created.get("id")
-                if not isinstance(raw_id, str) or not _MACHINE_ID_RE.fullmatch(raw_id):
-                    self._quarantine(machine_name, None, "created machine returned an invalid id")
-                    create_attempted = False
-                    raise StudentVMBlocked("cloud create returned an invalid machine id")
-                machine_id = raw_id
-
-                self._json_request(
+            headers = {"Authorization": f"Bearer {token}"}
+            create_attempted = True
+            try:
+                created = self._json_request(
                     "POST",
-                    f"/v1/machines/{quote(machine_id, safe='')}/start",
+                    "/v1/machines",
                     headers=headers,
-                    payload={},
-                    accepted_statuses=(200,),
+                    payload=create_payload,
+                    accepted_statuses=(201,),
                     timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
                 )
-                self._wait_until_ready(machine_id, headers)
+            except _CloudApiStatusError as error:
+                if error.status < 500 and error.status != 429:
+                    # A complete 4xx rejection proves no machine exists to
+                    # reconcile. Only unknown outcomes get a record.
+                    create_attempted = False
+                raise
+            raw_id = created.get("id")
+            if not isinstance(raw_id, str) or not _MACHINE_ID_RE.fullmatch(raw_id):
+                self._quarantine(machine_name, None, "create returned an invalid machine id")
+                create_attempted = False
+                raise StudentVMBlocked(
+                    f"cloud create returned an invalid machine id for {machine_name}"
+                )
+            machine_id = raw_id
 
-                input_root = f"/v1/machines/{quote(machine_id, safe='')}/files"
+            self._json_request(
+                "POST",
+                f"/v1/machines/{quote(machine_id, safe='')}/start",
+                headers=headers,
+                payload={},
+                accepted_statuses=(200,),
+                timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
+            )
+            self._wait_until_ready(machine_id, headers)
+
+            input_root = f"/v1/machines/{quote(machine_id, safe='')}/files"
+            for file_path, file_data in uploads:
                 self._upload(
-                    input_root + "/tmp/school-core-input/repository.tar",
-                    repository_tar,
+                    input_root + file_path,
+                    file_data,
                     headers=headers,
                     accepted_statuses=(200, 204),
                 )
-                self._upload(
-                    input_root + "/tmp/school-core-input/task.json",
-                    task_json,
-                    headers=headers,
-                    accepted_statuses=(200, 204),
-                )
 
-                archive_path = "/tmp/school-core-candidate.tar"
-                command = self._guest_script(request, archive_path)
-                exec_result = self._json_request(
-                    "POST",
-                    f"/v1/machines/{quote(machine_id, safe='')}/exec?output=text",
-                    headers=headers,
-                    payload={
-                        "command": ["sh", "-c", command],
-                        "timeoutSeconds": request.timeout_seconds,
-                    },
-                    accepted_statuses=(200,),
-                    timeout_seconds=request.timeout_seconds + _CONTROL_TIMEOUT_SECONDS,
+            exec_result = self._json_request(
+                "POST",
+                f"/v1/machines/{quote(machine_id, safe='')}/exec?output=text",
+                headers=headers,
+                payload={
+                    "command": ["sh", "-c", guest_script],
+                    "timeoutSeconds": exec_timeout_seconds,
+                },
+                accepted_statuses=(200,),
+                timeout_seconds=exec_timeout_seconds + _CONTROL_TIMEOUT_SECONDS,
+            )
+            exit_code = exec_result.get("exitCode")
+            if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+                raise StudentVMBlocked("exec returned an invalid exit code")
+            if exit_code != 0:
+                raise StudentVMBlocked(
+                    f"guest execution failed with exit status {exit_code}"
                 )
-                exit_code = exec_result.get("exitCode")
-                if not isinstance(exit_code, int) or isinstance(exit_code, bool):
-                    raise StudentVMBlocked("cloud exec returned an invalid exit code")
-                if exit_code != 0:
-                    raise StudentVMBlocked(f"cloud guest execution failed with exit status {exit_code}")
-                stderr = exec_result.get("stderr", "")
-                if not isinstance(stderr, str) or len(stderr.encode("utf-8")) > _STDERR_LIMIT:
-                    raise StudentVMBlocked("cloud guest diagnostics exceeded the configured limit")
-                stdout = exec_result.get("stdout", "")
-                if not isinstance(stdout, str) or len(stdout.encode("utf-8")) > _STDERR_LIMIT:
-                    raise StudentVMBlocked("cloud guest output exceeded the configured limit")
+            stdout = exec_result.get("stdout", "")
+            if not isinstance(stdout, str) or len(stdout.encode("utf-8")) > _STDERR_LIMIT:
+                raise StudentVMBlocked("guest output exceeded the configured limit")
+            stderr = exec_result.get("stderr", "")
+            if not isinstance(stderr, str) or len(stderr.encode("utf-8")) > _STDERR_LIMIT:
+                raise StudentVMBlocked("guest diagnostics exceeded the configured limit")
 
-                downloaded = self._download(
-                    input_root + "/tmp/school-core-candidate.tar",
-                    headers=headers,
-                    max_bytes=request.max_output_bytes,
-                )
-                _validate_archive(downloaded, request.max_output_bytes)
-                return StudentTaskResult(
-                    task_id=request.task_id,
-                    repository=request.repository,
-                    base_sha=request.base_sha,
-                    guest_id=machine_name,
-                    exit_code=0,
-                    stdout=stdout,
-                    stderr=stderr,
-                    duration_ms=int((time.monotonic() - created_at) * 1000),
-                    bundle_sha256=bundle_sha256,
-                    repository_tar=repository_tar,
-                    task_json=task_json,
-                    candidate_archive=downloaded,
-                )
+            yield machine_id, headers, exec_result, created_at
         except StudentVMBlocked:
             raise
         except Exception as error:
             # Do not expose transport exception text: it can contain request
             # context. Preserve only its type and fail closed; suppress the
             # chain so a traceback render cannot leak it either.
-            raise StudentVMBlocked(
-                f"SmolMachines Cloud task blocked: {type(error).__name__}"
-            ) from None
+            raise StudentVMBlocked(f"{wrap_message}: {type(error).__name__}") from None
         finally:
             if machine_id is not None:
                 try:
                     settled = self._delete(machine_id, token)
                 except Exception as error:
-                    self._quarantine(machine_name, machine_id, f"delete failed: {type(error).__name__}")
-                    # A successful task result must not escape when teardown is
+                    self._quarantine(
+                        machine_name, machine_id, f"delete failed: {type(error).__name__}"
+                    )
+                    # A successful result must not escape when teardown is
                     # unknown. Keep cleanup failure as the visible terminal
                     # state. Chain only our own sanitized errors; a foreign
                     # exception's text can carry transport request state.
@@ -401,13 +470,16 @@ class SmolCloudRunner:
                     raise StudentVMBlocked(
                         f"cleanup_quarantined: cloud machine delete failed for {machine_name}"
                     ) from cause
-                if settled is not None:
+                if track_spend and settled is not None:
                     self._settled_spend_micros += settled
             elif create_attempted:
                 # A transport timeout during create may have left a billable
                 # remote machine; ttlSeconds/ephemeral are the provider-side
                 # safety net, while this record enables operator reconciliation.
-                self._quarantine(machine_name, None, "create outcome unknown; provider TTL is the fallback")
+                self._quarantine(
+                    machine_name, None,
+                    "create outcome unknown; provider TTL is the fallback"
+                )
 
     def _validate_limits(self, request: StudentTaskRequest) -> None:
         limits = (
@@ -710,23 +782,27 @@ class SmolCloudRunner:
         if not archive:
             raise StudentVMBlocked("candidate archive is empty")
         _validate_archive(archive, _JSON_RESPONSE_LIMIT)
-
+        # Fail closed before any billable machine is created — same guard as
+        # _execute(), so a runner already over the shared spend ceiling cannot
+        # spin up a verifier machine. Before the credential read, so no
+        # request is issued when the cap is already reached.
+        if self._settled_spend_micros >= self.max_spend_micros:
+            raise StudentVMBlocked(
+                "spend ceiling reached: settled "
+                f"{self._settled_spend_micros} micros >= cap "
+                f"{self.max_spend_micros} micros; refusing to create another machine"
+            )
         token = self._credential()
         guest_id = f"scv-{manifest.task_id}-{uuid.uuid4().hex[:8]}"
-        machine_id: str | None = None
-        create_attempted = False
         pending: StudentVMBlocked | None = None
         checks_run: tuple[str, ...] = ()
         disposition = "failed"
-        created = False
 
         try:
             with tempfile.TemporaryDirectory(prefix="school-core-verify-") as raw_stage:
                 staging = Path(raw_stage)
                 candidate_path = staging / "candidate.tar"
                 candidate_path.write_bytes(archive)
-
-                headers = {"Authorization": f"Bearer {token}"}
                 create_payload = {
                     "name": guest_id,
                     "source": {"type": self.source_type, "reference": self.image_reference},
@@ -735,88 +811,28 @@ class SmolCloudRunner:
                     "ttlSeconds": timeout_seconds + _TTL_SETUP_GRACE_SECONDS,
                     "ephemeral": True,
                 }
-
-                create_attempted = True
-                try:
-                    created_resp = self._json_request(
-                        "POST", "/v1/machines",
-                        headers=headers, payload=create_payload,
-                        accepted_statuses=(201,),
-                        timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
-                    )
-                except _CloudApiStatusError as error:
-                    if error.status < 500 and error.status != 429:
-                        create_attempted = False
-                    raise
-                raw_id = created_resp.get("id")
-                if not isinstance(raw_id, str) or not _MACHINE_ID_RE.fullmatch(raw_id):
-                    self._quarantine(guest_id, None, "verifier create returned an invalid id")
-                    create_attempted = False
-                    raise StudentVMBlocked("verifier create returned an invalid machine id")
-                machine_id = raw_id
-
-                self._json_request(
-                    "POST", f"/v1/machines/{quote(machine_id, safe='')}/start",
-                    headers=headers, payload={},
-                    accepted_statuses=(200,),
-                    timeout_seconds=_CONTROL_TIMEOUT_SECONDS,
-                )
-                self._wait_until_ready(machine_id, headers)
-
-                input_root = f"/v1/machines/{quote(machine_id, safe='')}/files"
-                self._upload(
-                    input_root + "/tmp/school-core-verify-input/candidate.tar",
-                    archive,
-                    headers=headers,
-                    accepted_statuses=(200, 204),
-                )
-
-                verifier_script = _verifier_collection_script(
+                uploads = [
+                    ("/tmp/school-core-verify-input/candidate.tar", archive),
+                ]
+                guest_script = _verifier_collection_script(
                     manifest, input_path="/tmp/school-core-verify-input/candidate.tar"
                 )
-                exec_result = self._json_request(
-                    "POST",
-                    f"/v1/machines/{quote(machine_id, safe='')}/exec?output=text",
-                    headers=headers,
-                    payload={
-                        "command": ["sh", "-c", verifier_script],
-                        "timeoutSeconds": timeout_seconds,
-                    },
-                    accepted_statuses=(200,),
-                    timeout_seconds=timeout_seconds + _CONTROL_TIMEOUT_SECONDS,
-                )
-                exit_code = exec_result.get("exitCode")
-                if not isinstance(exit_code, int) or isinstance(exit_code, bool):
-                    raise StudentVMBlocked("verifier exec returned an invalid exit code")
-                if exit_code != 0:
-                    raise StudentVMBlocked(f"verifier guest execution failed with exit status {exit_code}")
-                stdout = exec_result.get("stdout", "")
-                if not isinstance(stdout, str) or len(stdout.encode("utf-8")) > _STDERR_LIMIT:
-                    raise StudentVMBlocked("verifier guest output exceeded the configured limit")
-                stderr = exec_result.get("stderr", "")
-                if not isinstance(stderr, str) or len(stderr.encode("utf-8")) > _STDERR_LIMIT:
-                    raise StudentVMBlocked("verifier guest diagnostics exceeded the configured limit")
-
-                checks_run, disposition = _parse_check_markers(stdout.encode("utf-8"), manifest)
-
+                with self._guest_machine(
+                    token=token,
+                    machine_name=guest_id,
+                    create_payload=create_payload,
+                    uploads=uploads,
+                    guest_script=guest_script,
+                    exec_timeout_seconds=timeout_seconds,
+                    wrap_message="SmolMachines Cloud verifier blocked",
+                    track_spend=True,
+                ) as (machine_id, headers, exec_result, created_at):
+                    stdout = exec_result.get("stdout", "")
+                    checks_run, disposition = _parse_check_markers(
+                        stdout.encode("utf-8"), manifest
+                    )
         except StudentVMBlocked as exc:
             pending = exc
-        except Exception as error:
-            raise StudentVMBlocked(
-                f"SmolMachines Cloud verifier blocked: {type(error).__name__}"
-            ) from None
-        finally:
-            if machine_id is not None:
-                try:
-                    self._delete(machine_id, token)
-                except Exception as error:
-                    self._quarantine(guest_id, machine_id, f"delete failed: {type(error).__name__}")
-                    cause = error if isinstance(error, StudentVMBlocked) else None
-                    raise StudentVMBlocked(
-                        f"cleanup_quarantined: verifier machine delete failed for {guest_id}"
-                    ) from cause
-            elif create_attempted:
-                self._quarantine(guest_id, None, "verifier create outcome unknown; provider TTL is the fallback")
 
         if pending is not None:
             raise pending
