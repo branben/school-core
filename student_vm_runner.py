@@ -621,7 +621,7 @@ def _norm_branch(value: str) -> str:
 def _git_env() -> dict[str, str]:
     """Hermetic commit identity so identical trees always rebuild identical SHAs."""
     return {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PATH": "/usr/bin:/bin",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_AUTHOR_NAME": "School Core",
