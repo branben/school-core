@@ -227,6 +227,14 @@ def test_ceilings_must_be_positive_integers():
             )
 
 
+@pytest.mark.parametrize("bad", ["", "oci", "IMAGE", "smol_machine", None, 123])
+def test_source_type_must_be_a_known_delivery_kind(bad):
+    with pytest.raises(ValueError, match="source_type"):
+        SmolCloudRunner(
+            image_reference=IMAGE, transport=FakeTransport(), source_type=bad
+        )
+
+
 # ---------------------------------------------------------------------------
 # happy path
 # ---------------------------------------------------------------------------
@@ -284,6 +292,21 @@ def test_create_payload_pins_blocked_network_ttl_ephemeral_and_resources(task_re
     assert "image" not in payload
     assert payload["resources"] == {"cpus": 2, "memoryMb": 1024, "diskGb": 4}
     assert payload["name"].startswith("sc-task-1-")
+
+
+def test_smolmachine_source_is_delivered_without_a_guest_pull(task_repo, tmp_path):
+    # A registry-backed OCI image cannot boot under blocked egress; the provider
+    # must resolve a pre-packed smolmachine instead. The digest pin is preserved.
+    fake_clock = FakeClock()
+    repo, base_sha = task_repo
+    transport = FakeTransport()
+    runner = _runner(tmp_path, transport, fake_clock, source_type="smolmachine")
+
+    runner.execute(_request(repo, base_sha))
+
+    payload = json.loads(transport.calls_for("create")[0]["body"])
+    assert payload["source"] == {"type": "smolmachine", "reference": IMAGE}
+    assert payload["network"] == {"mode": "blocked"}
 
 
 def test_bundle_sha256_binds_uploaded_repository_tar_and_task_json(task_repo, tmp_path):

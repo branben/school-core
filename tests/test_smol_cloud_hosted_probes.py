@@ -178,11 +178,16 @@ def hosted():
             "SCHOOL_CORE_SMOL_CLOUD_IMAGE must be a digest-pinned reference "
             "(name@sha256:<64 lowercase hex>); the adapter refuses tags"
         )
+    source_type = os.environ.get("SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE", "smolmachine")
+    if source_type not in ("image", "smolmachine"):
+        pytest.fail(
+            "SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE must be 'image' or 'smolmachine'"
+        )
     journal = []
     transport = RecordingTransport(_UrllibSmolCloudTransport(), journal)
     evidence = EvidenceWriter(REPO_ROOT / "data" / "hosted-qualification", image=image)
     return SimpleNamespace(
-        token=token, image=image, transport=transport,
+        token=token, image=image, source_type=source_type, transport=transport,
         journal=journal, evidence=evidence,
     )
 
@@ -228,6 +233,7 @@ def _request(repo, base_sha, **overrides):
 def _runner(hosted, tmp_path, **overrides):
     kwargs = dict(
         image_reference=hosted.image,
+        source_type=hosted.source_type,
         api_key=hosted.token,
         transport=hosted.transport,
         quarantine_path=tmp_path / "quarantine.jsonl",
@@ -310,8 +316,13 @@ def test_p1_lifecycle_export_import_destroy(hosted, tmp_path):
     assert result.exit_code == 0
     with tarfile.open(fileobj=io.BytesIO(result.candidate_archive_bytes), mode="r:*") as archive:
         names = archive.getnames()
-        assert "vm-result.txt" in names
-        extracted = archive.extractfile("vm-result.txt").read()
+        # The guest exports with `tar -C /workspace .`, so members are
+        # './'-prefixed; normalize before asserting on the candidate tree.
+        normalized = {name[2:] if name.startswith("./") else name for name in names}
+        assert "vm-result.txt" in normalized
+        member = archive.extractfile("./vm-result.txt")
+        assert member is not None
+        extracted = member.read()
     assert extracted == b"written in guest\n"
 
     deletes = [e for e in hosted.journal if e["method"] == "DELETE"]
@@ -485,7 +496,7 @@ def test_p6_provider_ttl_sweep_is_the_cleanup_fallback(hosted, tmp_path):
     name = f"sc-ttl-probe-{uuid.uuid4().hex[:10]}"
     payload = {
         "name": name,
-        "source": {"type": "image", "reference": hosted.image},
+        "source": {"type": hosted.source_type, "reference": hosted.image},
         "resources": {"cpus": 1, "memoryMb": 1024, "diskGb": 2},
         "network": {"mode": "blocked"},
         "ttlSeconds": 60,

@@ -36,6 +36,11 @@ __all__ = ["SmolCloudRunner", "SmolCloudResponse", "SmolCloudTransport"]
 
 API_BASE_URL = "https://api.smolmachines.com"
 _IMAGE_DIGEST_RE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
+# How the guest image reaches the machine. ``image`` is an OCI reference the
+# guest pulls at start; ``smolmachine`` is a provider-hosted pre-packed artifact
+# the node resolves without a guest pull. Only ``smolmachine`` can boot under
+# ``network: blocked`` (an OCI pull is impossible with no network).
+_SOURCE_TYPES = frozenset({"image", "smolmachine"})
 _MACHINE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _CONTROL_TIMEOUT_SECONDS = 120
 _JSON_RESPONSE_LIMIT = 1024 * 1024
@@ -127,12 +132,19 @@ class SmolCloudRunner:
     Egress is fixed to ``blocked``. There is no setting that lets task or repo
     data widen it. The constructor requires an operator-pinned OCI digest and
     bounded resource ceilings; provider credentials are read only at execute.
+
+    ``source_type`` selects how the guest image is delivered: ``image`` (an OCI
+    reference the guest pulls at start) or ``smolmachine`` (a provider-hosted
+    pre-packed artifact resolved without a guest pull). Because egress is
+    blocked, a registry-backed ``image`` cannot boot; hosted qualification uses
+    ``smolmachine``. Both require the reference to be pinned by sha256 digest.
     """
 
     def __init__(
         self,
         *,
         image_reference: str,
+        source_type: str = "image",
         api_key: str | None = None,
         transport: SmolCloudTransport | None = None,
         quarantine_path: Path | str | None = None,
@@ -146,6 +158,8 @@ class SmolCloudRunner:
     ) -> None:
         if not isinstance(image_reference, str) or not _IMAGE_DIGEST_RE.fullmatch(image_reference):
             raise ValueError("image_reference must be an OCI reference pinned by sha256 digest")
+        if source_type not in _SOURCE_TYPES:
+            raise ValueError(f"source_type must be one of {sorted(_SOURCE_TYPES)}")
         for name, value in (
             ("max_cpus", max_cpus),
             ("max_memory_mib", max_memory_mib),
@@ -156,6 +170,7 @@ class SmolCloudRunner:
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         self.image_reference = image_reference
+        self.source_type = source_type
         self._api_key = api_key
         self.transport = transport if transport is not None else _UrllibSmolCloudTransport()
         self.quarantine_path = Path(quarantine_path) if quarantine_path is not None else None
@@ -198,7 +213,7 @@ class SmolCloudRunner:
                 headers = {"Authorization": f"Bearer {token}"}
                 create_payload = {
                     "name": machine_name,
-                    "source": {"type": "image", "reference": self.image_reference},
+                    "source": {"type": self.source_type, "reference": self.image_reference},
                     "resources": {
                         "cpus": request.cpus,
                         "memoryMb": request.memory_mib,
