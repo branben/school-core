@@ -20,3 +20,34 @@ verify:
   - name: core-python-compile
     cmd: python3 -m compileall -q *.py
     cwd: .
+
+  # compileall only checks syntax — it never imports, so it prints PASS on a
+  # module that cannot be imported (e.g. a forward reference evaluated at module
+  # scope without `from __future__ import annotations`). Import the seam modules
+  # for real so the gate fails closed on a non-importable module. Stdlib-only:
+  # the seam imports nothing outside the stdlib and sibling modules, so this
+  # fits the network-less verifyShell.
+  - name: core-python-import
+    cmd: python3 -c "import student_vm_runner, verifier_vm, model_relay, candidate_pr"
+    cwd: .
+
+  # Strict typecheck of the student VM runner seam, the task-scoped model
+  # relay capability, and the clean verifier VM. Toolchain provisioned by the
+  # flake (python312Packages.mypy) — no pip deps needed in the shell.
+  # --follow-imports=silent keeps the scope on the seam files themselves.
+  - name: student-vm-runner-typecheck
+    cmd: mypy --strict --follow-imports=silent student_vm_runner.py model_relay.py verifier_vm.py
+    cwd: .
+
+  # Strict typecheck of the candidate-bound PR provider seam (Phase 1
+  # PR-correctness): publication journal + provider adapter.
+  - name: pr-provider-typecheck
+    cmd: mypy --strict --follow-imports=silent pr_provider.py candidate_pr.py
+    cwd: .
+
+  # Import the hosted SmolMachines Cloud adapter so the gate reaches it on
+  # a clean checkout (SCH-13). Stdlib-only, like core-python-import: the
+  # adapter imports only the stdlib and the tracked student_vm_runner seam.
+  - name: smol-cloud-runner-import
+    cmd: python3 -c "import smol_cloud_runner"
+    cwd: .
