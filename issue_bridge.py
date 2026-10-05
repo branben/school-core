@@ -201,6 +201,15 @@ MAX_ISSUES_PER_CYCLE_DEFAULT = 2
 # Crew statuses that mean "still active — do not start a second one this cycle".
 _CREW_ACTIVE_STATUSES = {"running", "blocked"}
 
+# SCH-32: Fail-closed operator gate for hosting student execution on
+# SmolMachines Cloud (disposable VM substrate qualified by SCH-13). Read once
+# per cycle so a cycle is internally consistent. Default OFF — production
+# student coding stays disabled until SCH-30 (operator decision) unblocks it.
+# An absent or unparseable flag falls through to the existing no-host / Orca /
+# direct-model path, byte-for-byte unchanged; SmolCloudRunner is never imported
+# or constructed on that path.
+HOSTED_STUDENT_ENABLED_DEFAULT = False
+
 
 def _load_retries() -> dict[int, int]:
     """Load ``{issue_number: attempt_count}`` for issues awaiting a retry.
@@ -980,6 +989,21 @@ def _crew_enabled_from_env() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _hosted_student_enabled_from_env() -> bool:
+    """Parse SCHOOL_CORE_HOSTED_STUDENT with lenient truthiness (1/true/yes/on → on).
+
+    Anything else — absent, 0, false, or garbage — is OFF. When off, the
+    existing no-host / Orca / direct-model path is used byte-for-byte
+    unchanged; SmolCloudRunner is never imported or constructed. This is the
+    operator gate that makes the hosted-student boundary selectable without
+    enabling production student coding (SCH-30 is still blocked).
+    """
+    raw = os.environ.get("SCHOOL_CORE_HOSTED_STUDENT", "")
+    if not raw:
+        return HOSTED_STUDENT_ENABLED_DEFAULT
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _quarantine_corrupt_registry(crew_runs_file) -> None:
     """Move a corrupted registry aside so it can't silently re-trigger.
 
@@ -1147,6 +1171,25 @@ def bridge_issues(
     crew_max_per_cycle = (
         CREW_MAX_PER_CYCLE_DEFAULT if crew_max_per_cycle is None else int(crew_max_per_cycle)
     )
+    # SCH-32a: fail-closed operator gate for hosted student execution. Read
+    # once per cycle so a cycle is internally consistent. When OFF (the
+    # default), SmolCloudRunner is never imported — the no-host / Orca /
+    # direct-model path is byte-for-byte unchanged. When ON, the runner is
+    # constructed from operator-pinned env (SCHOOL_CORE_SMOL_CLOUD_IMAGE,
+    # SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE) so the boundary is selectable;
+    # routing the student task *through* the runner is a separate slice
+    # (SCH-32b). The import is lazy inside the branch so the flag-absent
+    # path pays no import cost and cannot regress on import error.
+    hosted_student_enabled = _hosted_student_enabled_from_env()
+    hosted_student_runner = None
+    if hosted_student_enabled:
+        from smol_cloud_runner import SmolCloudRunner
+        hosted_student_runner = SmolCloudRunner(
+            image_reference=os.environ.get("SCHOOL_CORE_SMOL_CLOUD_IMAGE", ""),
+            source_type=os.environ.get(
+                "SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE", "smolmachine"
+            ),
+        )
     if not repo:
         # school-loop passes --repo "$SCHOOL_REPO" (usually empty) → resolve the
         # repo from the current checkout's origin remote, same as bridge_poll.

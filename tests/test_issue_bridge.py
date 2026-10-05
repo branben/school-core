@@ -29,6 +29,7 @@ from issue_bridge import (
     _load_retries,
     _save_retries,
     _crew_enabled_from_env,
+    _hosted_student_enabled_from_env,
     _crew_active_issue,
     _crew_report_content,
     SCHOOL_DONE_LABEL,
@@ -2507,3 +2508,177 @@ class TestCrewDispatchPath:
         blank = tmp_path / "blank.md"
         blank.write_text("   \n")
         assert _crew_report_content(blank) is None
+
+
+# ── SCH-32a: hosted student execution flag (SCHOOL_CORE_HOSTED_STUDENT) ──────
+
+
+class TestHostedStudentFlag:
+    """Fail-closed operator gate for hosted SmolMachines Cloud student execution.
+
+    When the flag is absent or unparseable, the existing no-host / Orca /
+    direct-model path must be byte-for-byte unchanged: SmolCloudRunner is
+    never imported, never constructed, and run_task runs the direct path
+    exactly as before. This is the regression guard that makes slicing A
+    safe to land before the routing slice (SCH-32b).
+    """
+
+    @staticmethod
+    def _issue(num):
+        return [{"issue_number": num, "title": f"T{num}", "body": "",
+                 "domain": "debugging", "difficulty": "easy", "prompt": "p",
+                 "category": "bug", "state": "ready-for-agent"}]
+
+    @staticmethod
+    def _task_ok(num):
+        return {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+
+    @staticmethod
+    def _patches(tmp_path, monkeypatch):
+        """Common hermetic patches for the direct dispatch path."""
+        return (
+            patch("issue_bridge.fetch_issues", return_value=TestHostedStudentFlag._issue(430)),
+            patch("repo_reader.clone_repo", return_value=tmp_path / "repo"),
+            patch("repo_reader.build_codebase_context", return_value=""),
+            patch("repo_reader.cleanup_stale_caches"),
+            patch("issue_bridge.dispatch_crew"),
+            patch("director.run_task", return_value=TestHostedStudentFlag._task_ok(430)),
+            patch("issue_bridge.call_model", return_value=(
+                '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                '"gaps": [], "strengths": []}'
+            )),
+            patch("executor.call_model", return_value='{"findings": []}'),
+        )
+
+    @staticmethod
+    def _run_bridge(tmp_path, monkeypatch, store, num):
+        """Run bridge_issues on the direct path with hermetic mocks."""
+        stack = TestHostedStudentFlag._patches(tmp_path, monkeypatch)
+        # Start ALL patches — not just the first — so director.run_task,
+        # dispatch_crew, call_model, etc. are all hermetic and the real
+        # run_task does not spin up context probes (serena/school-context).
+        mocks = [m.start() for m in stack]
+        # Override the issue number for the fetch mock.
+        mocks[0].return_value = TestHostedStudentFlag._issue(num)
+        try:
+            results = bridge_issues("user/test", store=store)
+        finally:
+            for m in reversed(stack):
+                m.stop()
+        return results
+
+    def test_flag_absent_never_imports_smol_cloud_runner(
+        self, monkeypatch, tmp_path, store,
+    ):
+        """SCHOOL_CORE_HOSTED_STUDENT absent → smol_cloud_runner never imported."""
+        import sys
+        monkeypatch.delenv("SCHOOL_CORE_HOSTED_STUDENT", raising=False)
+        # Purge any prior import so we can prove the lazy import never fires.
+        monkeypatch.delitem(sys.modules, "smol_cloud_runner", raising=False)
+        results = self._run_bridge(tmp_path, monkeypatch, store, 430)
+        assert results[0]["status"] == "success"
+        assert "smol_cloud_runner" not in sys.modules, (
+            "flag-absent path must not lazily import smol_cloud_runner"
+        )
+
+    def test_flag_absent_direct_path_unchanged(
+        self, monkeypatch, tmp_path, store,
+    ):
+        """Flag absent → run_task called on the direct path, no runner kwarg."""
+        monkeypatch.delenv("SCHOOL_CORE_HOSTED_STUDENT", raising=False)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(431)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(431)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        mock_crew.assert_not_called()
+        mock_task.assert_called_once()
+        # No hosted-student plumbing leaks into the direct path.
+        assert "student_runner" not in (mock_task.call_args.kwargs or {})
+
+    def test_flag_garbage_is_off(self, monkeypatch, tmp_path, store):
+        """SCHOOL_CORE_HOSTED_STUDENT=garbage → off (fail closed), no import."""
+        import sys
+        monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", "banana")
+        monkeypatch.delitem(sys.modules, "smol_cloud_runner", raising=False)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(432)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(432)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        assert "smol_cloud_runner" not in sys.modules
+        mock_crew.assert_not_called()
+        mock_task.assert_called_once()
+
+    def test_flag_parsing(self, monkeypatch):
+        """_hosted_student_enabled_from_env: truthy on, everything else off."""
+        for truthy in ("1", "true", "TRUE", "yes", "on", " True "):
+            monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", truthy)
+            assert _hosted_student_enabled_from_env() is True, truthy
+        for falsy in ("", "0", "false", "no", "off", "banana", None):
+            if falsy is None:
+                monkeypatch.delenv("SCHOOL_CORE_HOSTED_STUDENT", raising=False)
+            else:
+                monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", falsy)
+            assert _hosted_student_enabled_from_env() is False, falsy
+
+    def test_flag_on_constructs_runner_from_env(self, monkeypatch, tmp_path, store):
+        """Flag on with valid env → SmolCloudRunner constructed with pinned digest."""
+        monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", "1")
+        monkeypatch.setenv(
+            "SCHOOL_CORE_SMOL_CLOUD_IMAGE",
+            "registry.smolmachines.com/library/alpine@sha256:" + "a" * 64,
+        )
+        # Spy on the constructor to confirm it is called with the env values
+        # without actually making any network call (transport defaults to the
+        # real urllib transport, but execute() is never reached in this slice).
+        with patch("smol_cloud_runner.SmolCloudRunner.__init__", return_value=None) as mock_init, \
+             patch("issue_bridge.fetch_issues", return_value=self._issue(433)), \
+             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew"), \
+             patch("director.run_task", return_value=self._task_ok(433)), \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            results = bridge_issues("user/test", store=store)
+        assert results[0]["status"] == "success"
+        mock_init.assert_called_once()
+        kwargs = mock_init.call_args.kwargs
+        assert kwargs["image_reference"] == (
+            "registry.smolmachines.com/library/alpine@sha256:" + "a" * 64
+        )
+        assert kwargs["source_type"] == "smolmachine"
+
+    def test_flag_on_missing_image_fails_closed(self, monkeypatch, tmp_path, store):
+        """Flag on but SCHOOL_CORE_SMOL_CLOUD_IMAGE absent → ValueError, not silent off."""
+        monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", "1")
+        monkeypatch.delenv("SCHOOL_CORE_SMOL_CLOUD_IMAGE", raising=False)
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(434)):
+            with pytest.raises(ValueError, match="image_reference"):
+                bridge_issues("user/test", store=store)
+
+
