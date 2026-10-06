@@ -159,3 +159,77 @@ def test_ref_drift_fails(local_repo, tmp_path):
     )
     assert result.returncode != 0
     assert "drift" in result.stderr.lower()
+
+
+def test_pick_star_discovers_nested_skill_dirs(tmp_path):
+    """A repo that groups skills one level deep (e.g. mattpocock/skills has
+    skills/engineering/, skills/productivity/) must still resolve `pick: "*"`
+    to real skills, not to the grouping directories themselves.
+
+    Reproduces the layout that blocked declaring mattpocock/skills: the
+    one-level `iterdir()` returned the category dirs, so the per-skill
+    SKILL.md materialization never happened.
+    """
+    src = tmp_path / "src-nested"
+    (src / "skills" / "engineering" / "to-spec").mkdir(parents=True)
+    (src / "skills" / "productivity" / "grill-me").mkdir(parents=True)
+    (src / "skills" / "engineering" / "to-spec" / "SKILL.md").write_text("# to-spec\n")
+    (src / "skills" / "productivity" / "grill-me" / "SKILL.md").write_text("# grill-me\n")
+    # A grouping dir with no skills directly inside must NOT be picked.
+    (src / "skills" / "README.md").write_text("categories\n")
+
+    for cmd in (
+        ["git", "init", "-q", str(src)],
+        ["git", "-C", str(src), "config", "user.email", "t@example.com"],
+        ["git", "-C", str(src), "config", "user.name", "T"],
+        ["git", "-C", str(src), "add", "."],
+        ["git", "-C", str(src), "commit", "-qm", "seed"],
+    ):
+        subprocess.run(cmd, check=True)
+    commit = subprocess.run(
+        ["git", "-C", str(src), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    bare = tmp_path / "nested.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(src), str(bare)], check=True)
+    source = f"file://{bare}"
+    manifest = {
+        "repos": [{"source": source, "ref": commit, "update": "frozen"}],
+        "skills": {source: {"path": "skills", "pick": "*", "modelInvocable": False}},
+    }
+    lock = {"version": 1, "repos": [{"name": "nested", "source": source, "ref": commit, "commit": commit}]}
+    manifest_path = tmp_path / "envit.json"
+    lock_path = tmp_path / "envit.lock.json"
+    manifest_path.write_text(json.dumps(manifest))
+    lock_path.write_text(json.dumps(lock))
+
+    out = tmp_path / "out"
+    result = run_script(
+        "--dest", str(out),
+        "--manifest", str(manifest_path),
+        "--lock", str(lock_path),
+    )
+    assert result.returncode == 0, result.stderr
+    # The two real skills materialize, flattened by name.
+    assert (out / "skills" / "to-spec" / "SKILL.md").is_file()
+    assert (out / "skills" / "grill-me" / "SKILL.md").is_file()
+    # The grouping directory is NOT materialized as if it were a skill.
+    assert not (out / "skills" / "engineering").exists()
+    assert not (out / "skills" / "productivity").exists()
+
+
+def test_pick_star_explicit_flat_repo_is_unchanged(local_repo, tmp_path):
+    """Guard: the recursive discovery must not break the existing flat layout."""
+    manifest, lock = local_repo["make"](local_repo["peeled"])
+    manifest = json.loads(json.dumps(manifest))
+    source = next(iter(manifest["skills"]))
+    manifest["skills"][source]["pick"] = "*"
+    _write(manifest, lock, local_repo["manifest_path"], local_repo["lock_path"])
+    out = tmp_path / "out"
+    result = run_script(
+        "--dest", str(out),
+        "--manifest", str(local_repo["manifest_path"]),
+        "--lock", str(local_repo["lock_path"]),
+    )
+    assert result.returncode == 0, result.stderr
+    assert (out / "skills" / "demo-skill" / "SKILL.md").is_file()

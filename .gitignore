@@ -100,3 +100,13 @@ scripts/prior_solutions/cocoindex_store/
 # Durable local tool binaries (envit CLI, ripwire CLI + staged skills) — never
 # track binaries; SHA-verified installs live under data/tools (chmod 700).
 data/tools/
+
+# index-gate receipts (regenerated per index run)
+.index-gate/
+tools/index-gate/target/
+
+# secrets — never commit
+newenv.tmp
+
+# third-party clones — never commit
+/repos/

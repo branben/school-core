@@ -12,6 +12,8 @@ from unittest import mock
 
 import pytest
 
+import verify_gate
+
 from verify_gate import (
     _build_verify_script,
     _discover_commands,
@@ -134,14 +136,15 @@ def test_run_verify_gate_uses_one_shell_for_multiple_commands(tmp_path):
         return subprocess.CompletedProcess([], 0, _successful_marker_output(2), "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
-         mock.patch("verify_gate._find_nix", return_value="nix"):
+         mock.patch("verify_gate._find_nix", return_value="nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         res = run_verify_gate(tmp_path)
 
     assert res["passed"] is True
     assert res["ran"] == 2
     assert len(calls) == 1
-    assert "npm run typecheck" in calls[0][0]
-    assert "npm run test" in calls[0][0]
+    assert "npm run typecheck" in str(calls[0][0])
+    assert "npm run test" in str(calls[0][0])
     assert res["telemetry"]["shell_starts"] == 1
     assert res["telemetry"]["commands"] == 2
 
@@ -159,7 +162,8 @@ def test_run_verify_gate_preserves_per_command_failure_evidence(tmp_path):
         return subprocess.CompletedProcess([], 0, output, "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
-         mock.patch("verify_gate._find_nix", return_value="nix"):
+         mock.patch("verify_gate._find_nix", return_value="nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         res = run_verify_gate(tmp_path)
 
     assert res["ran"] == 2
@@ -173,7 +177,7 @@ def test_run_verify_gate_rejects_markerless_success(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
-    ):
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
         res = run_verify_gate(tmp_path)
 
@@ -188,7 +192,7 @@ def test_run_verify_gate_rejects_partial_markers_zero_exit(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "true", "lint": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
-    ):
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         run.return_value = subprocess.CompletedProcess(
             [], 0, _successful_marker_output(1), ""
         )
@@ -205,7 +209,7 @@ def test_run_verify_gate_rejects_partial_markers_nonzero_exit(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "true", "lint": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
-    ):
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         run.return_value = subprocess.CompletedProcess(
             [], 1, _successful_marker_output(1), "typecheck failed"
         )
@@ -222,7 +226,7 @@ def test_run_verify_gate_passes_when_all_zero(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "true"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
-    ):
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         run.return_value = subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
         res = run_verify_gate(tmp_path)
     assert res["passed"] is True
@@ -236,7 +240,7 @@ def test_run_verify_gate_fails_on_nonzero(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "false"})
     with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
         "verify_gate._find_nix", return_value="nix"
-    ):
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         run.return_value = subprocess.CompletedProcess([], 1, "", "boom")
         res = run_verify_gate(tmp_path)
     assert res["passed"] is False
@@ -248,10 +252,141 @@ def test_run_verify_gate_times_out(tmp_path):
     _write_pkg(tmp_path, ".", {"typecheck": "sleep 99"})
     with mock.patch(
         "verify_gate.subprocess.run", side_effect=subprocess.TimeoutExpired("x", 1)
-    ), mock.patch("verify_gate._find_nix", return_value="nix"):
+    ), mock.patch("verify_gate._find_nix", return_value="nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
         res = run_verify_gate(tmp_path, timeout=1)
     assert res["passed"] is False
     assert "timed out" in res["failures"][0]["stderr"]
+
+
+# ── per-command `results` (verification effort evidence) ────────────────────
+
+def test_results_has_one_entry_per_command(tmp_path):
+    """`results` must carry ONE entry per declared command, in order."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "test": "true"})
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        run.return_value = subprocess.CompletedProcess([], 0, _successful_marker_output(2), "")
+        res = run_verify_gate(tmp_path)
+
+    assert len(res["results"]) == res["ran"] == 2
+    assert "typecheck" in res["results"][0]["name"]
+    assert "test" in res["results"][1]["name"]
+    assert res["results"][0]["cmd"] == "npm run typecheck"
+
+
+def test_results_marks_pass_and_fail(tmp_path):
+    """A zero exit is a pass; a non-zero exit is a fail — per command."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "test": "false"})
+
+    def fake_run(cmd, **kwargs):
+        output = (
+            "__SCHOOL_VERIFY_START_0__\n\npass\n"
+            "__SCHOOL_VERIFY_END_0__0\n"
+            "__SCHOOL_VERIFY_START_1__\n\nboom\n"
+            "__SCHOOL_VERIFY_END_1__1\n"
+        )
+        return subprocess.CompletedProcess([], 0, output, "")
+
+    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("verify_gate._find_nix", return_value="nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        res = run_verify_gate(tmp_path)
+
+    assert res["results"][0]["status"] == "pass"
+    assert res["results"][0]["exit"] == 0
+    assert res["results"][1]["status"] == "fail"
+    assert res["results"][1]["exit"] == 1
+
+
+def test_results_marks_missing_marker_as_no_marker(tmp_path):
+    """A command whose markers never appeared is 'no_marker' — never a pass."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true", "lint": "true"})
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        run.return_value = subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
+        res = run_verify_gate(tmp_path)
+
+    assert res["results"][0]["status"] == "pass"
+    assert res["results"][1]["status"] == "no_marker"
+    assert res["results"][1]["exit"] is None
+    assert res["results"][1]["duration_s"] is None
+
+
+def test_results_parses_duration_float(tmp_path):
+    """The additive second token after the status is parsed as a float."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true"})
+    output = "__SCHOOL_VERIFY_START_0__\n\nok\n__SCHOOL_VERIFY_END_0__0 0.42\n"
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        run.return_value = subprocess.CompletedProcess([], 0, output, "")
+        res = run_verify_gate(tmp_path)
+
+    assert res["results"][0]["status"] == "pass"
+    assert res["results"][0]["duration_s"] == 0.42
+
+
+def test_results_malformed_duration_never_raises(tmp_path):
+    """A garbage duration token must not crash the gate — duration_s -> None."""
+    _write_pkg(tmp_path, ".", {"typecheck": "true"})
+    output = "__SCHOOL_VERIFY_START_0__\n\nok\n__SCHOOL_VERIFY_END_0__0 not-a-number\n"
+    with mock.patch("verify_gate.subprocess.run") as run, mock.patch(
+        "verify_gate._find_nix", return_value="nix"
+    ), mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        run.return_value = subprocess.CompletedProcess([], 0, output, "")
+        res = run_verify_gate(tmp_path)
+
+    assert res["results"][0]["status"] == "pass"
+    assert res["results"][0]["duration_s"] is None
+
+
+def test_results_key_always_present_on_skip_paths(tmp_path):
+    """Early-return (skip/nix/timeout) verdicts must still carry `results`."""
+    # No commands discovered -> skipped verdict
+    res = run_verify_gate(tmp_path)
+    assert "results" in res and res["results"] == []
+
+    # Nix missing -> skipped verdict
+    _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
+    with mock.patch("verify_gate._find_nix", return_value=None):
+        res = run_verify_gate(tmp_path)
+    assert "results" in res and res["results"] == []
+
+    # Timeout -> results present (possibly empty)
+    with mock.patch(
+        "verify_gate.subprocess.run", side_effect=subprocess.TimeoutExpired("x", 1)
+    ), mock.patch("verify_gate._find_nix", return_value="nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"):
+        res = run_verify_gate(tmp_path, timeout=1)
+    assert "results" in res
+
+
+def test_wrapper_emits_duration_token_after_status(tmp_path):
+    """The generated wrapper appends an elapsed token WITHOUT moving the status."""
+    commands = [{"name": "one", "cmd": "printf pass", "cwd": "."}]
+    script, _starts, _ends = _build_verify_script(commands, tmp_path, timeout=5)
+    timeout_bin = tmp_path / "bin" / "timeout"
+    timeout_bin.parent.mkdir()
+    timeout_bin.write_text("#!/usr/bin/env bash\nshift\nexec \"$@\"\n")
+    timeout_bin.chmod(0o755)
+    env = dict(os.environ)
+    env["PATH"] = f"{timeout_bin.parent}:{env.get('PATH', '')}"
+    result = subprocess.run(
+        ["bash", "-c", script], cwd=str(tmp_path),
+        capture_output=True, text=True, check=False, env=env,
+    )
+    assert result.returncode == 0
+    # The status integer still parses as split()[0]; a duration token follows.
+    marker = "__SCHOOL_VERIFY_END_0__"
+    idx = result.stdout.find(marker)
+    assert idx >= 0
+    status_line = result.stdout[idx + len(marker):].splitlines()[0]
+    assert status_line.split()[0] == "0"
+    assert len(status_line.split()) >= 2, "duration token was not appended"
+    float(status_line.split()[1])  # must parse as a float
 
 
 def test_no_commands_is_a_failure_not_a_pass(tmp_path):
@@ -327,15 +462,21 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     (tmp_path / "node_modules" / "dep.js").write_text("boom")
     (tmp_path / ".venv").mkdir()
     (tmp_path / ".venv" / "lib").write_text("boom")
+    (tmp_path / ".env").write_text("API_KEY=private-canary\n")
+    (tmp_path / ".npmrc").write_text("//registry.example/:_authToken=private-canary\n")
 
     seen_cwds: list[str] = []
+    sensitive_files_present: list[bool] = []
 
     def fake_run(cmd, **kwargs):
-        seen_cwds.append(str(kwargs.get("cwd", "")))
+        work = Path(kwargs.get("cwd", ""))
+        seen_cwds.append(str(work))
+        sensitive_files_present.append((work / ".env").exists() or (work / ".npmrc").exists())
         return subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
          mock.patch("verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
          mock.patch("verify_gate._flake_ref", return_value="."):
         res = run_verify_gate(tmp_path)
     assert res["passed"] is True
@@ -343,6 +484,9 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     assert not any("node_modules" in c for c in seen_cwds)
     assert not any(".git" in c for c in seen_cwds)
     assert not any(".venv" in c for c in seen_cwds)
+    assert sensitive_files_present == [False], "host credentials must not be copied into the untrusted workspace"
+    assert ".env" in verify_gate._VERIFY_COPY_IGNORE("repo", [".env"])
+    assert ".npmrc" in verify_gate._VERIFY_COPY_IGNORE("repo", [".npmrc"])
     assert res["telemetry"]["shell_starts"] == 1
     assert res["telemetry"]["commands"] == 1
     assert res["telemetry"]["copied_bytes"] > 0
@@ -365,6 +509,7 @@ def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path):
 
     with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
          mock.patch("verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
          mock.patch("verify_gate._flake_ref", return_value="."):
         res = run_verify_gate(tmp_path)
     assert res["passed"] is True

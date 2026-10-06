@@ -44,7 +44,7 @@ def test_bridge_loads_shadow_history_once_per_cycle(monkeypatch, tmp_path, store
     monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
     monkeypatch.setattr("repo_reader.clone_repo", lambda repo: tmp_path)
     monkeypatch.setattr("repo_reader.build_codebase_context", lambda path, text: "")
-    monkeypatch.setattr(issue_bridge, "_run_verify_gate", lambda *args: None)
+    monkeypatch.setattr(issue_bridge, "_run_verify_gate", lambda *args, **kwargs: None)
     monkeypatch.setattr(issue_bridge, "_run_entire_sensor", lambda *args: None)
     monkeypatch.setattr(issue_bridge, "_run_adversarial_review", lambda *args, **kwargs: {
         "verdict": "PASS", "score": 90, "findings": [],

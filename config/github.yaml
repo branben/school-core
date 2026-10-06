@@ -8,7 +8,16 @@
 
 repo: "__self__"        # owner/repo format, or "__self__" for the current checkout
 poll_interval_seconds: 300        # How often to poll for new issues (seconds)
-labels: ["bug", "enhancement"]    # Issue labels to fetch
+# Issue labels to fetch. EMPTY = no server-side label filter: fetch every open
+# issue and let triage_classifier decide readiness (exactly what the School Loop
+# workflow's `--once` path does by passing labels=None).
+#
+# Do NOT put a conjunction here. `gh` ANDs repeated --label flags, so a list of
+# N labels means "carries all N" — `["bug","enhancement"]` matched ZERO issues
+# on sound-royale-ny, where the eligible set is labelled `production-readiness`.
+# github_fetcher.fetch_issues now ORs the list (one gh call per label, unioned),
+# so a non-empty list is a union; still prefer empty unless you want to narrow.
+labels: []
 
 # Override difficulty based on label presence
 difficulty_overrides:
@@ -35,7 +44,17 @@ domain_overrides:
 # all namespaced under __global__. Re-enable multi-repo only when you
 # deliberately want a CTO+COO pair PER target repo (which multiplies
 # teacher worktrees and was the source of the worktree spray).
-target_repos: []
+target_repos:
+  - slug: "octocat/Hello-World"
+    checkout: "~/.cache/school-core-repos/octocat__Hello-World"
+    base_ref: "main"
+    verification:
+      policy: "strict"
+      commands:
+        - name: "compile"
+          cmd: "python3 -m compileall -q ."
+          cwd: "."
+    pr_destination: "octocat/Hello-World"
 
 # Slug of the repo that hosts the orchestrator + souls (school-core itself).
 # Teacher worktrees for OTHER repos are created against that repo's checkout;

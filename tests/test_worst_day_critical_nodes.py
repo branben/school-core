@@ -111,9 +111,9 @@ def test_crew_run_never_regates_clean_base():
     calls = []
     real_run_verify_gate = issue_bridge._run_verify_gate
 
-    def spy_run_verify_gate(repo_path, issue):
+    def spy_run_verify_gate(repo_path, issue, **kwargs):
         calls.append(repo_path)
-        return real_run_verify_gate(repo_path, issue)
+        return real_run_verify_gate(repo_path, issue, **kwargs)
 
     issue_bridge._run_verify_gate = spy_run_verify_gate
     try:
@@ -148,7 +148,7 @@ def test_direct_run_still_gates_base():
     calls = []
     real_run_verify_gate = issue_bridge._run_verify_gate
 
-    def spy_run_verify_gate(repo_path, issue):
+    def spy_run_verify_gate(repo_path, issue, **kwargs):
         calls.append(repo_path)
         return {"passed": True, "score": 100, "findings": []}
 

@@ -279,8 +279,9 @@ jobs:
       #     correctly reports no state changes to commit.
       # processed_issues.json and last_run.json are seeded too: they are written
       # to board-publish by the same checkpoint, so seeding them gives the bridge
-      # accurate suppression/journal state instead of main's stale copies. No
-      # side effects: mark_processed() still writes through the same paths, and
+      # accurate suppression/journal state instead of main's stale copies. The
+      # JSONL grading queue is restored when present; on the first cycle, touch
+      # creates it only if absent so a pre-existing runner queue is never erased.
       # sanitize_data.py runs after this step on the seeded files.
       - name: Seed retry/board state from board-publish
         run: |
@@ -288,8 +289,23 @@ jobs:
           git checkout origin/board-publish -- \
             data/retry_issues.json \
             data/processed_issues.json \
-            data/last_run.json || \
+            data/last_run.json \
+            data/compound_learning.json \
+            data/candidate_bindings.json \
+            data/state.sqlite3 || \
             echo "::warning::board-publish seed skipped (branch or state files missing)"
+          if git cat-file -e origin/board-publish:data/grading_queue.jsonl 2>/dev/null; then
+            git checkout origin/board-publish -- data/grading_queue.jsonl
+          else
+            mkdir -p data
+            touch data/grading_queue.jsonl
+          fi
+          if git cat-file -e origin/board-publish:data/recovery/ 2>/dev/null; then
+            git checkout origin/board-publish -- data/recovery/
+          fi
+          if git cat-file -e origin/board-publish:data/trajectories/ 2>/dev/null; then
+            git checkout origin/board-publish -- data/trajectories/
+          fi
 
       # No actions/setup-python here: on this self-hosted runner the action's
       # tool-cache defaults to /Users/runner (a GitHub-hosted path) and fails
@@ -325,34 +341,37 @@ jobs:
       # never seen. `orca terminal create` (no selector) resolves the CURRENT
       # worktree from cwd, so register the checkout with Orca first. Idempotent.
       #
-      # REPAIR THE PRECONDITION, don't tolerate its absence. This step used to
-      # fail outright with {"code":"runtime_unavailable"} whenever the Orca
-      # runtime was down — which is its state after every reboot, logout, or
-      # app-close. The runner has a LaunchAgent and OmniRoute has two; Orca has
-      # none, so a human had to run `orca open` by hand or this job failed every
-      # 5 minutes forever.
-      #
-      # `orca open` is the right repair (verified: returns ok=true in 0.5s with
-      # the SAME runtimeId when a runtime is already up, so it is idempotent and
-      # defers to a GUI instance instead of fighting it). A KeepAlive
-      # `orca serve` LaunchAgent was REJECTED: the GUI app owns *:6768, so a
-      # second runtime hits EADDRINUSE and respawn-loops forever whenever Orca
-      # is open interactively — and an EADDRINUSE loop is indistinguishable from
-      # a bad-config loop in the log, permanently masking real faults.
+      # REPAIR THE PRECONDITION, don't tolerate its absence. The original step
+      # ran `orca open` when `orca status` was down, which is still correct:
+      # `orca open` is idempotent (verified: returns ok=true in 0.5s with the
+      # SAME runtimeId when a runtime is already up, so it defers to a GUI
+      # instance instead of fighting it). A KeepAlive `orca serve` LaunchAgent
+      # was REJECTED: the GUI app owns *:6768, so a second runtime hits
+      # EADDRINUSE and respawn-loops forever whenever Orca is open
+      # interactively — and an EADDRINUSE loop is indistinguishable from a
+      # bad-config loop in the log, permanently masking real faults.
       # (Credit: phymora refuted the LaunchAgent plan by actually attempting the
       # second bind rather than reasoning about it.)
       #
-      # Still fails loud if the repair itself fails — no `|| true`, no
-      # ::warning:: downgrade. A gateway/runtime we cannot bring up must stop
-      # the cycle, not yield a green run that did no work.
-      - name: Register checkout with Orca
-        run: |
-          set -euo pipefail
-          if ! orca status --json >/dev/null 2>&1; then
-            echo "Orca runtime unreachable — launching it (idempotent)"
-            orca open --json >/dev/null
-          fi
-          orca repo add --path "$PWD" --json
+      # BLOCKED_ENV, not a silent skip. The step used to run under
+      # `set -euo pipefail`, so when `orca repo add` returned
+      # {"code":"runtime_unavailable"} the WHOLE job died — while `orca status`
+      # returned 0, so the `status` guard never caught it. Steps 6-11, including
+      # "Run bridge loop (executes issues)", were SKIPPED. Measured: 21 of the
+      # last 30 School Loop runs failed this way, and the bridge did no work for
+      # days. A red run that ALSO silently skipped the only step that does work
+      # is the worst of both signals.
+      #
+      # orca_precondition.py probes the operation that actually matters
+      # (`orca repo add`), repairs the runtime once, and classifies the result:
+      # exit 0 = READY, exit 1 = BLOCKED_ENV with an explicit
+      # `::error::BLOCKED_ENV ...` annotation. continue-on-error keeps the job
+      # alive so the bridge loop still runs and reports its own degradation —
+      # the environment failure is named, not hidden, and never skips the work.
+      - name: Register checkout with Orca (BLOCKED_ENV-aware)
+        id: orca_precondition
+        continue-on-error: true
+        run: .venv/bin/python orca_precondition.py "$PWD"
 
       # FirstMate crew preflight: diagnose a broken crew setup (missing
       # persistent clone, Orca daemon down, FM_HOME backend drift, hermes
@@ -443,7 +462,16 @@ jobs:
         run: .venv/bin/python populate_board_cache.py
 
       - name: Run bridge loop (executes issues)
-        run: .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
+        # Never skipped on an Orca precondition failure: the bridge is the only
+        # step that does real work, and a BLOCKED_ENV environment must degrade
+        # visibly (the warning below) rather than vanish. Steps 6-11 were
+        # skipped for days because this step inherited the hard-failed Orca
+        # registration; that is the defect this guard exists to prevent.
+        run: |
+          if [ "${{ steps.orca_precondition.outcome }}" != "success" ]; then
+            echo "::warning::BLOCKED_ENV: Orca precondition not satisfied — the bridge may be unable to dispatch crew work this cycle (running anyway so the degradation is visible, not skipped)"
+          fi
+          .venv/bin/python -m issue_bridge --repo "$SCHOOL_REPO" --once
 
       - name: Crew ledger reconciliation audit (advisory)
         # N10 / bead school-core-1u9. ADVISORY (always exits 0) and runs with
@@ -498,7 +526,7 @@ jobs:
           # must survive the fresh checkout each cycle — commit them sanitized.
           # --trim-trajectories caps trajectory history to the newest N files so
           # Layer 2 memory persists without unbounded repo growth.
-          .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json
+          .venv/bin/python scripts/sanitize_data.py --trim-trajectories --trim-consolidations data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/grading_queue.jsonl data/compound_learning.json data/candidate_bindings.json data/state.sqlite3
           # The sanitizer exits non-zero if any consolidation still contains
           # a home path, sensitive field, or recognizable token.
           git config user.name "github-actions[bot]"
@@ -545,8 +573,9 @@ jobs:
           # worktree is never touched. (Phymora's tested approach — verified
           # in a scratch repo reproducing the exact shape.)
           git fetch origin board-publish
-          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json 2>/dev/null || true
+          git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/grading_queue.jsonl data/compound_learning.json data/candidate_bindings.json data/state.sqlite3 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
+          find data/recovery -type f -exec git add -f {} + 2>/dev/null || true
           find data/sessions/consolidation -name '*.yaml' -exec git add -f {} + 2>/dev/null || true
           if git diff --quiet FETCH_HEAD -- data/ 2>/dev/null; then
             echo "checkpoint: no state changes to commit"
@@ -611,8 +640,18 @@ jobs:
               try: return json.loads(Path(ref).read_text() or '[]')
               except Exception: return []
           cache = load('data/issues_cache.json')
-          proc = load('data/processed_issues.json')
+          proc_raw = load('data/processed_issues.json')
           lr = load('data/last_run.json')
+          # The ledger is {issue: outcome_class}; only TERMINAL classes render
+          # as Done. INFRA is retryable and must not appear closed. Legacy
+          # flat-list files (every number terminal) stay compatible.
+          if isinstance(proc_raw, dict):
+              proc = sorted(
+                  int(k) for k, v in proc_raw.items() if v != 'INFRA'
+              )
+          else:
+              proc = [int(n) for n in proc_raw]
+          proc_set = set(proc)
           # The bridge now closes processed issues, so they drop out of the
           # open-issues cache. Merge them back from last_run (which records
           # title/domain/difficulty on success) so Done cards keep their
@@ -620,7 +659,7 @@ jobs:
           cache_nums = {c.get('issue_number') for c in cache}
           for e in lr:
               n = e.get('issue')
-              if n in cache_nums or n not in set(proc) or e.get('status') != 'success':
+              if n in cache_nums or n not in proc_set or e.get('status') != 'success':
                   continue
               cache.append({
                   'issue_number': n,

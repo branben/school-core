@@ -203,19 +203,28 @@ def main():
         if not skill_root.is_dir():
             fail(f"declared skills path '{rel_skills}' missing in {name} (path={rel_skills})")
         picks = skill_cfg.get("pick") or []
+        # A skill is a directory CONTAINING SKILL.md. Some upstream repos group
+        # skills one level deep (e.g. mattpocock/skills: engineering/, productivity/),
+        # so `pick: "*"` must find skills recursively, not just one level down.
+        # Flat layouts are unaffected: their skill dirs sit directly in skill_root.
         if picks == "*":
-            picks = sorted(d.name for d in skill_root.iterdir() if d.is_dir())
+            picks = sorted(
+                md.parent.relative_to(skill_root).as_posix()
+                for md in skill_root.rglob("SKILL.md")
+                if md.parent != skill_root
+            )
         if not picks:
             fail(f"no skill picks for {source_key} (pick={picks!r})")
         for pick in picks:
             src_skill = skill_root / pick
             if not src_skill.is_dir():
                 fail(f"declared skill '{pick}' missing in {name}/skills")
-            out_link = skills_root / pick
+            # Flatten on the skill's own name so grouped and flat repos agree.
+            out_link = skills_root / src_skill.name
             if out_link.exists() or out_link.is_symlink():
                 continue
             out_link.symlink_to(src_skill, target_is_directory=True)
-            print(f"[verify_context_lock] linked skill {pick} -> {name}/skills/{pick}")
+            print(f"[verify_context_lock] linked skill {src_skill.name} -> {name}/skills/{pick}")
 
     print(f"[verify_context_lock] OK: {len(manifest_repos)} repos pinned, "
           f"{len(manifest_skills)} sources with skills materialized")

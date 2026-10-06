@@ -19,6 +19,15 @@ class CandidatePublicationError(RuntimeError):
     """Publication is not safe for the supplied candidate."""
 
 
+class ProviderWriteError(CandidatePublicationError):
+    """The provider write was attempted but its outcome is unknown.
+
+    Distinguishes post-write ambiguity (the write may have landed) from
+    pre-write refusals, which raise plain CandidatePublicationError and are
+    guaranteed to have made no provider write. See docs/pr-provider-boundary.md.
+    """
+
+
 @dataclass(frozen=True)
 class PublicationResult:
     candidate_id: str
@@ -71,17 +80,20 @@ def publish_candidate_pr(
     try:
         response = publisher.publish(**request)
     except Exception as exc:
-        raise CandidatePublicationError(f"provider publication failed: {exc}") from exc
+        raise ProviderWriteError(f"provider publication failed: {exc}") from exc
     if not isinstance(response, dict):
-        raise CandidatePublicationError("provider returned an invalid publication result")
+        raise ProviderWriteError("provider returned an invalid publication result")
     if response.get("candidate_id") != manifest.candidate_id:
-        raise CandidatePublicationError("provider candidate_id does not match")
+        raise ProviderWriteError("provider candidate_id does not match")
     if response.get("head_sha") != manifest.head_sha:
-        raise CandidatePublicationError("provider head_sha does not match")
+        raise ProviderWriteError("provider head_sha does not match")
     pr_url = response.get("pr_url")
     if not isinstance(pr_url, str) or not pr_url.startswith("https://"):
-        raise CandidatePublicationError("provider returned no valid PR URL")
+        raise ProviderWriteError("provider returned no valid PR URL")
     return PublicationResult(manifest.candidate_id, manifest.head_sha, pr_url)
 
 
-__all__ = ["CandidatePublicationError", "PublicationResult", "publish_candidate_pr"]
+__all__ = [
+    "CandidatePublicationError", "ProviderWriteError", "PublicationResult",
+    "publish_candidate_pr",
+]

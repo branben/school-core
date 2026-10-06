@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-09-30-002-spec-openai-video-instrumentation.md">
+<title>SPEC · OpenAI Videos instrumentation</title>
+<style>
+  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
+        --clay:#D97757;--olive:#788C5D;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
+       max-width:54rem;margin:0 auto;
+       font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
+  h1{font-size:1.7rem;letter-spacing:-.02em;line-height:1.25}
+  .sub{color:var(--muted);margin-top:.5rem;font-size:.95rem}
+  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.7rem;
+        font-family:ui-monospace,Menlo,monospace}
+  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
+  h2{font-size:1.1rem;margin:2.25rem 0 .75rem;letter-spacing:-.01em}
+  h3{font-size:.95rem;margin:1.4rem 0 .4rem;color:var(--clay)}
+  p{margin-bottom:.85rem}
+  ol,ul{margin:0 0 .85rem 1.2rem}
+  li{margin-bottom:.4rem}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:var(--card);
+       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
+  pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;
+      overflow-x:auto;margin-bottom:1rem;font-size:.83rem;line-height:1.5}
+  pre code{border:0;background:none;padding:0}
+  table{border-collapse:collapse;width:100%;font-size:.87rem}
+  th,td{border-bottom:1px solid var(--line);padding:.5rem .55rem;text-align:left;vertical-align:top}
+  th{background:var(--card);font-weight:600}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:1rem}
+  .d{font-family:ui-monospace,Menlo,monospace;font-weight:600;color:var(--clay);white-space:nowrap}
+  .risk-lo{color:var(--olive);font-weight:600}
+  .risk-me{color:var(--clay);font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+        padding:1rem 1.1rem;margin-bottom:1rem}
+  .card h3{margin-top:0}
+  .card p:last-child,.card ol:last-child{margin-bottom:0}
+  footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>SPEC — OpenAI Videos instrumentation</h1>
+  <p class="sub">Implementation plan for upstream issue #304 · repo <code>~/school-core/repos/braintrust-sdk-python</code> @ 696d206a</p>
+  <div class="meta">
+    <span>status: proposed</span><span>2026-09-30</span><span>4 milestones</span>
+    <span>measured against 5 openai wheels</span>
+  </div>
+</header>
+<main>
+
+<h2>Decisions locked before any code</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>#</th><th>Decision</th><th>Rejected</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td class="d">D1</td><td>Wrap <code>create</code>, <code>poll</code>, <code>edit</code>, <code>extend</code>, <code>remix</code> — not <code>create_and_poll</code></td><td>wrap <code>create_and_poll</code> too, nesting a parent over <code>create</code></td><td>it is a convenience wrapper delegating to <code>create</code> then <code>poll</code>. <code>cursor_sdk</code> sets the house rule for this shape: wraps <code>Agent.send</code> and <code>Run.wait</code> separately, does not wrap <code>Agent.prompt</code>. Wrapping the inner pair keeps the wait visible, where completion is recorded. <strong>Revised</strong> — see <code>school-core-5c0</code></td></tr>
+    <tr><td class="d">D7</td><td>Before ruling on any wrapper scope, search sibling integrations for the same shape</td><td>ruling from first principles</td><td>Process rule added after D1 was filed wrong. The original D1 cited <code>_delegates_to_wrapped_method</code> as a policy; it describes stainless closure helpers, not nesting policy. <code>cursor_sdk</code> answered the question directly and was found in one grep</td></tr>
+    <tr><td class="d">D2</td><td>Per-method metadata allowlists</td><td>one <code>(model, seconds, size)</code></td><td><code>edit</code> and <code>remix</code> accept neither → empty metadata, silently</td></tr>
+    <tr><td class="d">D3</td><td>File inputs via <code>_materialize_logged_file_input</code></td><td>log the raw handle</td><td>handles are non-serializable into span input</td></tr>
+    <tr><td class="d">D4</td><td>Four distinct span names</td><td>one name</td><td>Images subclasses already pass distinct names</td></tr>
+    <tr><td class="d">D5</td><td>No cost metrics, by design</td><td>synthetic cost</td><td><code>Video</code> has no <code>usage</code> field; Sora is not token-metered</td></tr>
+    <tr><td class="d">D6</td><td>No patcher version gate; test version gate only</td><td>gate both</td><td><code>applies()</code> already returns False when the target module is absent</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>M1 — wrappers in <code>tracing.py</code></h2>
+<div class="card">
+<h3>Metadata allowlists</h3>
+<pre><code>_VIDEO_GENERATE_METADATA_PARAMS = ("model", "seconds", "size")
+_VIDEO_EDIT_METADATA_PARAMS     = ()   # edit takes only prompt + video
+_VIDEO_EXTEND_METADATA_PARAMS   = ("seconds",)
+_VIDEO_REMIX_METADATA_PARAMS    = ()</code></pre>
+</div>
+<div class="card">
+<h3>Base class</h3>
+<p>Modelled on <code>_ImageBaseWrapper</code> but <strong>not</strong> inheriting its
+<code>create</code>/<code>acreate</code> body — the four methods differ in which kwarg carries the
+prompt and which carries the file.</p>
+<ul>
+  <li><code>_parse_params</code> reads <code>prompt</code>, routes the file kwarg
+  (<code>input_reference</code> for create, <code>video</code> for edit/extend) through
+  <code>_materialize_logged_file_input</code></li>
+  <li><code>_log_result</code> merges timing only — not <code>_parse_metrics_from_usage</code> (D5)</li>
+  <li><code>_extract_video_output</code> → <code>{id, status, progress, size, seconds, model, error}</code></li>
+</ul>
+<p><strong>Open risk:</strong> confirm <code>_try_to_dict</code> handles the Stainless
+<code>Video</code> model and that <code>error</code> serializes without raising.</p>
+</div>
+
+<h2>M2 — patchers in <code>patchers.py</code></h2>
+<p>Four <code>_make_method_patchers</code> calls targeting
+<code>openai.resources.videos.videos</code> for methods <code>create</code>, <code>edit</code>,
+<code>extend</code>, <code>remix</code> — each yielding a sync, async, and instance patcher.
+Then <code>VideosPatcher</code> + <code>_WrapVideos</code>, mirroring
+<code>ImagesPatcher</code>/<code>_WrapImages</code>.</p>
+<div class="card">
+<h3>Both halves, or the guard test fails</h3>
+<p><code>test_wrap_openai_and_setup_use_same_wrappers</code> asserts the wrapper sets from
+<code>OpenAIIntegration.patchers</code> and <code>_WRAP_TARGETS</code> are equal. So:
+add <code>VideosPatcher</code> to <code>integration.py</code> <em>and</em>
+<code>("videos", _WrapVideos)</code> to <code>_WRAP_TARGETS</code>.</p>
+<p>Because D1 gives <code>create_and_poll</code> no wrapper, the guard cannot pass while the
+duplication bug ships — that failure mode needed wrapper reuse, which we do not do.</p>
+</div>
+
+<h2>M3 — tests</h2>
+<div class="card">
+<h3>The version guard is mandatory</h3>
+<p>The matrix runs 3.16.2 / 1.92.0 / 1.77.0 / 1.71.0 and only <code>3.16.2</code> ships the
+videos module — verified by unzipping all four wheels. Under CI,
+<code>record_mode="none"</code>, so an unguarded video test <em>fails</em> the three old sessions
+with "cassette not found" rather than skipping.</p>
+<pre><code>pytest.importorskip("openai.resources.videos")</code></pre>
+<p>That skips before VCR engages, so no phantom cassette is needed. Cassettes live under
+<code>casettes/latest/</code> only; then run <code>check-unused-cassettes.py</code>.</p>
+</div>
+<ol>
+  <li><code>create</code> → span named <code>Video Generation</code>; assert <strong>no</strong>
+  <code>tokens</code>/<code>cost</code> in metrics (D5)</li>
+  <li><code>create</code> with a reference image → input is an <code>Attachment</code> with a
+  <code>reference.content_type</code> (D3)</li>
+  <li><code>edit</code> / <code>extend</code> → assert the <em>exact</em> metadata keys, since D2
+  is the bug this guards</li>
+  <li><code>remix</code> → name + <code>remixed_from_video_id</code></li>
+  <li><code>wrap_openai(client)</code> wraps all four (same shape as the existing images test)</li>
+  <li><code>setup()</code> patchers resolve <code>Videos</code> / <code>AsyncVideos</code></li>
+  <li>The existing wrapper-parity guard still passes</li>
+</ol>
+
+<h2>M4 — docs</h2>
+<p>Nothing enumerates instrumented methods. <code>docs/</code> holds only publishing and VCR docs;
+<code>generated_types.json</code> and <code>openapi/</code> describe the Braintrust API, not the
+OpenAI SDK. <strong>No doc table to update.</strong></p>
+
+<h2>Risks</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><code>_try_to_dict</code> chokes on <code>Video.error</code></td><td class="risk-lo">low</td><td>failed-status fixture in case 1</td></tr>
+    <tr><td>Attachment upload inflates span size</td><td class="risk-me">medium</td><td>reuse the audio/image path verbatim</td></tr>
+    <tr><td>Reviewer wants <code>create_and_poll</code> traced as a parent span</td><td class="risk-me">medium</td><td>D1 cites the <code>cursor_sdk</code> precedent for the same shape and was resolved by evidence, not taste. State it as a question in the PR — either answer is cheap, since both spans already exist</td></tr>
+    <tr><td>Reviewer prefers <code>create_and_poll</code> skipped and <code>poll</code> unwrapped</td><td class="risk-me">low</td><td>that would restore the defect: a trace proving only that the request was accepted. Raise it if raised, but do not silently re-break</td></tr>
+    <tr><td>Cassette checker flags skip-only versions</td><td class="risk-me">medium</td><td><code>importorskip</code> before the VCR marker; run the checker</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Out of scope</h2>
+<p>CRUD and download surfaces · <code>create_and_poll</code> as a wrapped method (D1 — its
+inner <code>create</code> and <code>poll</code> calls are each traced) · cost/token metrics
+(D5) · the Google GenAI equivalent (upstream #236).</p>
+
+</main>
+<footer>
+  Render of the canonical markdown source
+  (<code>docs/plans/2026-09-30-002-spec-openai-video-instrumentation.md</code>, authoritative).
+  PRD in <code>docs/plans/2026-09-30-001-feat-openai-video-instrumentation-prd.md</code>.
+  Tickets tracked as beads; the HTML is a view.
+</footer>
+</body>
+</html>

@@ -38,6 +38,7 @@ Usage:
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -118,6 +119,11 @@ class ExecutionResult:
     timed_out: bool
     duration_ms: int
     error: Optional[str] = None
+    # True when the code could not be executed at all (syntax error or no
+    # executable entry point). The director escalates this to Severity.CRITICAL
+    # so a broken submission is auto-vetoed instead of accepting with score 100.
+    not_executable: bool = False
+    not_executable_reason: Optional[str] = None
 
     @property
     def passed(self) -> bool:
@@ -137,16 +143,43 @@ class CodeExtractor:
 
     @staticmethod
     def extract(response: str, language: Optional[str] = None) -> str:
-        """Extract runnable code from an LLM response."""
+        """Extract runnable code from an LLM response.
+
+        When ``language`` is given, only fences tagged with that language (or
+        untagged fences) are eligible. A fence explicitly tagged with a
+        DIFFERENT language (e.g. ```bash while python was requested) is never
+        returned: handing foreign-language text to the executor makes it fail
+        to parse and emits a spurious CRITICAL "not_executable" finding for a
+        submission that simply contained no code in the target language.
+        """
         code = CodeExtractor._strip_fences(response, language)
         if code:
             return code
+
+        if language:
+            # A language-specific fence was requested but is absent. Accept an
+            # untagged fence; refuse a fence tagged with another language.
+            return CodeExtractor._strip_untagged_fences(response) or ""
 
         code = CodeExtractor._strip_fences(response, None)
         if code:
             return code
 
         return response.strip()
+
+    @staticmethod
+    def _strip_untagged_fences(text: str) -> Optional[str]:
+        """Strip fences carrying NO language tag (`` ```\\n...\\n``` ``).
+
+        Unlike :meth:`_strip_fences` with ``language=None``, this never matches
+        a fence that declares a language — ``\\s*`` cannot consume a word, so
+        ```python / ```bash are excluded.
+        """
+        pattern = r"```[ \t]*\n(.*?)\n```"
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return None
 
     @staticmethod
     def detect_language(repo_path: Optional[Path] = None) -> Optional[str]:
@@ -242,6 +275,49 @@ class CodeExtractor:
         if match:
             return match.group(1).strip()
         return None
+
+    @staticmethod
+    def check_executable(code: str) -> Optional[str]:
+        """Check whether Python code is syntactically valid and has an
+        executable entry point.
+
+        Returns ``None`` when the code appears runnable (it compiles and
+        contains at least one top-level statement that *does* something —
+        a call, an assignment, an ``if`` block, etc.).
+
+        Returns a human-readable error string when the code is not
+        executable:
+
+        * **SyntaxError** — the code cannot be parsed at all.
+        * **No executable entry point** — the code compiles but consists
+          solely of ``def``/``class``/``import``/docstring statements with
+          no top-level invocation. Running ``python3 solution.py`` would
+          exit 0 while doing nothing, so the submission is a no-op.
+        """
+        if not code or not code.strip():
+            return None  # caller handles empty extraction separately
+
+        # 1. Syntax check — catch syntax errors before wasting an Orca terminal.
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            return f"SyntaxError: {e.msg} (line {e.lineno})"
+
+        # 2. Executable-statement check — a module that only contains
+        #    def/class/import/docstring produces no output when run.
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                continue  # module docstring or bare string literal
+            return None  # found a top-level executable statement
+
+        return (
+            "Not executable: code compiles but contains only definitions "
+            "(no top-level invocation — nothing runs when executed)"
+        )
 
 
 # ── Orca Execution Manager ────────────────────────────────────────────────────
@@ -842,6 +918,24 @@ class OrcaExecutionManager:
             ExecutionResult with stdout, stderr, exit_code, and timing.
         """
         start = time.monotonic()
+
+        # Pre-check: catch syntax errors and no-op submissions before
+        # spinning up an Orca terminal. A SyntaxError or a module that
+        # only contains def/class/import (no top-level invocation) will
+        # either fail to parse or exit 0 with zero output. Flagging these
+        # here lets the director escalate to Severity.CRITICAL — a veto —
+        # instead of accepting a broken submission with score 100.
+        reason = CodeExtractor.check_executable(code)
+        if reason is not None:
+            return ExecutionResult(
+                stdout="",
+                stderr=reason,
+                exit_code=1,
+                timed_out=False,
+                duration_ms=int((time.monotonic() - start) * 1000),
+                not_executable=True,
+                not_executable_reason=reason,
+            )
 
         file_path = self._write_code(code, bead)
         handle = self.create_terminal(title=f"exec-{bead[:8]}")

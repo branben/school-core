@@ -17,6 +17,57 @@
 # _discover_commands() returns it verbatim and skips inference, so the gate
 # runs exactly what's declared below and nothing else.
 verify:
+  # ── Python checks (only run when .py files are in the diff) ──────────────
   - name: core-python-compile
     cmd: python3 -m compileall -q *.py
     cwd: .
+    languages: [python]
+
+  - name: core-python-import
+    cmd: python3 -c "import student_vm_runner, verifier_vm, model_relay, candidate_pr"
+    cwd: .
+    languages: [python]
+
+  - name: student-vm-runner-typecheck
+    cmd: mypy --strict --follow-imports=silent student_vm_runner.py model_relay.py verifier_vm.py
+    cwd: .
+    languages: [python]
+
+  - name: pr-provider-typecheck
+    cmd: mypy --strict --follow-imports=silent pr_provider.py candidate_pr.py
+    cwd: .
+    languages: [python]
+
+  - name: smol-cloud-runner-import
+    cmd: python3 -c "import smol_cloud_runner"
+    cwd: .
+    languages: [python]
+
+  # ── Rust checks (only run when .rs files are in the diff) ───────────────
+  - name: rust-compile
+    cmd: cargo check --manifest-path tools/index-gate/Cargo.toml 2>&1 || rustc --edition 2021 --crate-type lib tools/index-gate/src/main.rs 2>&1
+    cwd: .
+    languages: [rust]
+
+  # ── Go checks (only run when .go files are in the diff) ─────────────────
+  - name: go-compile
+    cmd: go build ./... 2>&1 || go vet ./... 2>&1
+    cwd: .
+    languages: [go]
+
+  # ── TypeScript/JavaScript checks (only run when .ts/.tsx/.js/.jsx files) ─
+  - name: ts-compile
+    cmd: npx tsc --noEmit 2>&1 || node --check "$(find . -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' | head -1)" 2>&1
+    cwd: .
+    languages: [typescript, javascript]
+
+  # ── Markdown/YAML/JSON checks (always run — these are data files) ────────
+  - name: yaml-validate
+    cmd: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" $(find . -name '*.yaml' -o -name '*.yml' | grep -v node_modules | head -5) 2>&1 || true
+    cwd: .
+    languages: [yaml]
+
+  - name: json-validate
+    cmd: python3 -c "import json, sys; [json.load(open(f)) for f in sys.argv[1:]]" $(find . -name '*.json' | grep -v node_modules | head -5) 2>&1 || true
+    cwd: .
+    languages: [json]

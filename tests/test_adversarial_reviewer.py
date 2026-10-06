@@ -357,7 +357,7 @@ class TestAdversarialReviewerCleanOutput:
         mock_fn = MagicMock(return_value='{"findings": []}')
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         result = reviewer.review(
-            output="def hello():\n    return 'world'",
+            output="```python\ndef hello():\n    return 'world'\n```",
             task={"title": "Test", "body": "Write hello", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
         )
@@ -369,7 +369,7 @@ class TestAdversarialReviewerCleanOutput:
         mock_fn = MagicMock(return_value='{"findings": []}')
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         result = reviewer.review(
-            output="some code here",
+            output="```python\nsome code here\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
         )
@@ -407,7 +407,7 @@ class TestAdversarialReviewerTransportRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=flaky_call)
         result = reviewer.review(
-            output="MAX_SPECTATORS = 10",
+            output="```python\nMAX_SPECTATORS = 10\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
         )
@@ -427,7 +427,7 @@ class TestAdversarialReviewerTransportRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=dead_call)
         result = reviewer.review(
-            output="x = 1",
+            output="```python\nx = 1\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
         )
@@ -454,7 +454,7 @@ class TestAdversarialReviewerCircuitBreaker:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
             circuit_breaker=True,
@@ -473,7 +473,7 @@ class TestAdversarialReviewerCircuitBreaker:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
             circuit_breaker=False,
@@ -493,7 +493,7 @@ class TestAdversarialReviewerCircuitBreaker:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="clean code",
+            output="```python\nclean code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
             circuit_breaker=True,
@@ -517,7 +517,7 @@ class TestAdversarialReviewerFindings:
         }))
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         result = reviewer.review(
-            output="query = f'SELECT * FROM users WHERE id = {user_id}'",
+            output="```python\nquery = f'SELECT * FROM users WHERE id = {user_id}'\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.SECURITY],
         )
@@ -537,7 +537,7 @@ class TestAdversarialReviewerFindings:
         }))
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
         )
@@ -563,7 +563,7 @@ class TestAdversarialReviewerFindings:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="code",
+            output="```python\ncode\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS, LensType.COMPLETENESS],
             circuit_breaker=False,
@@ -583,7 +583,7 @@ class TestAdversarialReviewerStats:
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         for _ in range(10):
             reviewer.review(
-                output="code",
+                output="```python\ncode\n```",
                 task={"title": "T", "body": "B", "domain": "code-implementation"},
                 lens_types=[LensType.CORRECTNESS],
             )
@@ -603,7 +603,7 @@ class TestAdversarialReviewerStats:
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         for _ in range(10):
             reviewer.review(
-                output="code",
+                output="```python\ncode\n```",
                 task={"title": "T", "body": "B", "domain": "code-implementation"},
                 lens_types=[LensType.CORRECTNESS],
             )
@@ -621,7 +621,7 @@ class TestAdversarialReviewerStats:
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         for _ in range(10):
             reviewer.review(
-                output="code",
+                output="```python\ncode\n```",
                 task={"title": "T", "body": "B", "domain": "code-implementation"},
                 lens_types=[LensType.CORRECTNESS],
             )
@@ -633,7 +633,7 @@ class TestAdversarialReviewerStats:
         reviewer = AdversarialReviewer(call_model_fn=mock_fn)
         for _ in range(10):
             reviewer.review(
-                output="code",
+                output="```python\ncode\n```",
                 task={"title": "T", "body": "B", "domain": "code-implementation"},
                 lens_types=[LensType.CORRECTNESS],
             )
@@ -852,7 +852,7 @@ class TestAdversarialReviewerRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
             circuit_breaker=False,
@@ -874,7 +874,7 @@ class TestAdversarialReviewerRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
             circuit_breaker=False,
@@ -896,7 +896,7 @@ class TestAdversarialReviewerRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
             circuit_breaker=False,
@@ -917,7 +917,7 @@ class TestAdversarialReviewerRetry:
 
         reviewer = AdversarialReviewer(call_model_fn=mock_call)
         result = reviewer.review(
-            output="some code",
+            output="```python\nsome code\n```",
             task={"title": "T", "body": "B", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS],
             circuit_breaker=False,

@@ -1,0 +1,60 @@
+{
+  "repos": [
+    {
+      "source": "redhat-et/ripwire",
+      "ref": "v0.6.0",
+      "update": "frozen"
+    },
+    {
+      "source": "plannotator/effective-html",
+      "ref": "HEAD",
+      "update": "frozen"
+    },
+    {
+      "source": "plannotator/guides",
+      "ref": "HEAD",
+      "update": "frozen"
+    },
+    {
+      "source": "mattpocock/skills",
+      "ref": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7",
+      "update": "frozen"
+    }
+  ],
+  "skills": {
+    "redhat-et/ripwire": {
+      "path": "skills",
+      "pick": [
+        "ripwire-router",
+        "ripwire-orient",
+        "ripwire-navigate",
+        "ripwire-before-you-build",
+        "ripwire-reuse-first",
+        "ripwire-change-check",
+        "ripwire-write-tests",
+        "ripwire-handoff",
+        "ripwire-security-scan"
+      ],
+      "modelInvocable": false
+    },
+    "plannotator/effective-html": {
+      "path": "skills",
+      "pick": "*",
+      "modelInvocable": false
+    },
+    "plannotator/guides": {
+      "path": "skills",
+      "pick": "*",
+      "modelInvocable": false
+    },
+    "mattpocock/skills": {
+      "path": "skills",
+      "pick": [
+        "engineering/to-spec",
+        "engineering/to-tickets",
+        "productivity/grill-me"
+      ],
+      "modelInvocable": false
+    }
+  }
+}

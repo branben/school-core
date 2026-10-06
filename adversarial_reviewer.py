@@ -25,12 +25,72 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+# ── Deterministic no-artifact gate ──
+# A code-shaped submission that contains no artifact (no code, no diff) must not
+# be reviewable as work, and must not PASS. This is a plain-Python check — NOT a
+# prompt change — because the LLM lenses are exactly what failed: every lens
+# prompt is scoped to *code quality* (missing imports, off-by-one, etc.) and no
+# bullet asks "did they produce anything at all?".
+#
+# Live defect (issue #121, domain=debugging): a 15-line prose plan describing
+# steps the student *intends* to take — zero code, zero diff — produced 8 LOW
+# findings and 0 CRITICAL/HIGH, so `verdict = FAIL if has_critical_or_high else
+# PASS` arithmetically forced PASS, and a PR was published. Execution was also
+# skipped because `debugging` is not in director's `executable_domains`.
+#
+# Domains where prose is a legitimate deliverable (planning, analysis, docs,
+# research, triage) are deliberately excluded: for those, no code is expected
+# and this gate must stay silent.
+PROSE_DOMAINS = frozenset({'planning', 'analysis', 'triage-category'})
+
+# A fenced code block: an opening ``` (optionally followed by a language tag),
+# then a newline, then any content, then a closing ```. The opening info string
+# is allowed to be empty so a *bare* fence (no language tag) still counts.
+_FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n.*?```", re.DOTALL)
+# An opening fence line (``` or ```lang) with a newline after it. Used only for
+# the unterminated case below.
+_OPEN_FENCE_RE = re.compile(r"```[^\n]*\n")
+# A unified diff header. Anchored at line start so prose that merely mentions
+# the words "diff --git" inline does not count.
+_DIFF_BLOCK_RE = re.compile(r"(?m)^diff --git ")
+
+
+def is_code_shaped_domain(domain: str) -> bool:
+    """True when the task domain is expected to deliver code or a diff."""
+    return (domain or "").strip().lower() in CODE_SHAPED_DOMAINS
+
+
+def has_artifact(text: str) -> bool:
+    """True when *text* contains a reviewable artifact.
+
+    An artifact is a fenced code block (``` optionally followed by a language
+    tag, closed by ```) or a ``diff --git`` block. Prose alone is not an
+    artifact.
+
+    A lone *unterminated* opening fence followed by content also counts: real
+    ``code-implementation`` trajectories have been observed emitting 17KB of
+    Python behind a single ```python opener with no closing fence. That is
+    unambiguously code, and vetoing it as "no artifact" would be a false
+    positive — the gate exists to catch prose-only plans, not dropped fences.
+    """
+    if not text:
+        return False
+    if _DIFF_BLOCK_RE.search(text):
+        return True
+    if _FENCED_BLOCK_RE.search(text):
+        return True
+    opener = _OPEN_FENCE_RE.search(text)
+    if opener and text[opener.end():].strip():
+        return True
+    return False
 
 class Severity(str, Enum):
     CRITICAL = "CRITICAL"
@@ -148,6 +208,11 @@ DOMAIN_LENS: dict[str, list[LensType]] = {
 }
 
 DEFAULT_LENSES = [LensType.CORRECTNESS, LensType.COMPLETENESS]
+
+# Derive the code-shaped set from DOMAIN_LENS so the two lists cannot drift.
+# PROSE_DOMAINS are ungated (prose is a legitimate deliverable for them).
+# python-coding is NOT a key of DOMAIN_LENS but must remain gated.
+CODE_SHAPED_DOMAINS = frozenset(DOMAIN_LENS) - PROSE_DOMAINS | {'python-coding'}
 
 # ── Difficulty-aware severity weights ──
 # Penalties are lighter for easy/medium tasks so minor nitpicks don't
@@ -347,6 +412,29 @@ class AdversarialReviewer:
                 lens_result = self._apply_lens(lens, output, task, codebase_context, difficulty=difficulty)
                 lens_trace[lens.value] = lens_result
                 all_findings.extend(lens_result.findings)
+
+        # ── Deterministic no-artifact veto (runs after the lenses) ──
+        # Placed here so it always lands in `all_findings` and therefore reaches
+        # the verdict rule below AND director's acceptance gate (which recomputes
+        # `has_critical` over execution+build+cto+coo findings). A code-shaped
+        # submission with no artifact cannot be reviewed as work, so it fails
+        # regardless of how many (or how few) LOW lens findings it drew.
+        if is_code_shaped_domain(domain) and not has_artifact(output):
+            all_findings.append(Finding(
+                section="artifact",
+                issue_class="no_artifact",
+                severity=Severity.CRITICAL,
+                citation="no fenced code block or `diff --git` block in output",
+                description=(
+                    "The submission contains no code or diff — only prose. A "
+                    "code-shaped task cannot be reviewed as work without a "
+                    "produced artifact, so this is an automatic failure."
+                ),
+                suggestion=(
+                    "Produce the actual artifact: include the code in a fenced "
+                    "block or submit the change as a `diff --git` patch."
+                ),
+            ))
 
         has_critical_or_high = any(
             f.severity in (Severity.CRITICAL, Severity.HIGH) for f in all_findings

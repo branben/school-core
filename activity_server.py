@@ -23,18 +23,47 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import beads_workspace
 # Add parent to path so we can import school-core modules
 sys.path.insert(0, str(Path(__file__).parent))
 
 ACTIVITY_LOG_PATH = Path(__file__).parent / "data" / "activity_log.json"
 SCORES_PATH = Path(__file__).parent / "data" / "scores.json"
 DASHBOARD_PATH = Path(__file__).parent / "docs" / "site" / "live_activity_dashboard.html"
+BEADS_WORKSPACE_PATH = Path(__file__).parent / "docs" / "templates" / "beads-workspace.html"
+WORKSPACE_SERVICE = beads_workspace.WorkspaceService()
 TRAJECTORY_DIR = Path(__file__).parent / "data" / "trajectories"
 
 # Board data paths (network-free — local files only)
 BOARD_PROCESSED_PATH = Path(__file__).parent / "data" / "processed_issues.json"
 BOARD_LAST_RUN_PATH = Path(__file__).parent / "data" / "last_run.json"
 BOARD_CACHE_PATH = Path(__file__).parent / "data" / "issues_cache.json"
+
+# Outcome classes that must NOT render as "Done" on the board. Kept in sync
+# with issue_bridge's ledger contract (INFRA is retryable, not terminal).
+_RETRYABLE_OUTCOME_CLASSES = frozenset({"INFRA"})
+
+
+def _terminal_issue_numbers(raw) -> list[int]:
+    """Normalize the processed ledger to the TERMINAL issue numbers only.
+
+    The ledger is ``{issue: outcome_class}``; an INFRA entry is retryable and
+    must not appear as Done. Accepts the legacy flat-list shape (every number
+    terminal) so a board built from an un-migrated file is unchanged.
+    """
+    if isinstance(raw, list):
+        return [int(n) for n in raw if isinstance(n, (int, str)) and str(n).lstrip("-").isdigit()]
+    if not isinstance(raw, dict):
+        return []
+    out: list[int] = []
+    for key, value in raw.items():
+        if value in _RETRYABLE_OUTCOME_CLASSES:
+            continue
+        try:
+            out.append(int(key))
+        except (TypeError, ValueError):
+            continue
+    return sorted(out)
 
 
 def _load_timeline_events() -> list[dict]:
@@ -114,7 +143,9 @@ def _load_board_data() -> tuple[list[dict], list[int], list[dict]]:
     processed: list[int] = []
     if BOARD_PROCESSED_PATH.exists():
         try:
-            processed = json.loads(BOARD_PROCESSED_PATH.read_text())
+            processed = _terminal_issue_numbers(
+                json.loads(BOARD_PROCESSED_PATH.read_text())
+            )
         except (json.JSONDecodeError, OSError):
             processed = []
 
@@ -144,7 +175,9 @@ class ActivityHandler(SimpleHTTPRequestHandler):
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
-        if path == "/api/activity" or path == "/api/activity/recent":
+        if path == "/api/workspace":
+            self._serve_workspace()
+        elif path == "/api/activity" or path == "/api/activity/recent":
             self._serve_activity(qs)
         elif path == "/api/activity/since":
             self._serve_activity_since(qs)
@@ -162,8 +195,76 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self._serve_stream()
         elif path.startswith("/trajectory/"):
             self._serve_trajectory(path[len("/trajectory/"):])
+        elif path == "/workspace":
+            self._serve_workspace_page()
         else:
             self._serve_dashboard()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path not in {"/api/workspace/preview", "/api/workspace/confirm"}:
+            self._json_response({"error": "Not found"}, 404, allow_cors=False)
+            return
+        fetch_site = self.headers.get("Sec-Fetch-Site")
+        if fetch_site and fetch_site not in {"same-origin", "none"}:
+            self._json_response({"error": "Cross-site tracker writes are not allowed."}, 403, allow_cors=False)
+            return
+        origin = self.headers.get("Origin")
+        if origin:
+            parsed_origin = urlparse(origin)
+            expected_host = self.headers.get("Host", "").lower()
+            is_local_host = expected_host == "localhost" or expected_host == "127.0.0.1" or expected_host.startswith("localhost:") or expected_host.startswith("127.0.0.1:")
+            if parsed_origin.scheme != "http" or parsed_origin.netloc.lower() != expected_host or not is_local_host:
+                self._json_response({"error": "Cross-origin tracker writes are not allowed."}, 403, allow_cors=False)
+                return
+        if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            self._json_response({"error": "Tracker writes require application/json."}, 415, allow_cors=False)
+            return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            size = 0
+        if size < 1 or size > 16_384:
+            self._json_response({"error": "Request body must be between 1 and 16384 bytes."}, 413, allow_cors=False)
+            return
+        try:
+            payload = json.loads(self.rfile.read(size))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._json_response({"error": "Request body must be valid JSON."}, 400, allow_cors=False)
+            return
+        try:
+            if parsed.path == "/api/workspace/preview":
+                result = WORKSPACE_SERVICE.preview(payload)
+                command = "bd " + " ".join(_shell_display_arg(arg) for arg in result["args"])
+                self._json_response({key: value for key, value in {**result, "command": command}.items() if key != "args"}, allow_cors=False)
+            else:
+                token = payload.get("token") if isinstance(payload, dict) else None
+                self._json_response(WORKSPACE_SERVICE.confirm(token), allow_cors=False)
+        except beads_workspace.WorkspaceValidationError as exc:
+            self._json_response({"error": str(exc)}, 400, allow_cors=False)
+        except beads_workspace.WorkspaceConflict as exc:
+            self._json_response({"error": str(exc)}, 409, allow_cors=False)
+        except beads_workspace.WorkspaceError as exc:
+            self._json_response({"error": str(exc)}, 500, allow_cors=False)
+
+    def _serve_workspace(self):
+        try:
+            self._json_response(WORKSPACE_SERVICE.workspace(), allow_cors=False)
+        except beads_workspace.WorkspaceError as exc:
+            self._json_response({"error": str(exc)}, 500, allow_cors=False)
+
+    def _serve_workspace_page(self):
+        try:
+            body = BEADS_WORKSPACE_PATH.read_bytes()
+        except OSError:
+            self.send_error(404, "Beads workspace page not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_activity(self, qs):
         n = int(qs.get("n", [50])[0])
@@ -514,12 +615,14 @@ class ActivityHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Dashboard not found. Generate it first.")
 
-    def _json_response(self, data, status=200):
+    def _json_response(self, data, status=200, *, allow_cors=True):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if allow_cors:
+            self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
@@ -527,6 +630,13 @@ class ActivityHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         # Suppress default logging for cleanliness
         pass
+
+
+def _shell_display_arg(value: str) -> str:
+    """Display a safely quoted command for confirmation; execution uses argv."""
+    if value and all(char.isalnum() or char in "@%_+=:,./-" for char in value):
+        return value
+    return "'" + value.replace("'", "'\\''") + "'"
 
 
 def main():
@@ -539,6 +649,7 @@ def main():
     print(f"  Dashboard:     http://127.0.0.1:{args.port}/")
     print(f"  Activity API:  http://127.0.0.1:{args.port}/api/activity")
     print(f"  Agents API:    http://127.0.0.1:{args.port}/api/agents")
+    print(f"  Beads workspace: http://127.0.0.1:{args.port}/workspace")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

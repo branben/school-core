@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-09-30-001-feat-openai-video-instrumentation-prd.md">
+<title>PRD · Instrument the OpenAI Video API</title>
+<style>
+  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
+        --clay:#D97757;--olive:#788C5D;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
+       max-width:54rem;margin:0 auto;
+       font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
+  h1{font-size:1.7rem;letter-spacing:-.02em;line-height:1.25}
+  .sub{color:var(--muted);margin-top:.5rem;font-size:.95rem}
+  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.7rem;
+        font-family:ui-monospace,Menlo,monospace}
+  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
+  h2{font-size:1.1rem;margin:2.25rem 0 .75rem;letter-spacing:-.01em}
+  p{margin-bottom:.85rem}
+  .lede{font-size:1.08rem;border-left:3px solid var(--clay);padding-left:1rem}
+  ul{margin:0 0 .85rem 1.1rem}
+  li{margin-bottom:.4rem}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:var(--card);
+       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
+  table{border-collapse:collapse;width:100%;font-size:.88rem}
+  th,td{border-bottom:1px solid var(--line);padding:.5rem .55rem;text-align:left;vertical-align:top}
+  th{background:var(--card);font-weight:600}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:1rem}
+  .yes{color:var(--olive);font-weight:600}
+  .no{color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;
+        padding:1rem 1.1rem;margin-bottom:1rem}
+  .card h3{font-size:.98rem;margin-bottom:.45rem;color:var(--clay)}
+  .card p:last-child{margin-bottom:0}
+  footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Instrument the OpenAI Video generation API</h1>
+  <p class="sub">PRD · upstream issue #304 · fork <code>branben/braintrust-sdk-python</code> @ 696d206a</p>
+  <div class="meta">
+    <span>status: proposed</span><span>2026-09-30</span><span>brownfield</span>
+    <span>openai 3.16.2 / 2.31.0 measured</span>
+  </div>
+</header>
+<main>
+
+<p class="lede"><code>client.videos.*</code> produces zero Braintrust spans today. It should
+produce the same span shape <code>client.images.generate()</code> already produces — because
+Images already does it, and video is the same class of call: a model, a prompt, media out.</p>
+
+<h2>The gap</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>Videos method</th><th>What it does</th><th>Instrument</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>create</code></td><td>submit a generation job</td><td class="yes">yes</td><td>the primary generative call</td></tr>
+    <tr><td><code>edit</code></td><td>re-cut an existing video</td><td class="yes">yes</td><td>same shape, takes a source video</td></tr>
+    <tr><td><code>extend</code></td><td>lengthen a completed video</td><td class="yes">yes</td><td>same shape, takes a source video</td></tr>
+    <tr><td><code>remix</code></td><td>regenerate from a new prompt</td><td class="yes">yes</td><td>generative, cheap to add</td></tr>
+    <tr><td><code>create_and_poll</code></td><td>create + poll loop</td><td class="no">no</td><td>convenience wrapper — its inner <code>create</code>/<code>poll</code> calls are each traced</td></tr>
+    <tr><td><code>poll</code></td><td>block until the job reaches a terminal state</td><td class="yes">yes</td><td>holds the real generation time; this is where completion is recorded</td></tr>
+    <tr><td><code>retrieve</code> / <code>list</code></td><td>status read + CRUD</td><td class="no">no</td><td>not generative, and <code>retrieve</code> would span every poll tick</td></tr>
+    <tr><td><code>download_content</code></td><td>fetch bytes</td><td class="no">no</td><td>bytes, not a model call</td></tr>
+    <tr><td><code>create_character</code> / <code>get_character</code></td><td>character assets</td><td class="no">no</td><td>not generative</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Nine patchers ship today — agents.sessions, chat.completions, embeddings, moderations,
+audio.{speech,transcriptions,translations}, images, responses. <strong>Zero</strong> video
+references anywhere in the integration.</p>
+
+<div class="card">
+  <h3>Why <code>create_and_poll</code> is excluded — and <code>poll</code> is not</h3>
+  <p><code>create_and_poll</code> calls <code>self.create(...)</code> then <code>self.poll(...)</code>.
+  Wrapping it too would add a parent span saying <code>status: "completed"</code> around a child
+  saying <code>status: "queued"</code>.</p>
+  <p>The repo's <code>cursor_sdk</code> integration faces the identical shape and answers it: it
+  wraps <code>Agent.send</code> and <code>Run.wait</code> as separate patchers, and does
+  <strong>not</strong> wrap <code>Agent.prompt</code> — the one-call convenience method that does
+  <code>agent.send(message).wait()</code>. Trace the inner pair; leave the wrapper alone.</p>
+  <p>So <code>poll</code> is in scope. That second span is where completion is recorded —
+  excluding it would leave a trace proving only that the request was accepted.</p>
+</div>
+
+<h2>What the user sees</h2>
+<p>A span named <code>Video Generation</code>, <code>Video Poll</code>, <code>Video Edit</code>,
+<code>Video Extend</code>, or <code>Video Remix</code>:</p>
+<ul>
+  <li><strong>input</strong> — the prompt, plus the reference video or image as a Braintrust <code>Attachment</code></li>
+  <li><strong>metadata</strong> — <code>provider</code>, <code>model</code>, <code>seconds</code>, <code>size</code></li>
+  <li><strong>output</strong> — video id, <code>status</code>, <code>progress</code>, <code>size</code>, <code>seconds</code>, <code>error</code></li>
+  <li><strong>metrics</strong> — duration, and <strong>no cost</strong> (Sora is not token-metered; <code>Video</code> has no <code>usage</code> field)</li>
+</ul>
+
+<h2>The two traps</h2>
+<div class="card">
+  <h3>One metadata allowlist does not fit four methods</h3>
+  <p><code>create</code> takes <code>model, seconds, size</code>. <code>edit</code> takes neither.
+  <code>extend</code> takes <code>seconds</code>. <code>remix</code> takes neither. A single
+  allowlist — the natural copy of the images one — silently yields
+  <code>{"provider": "openai"}</code> for two of the four methods. Per-method allowlists.</p>
+</div>
+<div class="card">
+  <h3>CI is the hard part, not the code</h3>
+  <p>The nox matrix runs four openai versions. Measured by unzipping all four wheels: only
+  <code>3.16.2</code> and <code>2.31.0</code> ship <code>openai/resources/videos.py</code>.
+  <code>1.92.0</code>, <code>1.77.0</code>, <code>1.71.0</code> have none. Under CI
+  <code>record_mode="none"</code>, so an unguarded video test <em>fails</em> the three old
+  sessions with "cassette not found" instead of skipping.</p>
+</div>
+
+<h2>Objections, pre-answered</h2>
+<ul>
+  <li><strong>"Isn't this copy-paste of Images?"</strong> Mostly — and that is the point. The patcher
+  factory already emits sync + async + instance patchers from one callback. The delta is ~120 lines.</li>
+  <li><strong>"Won't this break users on openai 1.x?"</strong> No. <code>applies()</code> returns
+  False when the target module is absent, so the patcher is inert. The <em>tests</em> need the guard.</li>
+  <li><strong>"Why not CRUD too?"</strong> A span per poll tick buries the generative signal.
+  <code>poll</code> is the exception — it is the one blocking call where generation time is spent.</li>
+  <li><strong>"Why skip <code>create_and_poll</code>? Isn't that the common call?"</strong> It is the
+  common call, which is why its two inner calls are each traced. Wrapping the wrapper too would add a
+  third span duplicating the pair. <code>cursor_sdk</code> makes the same call for <code>Agent.prompt</code>.</li>
+  <li><strong>"Related to Google GenAI?"</strong> Yes — upstream #236 is the same gap for
+  <code>generate_videos()</code>. Separate issues are fine.</li>
+</ul>
+
+<h2>Done means</h2>
+<ul>
+  <li>Four methods emit one span each, sync and async, under both entry points</li>
+  <li>File inputs log as <code>Attachment</code>, never a raw handle</li>
+  <li>Video tests pass on <code>latest</code> and skip cleanly on 1.92.0 / 1.77.0 / 1.71.0</li>
+  <li>No cassette and no doc goes stale</li>
+</ul>
+
+</main>
+<footer>
+  Render of the canonical markdown source
+  (<code>docs/plans/2026-09-30-001-feat-openai-video-instrumentation-prd.md</code>, authoritative).
+  Spec in <code>docs/plans/2026-09-30-002-spec-openai-video-instrumentation.md</code>.
+  Nothing published to the fork or upstream.
+</footer>
+</body>
+</html>
