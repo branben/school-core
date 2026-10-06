@@ -11,11 +11,14 @@ from unittest.mock import patch, MagicMock, call
 
 import pytest
 
+import issue_bridge
 from issue_bridge import (
     _load_processed,
     _save_processed,
+    _migrate_legacy_ledger,
     mark_processed,
     is_processed,
+    load_terminal_issue_numbers,
     bridge_issues,
     _run_verify_gate,
     _run_entire_sensor,
@@ -38,6 +41,8 @@ from issue_bridge import (
     RETRY_FILE,
     RETRY_LIMIT,
 )
+from candidate_binding import CandidateBinding, CandidateBindingStore, bind_trusted_evidence
+from pr_provider import PrStateStore, _BoundFakePublisher
 from scoring import ScoreStore
 
 
@@ -56,6 +61,12 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
             return "[]"
         return None
     monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
+    # Keep PR publication hermetic too: the bridge imports a publisher that
+    # uses its own gh subprocess boundary, separate from _gh_command.
+    monkeypatch.setattr(
+        "issue_bridge.create_pr_for_issue",
+        lambda **kwargs: "https://github.com/user/test/pull/1",
+    )
     # Reset the per-process label memoization so each test starts fresh.
     monkeypatch.setattr("issue_bridge._LABELS_ENSURED", set())
     # Hermetic retry counter — never touch the real data/retry_issues.json.
@@ -68,6 +79,10 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
     monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", tmp_path / "crew_runs.json")
     monkeypatch.delenv("CREW_ENABLED", raising=False)
     monkeypatch.delenv("CREW_MAX_PER_CYCLE", raising=False)
+    # Candidate-bound publication is disabled by default; tests that exercise
+    # the candidate seam opt in explicitly, and this keeps the safe default
+    # from leaking in from the ambient environment.
+    monkeypatch.delenv("CANDIDATE_PR_ENABLED", raising=False)
     # Never send real AgentMail alerts from tests.
     monkeypatch.setattr("issue_bridge.notify_issue_alert", lambda *a, **k: True)
 
@@ -77,12 +92,12 @@ def _no_real_gh_writes(monkeypatch, tmp_path):
 class TestProcessedTracking:
     def test_empty_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
-        assert _load_processed() == set()
+        assert _load_processed() == {}
 
     def test_save_and_load(self, tmp_path, monkeypatch):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
-        _save_processed({1, 2, 3})
-        assert _load_processed() == {1, 2, 3}
+        _save_processed({1: "PASS", 2: "BURN", 3: "REJECT"})
+        assert _load_processed() == {1: "PASS", 2: "BURN", 3: "REJECT"}
 
     def test_mark_and_check(self, tmp_path, monkeypatch):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -94,7 +109,7 @@ class TestProcessedTracking:
         f = tmp_path / "processed.json"
         f.write_text("not json")
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", f)
-        assert _load_processed() == set()
+        assert _load_processed() == {}
 
     def test_multiple_marks(self, tmp_path, monkeypatch):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -102,6 +117,135 @@ class TestProcessedTracking:
             mark_processed(n)
             assert is_processed(n)
         assert len(_load_processed()) == 10
+
+    def test_legacy_flat_list_reads_as_terminal(self, tmp_path, monkeypatch):
+        """An un-migrated flat list must not silently re-open historical work."""
+        f = tmp_path / "processed.json"
+        f.write_text("[1, 2, 3]")
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", f)
+        assert _load_processed() == {1: "BURN", 2: "BURN", 3: "BURN"}
+        assert is_processed(2)
+
+    def test_legacy_flat_list_tolerates_a_non_numeric_entry(self, tmp_path, monkeypatch):
+        """A corrupt legacy entry is skipped, not a bridge-cycle-killing crash.
+
+        The ledger is tracked, hand-editable state read once per cycle. An
+        unguarded ``int()`` over a flat list raised out of ``_load_processed``
+        and killed the cycle; the previous flat-set parser accepted any value.
+        """
+        f = tmp_path / "processed.json"
+        f.write_text('[340, 341, "n/a"]')
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", f)
+        assert _load_processed() == {340: "BURN", 341: "BURN"}
+
+    def test_unknown_outcome_token_reads_as_terminal(self, tmp_path, monkeypatch):
+        """An unrecognized class fails closed (terminal), never open (retryable)."""
+        f = tmp_path / "processed.json"
+        f.write_text('{"7": "WAT"}')
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", f)
+        assert _load_processed() == {7: "BURN"}
+        assert is_processed(7)
+
+    def test_infra_class_is_retryable_not_terminal(self, tmp_path, monkeypatch):
+        """INFRA is the whole point: a runtime failure must stay eligible."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mark_processed(55, "INFRA")
+        assert not is_processed(55)
+        assert _load_processed() == {55: "INFRA"}
+
+    def test_mark_processed_rejects_unknown_class(self, tmp_path, monkeypatch):
+        """mark_processed coerces an unknown class to terminal BURN."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mark_processed(56, "NOT_A_CLASS")
+        assert _load_processed() == {56: "BURN"}
+        assert is_processed(56)
+
+    def test_terminal_numbers_exclude_infra(self, tmp_path, monkeypatch):
+        """The board projection lists only terminal issues."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        _save_processed({1: "PASS", 2: "INFRA", 3: "REJECT", 4: "BURN"})
+        assert load_terminal_issue_numbers() == [1, 3, 4]
+
+
+class TestLegacyLedgerMigration:
+    """The one-shot migration that releases infra-burned issues.
+
+    Live defect (SCH-11): #340/#341/#342/#415/#419 are OPEN, ready-for-agent,
+    and present in processed_issues.json with no real verdict behind them.
+    """
+
+    def _last_run(self, tmp_path, records):
+        p = tmp_path / "last_run.json"
+        p.write_text(json.dumps(records))
+        return p
+
+    def test_releases_infra_burned_issue(self, tmp_path):
+        """An issue whose only history is `error`/`retry` is released."""
+        ledger = {100: "BURN"}
+        path = self._last_run(tmp_path, [
+            {"issue": 100, "status": "retry", "failure_edge": "none"},
+            {"issue": 100, "status": "error", "failure_edge": "none"},
+        ])
+        released = _migrate_legacy_ledger(ledger, path)
+        assert released == [100]
+        assert 100 not in ledger
+
+    def test_keeps_judge_rejection_terminal(self, tmp_path):
+        """A judge `school-failed` is a real verdict — stays terminal."""
+        ledger = {101: "BURN"}
+        path = self._last_run(tmp_path, [
+            {"issue": 101, "status": "school-failed", "failure_edge": "judge"},
+        ])
+        released = _migrate_legacy_ledger(ledger, path)
+        assert released == []
+        assert ledger[101] == "REJECT"
+
+    def test_keeps_success_terminal(self, tmp_path):
+        """A success (issue closed) is PASS — stays terminal."""
+        ledger = {102: "BURN"}
+        path = self._last_run(tmp_path, [
+            {"issue": 102, "status": "success", "failure_edge": "none"},
+        ])
+        released = _migrate_legacy_ledger(ledger, path)
+        assert released == []
+        assert ledger[102] == "PASS"
+
+    def test_runtime_school_failed_is_released(self, tmp_path):
+        """`school-failed` from a runtime edge is infra, not a quality verdict."""
+        ledger = {103: "BURN"}
+        path = self._last_run(tmp_path, [
+            {"issue": 103, "status": "school-failed", "failure_edge": "runtime"},
+        ])
+        released = _migrate_legacy_ledger(ledger, path)
+        assert released == [103]
+        assert 103 not in ledger
+
+    def test_released_issue_is_readmitted_by_the_bridge(self, tmp_path, monkeypatch):
+        """End-to-end: a released issue is no longer skipped by the loop."""
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        self._last_run(tmp_path, [{"issue": 104, "status": "error"}])
+        (tmp_path / "processed.json").write_text("[104]")
+        assert is_processed(104)  # legacy entry reads as terminal
+        # Simulate the bridge's startup migration (mutate + persist).
+        ledger = _load_processed()
+        released = _migrate_legacy_ledger(ledger, tmp_path / "last_run.json")
+        _save_processed(ledger)
+        assert released == [104]
+        assert not is_processed(104)
+
+    def test_missing_last_run_releases_nothing_unexpectedly(self, tmp_path):
+        """A missing/invalid history file releases nothing (no blind wipe)."""
+        ledger = {105: "BURN", 106: "PASS"}
+        released = _migrate_legacy_ledger(ledger, tmp_path / "nope.json")
+        assert released == []
+        assert ledger == {105: "BURN", 106: "PASS"}
+
+    def test_migration_is_idempotent(self, tmp_path):
+        """A second run finds nothing terminal-unjustified to release."""
+        ledger = {107: "BURN"}
+        path = self._last_run(tmp_path, [{"issue": 107, "status": "error"}])
+        assert _migrate_legacy_ledger(ledger, path) == [107]
+        assert _migrate_legacy_ledger(ledger, path) == []
 
 
 # ── Bridge Issues ─────────────────────────────────────────────────────────
@@ -191,12 +335,84 @@ class TestBridgeIssues:
             "domain": "debugging", "difficulty": "medium",
             "prompt": "fix this", "response": "ok",
         }
+        mirrored = []
+
+        def fail_mirror_after_recording(repo, outcomes):
+            mirrored.append((repo, outcomes))
+            raise RuntimeError("simulated Paperclip outage")
+
+        monkeypatch.setattr(
+            "paperclip_status.sync_paperclip_results",
+            fail_mirror_after_recording,
+        )
         results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
         assert results[0]["issue_number"] == 10
-        # Should be marked processed
+        # Should be marked processed before the optional projection runs.
         assert is_processed(10)
+        assert mirrored == [("user/test", results)]
+
+    @pytest.mark.parametrize("publisher_outcome", ["none", "raises"])
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_pr_publication_failure_remains_retryable(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        publisher_outcome, tmp_path, monkeypatch, store,
+    ):
+        """An absent or raised PR result cannot checkpoint task success."""
+        mock_ib_call.return_value = (
+            '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": ["works"]}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        processed_path = tmp_path / "processed.json"
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", processed_path)
+        monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
+        repo_path = tmp_path / "target-repo"
+        repo_path.mkdir()
+        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("repo_reader.clone_repo", lambda repo: repo_path)
+        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
+        monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
+        monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
+            "verdict": "PASS", "score": 90.0, "findings": [],
+        })
+        mock_fetch.return_value = [{
+            "issue_number": 12, "title": "PR publication failure", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.return_value = {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "fix", "response": "fixed",
+        }
+        if publisher_outcome == "none":
+            publisher = lambda **kwargs: None
+        else:
+            def publisher(**kwargs):
+                raise RuntimeError("GitHub PR create timed out")
+        monkeypatch.setattr("issue_bridge.create_pr_for_issue", publisher)
+
+        with patch("issue_bridge._mark_github_issue") as mock_mark:
+            results = bridge_issues("user/test", store=store)
+
+        assert results[0]["status"] == "retry"
+        assert "PR" in results[0]["error"]
+        assert not is_processed(12)
+        assert _load_retries() == {12: 1}
+        mock_mark.assert_not_called()
+        runs = json.loads((processed_path.parent / "last_run.json").read_text())
+        assert runs[-1]["status"] == "retry"
+        assert runs[-1].get("pr_error")
+        assert not any(
+            run.get("issue") == 12 and run.get("status") == "success"
+            for run in runs
+        )
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
@@ -298,11 +514,13 @@ class TestBridgeIssues:
         assert results[0]["status"] == "retry"
         assert results[0]["retry_attempt"] == 1
         assert not is_processed(20)
-        # Attempt 2 (retry budget exhausted) → final error + processed
+        # Attempt 2 (retry budget exhausted) → final error, and the issue is
+        # INFRA (retryable), NOT burned: a runtime failure must not consume it.
         results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
-        assert is_processed(20)
+        assert not is_processed(20)
+        assert _load_processed()[20] == "INFRA"
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
@@ -319,12 +537,14 @@ class TestBridgeIssues:
         assert len(results) == 1
         assert results[0]["status"] == "retry"
         assert not is_processed(30)
-        # Attempt 2 → final error + processed
+        # Attempt 2 → final error; an exception path never reached a verdict,
+        # so the issue stays eligible as INFRA rather than being burned.
         results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert "unexpected error" in results[0]["error"]
-        assert is_processed(30)
+        assert not is_processed(30)
+        assert _load_processed()[30] == "INFRA"
 
 
 # ── Adversarial Review Integration ─────────────────────────────────────────
@@ -369,7 +589,7 @@ class TestAdversarialReviewStep:
         mock_task.return_value = {
             "status": "success", "agent": "foundry-coder-1.5b",
             "domain": "debugging", "difficulty": "easy",
-            "prompt": "fix", "response": "fixed",
+            "prompt": "fix", "response": "```python\nfixed\n```",
         }
         # Patch the executor.call_model used by _run_adversarial_review to simulate failure
         with patch("executor.call_model", side_effect=RuntimeError("model unavailable")):
@@ -427,7 +647,7 @@ class TestAdversarialReviewStep:
         assert "findings" in result
 
     def test_run_adversarial_review_fallback_on_error(self):
-        task_result = {"status": "success", "response": "code"}
+        task_result = {"status": "success", "response": "```python\ncode\n```"}
         issue = {"title": "T", "body": "", "domain": "debugging", "difficulty": "easy", "prompt": "p"}
         with patch("executor.call_model", side_effect=ImportError("no module")):
             result = _run_adversarial_review(task_result, issue, "")
@@ -479,7 +699,7 @@ class TestVerifyGateMerge:
         return {
             "status": "success", "agent": "auto/best-free",
             "domain": "code-implementation", "difficulty": "medium",
-            "prompt": "implement", "response": "def f(): return 1",
+            "prompt": "implement", "response": "```python\ndef f(): return 1\n```",
         }
 
     @patch("issue_bridge.fetch_issues")
@@ -758,7 +978,7 @@ class TestEntireSensor:
         return {
             "status": "success", "agent": "auto/best-free",
             "domain": "code-implementation", "difficulty": "medium",
-            "prompt": "implement", "response": "def f(): return 1",
+            "prompt": "implement", "response": "```python\ndef f(): return 1\n```",
         }
 
     def test_sensor_returns_none_when_repo_missing(self):
@@ -1935,7 +2155,11 @@ class TestRetryOnce:
         bridge_issues("user/test", store=store)          # attempt 1 → retry
         results = bridge_issues("user/test", store=store)  # attempt 2 → final
         assert results[0]["status"] == "error"
-        assert is_processed(71)
+        # A repeated runtime `error` is INFRA, not a verdict: the issue is NOT
+        # burned. This is the SCH-11 defect — the old contract marked it
+        # processed, which is how #340/#341/#342/#415/#419 became unprocessable.
+        assert not is_processed(71)
+        assert _load_processed()[71] == "INFRA"
         assert _load_retries() == {}   # retry state cleared after final
         mock_mark.assert_called_once()
         assert mock_mark.call_args[0][1] == 71
@@ -2052,7 +2276,9 @@ class TestRetryOnce:
         results = bridge_issues("user/test", store=store)
         assert results[0]["status"] == "error"            # terminal, NOT retry
         assert results[0]["retry_attempt"] == RETRY_LIMIT  # accumulated to 2
-        assert is_processed(75)                            # processed set updated
+        # INFRA (runtime `error`) — retryable, not burned into the ledger.
+        assert not is_processed(75)
+        assert _load_processed()[75] == "INFRA"
         assert _load_retries() == {}                       # popped on terminal
         mock_mark.assert_called_once()
         assert mock_mark.call_args[0][1] == 75
@@ -2346,10 +2572,12 @@ class TestCrewDispatchPath:
             assert results[0]["retry_attempt"] == 1
             assert results[0]["crew_fallback_reason"] == "spawn_failure"
             assert not is_processed(406)
-            # Attempt 2 → final error + processed.
+            # Attempt 2 → final error; a spawn failure never reached a verdict,
+            # so the issue stays eligible as INFRA.
             results = bridge_issues("user/test", crew_enabled=True, store=store)
             assert results[0]["status"] == "error"
-            assert is_processed(406)
+            assert not is_processed(406)
+            assert _load_processed()[406] == "INFRA"
 
     def test_in_flight_record_skips_issue(self, monkeypatch, tmp_path, store):
         """An active crew record (interrupted prior cycle) skips, never double-spawns.
@@ -2591,7 +2819,7 @@ class TestHostedStudentFlag:
         """Flag absent → run_task called on the direct path, no runner kwarg."""
         monkeypatch.delenv("SCHOOL_CORE_HOSTED_STUDENT", raising=False)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(431)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("repo_reader.clone_clone", return_value=tmp_path / "repo") if False else patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
              patch("repo_reader.build_codebase_context", return_value=""), \
              patch("repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
@@ -2682,3 +2910,873 @@ class TestHostedStudentFlag:
                 bridge_issues("user/test", store=store)
 
 
+# ── Phase 1 PR-correctness: candidate-bound publication ────────────────────
+
+class TestCandidateBoundPublication:
+    """Generic review/verification results cannot authorize candidate PR writes.
+
+    The bridge has no wired trusted-verifier result or authenticated pre-PR
+    teacher approval ingress yet, so this path must remain retryable and leave
+    the issue open without calling even the fake provider.
+    """
+
+    @pytest.fixture
+    def candidate_env(self, tmp_path, monkeypatch):
+        import subprocess
+        from dataclasses import asdict
+        from candidate_manifest import CandidateStore, create_candidate
+
+        repo = tmp_path / "target-repo"
+        repo.mkdir()
+
+        def _git(*args):
+            subprocess.run(
+                ["git", "-C", str(repo), *args],
+                check=True, capture_output=True, text=True,
+            )
+
+        _git("init", "-b", "main")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test User")
+        (repo / "README.md").write_text("base\n")
+        _git("add", "README.md")
+        _git("commit", "-m", "base")
+        _git("checkout", "-b", "candidate/exact")
+        (repo / "README.md").write_text("candidate\n")
+        _git("add", "README.md")
+        _git("commit", "-m", "candidate")
+        # The bridge's candidate path reads the SAME CandidateStore it uses for
+        # registration/lookup, so the test fixture must point the bridge at the
+        # fixture's store/repo — not a second hermetic copy.
+        store = CandidateStore(tmp_path / "candidates.json")
+        manifest = create_candidate(
+            store=store, repo_path=repo,
+            candidate_id="cand-1", bead_id="bead-1", issue_number=12,
+            repository="user/test", base_ref="main", branch="candidate/exact",
+            owner="student-coder",
+        )
+
+        # Opt in explicitly: candidate-bound publication is disabled by default.
+        monkeypatch.setenv("CANDIDATE_PR_ENABLED", "1")
+        # Hermetic bridge-side stores for every run.
+        monkeypatch.setattr("issue_bridge.CANDIDATE_STORE_FILE", tmp_path / "candidates.json")
+        monkeypatch.setattr("issue_bridge.PR_STATE_FILE", tmp_path / "pr-state.json")
+        # The resume seam reads/writes the durable binding store; keep it
+        # hermetic so a real data/candidate_bindings.json can never steer a test.
+        monkeypatch.setattr(
+            "issue_bridge.CANDIDATE_BINDING_FILE", tmp_path / "candidate_bindings.json"
+        )
+        # Pipeline scaffolding — same recipe as the legacy PR failure test.
+        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
+        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
+        monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
+        monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
+            "verdict": "PASS", "score": 90.0, "findings": [],
+        })
+        monkeypatch.setattr(
+            "issue_bridge.call_model",
+            lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
+                           '"gaps": [], "strengths": ["works"]}',
+        )
+        monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+        monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
+            "issue_number": 12, "title": "Bound candidate PR", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }])
+        monkeypatch.setattr("director.run_task", lambda *a, **k: {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "fix", "response": "fixed",
+            "candidate_manifest": asdict(manifest),
+            "verify_result": {
+                "passed": True,
+                "skipped": False,
+                "failures": [],
+            },
+            "review": {
+                "accepted": True,
+                "approval_id": "teacher-bridge",
+            },
+        })
+        return SimpleNamespace(repo=repo, manifest=manifest, tmp_path=tmp_path)
+
+    def _run_bridge(self, candidate_env, publisher, store, monkeypatch):
+        from pr_provider import PrStateStore
+        # Patch the publisher class the bridge factory instantiates, so the
+        # candidate spine cannot fall back to a real GitHubCliPublisher even if
+        # it resolves the factory through a different import path.
+        monkeypatch.setattr(
+            "issue_bridge.GitHubCliPublisher",
+            lambda repo_path: publisher,
+        )
+        monkeypatch.setattr(
+            "pr_provider.GitHubCliPublisher",
+            lambda repo_path: publisher,
+        )
+        with patch("issue_bridge._mark_github_issue") as mock_mark, patch("issue_bridge._gh_command") as mock_gh:
+            results = bridge_issues("user/test", store=store)
+        journal = PrStateStore(candidate_env.tmp_path / "pr-state.json")
+        return results, mock_mark, mock_gh, journal
+
+    def test_missing_bound_verification_and_teacher_approval_refuse_before_write(
+        self, candidate_env, monkeypatch, store,
+    ):
+        """Unbound generic verify/review dictionaries cannot authorize publication."""
+        publisher = _BoundFakePublisher()
+
+        results, mock_mark, mock_gh, journal = self._run_bridge(
+            candidate_env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry"
+        assert "PR" in results[0]["error"]
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        mock_gh.assert_not_called()
+        runs = json.loads(
+            (candidate_env.tmp_path / "last_run.json").read_text()
+        )
+        assert runs[-1]["status"] == "retry"
+        assert not any(
+            run.get("issue") == 12 and run.get("status") == "success"
+            for run in runs
+        )
+        record = journal.get("cand-1")
+        assert publisher.publish_calls == []
+        assert record is not None, "a pre-write refusal must still journal the candidate row"
+        assert record.state == "pr_failed"
+        assert "trusted verification" in record.error or "teacher approval" in record.error
+        assert record.head_sha == candidate_env.manifest.head_sha
+
+    def test_pre_write_refusal_marks_failed_with_no_provider_write(
+        self, candidate_env, monkeypatch, store,
+    ):
+        """A stale candidate fails before any provider write is attempted."""
+        subprocess = __import__("subprocess")
+        (candidate_env.repo / "README.md").write_text("moved on\n")
+        subprocess.run(
+            ["git", "-C", str(candidate_env.repo), "add", "README.md"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(candidate_env.repo), "commit", "-m", "new head"],
+            check=True, capture_output=True,
+        )
+        publisher = _BoundFakePublisher()
+
+        results, mock_mark, mock_gh, journal = self._run_bridge(
+            candidate_env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry"
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        mock_gh.assert_not_called()
+        assert publisher.publish_calls == []
+        assert journal.get("cand-1").state == "pr_failed"
+
+    def test_generic_verify_result_is_not_trusted_candidate_evidence(self, candidate_env):
+        from issue_bridge import _build_trusted_verification_evidence
+
+        evidence = _build_trusted_verification_evidence(
+            {"passed": True, "skipped": False, "failures": []},
+            candidate_env.manifest,
+        )
+
+        assert evidence is None
+
+    def test_bound_verifier_evidence_preserves_candidate_identity(self, candidate_env):
+        from issue_bridge import _build_trusted_verification_evidence
+        from verifier_vm import VerifierEvidence
+
+        manifest = candidate_env.manifest
+        verification = VerifierEvidence(
+            task_id="task-1",
+            repository=manifest.repository,
+            base_sha=manifest.base_sha,
+            candidate_id=manifest.candidate_id,
+            head_sha=manifest.head_sha,
+            manifest_sha256="a" * 64,
+            archive_sha256="b" * 64,
+            disposition="current",
+            checks_run=("unit",),
+            guest_id="scv-task-1-deadbeef",
+        )
+
+        evidence = _build_trusted_verification_evidence(verification, manifest)
+
+        assert evidence is not None
+        assert evidence.candidate_id == manifest.candidate_id
+        assert evidence.head_sha == manifest.head_sha
+        assert evidence.passed is True
+
+    def test_review_accepted_is_not_a_teacher_approval(self):
+        from issue_bridge import _build_trusted_approval_evidence
+
+        from candidate_manifest import CandidateManifest
+
+        manifest = CandidateManifest(
+            candidate_id="candidate-1",
+            bead_id="bead-1",
+            issue_number=12,
+            repository="user/test",
+            candidate_kind="source_diff",
+            worktree="/tmp/candidate",
+            branch="candidate/exact",
+            base_ref="main",
+            base_sha="b" * 40,
+            head_sha="a" * 40,
+            diff_digest="c" * 64,
+            dirty_tree=False,
+            owner="student-coder",
+            created_at="2026-10-02T00:00:00Z",
+        )
+        evidence = _build_trusted_approval_evidence(
+            {"accepted": True, "approval_id": "automated-review"}, manifest,
+        )
+
+        assert evidence is None
+
+    def test_replay_does_not_bypass_missing_teacher_approval(
+        self, candidate_env, monkeypatch, store,
+    ):
+        class TrackingPublisher(_BoundFakePublisher):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.find_calls = []
+
+            def find_pr(self, **request):
+                self.find_calls.append(request)
+                return super().find_pr(**request)
+
+        publisher = TrackingPublisher(existing={
+            ("cand-1", candidate_env.manifest.head_sha):
+                "https://github.com/user/test/pull/99",
+        })
+        results, mock_mark, mock_gh, journal = self._run_bridge(
+            candidate_env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry"
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        mock_gh.assert_not_called()
+        assert publisher.publish_calls == []
+        assert publisher.find_calls == []
+        assert journal.get("cand-1").state == "pr_failed"
+
+
+# ── Phase 1 resume seam: CandidateBindingStore restart wiring ──────────────
+#
+# The production call path used to rebuild the verification/approval posture
+# from scratch every cycle. A restart destroyed the in-memory state, so a
+# candidate that had already been verified and approved could not be
+# re-gated. The bridge now reloads the durable CandidateBindingStore binding
+# for the candidate and re-runs the gate against the stored posture, falling
+# back to fresh evidence (and persisting it) only when no binding exists.
+
+class TestCandidateBindingResume:
+    """Restart with a stored binding resumes; restart without one starts fresh."""
+
+    @pytest.fixture
+    def resume_env(self, tmp_path, monkeypatch):
+        import subprocess
+        from candidate_manifest import CandidateStore, create_candidate
+
+        repo = tmp_path / "target-repo"
+        repo.mkdir()
+
+        def _git(*args):
+            subprocess.run(
+                ["git", "-C", str(repo), *args],
+                check=True, capture_output=True, text=True,
+            )
+
+        _git("init", "-b", "main")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test User")
+        (repo / "README.md").write_text("base\n")
+        _git("add", "README.md")
+        _git("commit", "-m", "base")
+        _git("checkout", "-b", "candidate/exact")
+        (repo / "README.md").write_text("candidate\n")
+        _git("add", "README.md")
+        _git("commit", "-m", "candidate")
+
+        store = CandidateStore(tmp_path / "candidates.json")
+        manifest = create_candidate(
+            store=store, repo_path=repo,
+            candidate_id="cand-1", bead_id="bead-1", issue_number=12,
+            repository="user/test", base_ref="main", branch="candidate/exact",
+            owner="student-coder",
+        )
+
+        # Hermetic bridge-side stores, including the new binding store.
+        monkeypatch.setattr("issue_bridge.CANDIDATE_STORE_FILE", tmp_path / "candidates.json")
+        monkeypatch.setattr("issue_bridge.PR_STATE_FILE", tmp_path / "pr-state.json")
+        binding_path = tmp_path / "candidate_bindings.json"
+        monkeypatch.setattr("issue_bridge.CANDIDATE_BINDING_FILE", binding_path)
+
+        # Opt in explicitly: candidate-bound publication is disabled by default.
+        monkeypatch.setenv("CANDIDATE_PR_ENABLED", "1")
+        # Fail-closed by default: no journal, no allowlist.
+        monkeypatch.delenv("APPROVAL_JOURNAL_FILE", raising=False)
+        monkeypatch.delenv("APPROVED_ACTORS", raising=False)
+
+        # Pipeline scaffolding (same recipe as TestCandidateBoundPublication).
+        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
+        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
+        monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
+        monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
+            "verdict": "PASS", "score": 90.0, "findings": [],
+        })
+        monkeypatch.setattr(
+            "issue_bridge.call_model",
+            lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
+                           '"gaps": [], "strengths": ["works"]}',
+        )
+        monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+        monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
+            "issue_number": 12, "title": "Bound candidate PR", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }])
+        # This cycle carries the manifest but NO trusted VerifierEvidence and
+        # NO journal approval, so the gate can only authorize from a stored
+        # binding. That is exactly the restart condition under test.
+        monkeypatch.setattr("director.run_task", lambda *a, **k: {
+            "status": "success", "agent": "foundry-coder-7b",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "fix", "response": "fixed",
+            "candidate_manifest": __import__("dataclasses").asdict(manifest),
+        })
+        return SimpleNamespace(
+            repo=repo, manifest=manifest, tmp_path=tmp_path,
+            binding_path=binding_path, candidate_store=store,
+        )
+
+    def _publisher(self, env):
+        return _BoundFakePublisher(response_override={
+            "candidate_id": env.manifest.candidate_id,
+            "head_sha": env.manifest.head_sha,
+            "pr_url": "https://github.com/user/test/pull/7",
+        })
+
+    def _run_bridge(self, env, publisher, store, monkeypatch):
+        monkeypatch.setattr("issue_bridge.GitHubCliPublisher", lambda repo_path: publisher)
+        monkeypatch.setattr("pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
+        with patch("issue_bridge._mark_github_issue") as mock_mark, \
+                patch("issue_bridge._gh_command") as mock_gh:
+            results = bridge_issues("user/test", store=store)
+        return results, mock_mark, mock_gh
+
+    def _seed_binding(self, env, *, head_sha=None, verification_passed=True,
+                      approval_state="approved"):
+        """Persist a binding the way a prior (pre-restart) process would have."""
+        from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+
+        head = head_sha or env.manifest.head_sha
+        verification = SimpleNamespace(
+            candidate_id=env.manifest.candidate_id, head_sha=head,
+            passed=verification_passed, skipped=False, failures=(),
+        )
+        approval = SimpleNamespace(
+            candidate_id=env.manifest.candidate_id, head_sha=head,
+            state=approval_state, approval_id="teacher-1",
+        )
+        binding = bind_trusted_evidence(
+            manifest=env.manifest, verification=verification, approval=approval,
+        )
+        return CandidateBindingStore(env.binding_path).put(binding)
+
+    # ── Requirement: restart WITH an existing binding resumes ──────────────
+
+    def test_restart_with_existing_binding_resumes_posture(
+        self, resume_env, monkeypatch, store,
+    ):
+        """A stored posture re-gates the candidate with no fresh evidence."""
+        seeded = self._seed_binding(resume_env)
+        assert seeded.verification_passed is True
+        assert seeded.approval_state == "approved"
+
+        publisher = self._publisher(resume_env)
+        results, mock_mark, mock_gh = self._run_bridge(
+            resume_env, publisher, store, monkeypatch,
+        )
+
+        # No journal, no VerifierEvidence — yet the gate authorized from the
+        # resumed binding and the exact candidate was published.
+        assert results[0]["status"] == "success", results[0].get("error")
+        assert len(publisher.publish_calls) == 1
+        assert publisher.publish_calls[0]["candidate_id"] == resume_env.manifest.candidate_id
+        assert publisher.publish_calls[0]["head_sha"] == resume_env.manifest.head_sha
+        mock_mark.assert_called()
+
+    def test_resume_surfaces_the_stored_posture_not_a_rebuild(
+        self, resume_env, monkeypatch,
+    ):
+        """`_resume_candidate_binding` returns the stored binding for the candidate."""
+        seeded = self._seed_binding(resume_env)
+        resumed = issue_bridge._resume_candidate_binding(resume_env.manifest)
+        assert resumed is not None
+        assert resumed.candidate_id == seeded.candidate_id
+        assert resumed.head_sha == seeded.head_sha
+        assert resumed.verification_passed is True
+        assert resumed.approval_state == "approved"
+
+    def test_resume_does_not_surface_a_superseded_head(self, resume_env):
+        """A binding for a different head is not this candidate's posture."""
+        from candidate_binding import CandidateBinding, CandidateBindingStore
+
+        stale = CandidateBinding(
+            candidate_id=resume_env.manifest.candidate_id,
+            head_sha="b" * 40,  # superseded head
+            repository=resume_env.manifest.repository,
+            issue_number=resume_env.manifest.issue_number,
+            branch=resume_env.manifest.branch,
+            base_sha=resume_env.manifest.base_sha,
+            diff_digest=resume_env.manifest.diff_digest,
+            verification_passed=True, verification_skipped=False,
+            verification_failures=(), approval_state="approved",
+            approval_id="teacher-old", bound_at="",
+        )
+        CandidateBindingStore(resume_env.binding_path).put(stale)
+
+        assert issue_bridge._resume_candidate_binding(resume_env.manifest) is None
+
+    # ── Requirement: restart WITHOUT a binding starts fresh ────────────────
+
+    def test_restart_without_binding_starts_fresh(
+        self, resume_env, monkeypatch, store,
+    ):
+        """No stored binding and no fresh evidence -> fail closed, no write."""
+        publisher = self._publisher(resume_env)
+        results, mock_mark, mock_gh = self._run_bridge(
+            resume_env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry"
+        assert publisher.publish_calls == []
+        mock_mark.assert_not_called()
+        # A fresh start must not invent and store a posture it never had.
+        assert CandidateBindingStore(resume_env.binding_path).get("cand-1") is None
+
+    # ── Persistence half: first cycle writes the binding for the next one ──
+
+    def test_first_cycle_persists_binding_for_next_restart(
+        self, resume_env, monkeypatch, store,
+    ):
+        """With trusted verification + approval, the cycle persists the binding."""
+        from state_journal import StateJournal
+        from teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
+
+        manifest = resume_env.manifest
+        bound_verification = SimpleNamespace(
+            candidate_id=manifest.candidate_id, head_sha=manifest.head_sha,
+            passed=True, skipped=False, failures=(),
+        )
+        monkeypatch.setattr(
+            "issue_bridge._build_trusted_verification_evidence",
+            lambda verify_result, m: bound_verification,
+        )
+        journal_path = resume_env.tmp_path / "journal.sqlite3"
+        monkeypatch.setenv("APPROVAL_JOURNAL_FILE", str(journal_path))
+        monkeypatch.setenv("APPROVED_ACTORS", "human@example.com")
+        StateJournal(journal_path).issue_approval(
+            approval_id="appr-1", candidate_id=manifest.candidate_id,
+            head_sha=manifest.head_sha, actor="human@example.com",
+            scope=TRUSTED_APPROVAL_SCOPE,
+        )
+
+        publisher = self._publisher(resume_env)
+        results, _, _ = self._run_bridge(resume_env, publisher, store, monkeypatch)
+        assert results[0]["status"] == "success", results[0].get("error")
+
+        stored = CandidateBindingStore(resume_env.binding_path).get("cand-1")
+        assert stored is not None, "the cycle did not persist its bound posture"
+        assert stored.head_sha == manifest.head_sha
+        assert stored.verification_passed is True
+        assert stored.approval_state == "approved"
+
+    def test_resumed_binding_requires_no_fresh_journal_on_restart(
+        self, resume_env, monkeypatch, store,
+    ):
+        """A consumed approval on restart still authorizes via the stored binding.
+
+        The journal's approval may be consumed or absent after a restart; the
+        durable binding is what carries the posture forward. This pins that the
+        restart path does not depend on a still-live journal approval.
+        """
+        from state_journal import StateJournal
+        from teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
+
+        manifest = resume_env.manifest
+        journal_path = resume_env.tmp_path / "journal.sqlite3"
+        monkeypatch.setenv("APPROVAL_JOURNAL_FILE", str(journal_path))
+        monkeypatch.setenv("APPROVED_ACTORS", "human@example.com")
+        journal = StateJournal(journal_path)
+        journal.issue_approval(
+            approval_id="appr-used", candidate_id=manifest.candidate_id,
+            head_sha=manifest.head_sha, actor="human@example.com",
+            scope=TRUSTED_APPROVAL_SCOPE,
+        )
+        journal.consume_approval(
+            approval_id="appr-used", candidate_id=manifest.candidate_id,
+            head_sha=manifest.head_sha, operation_id="op-1", idempotency_key="idem-1",
+        )
+        # The posture was persisted before the restart.
+        self._seed_binding(resume_env)
+
+        publisher = self._publisher(resume_env)
+        results, _, _ = self._run_bridge(resume_env, publisher, store, monkeypatch)
+        assert results[0]["status"] == "success", results[0].get("error")
+        assert len(publisher.publish_calls) == 1
+
+
+# ── Phase 1 production seam: enablement + provider-outcome visibility ──────
+#
+# The candidate seam is disabled by default and must be opted into explicitly.
+# These tests drive the production call path end to end
+# (bridge_issues -> gate -> publish_candidate_pr_idempotent -> provider) and pin
+# the acceptance behaviors the bead names:
+#   * a disabled seam refuses a manifest-bearing task with NO provider call;
+#   * a None / exception / ambiguous provider result stays visible (pr_pending)
+#     and leaves the issue unprocessed;
+#   * replay cannot create a duplicate PR;
+#   * a mismatched / unapproved / unverified candidate never reaches the provider.
+
+def _make_pub_env(tmp_path, monkeypatch, *, enabled):
+    """Hermetic bridge environment for the candidate publication production path."""
+    import subprocess
+    from dataclasses import asdict
+    from candidate_manifest import CandidateStore, create_candidate
+
+    repo = tmp_path / "target-repo"
+    repo.mkdir()
+
+    def _git(*args):
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True, capture_output=True, text=True,
+        )
+
+    _git("init", "-b", "main")
+    _git("config", "user.email", "test@example.com")
+    _git("config", "user.name", "Test User")
+    (repo / "README.md").write_text("base\n")
+    _git("add", "README.md")
+    _git("commit", "-m", "base")
+    _git("checkout", "-b", "candidate/exact")
+    (repo / "README.md").write_text("candidate\n")
+    _git("add", "README.md")
+    _git("commit", "-m", "candidate")
+
+    store = CandidateStore(tmp_path / "candidates.json")
+    manifest = create_candidate(
+        store=store, repo_path=repo,
+        candidate_id="cand-1", bead_id="bead-1", issue_number=12,
+        repository="user/test", base_ref="main", branch="candidate/exact",
+        owner="student-coder",
+    )
+
+    monkeypatch.setattr("issue_bridge.CANDIDATE_STORE_FILE", tmp_path / "candidates.json")
+    monkeypatch.setattr("issue_bridge.PR_STATE_FILE", tmp_path / "pr-state.json")
+    binding_path = tmp_path / "candidate_bindings.json"
+    monkeypatch.setattr("issue_bridge.CANDIDATE_BINDING_FILE", binding_path)
+    # Explicit enablement: the seam is off unless the operator opts in.
+    monkeypatch.setenv("CANDIDATE_PR_ENABLED", "1" if enabled else "0")
+    monkeypatch.delenv("APPROVAL_JOURNAL_FILE", raising=False)
+    monkeypatch.delenv("APPROVED_ACTORS", raising=False)
+
+    # Pipeline scaffolding (same recipe as TestCandidateBoundPublication).
+    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
+    monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+    monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
+    monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
+    monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
+        "verdict": "PASS", "score": 90.0, "findings": [],
+    })
+    monkeypatch.setattr(
+        "issue_bridge.call_model",
+        lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
+                       '"gaps": [], "strengths": ["works"]}',
+    )
+    monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+    monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
+        "issue_number": 12, "title": "Bound candidate PR", "body": "",
+        "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+        "category": "bug", "state": "ready-for-agent",
+    }])
+    # The task carries ONLY the manifest: any authorization must come from the
+    # seeded binding, so the gate's identity checks are what decide the outcome.
+    monkeypatch.setattr("director.run_task", lambda *a, **k: {
+        "status": "success", "agent": "foundry-coder-7b",
+        "domain": "debugging", "difficulty": "easy",
+        "prompt": "fix", "response": "fixed",
+        "candidate_manifest": asdict(manifest),
+    })
+    return SimpleNamespace(
+        repo=repo, manifest=manifest, tmp_path=tmp_path,
+        binding_path=binding_path, candidate_store=store,
+    )
+
+
+def _seed_pub_binding(env, *, verification_passed=True, approval_state="approved",
+                      head_sha=None, candidate_id=None):
+    """Persist a binding the way a prior process would have.
+
+    A binding whose candidate_id/head_sha do not match the manifest cannot pass
+    ``bind_trusted_evidence`` (that boundary fails closed). To exercise the
+    bridge's refusal on a stale or foreign stored posture, write the record
+    directly — this is the shape a restart would actually find on disk.
+    """
+    from candidate_binding import (
+        CandidateBinding,
+        CandidateBindingStore,
+        bind_trusted_evidence,
+    )
+
+    head = head_sha or env.manifest.head_sha
+    cid = candidate_id or env.manifest.candidate_id
+    store = CandidateBindingStore(env.binding_path)
+    if cid != env.manifest.candidate_id or head != env.manifest.head_sha:
+        return store.put(CandidateBinding(
+            candidate_id=cid, head_sha=head,
+            repository=env.manifest.repository,
+            issue_number=env.manifest.issue_number,
+            branch=env.manifest.branch,
+            base_sha=env.manifest.base_sha,
+            diff_digest=env.manifest.diff_digest,
+            verification_passed=verification_passed, verification_skipped=False,
+            verification_failures=(), approval_state=approval_state,
+            approval_id="teacher-1", bound_at="",
+        ))
+    verification = SimpleNamespace(
+        candidate_id=cid, head_sha=head,
+        passed=verification_passed, skipped=False, failures=(),
+    )
+    approval = SimpleNamespace(
+        candidate_id=cid, head_sha=head,
+        state=approval_state, approval_id="teacher-1",
+    )
+    binding = bind_trusted_evidence(
+        manifest=env.manifest, verification=verification, approval=approval,
+    )
+    return store.put(binding)
+
+
+def _run_pub_bridge(env, publisher, store, monkeypatch):
+    from pr_provider import PrStateStore
+
+    monkeypatch.setattr("issue_bridge.GitHubCliPublisher", lambda repo_path: publisher)
+    monkeypatch.setattr("pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
+    with patch("issue_bridge._mark_github_issue") as mock_mark, \
+            patch("issue_bridge._gh_command") as mock_gh:
+        results = bridge_issues("user/test", store=store)
+    journal = PrStateStore(env.tmp_path / "pr-state.json")
+    return results, mock_mark, mock_gh, journal
+
+
+class TestCandidatePublicationProductionSeam:
+    """Enablement and provider-outcome behavior of the production call path."""
+
+    # ── Explicit enablement: safe default disabled ─────────────────────────
+
+    def test_disabled_seam_refuses_manifest_task_with_no_provider_call(
+        self, tmp_path, monkeypatch, store,
+    ):
+        """With CANDIDATE_PR_ENABLED unset, a candidate manifest never reaches
+        the provider — the seam refuses instead of falling back to the legacy
+        patch-blob path, and the issue stays retryable/unprocessed."""
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=False)
+        _seed_pub_binding(env)  # posture would authorize, but the seam is off
+        publisher = _BoundFakePublisher(response_override={
+            "candidate_id": env.manifest.candidate_id,
+            "head_sha": env.manifest.head_sha,
+            "pr_url": "https://github.com/user/test/pull/7",
+        })
+
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry"
+        assert "disabled" in results[0]["error"]
+        assert publisher.publish_calls == []
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        assert journal.get("cand-1").state == "pr_failed"
+
+    def test_enablement_flag_parses_fail_closed(self, monkeypatch):
+        """Absent/0/false/garbage are OFF; only explicit truthy values are ON."""
+        from issue_bridge import _candidate_pr_enabled_from_env
+
+        monkeypatch.delenv("CANDIDATE_PR_ENABLED", raising=False)
+        assert _candidate_pr_enabled_from_env() is False
+        for value in ("0", "false", "no", "off", "garbage", ""):
+            monkeypatch.setenv("CANDIDATE_PR_ENABLED", value)
+            assert _candidate_pr_enabled_from_env() is False, value
+        for value in ("1", "true", "YES", "on"):
+            monkeypatch.setenv("CANDIDATE_PR_ENABLED", value)
+            assert _candidate_pr_enabled_from_env() is True, value
+
+    # ── Positive control: enabled seam publishes the exact candidate ───────
+
+    def test_enabled_seam_publishes_exact_candidate(
+        self, tmp_path, monkeypatch, store,
+    ):
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=True)
+        _seed_pub_binding(env)
+        publisher = _BoundFakePublisher(response_override={
+            "candidate_id": env.manifest.candidate_id,
+            "head_sha": env.manifest.head_sha,
+            "pr_url": "https://github.com/user/test/pull/7",
+        })
+
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "success", results[0].get("error")
+        assert len(publisher.publish_calls) == 1
+        request = publisher.publish_calls[0]
+        assert request["candidate_id"] == env.manifest.candidate_id
+        assert request["head_sha"] == env.manifest.head_sha
+        assert request["base_sha"] == env.manifest.base_sha
+        assert request["diff"]  # the exact source diff, not a patch blob
+        record = journal.get("cand-1")
+        assert record.state == "pr_published"
+        assert record.pr_url == "https://github.com/user/test/pull/7"
+
+    # ── Provider None / exception / ambiguous stays visible + unprocessed ──
+
+    @pytest.mark.parametrize("outcome", ["none", "raises", "mismatch"])
+    def test_ambiguous_provider_outcome_is_visible_and_unprocessed(
+        self, tmp_path, monkeypatch, store, outcome,
+    ):
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=True)
+        _seed_pub_binding(env)
+        if outcome == "none":
+            publisher = _BoundFakePublisher(response_override=None)
+        elif outcome == "raises":
+            publisher = _BoundFakePublisher(raises=RuntimeError("create timed out"))
+        else:  # mismatch: provider answered for a different candidate
+            publisher = _BoundFakePublisher(response_override={
+                "candidate_id": "another-candidate",
+                "head_sha": env.manifest.head_sha,
+                "pr_url": "https://github.com/user/test/pull/8",
+            })
+
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry", results[0]
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        # The write was attempted exactly once; ambiguity is not a license to
+        # retry blindly, and the unresolved outcome is durably visible.
+        assert len(publisher.publish_calls) == 1
+        record = journal.get("cand-1")
+        assert record.state == "pr_pending"
+        assert record.head_sha == env.manifest.head_sha
+        assert record.error
+
+    # ── Replay cannot create a duplicate PR ────────────────────────────────
+
+    def test_published_replay_creates_no_duplicate_pr(
+        self, tmp_path, monkeypatch, store,
+    ):
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=True)
+        _seed_pub_binding(env)
+        recorded_url = "https://github.com/user/test/pull/11"
+        PrStateStore(env.tmp_path / "pr-state.json").record_published(
+            candidate_id=env.manifest.candidate_id,
+            issue_number=env.manifest.issue_number,
+            repository=env.manifest.repository,
+            branch=env.manifest.branch,
+            head_sha=env.manifest.head_sha,
+            pr_url=recorded_url,
+        )
+        publisher = _BoundFakePublisher(response_override={
+            "candidate_id": env.manifest.candidate_id,
+            "head_sha": env.manifest.head_sha,
+            "pr_url": "https://github.com/user/test/pull/999",
+        })
+
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "success", results[0].get("error")
+        assert publisher.publish_calls == [], "replay must not re-publish"
+        assert results[0]["pr_url"] == recorded_url
+        assert journal.get("cand-1").pr_url == recorded_url
+
+    def test_ambiguous_replay_reconciles_without_duplicate_pr(
+        self, tmp_path, monkeypatch, store,
+    ):
+        """An unresolved pr_pending is reconciled by (candidate_id, head_sha)
+        before retry; the adopted PR is not written a second time."""
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=True)
+        _seed_pub_binding(env)
+        # Cycle 1: ambiguous outcome -> pr_pending.
+        first = _BoundFakePublisher(raises=RuntimeError("timeout after create"))
+        _run_pub_bridge(env, first, store, monkeypatch)
+        assert len(first.publish_calls) == 1
+        assert PrStateStore(env.tmp_path / "pr-state.json").get("cand-1").state == "pr_pending"
+
+        # Cycle 2: provider now reports the PR bound to this candidate/head.
+        existing_url = "https://github.com/user/test/pull/12"
+        second = _BoundFakePublisher(existing={
+            (env.manifest.candidate_id, env.manifest.head_sha): existing_url,
+        })
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, second, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "success", results[0].get("error")
+        assert second.publish_calls == [], "reconciled replay must not duplicate the PR"
+        record = journal.get("cand-1")
+        assert record.state == "pr_published"
+        assert record.pr_url == existing_url
+
+    # ── Mismatched / unapproved / unverified never reach the provider ──────
+
+    @pytest.mark.parametrize("case", ["unverified", "unapproved", "wrong_head", "wrong_candidate"])
+    def test_unauthorized_candidate_causes_no_provider_call(
+        self, tmp_path, monkeypatch, store, case,
+    ):
+        env = _make_pub_env(tmp_path, monkeypatch, enabled=True)
+        if case == "unverified":
+            _seed_pub_binding(env, verification_passed=False)
+        elif case == "unapproved":
+            _seed_pub_binding(env, approval_state="pending")
+        elif case == "wrong_head":
+            _seed_pub_binding(env, head_sha="b" * 40)
+        else:  # a binding for another candidate is not this candidate's posture
+            _seed_pub_binding(env, candidate_id="cand-other")
+        publisher = _BoundFakePublisher(response_override={
+            "candidate_id": env.manifest.candidate_id,
+            "head_sha": env.manifest.head_sha,
+            "pr_url": "https://github.com/user/test/pull/7",
+        })
+
+        results, mock_mark, mock_gh, journal = _run_pub_bridge(
+            env, publisher, store, monkeypatch,
+        )
+
+        assert results[0]["status"] == "retry", results[0]
+        assert publisher.publish_calls == [], case
+        assert not is_processed(12)
+        mock_mark.assert_not_called()
+        record = journal.get("cand-1")
+        assert record is not None
+        assert record.state == "pr_failed"
+        assert record.head_sha == env.manifest.head_sha

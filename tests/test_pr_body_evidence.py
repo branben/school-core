@@ -310,3 +310,89 @@ class TestPrBodyRegressionGuards:
         body = _captured_body()
         for token in ("CTO", "COO", "Verify gate", "Pre-merge check"):
             assert token in body, f"lost existing evidence line: {token}"
+
+
+class TestPrBodyPerCommandVerificationTable:
+    """The verify line counts commands; the table must PROVE which ran.
+
+    `- **Verify gate:** PASS (7 command(s))` tells a reader nothing about
+    WHICH checks ran. When the gate records per-command `results`, the body
+    must render them as evidence — without ever overstating a no-marker
+    command as a pass, and without synthesising rows for commands that did
+    not run.
+    """
+
+    _RESULTS = [
+        {"name": "core-python-compile", "cmd": "python3 -m compileall -q *.py",
+         "exit": 0, "status": "pass", "duration_s": 0.42},
+        {"name": "rust-compile", "cmd": "cargo build", "exit": 1,
+         "status": "fail", "duration_s": 1.10},
+    ]
+
+    def test_table_renders_one_row_per_command(self):
+        body = _captured_body(verify_result={
+            "verdict": "FAIL", "ran": 2, "results": self._RESULTS,
+        })
+        assert "Verification effort (per command)" in body
+        assert "| # | check | exit | time | result |" in body
+        # One row per command, numbered.
+        assert "| 1 | `core-python-compile`" in body
+        assert "| 2 | `rust-compile`" in body
+
+    def test_passing_and_failing_rows_are_marked(self):
+        body = _captured_body(verify_result={
+            "verdict": "FAIL", "ran": 2, "results": self._RESULTS,
+        })
+        assert "✅ pass" in body
+        assert "❌ fail" in body
+        # duration rendered as seconds
+        assert "0.42s" in body
+        assert "1.10s" in body
+
+    def test_no_marker_is_not_reported_as_pass(self):
+        """HONESTY: a command with no marker must read 'no marker'."""
+        body = _captured_body(verify_result={
+            "verdict": "PASS", "ran": 1,
+            "results": [{"name": "flake-check", "cmd": "nix flake check",
+                         "exit": None, "status": "no_marker", "duration_s": None}],
+        })
+        assert "no marker" in body
+        assert "❌" not in body  # not a failure either
+        # The exit/duration placeholders for None.
+        assert "—" in body
+
+    def test_table_absent_when_results_empty(self):
+        body = _captured_body(verify_result={"verdict": "PASS", "ran": 3, "results": []})
+        assert "Verification effort" not in body
+
+    def test_table_absent_when_results_missing(self):
+        body = _captured_body(verify_result={"verdict": "PASS", "ran": 3})
+        assert "Verification effort" not in body
+
+    def test_table_absent_when_no_verify_result(self):
+        body = _captured_body()
+        assert "Verification effort" not in body
+
+    def test_existing_verify_gate_line_unchanged(self):
+        """The exact legacy line must survive verbatim."""
+        body = _captured_body(verify_result={
+            "verdict": "FAIL", "ran": 2, "results": self._RESULTS,
+        })
+        assert "- **Verify gate:** FAIL (2 command(s))" in body
+
+    def test_name_falls_back_to_cmd_when_missing(self):
+        body = _captured_body(verify_result={
+            "verdict": "PASS", "ran": 1,
+            "results": [{"cmd": "pytest -q", "exit": 0, "status": "pass",
+                         "duration_s": 0.5}],
+        })
+        assert "`pytest -q`" in body
+
+    def test_pipe_in_name_is_escaped(self):
+        body = _captured_body(verify_result={
+            "verdict": "PASS", "ran": 1,
+            "results": [{"name": "a|b", "cmd": "x", "exit": 0,
+                         "status": "pass", "duration_s": 0.1}],
+        })
+        assert "a\\|b" in body
+
