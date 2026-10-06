@@ -12,9 +12,11 @@ Provides:
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -138,8 +140,8 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
     base is the safe fallback.
 
     For TypeScript/JavaScript projects (package.json present), installs
-    dependencies into the cache so the hermetic verify gate can run
-    typecheck/test/lint without network access.
+    locked dependencies into the cache using a network-enabled macOS sandbox.
+    Lifecycle scripts are disabled and the package tool uses a temporary HOME.
 
     Args:
         repo_slug: ``owner/repo`` to clone.
@@ -178,8 +180,12 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
             # Stale clone just removed above; fall through to re-clone below.
             pass
         else:
-            # Refresh existing clone
+            # Refresh existing clone, then ensure a TypeScript clone still has
+            # dependencies (a prior interrupted/unsupported install may leave
+            # package.json without node_modules).
             _git(repo_path, "pull", "--ff-only")
+            if (repo_path / "package.json").exists() and not (repo_path / "node_modules").is_dir():
+                return _install_js_dependencies(repo_path)
             return repo_path
 
     # Fresh (or force_fresh re-)clone into the stable cache path.
@@ -197,29 +203,82 @@ def clone_repo(repo_slug: str, force_fresh: bool = False) -> Optional[Path]:
         shutil.rmtree(repo_path, ignore_errors=True)
         return None
 
-    # Install dependencies for TypeScript/JavaScript projects so the hermetic
-    # verify gate can run typecheck/test/lint without network access.
-    if (repo_path / "package.json").exists():
-        lockfile = repo_path / "pnpm-lock.yaml"
-        if lockfile.exists():
-            install_cmd = ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"]
-        elif (repo_path / "package-lock.json").exists():
-            install_cmd = ["npm", "ci", "--prefer-offline", "--no-audit", "--no-fund"]
-        elif (repo_path / "yarn.lock").exists():
-            install_cmd = ["yarn", "install", "--frozen-lockfile", "--prefer-offline"]
-        else:
-            install_cmd = ["npm", "install", "--prefer-offline", "--no-audit", "--no-fund"]
-        try:
-            subprocess.run(
-                install_cmd,
-                cwd=str(repo_path),
-                capture_output=True,
-                timeout=300,
-                check=False,
-                text=True,
+    return _install_js_dependencies(repo_path)
+
+
+def _install_js_dependencies(repo_path: Path) -> Path:
+    """Install locked JavaScript dependencies with network but no host credentials."""
+    if not (repo_path / "package.json").exists():
+        return repo_path
+
+    if (repo_path / "pnpm-lock.yaml").exists():
+        install_cmd = ["pnpm", "install", "--frozen-lockfile", "--prefer-offline", "--ignore-scripts"]
+    elif (repo_path / "package-lock.json").exists():
+        install_cmd = ["npm", "ci", "--prefer-offline", "--no-audit", "--no-fund", "--ignore-scripts"]
+    elif (repo_path / "yarn.lock").exists():
+        install_cmd = ["yarn", "install", "--frozen-lockfile", "--prefer-offline", "--ignore-scripts"]
+    else:
+        install_cmd = ["npm", "install", "--prefer-offline", "--no-audit", "--no-fund", "--ignore-scripts"]
+
+    try:
+        from execution_sandbox import sandbox_exec_path, write_sandbox_profile
+
+        sandbox_bin = sandbox_exec_path()
+        if sandbox_bin is None:
+            sys.stderr.write("[repo_reader] OS sandbox unavailable; dependency install skipped\n")
+            return repo_path
+
+        install_root = Path(tempfile.mkdtemp(prefix="school-install-", dir="/tmp"))
+        install_home = install_root / "home"
+        install_tmp = install_root / "tmp"
+        install_home.mkdir()
+        install_tmp.mkdir()
+        profile = write_sandbox_profile(
+            repo_path / ".school-install.sb",
+            writable_paths=[repo_path, install_root],
+            allow_network=True,
+            denied_read_paths=[
+                Path.home() / name
+                for name in (".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".npmrc")
+            ],
+        )
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"),
+            "HOME": str(install_home),
+            "TMPDIR": str(install_tmp),
+            "TMP": str(install_tmp),
+            "TEMP": str(install_tmp),
+            "CI": "1",
+            "npm_config_userconfig": str(install_home / ".npmrc"),
+            "npm_config_ignore_scripts": "true",
+            "npm_config_cache": str(install_home / ".cache"),
+            "COREPACK_HOME": str(install_home / ".corepack"),
+            "XDG_CACHE_HOME": str(install_home / ".cache"),
+            "NPM_CONFIG_USERCONFIG": str(install_home / ".npmrc"),
+            "YARN_CACHE_FOLDER": str(install_home / ".cache" / "yarn"),
+        }
+        script = " ".join(f"export {key}={shlex.quote(value)};" for key, value in env.items())
+        script += " exec " + " ".join(shlex.quote(value) for value in install_cmd)
+        result = subprocess.run(
+            [sandbox_bin, "-f", str(profile), "/bin/bash", "-c", script],
+            cwd=str(repo_path),
+            capture_output=True,
+            timeout=300,
+            check=False,
+            text=True,
+            env={},
+        )
+        if result.returncode != 0:
+            sys.stderr.write(
+                f"[repo_reader] Dependency install failed in sandbox: "
+                f"{(result.stderr or result.stdout)[-500:]}\n"
             )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass  # Install failure is non-fatal; verify gate will skip if deps missing
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        sys.stderr.write(f"[repo_reader] Dependency install skipped: {e}\n")
+    finally:
+        if "install_root" in locals():
+            shutil.rmtree(install_root, ignore_errors=True)
+        (repo_path / ".school-install.sb").unlink(missing_ok=True)
 
     return repo_path
 

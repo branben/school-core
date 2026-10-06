@@ -44,6 +44,8 @@ from resilience import (
 
 # Default queue location (sits next to the crew registry / scores under data/).
 DEFAULT_QUEUE_FILE = Path(__file__).resolve().parent / "data" / "grading_queue.jsonl"
+MAX_GRADING_ATTEMPTS = 3
+MAX_GRADING_ERROR_CHARS = 2000
 
 
 @dataclass
@@ -63,6 +65,10 @@ class GradingJob:
     review_packet: Optional[dict] = None  # ReviewPacket.to_dict() shape
     canonical_review: Optional[dict] = None  # legacy/async review dict
     status: str = "success"  # success | error | retry
+    attempt_count: int = 0
+    last_error: str = ""
+    queue_state: str = "pending"  # pending | dead_letter
+    requeued_from: Optional[dict] = None
 
     @property
     def key(self) -> str:
@@ -83,6 +89,10 @@ class GradingJob:
             review_packet=d.get("review_packet"),
             canonical_review=d.get("canonical_review"),
             status=d.get("status", "success"),
+            attempt_count=int(d.get("attempt_count", 0)),
+            last_error=str(d.get("last_error", "")),
+            queue_state=d.get("queue_state", "pending"),
+            requeued_from=d.get("requeued_from"),
         )
 
 
@@ -129,10 +139,77 @@ class GradingQueue:
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, self.queue_file)
 
+    def dead_letters(self) -> list[GradingJob]:
+        with self._lock() as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_SH)
+            try:
+                return [
+                    GradingJob.from_dict(job)
+                    for job in self._load()
+                    if job.get("queue_state") == "dead_letter"
+                ]
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def record_failure(
+        self,
+        key: str,
+        error: str,
+        *,
+        max_attempts: int = MAX_GRADING_ATTEMPTS,
+    ) -> Optional[GradingJob]:
+        """Persist a retry attempt or move an exhausted job to dead letters."""
+        max_attempts = max(1, int(max_attempts))
+        with self._lock() as pending_lock:
+            fcntl.flock(pending_lock.fileno(), fcntl.LOCK_EX)
+            try:
+                jobs = self._load()
+                target = next((job for job in jobs if job.get("key") == key), None)
+                if target is None:
+                    return None
+                target["attempt_count"] = int(target.get("attempt_count", 0)) + 1
+                target["last_error"] = str(error)[:MAX_GRADING_ERROR_CHARS]
+                target["queue_state"] = (
+                    "dead_letter" if target["attempt_count"] >= max_attempts else "pending"
+                )
+                self._save(jobs)
+                return GradingJob.from_dict(target)
+            finally:
+                fcntl.flock(pending_lock.fileno(), fcntl.LOCK_UN)
+
+    def requeue_dead_letter(self, key: str) -> bool:
+        """Explicitly move one dead letter back to pending with a fresh retry budget."""
+        with self._lock() as pending_lock:
+            fcntl.flock(pending_lock.fileno(), fcntl.LOCK_EX)
+            try:
+                jobs = self._load()
+                target = next(
+                    (job for job in jobs if job.get("key") == key
+                     and job.get("queue_state") == "dead_letter"),
+                    None,
+                )
+                if target is None:
+                    return False
+                target["requeued_from"] = {
+                    "attempt_count": target.get("attempt_count", 0),
+                    "last_error": target.get("last_error", ""),
+                }
+                target["attempt_count"] = 0
+                target["last_error"] = ""
+                target["queue_state"] = "pending"
+                self._save(jobs)
+                return True
+            finally:
+                fcntl.flock(pending_lock.fileno(), fcntl.LOCK_UN)
+
     def enqueue(self, job: GradingJob) -> bool:
         """Append a job. Returns False if an identical key is already queued
         (dedup, N2.1). Thread/process-safe via fcntl."""
         new = job.to_dict()
+        new["attempt_count"] = 0
+        new["last_error"] = ""
+        new["queue_state"] = "pending"
+        new["requeued_from"] = None
         with self._lock() as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
@@ -150,7 +227,10 @@ class GradingQueue:
         with self._lock() as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
-                return [GradingJob.from_dict(j) for j in self._load()]
+                return [
+                    GradingJob.from_dict(j) for j in self._load()
+                    if j.get("queue_state", "pending") == "pending"
+                ]
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
@@ -158,7 +238,10 @@ class GradingQueue:
         with self._lock() as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
-                return len(self._load())
+                return sum(
+                    1 for job in self._load()
+                    if job.get("queue_state", "pending") == "pending"
+                )
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
@@ -302,10 +385,9 @@ def drain(
     label_queue: Optional[LabelWriteQueue] = None,
     apply_label: Optional[Callable[[str, int, str], None]] = None,
     max_workers: int = 1,
+    max_attempts: int = MAX_GRADING_ATTEMPTS,
 ) -> list[dict]:
-    """Process all pending jobs. ``max_workers`` is bounded by
-    bounded_grader_pool_size (N6.1) so ledger writes never exceed what the
-    lock-safe store can absorb. Returns the per-job results."""
+    """Process one pending snapshot with bounded concurrency and retries."""
     jobs = queue.pending()
     workers = bounded_grader_pool_size(
         desired=max(1, max_workers), fleet_capacity=max(1, max_workers)
@@ -314,14 +396,37 @@ def drain(
     local = threading.Lock()
 
     def _run(job: GradingJob) -> None:
-        res = grade(
-            job,
-            store=store,
-            compound_store=compound_store,
-            label_queue=label_queue,
-            apply_label=apply_label,
-        )
-        queue.ack(job.key)
+        try:
+            res = grade(
+                job,
+                store=store,
+                compound_store=compound_store,
+                label_queue=label_queue,
+                apply_label=apply_label,
+            )
+            if res.get("error"):
+                failure = queue.record_failure(
+                    job.key, res["error"], max_attempts=max_attempts,
+                )
+                res["queue_state"] = failure.queue_state if failure else "missing"
+                res["attempt_count"] = failure.attempt_count if failure else job.attempt_count
+            else:
+                queue.ack(job.key)
+                res["queue_state"] = "acked"
+        except Exception as exc:
+            failure = queue.record_failure(
+                job.key, str(exc), max_attempts=max_attempts,
+            )
+            res = {
+                "issue_number": job.issue_number,
+                "crew_id": job.crew_id,
+                "key": job.key,
+                "graded": False,
+                "label": None,
+                "error": str(exc)[:MAX_GRADING_ERROR_CHARS],
+                "queue_state": failure.queue_state if failure else "missing",
+                "attempt_count": failure.attempt_count if failure else job.attempt_count,
+            }
         with local:
             results.append(res)
 
@@ -329,10 +434,8 @@ def drain(
     # (N6.1 — never exceed what the lock-safe ledger can absorb), then reads the
     # next wave. A single call empties the queue without ever bursting past the
     # concurrency cap.
-    while True:
-        wave = queue.pending()[:workers]
-        if not wave:
-            break
+    for start in range(0, len(jobs), workers):
+        wave = jobs[start:start + workers]
         if workers <= 1:
             for job in wave:
                 _run(job)
@@ -351,15 +454,28 @@ def _build_cli():
     p.add_argument("--score-store", default=None, help="Path to scores.json (defaults to ScoreStore default).")
     p.add_argument("--compound-store", default=None, help="Path to compound_learning store.")
     p.add_argument("--max-workers", type=int, default=1)
-    p.add_argument("--drain", action="store_true", help="Drain all pending grading jobs and exit.")
+    p.add_argument("--max-attempts", type=int, default=MAX_GRADING_ATTEMPTS)
+    p.add_argument("--list-dead-letters", action="store_true", help="List dead-letter keys and error summaries.")
+    p.add_argument("--requeue-dead-letter", metavar="KEY", help="Explicitly requeue one dead-letter job.")
+    p.add_argument("--drain", action="store_true", help="Drain the current grading queue snapshot and exit.")
     return p
 
 
 def main(argv=None) -> int:
     args = _build_cli().parse_args(argv)
     queue = GradingQueue(Path(args.queue_file))
+    if args.list_dead_letters:
+        for job in queue.dead_letters():
+            print(json.dumps({"key": job.key, "attempt_count": job.attempt_count, "last_error": job.last_error}))
+        return 0
+    if args.requeue_dead_letter:
+        return 0 if queue.requeue_dead_letter(args.requeue_dead_letter) else 1
     if not args.drain:
-        print(f"queue has {queue.count()} pending job(s); pass --drain to process", file=sys.stderr)
+        print(
+            f"queue has {queue.count()} pending job(s), "
+            f"{len(queue.dead_letters())} dead-letter job(s); pass --drain to process",
+            file=sys.stderr,
+        )
         return 0
     from scoring import ScoreStore
     store = ScoreStore(file_path=args.score_store) if args.score_store else ScoreStore()
@@ -377,6 +493,7 @@ def main(argv=None) -> int:
         compound_store=compound_store,
         label_queue=label_queue,
         max_workers=args.max_workers,
+        max_attempts=args.max_attempts,
     )
     for r in results:
         print(f"graded #{r.get('issue_number')} crew={r.get('crew_id')} "

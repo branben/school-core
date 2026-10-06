@@ -1,0 +1,66 @@
+{
+  "stage": "interview",
+  "title": "School-Core: Functional, Complete, and Multi-Repo Issue-to-PR",
+  "goalSlug": "school-core-complete",
+  "questions": [
+    {
+      "id": "repository-scope",
+      "prompt": "How should the goal treat repositories?",
+      "description": "School-core receives or selects an issue from a configured repo, clones that repo for the task, runs the student/review pipeline, and proposes a PR back to that repo. Repositories are task targets, not courses or organizations.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "One school-core system can be configured for multiple repositories. Each task uses a clone/workspace of its selected repository and the resulting PR targets that same repository. Prove the complete loop on one repo, then verify another repo can be added through configuration without a code fork.",
+      "recommendedOptionIds": ["one-school-multiple-repos"],
+      "options": [
+        { "id": "one-school-multiple-repos", "label": "One school-core, multiple repo targets" },
+        { "id": "single-repo", "label": "One configured repo only" },
+        { "id": "multi-tenant-service", "label": "Separate customer organizations" }
+      ],
+      "required": true
+    },
+    {
+      "id": "hosting-and-operations",
+      "prompt": "What should hosted/cloud readiness mean for this goal?",
+      "description": "Keep the deployment provider undecided unless you have a required target.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A provider-neutral, deployable hosted service with authenticated operator/teacher access, durable state and restore, monitoring, resource limits, and documented recovery; a controlled pilot is enough, not a public SaaS launch or numeric uptime SLA.",
+      "recommendedOptionIds": ["controlled-hosted-pilot"],
+      "options": [
+        { "id": "controlled-hosted-pilot", "label": "Controlled hosted pilot" },
+        { "id": "production-saas", "label": "Production SaaS launch" },
+        { "id": "provider-specific", "label": "Target a specific cloud/provider" }
+      ],
+      "required": true
+    },
+    {
+      "id": "learning-enhancements",
+      "prompt": "Which documented learning-loop enhancements count as required for ‘complete’?",
+      "description": "Recommendation: include the named backlog below and defer newly discovered work unless you approve it.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Include the documented gaps: archival memory write/consolidation; learning-aware routing; student tool/skill-use telemetry; asynchronous teacher review with dead-letter handling; per-skill scoring; and board/history retention. Also require student feedback, grounded scoring, and memory to work end to end.",
+      "recommendedOptionIds": ["archival-memory", "learning-routing", "tool-telemetry", "async-review", "skill-scores", "history-retention"],
+      "options": [
+        { "id": "archival-memory", "label": "Archival memory write/consolidation" },
+        { "id": "learning-routing", "label": "Route using learning trajectory" },
+        { "id": "tool-telemetry", "label": "Tool/skill-use telemetry" },
+        { "id": "async-review", "label": "Async teacher review and dead-letter recovery" },
+        { "id": "skill-scores", "label": "Per-skill scores" },
+        { "id": "history-retention", "label": "Board/history retention and compaction" }
+      ],
+      "required": true
+    },
+    {
+      "id": "student-execution-boundary",
+      "prompt": "What execution boundary should the goal require for student code?",
+      "description": "Carry forward your prior decisions: no host fallback, trusted checks separate from repository-provided checks, and the coding agent itself inside the isolated environment.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Every student coding task runs in a disposable VM-backed environment with the agent, repository clone, and shell inside it; model access is mediated without exposing raw host credentials; failures fail closed; a separate trusted verifier checks the exact candidate.",
+      "recommendedOptionIds": ["disposable-vm"],
+      "options": [
+        { "id": "disposable-vm", "label": "Disposable VM per task" },
+        { "id": "hardened-container", "label": "Hardened container is sufficient" },
+        { "id": "evaluate-options", "label": "Prove threat model, then choose substrate" }
+      ],
+      "required": true
+    }
+  ]
+}

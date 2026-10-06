@@ -1,31 +1,20 @@
-"""verify_gate.py — Execute untrusted student code in a hermetic Nix shell.
+"""verify_gate.py — Execute untrusted student code inside an OS sandbox and Nix shell.
 
 This is the missing stage in the Agent School pipeline. campus.md principle #3
 says "the compiler runs before the critic speaks" — but issue_bridge only judged
 the student's *prose*. This module actually RUNS the code.
 
 Safety model (read before changing):
-  - We NEVER execute student-authored scripts. We only run the repo's OWN
-    declared verify commands (typecheck/test/lint from package.json / pyproject /
-    project_verify.yaml). The student's patch is already applied in the clone.
-  - The cached clone is copied to a temp scratch dir (read-write) so tests can
-    write artifacts; the original cache is never mutated.
-  - Commands run inside `nix develop .#verifyShell` (node/pnpm/python, no network)
-    so the host toolchain/network is not touched.
-  - If Nix is unavailable, this reusable library returns a loud SKIPPED
-    verdict (`skipped: True`) instead of reporting fake compile failures — a
-    missing toolchain must never masquerade as a failing build. The production
-    GitHub Actions school-loop performs a separate hard preflight before issue
-    execution, so it fails the execute job when Nix or `verifyShell` is absent.
-    Under `VERIFY_GATE_STRICT=1`, an unrunnable library gate escalates to
-    `skipped: False` + `strict_escalated: True` so the issue cannot pass
-    unverified (compiler-before-critic enforced).
+  - We only run declared repository verification commands.
+  - Repository symlinks are checked before manifests are read; targets outside
+    the repo or inside excluded paths are rejected before the scratch copy.
+  - The cached clone is copied to a writable temp scratch dir; dependency files
+    are copied, never hardlinked, so verification cannot mutate the shared clone.
+  - Nix initializes the tool environment first; each declared command then
+    runs inside macOS Seatbelt with writes confined to scratch and network
+    denied. Nix is only the tool environment.
+  - Unsupported hosts fail closed and report a skipped verification.
   - Timeouts bound every command; non-zero exit => failure finding.
-
-Usage:
-    from verify_gate import run_verify_gate
-    result = run_verify_gate(repo_path=clone_path, project_verify="project_verify.yaml")
-    # result == {"passed": False, "failures": [{"cmd": "...", "exit": 1, "stderr": "..."}], ...}
 """
 
 from __future__ import annotations
@@ -40,134 +29,214 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from execution_sandbox import sandbox_exec_path, write_sandbox_profile
 
-# Commands we are allowed to run come ONLY from declared config, never from
-# free-form student input. This list is the allowlist of config sources.
 ALLOWED_CONFIG_NAMES = ("project_verify.yaml", "package.json", "pyproject.toml")
 
 
-def _discover_commands(repo_path: Path, project_verify: Optional[Path]) -> list[dict]:
-    """Return a list of {name, cmd, cwd} verify commands.
+_EXT_TO_LANG = {
+    ".py": "python", ".pyi": "python",
+    ".rs": "rust",
+    ".go": "go",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
+    ".yaml": "yaml", ".yml": "yaml",
+    ".json": "json",
+    ".md": "markdown",
+    ".sh": "bash", ".bash": "bash",
+    ".toml": "toml",
+    ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
+    ".java": "java",
+    ".rb": "ruby",
+    ".php": "php",
+}
 
-    Priority: explicit project_verify.yaml > the repo's own root
-    project_verify.yaml (auto-probed when no explicit manifest is given) >
-    inferred from package.json / pyproject.toml. Sub-projects (e.g. a
-    `mobile/` dir with its own package.json) are discovered recursively so a
-    repo that typechecks sub-projects separately is not missed (this is
-    exactly the gap that bit the Orca mobile reconnect work: mobile
-    typechecks independently of root).
+
+def _language_for_path(path: str) -> Optional[str]:
+    """Map a single file path to its language tag, or None if unrecognised."""
+    lowered = path.strip().lower()
+    for ext, lang in _EXT_TO_LANG.items():
+        if lowered.endswith(ext):
+            return lang
+    return None
+
+
+def _detect_languages_from_diff(diff_text: str) -> set[str]:
+    """Detect programming languages from a diff/code block.
+
+    Returns a set of language tags: python, rust, go, typescript, javascript,
+    yaml, json, markdown, bash, etc.
+    """
+    languages: set[str] = set()
+    # Look for file paths in the diff (e.g., "diff --git a/file.py b/file.py" or "# file.py")
+    import re
+    for match in re.finditer(r'(?:diff --git a/(\S+)|# ([^\s]+\.\w+))', diff_text):
+        path = match.group(1) or match.group(2) or ""
+        lang = _language_for_path(path)
+        if lang:
+            languages.add(lang)
+    # Also detect from code block language tags (```python, ```rust, etc.)
+    for match in re.finditer(r'```(\w+)', diff_text):
+        lang = match.group(1).lower()
+        if lang in ("python", "rust", "go", "typescript", "javascript", "yaml", "json", "bash", "toml", "markdown", "md"):
+            languages.add(lang)
+    return languages
+
+
+def _discover_commands(
+    repo_path: Path,
+    project_verify: Optional[Path],
+    languages: Optional[set[str]] = None,
+) -> list[dict]:
+    """Discover declared verify commands from explicit manifest or project files.
+
+    When *languages* is provided, only returns commands whose ``languages``
+    list intersects with the detected languages. Commands with no ``languages``
+    key are always included (they are language-agnostic).
     """
     commands: list[dict] = []
-
     if project_verify is None:
         default_manifest = repo_path / "project_verify.yaml"
         project_verify = default_manifest if default_manifest.exists() else None
 
     if project_verify and project_verify.exists():
         try:
-            data = json.loads(project_verify.read_text()) if project_verify.suffix == ".json" \
-                else _yaml_load(project_verify)
+            data = json.loads(project_verify.read_text()) if project_verify.suffix == ".json" else _yaml_load(project_verify)
             for entry in data.get("verify", []):
+                cmd_languages = set(entry.get("languages", []))
+                # If languages are specified, filter; otherwise include all
+                if languages is not None and cmd_languages:
+                    if not (cmd_languages & languages):
+                        continue
                 commands.append({
                     "name": entry.get("name", entry.get("cmd", "?")),
                     "cmd": entry["cmd"],
                     "cwd": entry.get("cwd", "."),
                 })
             return commands
-        except Exception as e:  # pragma: no cover - config is trusted but defensive
-            print(f"[verify_gate] project_verify parse failed: {e}")
+        except Exception as exc:  # pragma: no cover - defensive manifest parsing
+            print(f"[verify_gate] project_verify parse failed: {exc}")
 
-    # Infer from package.json files
-    # Root-config gate: only look for package.json (including sub-projects)
-    # when the root itself declares one. This prevents Python repos with a
-    # frontend subdirectory from failing when `npm run lint` runs in a
-    # Python worktree without the TypeScript toolchain. Sub-projects are
-    # still discovered when root is also a JS repo (e.g. Orca mobile, where
-    # root and mobile/ each typecheck independently).
     if (repo_path / "package.json").exists():
-        pkg_iter = sorted(repo_path.rglob("package.json"))
+        packages = sorted(repo_path.rglob("package.json"))
     else:
-        pkg_iter = []
-    for pkg in pkg_iter:
-        if "node_modules" in pkg.parts:
+        packages = []
+    for package in packages:
+        if "node_modules" in package.parts:
             continue
         try:
-            scripts = json.loads(pkg.read_text()).get("scripts", {})
+            scripts = json.loads(package.read_text()).get("scripts", {})
         except Exception:
             continue
-        sub = pkg.parent.relative_to(repo_path)
-        # Detect package manager from lockfile
-        if (pkg.parent / "pnpm-lock.yaml").exists():
+        sub = package.parent.relative_to(repo_path)
+        if (package.parent / "pnpm-lock.yaml").exists():
             runner = "pnpm"
-        elif (pkg.parent / "yarn.lock").exists():
+        elif (package.parent / "yarn.lock").exists():
             runner = "yarn"
         else:
             runner = "npm"
-        for key in ("typecheck", "lint", "test", "check"):
-            if key in scripts:
-                commands.append({
-                    "name": f"{sub}/{runner}:{key}",
-                    "cmd": f"{runner} run {key}" if runner != "pnpm" else f"pnpm {key}",
-                    "cwd": str(sub) or ".",
-                })
+        for name in ("typecheck", "lint", "test", "check"):
+            if name in scripts:
+                cmd = f"{runner} run {name}" if runner != "pnpm" else f"pnpm {name}"
+                commands.append({"name": f"{sub}/{runner}:{name}", "cmd": cmd, "cwd": str(sub) or "."})
 
-    # Infer from pyproject.toml (pytest / mypy / ruff)
-    # Same root-config gate: only look for pyproject.toml when root declares one.
     if (repo_path / "pyproject.toml").exists():
-        cfg_iter = sorted(repo_path.rglob("pyproject.toml"))
+        configs = sorted(repo_path.rglob("pyproject.toml"))
     else:
-        cfg_iter = []
-    for cfg in cfg_iter:
-        if ".venv" in cfg.parts or "site-packages" in cfg.parts:
+        configs = []
+    for config in configs:
+        if ".venv" in config.parts or "site-packages" in config.parts:
             continue
-        text = cfg.read_text(errors="replace")
-        sub = cfg.parent.relative_to(repo_path)
+        text = config.read_text(errors="replace")
+        sub = config.parent.relative_to(repo_path)
         if "pytest" in text:
             commands.append({"name": f"{sub}/pytest", "cmd": "pytest -q", "cwd": str(sub) or "."})
         if "[tool.ruff]" in text:
             commands.append({"name": f"{sub}/ruff", "cmd": "ruff check .", "cwd": str(sub) or "."})
-
     return commands
 
 
-# Scratch-copy noise the verify commands never need (VCS metadata, venvs,
-# caches). node_modules is included when present in the cache (installed by
-# repo_reader.clone_repo for TypeScript projects) so the hermetic gate can
-# run typecheck/test/lint without network access.
 _VERIFY_COPY_IGNORE = shutil.ignore_patterns(
     ".git", ".hg", ".svn", ".venv", "venv", "env",
+    ".env", ".env.*", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pypirc", ".netrc",
+    ".ssh", ".aws", ".kube", ".docker",
     "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store",
+    ".codegraph",
+    # .envit/repos/* are deliberate out-of-tree symlinks into ~/.envit/store
+    # (pinned read-only dependency checkouts, see AGENTS.md). They are not
+    # repo content; copying them would either duplicate large trees or trip
+    # the symlink-escape guard and fail EVERY verification on this repo.
+    ".envit",
 )
 
+
 def _has_node_modules(repo_path: Path) -> bool:
-    """Check if the repo has a node_modules directory (pre-installed by clone_repo)."""
+    """Check if the repo has a pre-installed node_modules directory."""
     return (repo_path / "node_modules").is_dir()
 
 
-def scratch_base_path() -> Path:
-    """Writable scratch base for verify-gate copies.
+def _validate_copy_symlinks(repo_path: Path) -> None:
+    """Reject copied symlinks that escape the repo or bypass copy exclusions."""
+    repo_root = Path(repo_path).resolve(strict=True)
+    directories = [Path(repo_path)]
 
-    SCHOOL_VERIFY_SCRATCH overrides (e.g. an operator pointing at a large
-    local disk). Default is the platform temp dir, which exists on every
-    machine — the previous hardcoded ``/Users/brandonbennett/tmp`` broke
-    every non-macOS host, including the Linux GitHub runners (mkdir
-    '/Users' -> PermissionError; 10 test failures on main CI since the
-    path landed in 27623e1).
-    """
+    while directories:
+        directory = directories.pop()
+        with os.scandir(directory) as scan:
+            entries = list(scan)
+        names = [entry.name for entry in entries]
+        ignored = set(_VERIFY_COPY_IGNORE(str(directory), names))
+
+        for entry in entries:
+            if entry.name in ignored:
+                continue
+            source = directory / entry.name
+            if entry.is_symlink():
+                try:
+                    resolved_target = source.resolve(strict=False)
+                    relative_target = resolved_target.relative_to(repo_root)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise ValueError(
+                        f"symlink escapes repository or cannot be resolved: {source}"
+                    ) from exc
+
+                target_path = repo_root
+                for part in relative_target.parts:
+                    target_path = target_path / part
+                    if _VERIFY_COPY_IGNORE(str(target_path.parent), [target_path.name]):
+                        raise ValueError(
+                            f"symlink targets excluded path: {source} -> {resolved_target}"
+                        )
+            if not entry.is_symlink() and entry.is_dir(follow_symlinks=False):
+                directories.append(source)
+
+
+def _copy_repo_to_scratch(
+    repo_path: Path,
+    work: Path,
+    *,
+    copy_function=shutil.copy2,
+) -> Path:
+    """Validate symlinks, then copy the repository with gate exclusions."""
+    _validate_copy_symlinks(repo_path)
+    return shutil.copytree(
+        repo_path,
+        work,
+        ignore=_VERIFY_COPY_IGNORE,
+        copy_function=copy_function,
+    )
+
+
+def scratch_base_path() -> Path:
+    """Writable scratch base, configurable for machines with a larger temp disk."""
     env = os.environ.get("SCHOOL_VERIFY_SCRATCH", "").strip()
-    if env:
-        return Path(env)
-    return Path(tempfile.gettempdir())
+    return Path(env) if env else Path(tempfile.gettempdir())
 
 
 def _find_nix() -> Optional[str]:
-    """Locate a usable nix binary: PATH first, then the standard Determinate path.
-
-    The school-loop runner uses Determinate Nix, whose binary lives at
-    /nix/var/nix/profiles/default/bin/nix — not always on PATH for non-login
-    shells — so we probe that location as a fallback.
-    """
+    """Locate nix on PATH or in the standard Determinate Nix path."""
     which = shutil.which("nix")
     if which:
         return which
@@ -176,52 +245,27 @@ def _find_nix() -> Optional[str]:
 
 
 def _skipped_verdict(cmd: str, reason: str) -> dict:
-    """Build the loud non-pass verdict when the gate cannot run at all.
-
-    Default library mode (soft-skip): `skipped: True` — the caller receives
-    an explicit non-pass result without a fake compile failure. The scheduled
-    school-loop does not rely on this soft-skip: its workflow preflight blocks
-    issue execution before the bridge starts.
-
-    ``VERIFY_GATE_STRICT=1`` escalates (campus.md #3: the compiler must
-    ACTUALLY run before the critic speaks — if we cannot run it, we cannot
-    pass): the verdict flips to `skipped: False` with `strict_escalated: True`,
-    which the bridge treats as a real gate failure and forces the issue to FAIL.
-    This strict flag covers direct/manual bridge callers and internal gate
-    failures that occur after the workflow preflight.
-    """
+    """Return a visible non-pass when verification cannot be safely executed."""
     failures = [{"cmd": cmd, "exit": None, "stderr": reason}]
     if os.environ.get("VERIFY_GATE_STRICT") == "1":
         failures[0]["stderr"] += (
-            "\n[VERIFY_GATE_STRICT] Escalation: the verify gate could not run, "
-            "so this issue cannot pass (compiler-before-critic is enforced)."
+            "\n[VERIFY_GATE_STRICT] Escalation: verification could not run, "
+            "so this issue cannot pass."
         )
         return {
-            "passed": False,
-            "skipped": False,
-            "strict_escalated": True,
-            "failures": failures,
-            "ran": 0,
+            "passed": False, "skipped": False, "strict_escalated": True,
+            "failures": failures, "ran": 0, "results": [],
             "telemetry": {"shell_starts": 0, "commands": 0, "copied_bytes": 0},
         }
     return {
-        "passed": False,
-        "skipped": True,
-        "failures": failures,
-        "ran": 0,
+        "passed": False, "skipped": True, "failures": failures, "ran": 0,
+        "results": [],
         "telemetry": {"shell_starts": 0, "commands": 0, "copied_bytes": 0},
     }
 
 
 def _flake_ref(flake_path: Path) -> Path:
-    """Return the directory-form flake reference `nix develop` accepts cleanly.
-
-    Passing the flake.nix *file* path works but prints a warning ("should point
-    at the directory containing the flake.nix file"); the directory form is the
-    clean reference. Falls back to the legacy file form only when neither the
-    path itself nor path/flake.nix exists (caller error — keep the original
-    shape so the error message still names the file).
-    """
+    """Return the directory-form flake reference `nix develop` accepts."""
     flake_path = Path(flake_path)
     if flake_path.is_file():
         return flake_path.parent
@@ -231,14 +275,12 @@ def _flake_ref(flake_path: Path) -> Path:
 
 
 def _yaml_load(path: Path) -> dict:
-    """Minimal YAML loader fallback (avoid hard dep). Tries pyyaml, else a
-    tiny parser sufficient for project_verify.yaml's flat `verify:` list."""
+    """Load project_verify.yaml, with a small stdlib fallback."""
     try:
         import yaml  # type: ignore
         return yaml.safe_load(path.read_text()) or {}
     except Exception:
         pass
-    # Tiny fallback: parse `name:`/`cmd:`/`cwd:` under `- ` list items.
     out: dict = {"verify": []}
     cur: dict | None = None
     for line in path.read_text().splitlines():
@@ -252,34 +294,35 @@ def _yaml_load(path: Path) -> dict:
     return out
 
 
-def _build_verify_script(
-    commands: list[dict],
-    work: Path,
-    timeout: int,
-) -> tuple[str, list[str], list[str]]:
-    """Build the bounded shell wrapper and its per-command marker lists."""
-    starts: list[str] = []
-    ends: list[str] = []
-    script_lines = ["set +e"]
-    # Ensure local node_modules/.bin is in PATH for TS projects
-    script_lines.append(f'export PATH="{work}/node_modules/.bin:$PATH"')
-    for index, cmd in enumerate(commands):
-        cwd = (work / cmd["cwd"]).resolve()
-        start = f"__SCHOOL_VERIFY_START_{index}__"
-        end = f"__SCHOOL_VERIFY_END_{index}__"
+def _build_verify_script(commands: list[dict], work: Path, timeout: int) -> tuple[str, list[str], list[str]]:
+    """Build bounded command wrappers with parseable start/end markers."""
+    starts, ends = [], []
+    lines = ["set +e", f'export PATH="{work}/node_modules/.bin:$PATH"']
+    for index, command in enumerate(commands):
+        cwd = (work / command["cwd"]).resolve()
+        start, end = f"__SCHOOL_VERIFY_START_{index}__", f"__SCHOOL_VERIFY_END_{index}__"
         starts.append(start)
         ends.append(end)
-        script_lines.append(f"printf '%s\\n' {shlex.quote(start)}")
-        script_lines.append(
+        lines.append(f"printf '%s\\n' {shlex.quote(start)}")
+        # Wall-clock timing is ADDITIVE: it is emitted as a second token AFTER
+        # the integer status, so the existing `status_text.split()[0]` parser in
+        # run_verify_gate still reads the exit code. If either timestamp or awk
+        # is unavailable the elapsed field is empty — never fatal to the gate.
+        lines.append("__verify_t0=$(date +%s.%N 2>/dev/null)")
+        lines.append(
             f"(cd -- {shlex.quote(str(cwd))} && "
-            f"timeout {int(timeout)}s bash -c {shlex.quote(cmd['cmd'])}) 2>&1"
+            f"timeout {int(timeout)}s bash -c {shlex.quote(command['cmd'])}) 2>&1"
         )
-        script_lines.append("status=$?")
-        script_lines.append(f"printf '\\n%s%d\\n' {shlex.quote(end)} \"$status\"")
-    # The wrapper reports command-level statuses through markers; its own
-    # exit status must not hide later command diagnostics.
-    script_lines.append("exit 0")
-    return "\n".join(script_lines), starts, ends
+        lines.append("status=$?")
+        lines.append("__verify_t1=$(date +%s.%N 2>/dev/null)")
+        lines.append(
+            "__verify_elapsed=$(awk -v s=\"$__verify_t0\" -v e=\"$__verify_t1\" "
+            "'BEGIN { if (s == \"\" || e == \"\") { exit } printf \"%.3f\", e - s }' "
+            "2>/dev/null)"
+        )
+        lines.append(f"printf '\\n%s%d %s\\n' {shlex.quote(end)} \"$status\" \"$__verify_elapsed\"")
+    lines.append("exit 0")
+    return "\n".join(lines), starts, ends
 
 
 def run_verify_gate(
@@ -287,198 +330,169 @@ def run_verify_gate(
     project_verify: Optional[Path] = None,
     flake_path: Path | None = None,
     timeout: int = 300,
+    diff_text: str = "",
 ) -> dict:
-    """Run all discovered verify commands for a repo inside the Nix shell.
+    """Run each declared check in a fresh copy inside a network-denied OS sandbox.
 
-    Args:
-        repo_path: path to the (already-patched) cached clone.
-        project_verify: optional explicit command manifest.
-        flake_path: path to the flake providing `.#verifyShell`. Defaults to CWD.
-        timeout: per-command timeout in seconds.
-
-    Returns:
-        {"passed": bool, "failures": [...], "ran": int, "skipped": bool}
-        `skipped` is True only when the reusable gate could not run at all (Nix
-        missing, or no declared verify commands) — a loud non-pass, distinct
-        from a real compile/test failure. The scheduled school-loop preflight
-        blocks before this function when its required Nix infrastructure is
-        absent. Under `VERIFY_GATE_STRICT=1` an unrunnable gate returns
-        `skipped: False` + `strict_escalated: True` instead.
+    When *diff_text* is provided, the gate detects the languages present in the
+    diff and only runs verify commands relevant to those languages. This allows
+    the gate to handle Python, Rust, Go, TypeScript, and other languages.
     """
     repo_path = Path(repo_path)
+    try:
+        _validate_copy_symlinks(repo_path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return _skipped_verdict("(copy)", f"Unsafe repository symlink: {exc}")
+
     flake_path = Path(flake_path) if flake_path else Path.cwd()
-
-    commands = _discover_commands(repo_path, project_verify)
+    languages = _detect_languages_from_diff(diff_text) if diff_text else None
+    commands = _discover_commands(repo_path, project_verify, languages)
     if not commands:
-        # No declared verify commands: we cannot prove correctness, but we
-        # must not pretend success. Signal as a soft failure so the reviewer
-        # knows verification was not possible. VERIFY_GATE_STRICT=1 escalates.
-        return _skipped_verdict(
-            "(discovery)",
-            "No typecheck/test/lint commands discovered in repo.",
-        )
+        return _skipped_verdict("(discovery)", "No typecheck/test/lint commands discovered in repo.")
 
-    # Loudness: a missing Nix must NOT look like a compile failure. The gate
-    # is only trustworthy when the hermetic shell actually runs, so when it
-    # can't we return an explicit SKIPPED verdict the pipeline can distinguish
-    # from a real failure — a school-failed issue because nix was absent would
-    # be a silent lie.
     nix_bin = _find_nix()
     if nix_bin is None:
+        return _skipped_verdict("(nix)", "Nix not found — verify gate SKIPPED.")
+    sandbox_bin = sandbox_exec_path()
+    if sandbox_bin is None:
         return _skipped_verdict(
-            "(nix)",
-            "Nix not found — verify gate SKIPPED. "
-            "Install Determinate Nix or add `nix` to PATH to run the "
-            "hermetic verify layer.",
+            "(sandbox)",
+            "OS sandbox unavailable — verification SKIPPED; commands were not run. "
+            "macOS sandbox-exec is required.",
         )
 
-    # Check flake.nix exists before attempting nix develop
     flake_ref = _flake_ref(flake_path)
     if not Path(flake_ref).exists() and not (Path(flake_path) / "flake.nix").exists():
-        return _skipped_verdict(
-            "(flake)",
-            f"No flake.nix found at {flake_path} — verify gate SKIPPED. "
-            "Add a flake.nix with verifyShell to run hermetic verification.",
-        )
+        return _skipped_verdict("(flake)", f"No flake.nix found at {flake_path} — verify gate SKIPPED.")
 
-    # Copy clone to a writable scratch dir so tests can emit artifacts.
-    # Use main filesystem for space (var/folders can be small)
     scratch_base = scratch_base_path()
     scratch_base.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="school-verify-", dir=str(scratch_base)))
     try:
+        work = scratch / "repo"
+        isolated_home, isolated_tmp = scratch / "home", scratch / "tmp"
+        isolated_home.mkdir()
+        isolated_tmp.mkdir()
+        sandbox_profile = write_sandbox_profile(
+            scratch / "verify.sb",
+            writable_paths=[scratch],
+            allow_network=False,
+            confine_reads=True,
+            readable_paths=[
+                Path("/nix/store"), Path("/System"), Path("/usr"),
+                Path("/bin"), Path("/sbin"), Path("/dev"),
+            ],
+        )
         copied_bytes = 0
 
-        def _copy_with_measurement(src, dst, *, follow_symlinks=True):
+        def copy_file(src, dst, *, follow_symlinks=True):
             nonlocal copied_bytes
             try:
                 copied_bytes += max(0, Path(src).stat().st_size)
             except OSError:
                 pass
-            # Use hardlinks to save disk space (node_modules can be hundreds of MB)
-            # copytree only calls this for files, dirs are handled automatically
-            try:
-                os.link(src, dst)
-                return dst
-            except OSError:
-                # Fallback to copy if hardlink fails (different filesystem, etc.)
-                return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+            return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
-        # Only copy node_modules if it exists (pre-installed by clone_repo for TS projects)
-        # Skip if too large (>500MB) to avoid disk issues
-        ignore_patterns = _VERIFY_COPY_IGNORE
         if _has_node_modules(repo_path):
-            nm_path = repo_path / "node_modules"
-            total_size = sum(f.stat().st_size for f in nm_path.rglob("*") if f.is_file())
-            if total_size < 500 * 1024 * 1024:  # 500MB limit
-                ignore_patterns = shutil.ignore_patterns(
-                    *["node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
-                      "__pycache__", ".tox", ".nox", ".mypy_cache", ".pytest_cache",
-                      ".ruff_cache", ".hypothesis", ".coverage", "htmlcov", ".DS_Store"]
-                )
-                sys.stderr.write(
-                    f"[verify_gate] node_modules will be hardlinked ({total_size / 1024 / 1024:.1f}MB)\n"
-                )
+            node_modules = repo_path / "node_modules"
+            size = sum(file.stat().st_size for file in node_modules.rglob("*") if file.is_file())
+            if size < 500 * 1024 * 1024:
+                sys.stderr.write(f"[verify_gate] node_modules will be copied ({size / 1024 / 1024:.1f}MB)\n")
             else:
-                sys.stderr.write(
-                    f"[verify_gate] node_modules too large ({total_size / 1024 / 1024:.0f}MB) — skipping copy\n"
-                )
+                return _skipped_verdict("(node_modules)", "Dependencies exceed the 500MB isolated-copy limit.")
 
-        shutil.copytree(
-            repo_path, scratch / "repo", dirs_exist_ok=True,
-            ignore=ignore_patterns,
-            copy_function=_copy_with_measurement,
-        )
-        work = scratch / "repo"
-
-        failures: list[dict] = []
+        _copy_repo_to_scratch(repo_path, work, copy_function=copy_file)
         script, starts, ends = _build_verify_script(commands, work, timeout)
-        full = f"{nix_bin} develop {flake_ref}#verifyShell --command bash -c {shlex.quote(script)}"
+        sandboxed_script = (
+            f"exec {shlex.quote(sandbox_bin)} -f {shlex.quote(str(sandbox_profile))} "
+            f"/usr/bin/env -i PATH=\"$PATH\" HOME={shlex.quote(str(isolated_home))} "
+            f"TMPDIR={shlex.quote(str(isolated_tmp))} TMP={shlex.quote(str(isolated_tmp))} "
+            f"npm_config_userconfig={shlex.quote(str(isolated_home / '.npmrc'))} "
+            f"CI=1 /bin/bash -c {shlex.quote(script)}"
+        )
         try:
-            res = subprocess.run(
-                full,
-                shell=True,
+            result = subprocess.run(
+                [nix_bin, "develop", f"{flake_ref}#verifyShell", "--command", "/bin/bash", "-c", sandboxed_script],
                 cwd=str(work),
                 capture_output=True,
                 text=True,
                 timeout=(timeout * max(1, len(commands))) + 30,
+                check=False,
             )
         except subprocess.TimeoutExpired:
-            failures.append({
-                "cmd": "(verify_shell)",
-                "exit": None,
-                "stderr": f"verify shell timed out after {(timeout * max(1, len(commands))) + 30}s",
-            })
+            failures = [{"cmd": "(verify_shell)", "exit": None, "stderr": "verify shell timed out"}]
+            output = ""
+            returncode = 124
         else:
-            output = (res.stdout or "")
-            if res.stderr:
-                output += f"\n{res.stderr}"
-            found_markers = 0
-            for index, cmd in enumerate(commands):
-                start_pos = output.find(starts[index])
-                end_pos = output.find(ends[index], start_pos + len(starts[index]))
-                status_text = output[end_pos + len(ends[index]):].lstrip() if end_pos >= 0 else ""
+            failures = []
+            output = result.stdout or ""
+            if result.stderr:
+                output += f"\n{result.stderr}"
+            returncode = result.returncode
+
+        found_markers = 0
+        results: list[dict] = []
+        for index, command in enumerate(commands):
+            start = output.find(starts[index])
+            end = output.find(ends[index], start + len(starts[index]))
+            status_text = output[end + len(ends[index]):].lstrip() if end >= 0 else ""
+            exit_code = None
+            duration_s = None
+            tokens = status_text.split()
+            try:
+                exit_code = int(tokens[0])
+            except (IndexError, ValueError):
+                exit_code = None
+            if len(tokens) > 1:
+                # Duration is an ADDITIVE second token; a malformed/missing
+                # value must never crash the gate — fall back to None.
                 try:
-                    exit_code = int(status_text.split()[0])
+                    duration_s = float(tokens[1])
                 except (IndexError, ValueError):
-                    exit_code = None
-                if start_pos >= 0 and end_pos >= 0 and exit_code is not None:
-                    found_markers += 1
-                    if exit_code != 0:
-                        detail = output[start_pos + len(starts[index]):end_pos].strip()
-                        failures.append({
-                            "cmd": cmd["cmd"],
-                            "exit": exit_code,
-                            "stderr": (detail or "verify command failed")[-1500:],
-                        })
-            # A successful shell without every command marker is not proof
-            # that the declared checks ran. Treat marker loss as a verify-shell
-            # failure rather than allowing a silent false pass.
-            if found_markers < len(commands) or (not commands and res.returncode != 0):
-                missing = [
-                    cmd["cmd"]
-                    for index, cmd in enumerate(commands)
-                    if output.find(starts[index]) < 0
-                    or output.find(ends[index], output.find(starts[index]) + len(starts[index])) < 0
-                ]
-                marker_detail = (
-                    f"verify shell emitted {found_markers}/{len(commands)} command markers; "
-                    "execution evidence is incomplete"
-                )
-                if missing:
-                    marker_detail += " missing: " + "; ".join(missing)
-                if res.returncode != 0:
-                    detail = (
-                        marker_detail + "; "
-                        + (res.stderr or res.stdout or "verify shell failed")[-1500:]
-                    )
-                    exit_code = res.returncode
-                else:
-                    detail = marker_detail
-                    exit_code = res.returncode
-                failures.append({
-                    "cmd": "(verify_shell)",
-                    "exit": exit_code,
-                    "stderr": detail,
-                })
+                    duration_s = None
+
+            if start >= 0 and end >= 0 and exit_code is not None:
+                status = "pass" if exit_code == 0 else "fail"
+            else:
+                status = "no_marker"
+            results.append({
+                "name": command.get("name") or command["cmd"],
+                "cmd": command["cmd"],
+                "exit": exit_code,
+                "status": status,
+                "duration_s": duration_s,
+            })
+
+            if status != "no_marker":
+                found_markers += 1
+                if exit_code != 0:
+                    detail = output[start + len(starts[index]):end].strip()
+                    failures.append({"cmd": command["cmd"], "exit": exit_code, "stderr": (detail or "verify command failed")[-1500:]})
+
+        if found_markers < len(commands) and not any(failure["cmd"] == "(sandbox)" for failure in failures):
+            missing = [command["cmd"] for index, command in enumerate(commands)
+                       if output.find(starts[index]) < 0
+                       or output.find(ends[index], output.find(starts[index]) + len(starts[index])) < 0]
+            detail = f"verify shell emitted {found_markers}/{len(commands)} command markers; execution evidence is incomplete"
+            if missing:
+                detail += " missing: " + "; ".join(missing)
+            if returncode != 0:
+                detail += "; " + output[-1500:]
+            failures.append({"cmd": "(verify_shell)", "exit": returncode, "stderr": detail})
 
         return {
             "passed": not failures,
             "failures": failures,
             "ran": len(commands),
-            "telemetry": {
-                "shell_starts": 1,
-                "commands": len(commands),
-                "copied_bytes": copied_bytes,
-            },
+            "results": results,
+            "telemetry": {"shell_starts": 1, "commands": len(commands), "copied_bytes": copied_bytes},
         }
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
 if __name__ == "__main__":
-    import sys
-    p = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
-    r = run_verify_gate(p)
-    print(json.dumps(r, indent=2))
-    sys.exit(0 if r["passed"] else 1)
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
+    result = run_verify_gate(path)
+    print(json.dumps(result, indent=2))
+    sys.exit(0 if result["passed"] else 1)

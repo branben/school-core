@@ -277,6 +277,50 @@ def build_pr_body(
     else:
         verify_md = "not run"
 
+    # Per-command verification effort. This is EVIDENCE, so it must not
+    # overstate: a command with no marker reads "no marker", never a pass, and
+    # no row is ever synthesised for a command that did not run. Rendered only
+    # when the gate actually recorded per-command results — an empty/absent
+    # list emits NOTHING (no empty table).
+    verify_table = ""
+    if verify_result:
+        raw_results = verify_result.get("results") or []
+        if isinstance(raw_results, list) and raw_results:
+            rows_md = []
+            for idx, entry in enumerate(raw_results, start=1):
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name") or entry.get("cmd") or ""
+                name = str(name).replace("|", "\\|")
+                if len(name) > 60:
+                    name = name[:59] + "…"
+                exit_code = entry.get("exit")
+                exit_md = str(exit_code) if isinstance(exit_code, int) else "—"
+                duration = entry.get("duration_s")
+                try:
+                    duration_md = f"{float(duration):.2f}s" if duration is not None else "—"
+                except (TypeError, ValueError):
+                    duration_md = "—"
+                status = entry.get("status")
+                if status == "pass":
+                    result_md = "✅ pass"
+                elif status == "fail":
+                    result_md = "❌ fail"
+                elif status == "no_marker":
+                    result_md = "⚠️ no marker"
+                else:
+                    result_md = "⚠️ unknown"
+                rows_md.append(
+                    f"| {idx} | `{name}` | {exit_md} | {duration_md} | {result_md} |"
+                )
+            if rows_md:
+                verify_table = (
+                    "\n### Verification effort (per command)\n\n"
+                    "| # | check | exit | time | result |\n"
+                    "|---|---|---|---|---|\n"
+                    + "\n".join(rows_md) + "\n\n"
+                )
+
     if entire_review:
         e_status = entire_review.get("status", "n/a") or "n/a"
         raw_findings = entire_review.get("findings") or []
@@ -350,6 +394,7 @@ def build_pr_body(
         f"- **Review:** CTO `{cto_verdict}` / COO `{coo_verdict}` — "
         f"quality {score:.0f}/100 _(quality only; the verdict is the gate)_\n"
         f"- **Verify gate:** {verify_md}\n"
+        f"{verify_table}"
         f"- **Pre-merge check (Entire):** {entire_md}\n"
         f"- **Path:** {'crew' if crew_used else 'direct'}\n"
     )

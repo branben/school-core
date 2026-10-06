@@ -149,6 +149,29 @@ def merge_sorted(a, b):
         code = CodeExtractor.extract(response)
         assert code == "print('hello world')"
 
+    def test_foreign_language_fence_is_not_returned_as_python(self):
+        """A ```bash fence must never be handed to the Python executor.
+
+        Regression: the language-specific match failed, then the untagged
+        fallback matched ANY fence, so a git-commit response was extracted as
+        Python, failed ast.parse, and emitted a spurious CRITICAL
+        'not_executable' finding that vetoed a legitimate submission.
+        """
+        response = '```bash\ngit commit -m "msg"\n```'
+        code = CodeExtractor.extract(response, language="python")
+        assert code == "", f"bash must not be extracted as python, got {code!r}"
+
+    def test_untagged_fence_still_accepted_for_requested_language(self):
+        """Untagged fences remain eligible — only FOREIGN tags are refused."""
+        response = "```\nprint('hi')\n```"
+        code = CodeExtractor.extract(response, language="python")
+        assert code == "print('hi')"
+
+    def test_legacy_behavior_preserved_when_no_language_requested(self):
+        """With no language argument, the first fence of any tag is returned."""
+        response = '```bash\ngit commit -m "msg"\n```'
+        assert CodeExtractor.extract(response) == 'git commit -m "msg"'
+
     def test_empty_response_returns_empty(self):
         """Empty or whitespace-only responses should return empty."""
         assert CodeExtractor.extract("") == ""
@@ -522,7 +545,7 @@ class TestConductorOrcaFlow:
         # At minimum, Orca should have reported execution_passed
         # or runtime_failure — something execution-related
         has_execution_evidence = any(
-            f.get("issue_class") in ("execution_passed", "runtime_failure", "no_code_found")
+            f.get("issue_class") in ("execution_passed", "runtime_failure", "no_code_found", "not_executable")
             for f in orca_findings
         )
         assert has_execution_evidence, \

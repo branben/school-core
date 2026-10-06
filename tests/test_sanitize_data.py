@@ -16,6 +16,7 @@ from scripts.sanitize_data import (
     DEFAULT_TRAJECTORY_KEEP,
     sanitize_file,
     scrub_value,
+    unsafe_text,
     trim_trajectories,
     trim_consolidations,
     DEFAULT_CONSOLIDATION_KEEP,
@@ -115,6 +116,86 @@ class TestRegexes:
         assert HOME_RE.sub("~", "kept /Users/brandonbennett and /Users/other") == (
             "kept ~ and ~"
         )
+
+
+class TestGradingQueueCheckpoint:
+    def test_malformed_jsonl_with_sensitive_markers_fails_closed(self, tmp_path):
+        import pytest
+
+        path = tmp_path / "grading_queue.jsonl"
+        path.write_text('{"last_error":"/Users/brandonbennett/path"}\nnot-json\n')
+
+        with pytest.raises(ValueError, match="invalid JSONL record"):
+            sanitize_file(path)
+
+        assert "not-json" in path.read_text()
+
+    def test_jsonl_queue_round_trips_through_sanitizer_and_fresh_checkout(self, tmp_path):
+        from school_grader import GradingJob, GradingQueue
+
+        checkpoint = tmp_path / "checkpoint" / "data" / "grading_queue.jsonl"
+        queue = GradingQueue(checkpoint)
+        pending = GradingJob(
+            issue_number=41,
+            crew_id="crew-pending",
+            repo="owner/repo",
+            review_packet={"metadata": {"authorization": "sensitive-value"}},
+        )
+        dead = GradingJob(
+            issue_number=42,
+            crew_id="crew-dead",
+            repo="owner/repo",
+        )
+        assert queue.enqueue(pending)
+        assert queue.enqueue(dead)
+        queue.record_failure(
+            pending.key,
+            "retry at /Users/brandonbennett/work; token ghp_123456789012345678901234",
+            max_attempts=3,
+        )
+        queue.record_failure(dead.key, "permanent failure", max_attempts=1)
+
+        assert sanitize_file(checkpoint) >= 1
+        assert unsafe_text(checkpoint) == []
+
+        # Commit the sanitized queue to a local checkpoint branch and clone it
+        # as the next fresh checkout would; all Git operations are temporary/local.
+        source_repo = tmp_path / "source-repo"
+        source_repo.mkdir()
+        tracked_queue = source_repo / "data" / "grading_queue.jsonl"
+        tracked_queue.parent.mkdir(parents=True)
+        tracked_queue.write_text(checkpoint.read_text())
+        subprocess.run(["git", "init", "-q", str(source_repo)], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "config", "user.name", "test"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "add", "data/grading_queue.jsonl"], check=True)
+        subprocess.run(["git", "-C", str(source_repo), "commit", "-qm", "checkpoint queue state"], check=True)
+        fresh_repo = tmp_path / "fresh-checkout"
+        subprocess.run(["git", "clone", "-q", str(source_repo), str(fresh_repo)], check=True)
+        restored = GradingQueue(fresh_repo / "data" / "grading_queue.jsonl")
+
+        pending_after = restored.pending()
+        dead_after = restored.dead_letters()
+        assert len(pending_after) == 1
+        assert pending_after[0].key == pending.key
+        assert pending_after[0].issue_number == 41
+        assert pending_after[0].crew_id == "crew-pending"
+        assert pending_after[0].repo == "owner/repo"
+        assert pending_after[0].attempt_count == 1
+        assert pending_after[0].queue_state == "pending"
+        assert pending_after[0].last_error == "retry at ~/work; token [REDACTED]"
+        assert restored.enqueue(pending_after[0]) is False
+        assert restored.count() == 1
+        assert "[REDACTED]" in pending_after[0].review_packet["metadata"]["authorization"]
+        assert "/Users/" not in pending_after[0].last_error
+        assert "ghp_123456789012345678901234" not in pending_after[0].last_error
+        assert len(dead_after) == 1
+        assert dead_after[0].key == dead.key
+        assert dead_after[0].issue_number == 42
+        assert dead_after[0].crew_id == "crew-dead"
+        assert dead_after[0].attempt_count == 1
+        assert dead_after[0].last_error == "permanent failure"
+        assert dead_after[0].queue_state == "dead_letter"
 
 
 class TestSanitizeConsolidation:

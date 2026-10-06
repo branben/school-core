@@ -69,6 +69,7 @@ PAPERS = {
 
 SEED_SCORES = {
     "gemini-3-flash-preview": {"_default": 30},
+    "mistral/codestral-latest": {"_default": 30},
     "gemma-4-31b-it:free": {"_default": 30},
     "owl-alpha": {"_default": 25, "agentic-coding": 30},
     "agy/gemini-3.5-flash-high": {"_default": 30},
@@ -94,6 +95,7 @@ AGENT_NAMES = {
     "foundry-qwen2.5-coder-7b-empirical": "Empiric",
     "foundry-qwen3.5-2b-text": "Quip",
     "gemini-3-flash-preview": "Gemini",
+    "mistral/codestral-latest": "Codestral",
     "gemma-4-31b-it:free": "Gemma",
     "owl-alpha": "Owl",
     "agy/gemini-3.5-flash-high": "Flash3.5",

@@ -12,6 +12,7 @@ from heuristic_scorer import HeuristicScorer
 SEED_AGENTS = {
     # Cloud models (via OmniRoute)
     "gemini-3-flash-preview": {"_default": 30},
+    "mistral/codestral-latest": {"_default": 30},
     "gemma-4-31b-it:free": {"_default": 30},
     "owl-alpha": {"_default": 25, "agentic-coding": 30},
     "agy/gemini-3.5-flash-high": {"_default": 30},
@@ -367,6 +368,7 @@ COST_TIERS: dict[str, int] = {
     "auto/best-free": 3,
     # Cloud models (tier 4) — most expensive
     "gemini-3-flash-preview": 4,
+    "mistral/codestral-latest": 4,
     "gemma-4-31b-it:free": 4,
     "owl-alpha": 4,
     "agy/gemini-3.5-flash-high": 4,

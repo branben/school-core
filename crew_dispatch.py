@@ -1135,6 +1135,36 @@ def _poll(
     return "timeout", "timeout", ""
 
 
+def _changed_files_diff_text(worktree_path: Path) -> str:
+    """Return a diff-shaped file list for a worktree with the patch applied.
+
+    The verify gate derives languages from paths that look like
+    ``diff --git a/<path>``. ``git diff --name-only`` emits bare paths, so
+    prefix each with ``diff --git a/`` to make it recognisable to the gate's
+    detector. Returns "" when git is unavailable or reports no changes, which
+    makes the gate fall back to running every declared command (the previous
+    behaviour) rather than silently verifying nothing.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            cwd=str(worktree_path),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return "\n".join(
+        f"diff --git a/{line}"
+        for line in proc.stdout.splitlines()
+        if line.strip()
+    )
+
+
 def _run_premerge_sensors(
     worktree_id: str,
 ) -> tuple[Optional[dict], Optional[dict]]:
@@ -1154,9 +1184,16 @@ def _run_premerge_sensors(
     try:
         from verify_gate import run_verify_gate
 
+        # The worktree has the student's patch APPLIED, so the language set
+        # must come from its changed files. Without this, `languages=None`
+        # disables filtering and every declared command runs — a Rust or
+        # TypeScript patch gets `python3 -m compileall -q *.py` executed
+        # against it, producing a spurious CRITICAL verify failure.
+        diff_text = _changed_files_diff_text(worktree_path)
         verification = run_verify_gate(
             worktree_path,
             flake_path=Path(__file__).resolve().parent,
+            diff_text=diff_text,
         )
     except Exception as exc:  # pragma: no cover - defensive runtime boundary
         log.exception("pre-merge verify failed for %s: %s", worktree_path, exc)

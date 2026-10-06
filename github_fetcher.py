@@ -71,7 +71,10 @@ def load_config(path: Optional[str] = None) -> dict:
     defaults = {
         "repo": "",
         "poll_interval_seconds": 300,
-        "labels": ["bug", "enhancement"],
+        # No label filter by default. A non-empty list is a UNION after
+        # fetch_issues ORs it, but empty is the safe default: it fetches every
+        # open issue and lets the classifier decide readiness.
+        "labels": [],
         "difficulty_overrides": {},
         "domain_overrides": {},
         "target_repos": [],
@@ -156,18 +159,41 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
             "--json", "number,title,labels,body", "--limit", "50"]
 
     if labels:
+        # `gh` ANDs repeated --label flags and also ANDs the comma form
+        # (`--label a,b` == `--label a --label b`; verified on the live target
+        # repo: ready-for-agent=13, production-readiness=11, both forms=6).
+        # The config label list is a filter set, not a conjunction, so OR it:
+        # fetch once per label and union by issue number. Without this,
+        # `labels: ["bug","enhancement"]` yields 0 on a repo where no issue
+        # carries both.
+        merged: dict[int, dict] = {}
         for label in labels:
-            args.extend(["--label", label])
-
-    stdout = _gh_command(args)
-    if stdout is None:
-        return []
-
-    try:
-        raw_issues = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        sys.stderr.write(f"[github_fetcher] Failed to parse gh output: {e}\n")
-        return []
+            single = [*args, "--label", label]
+            stdout = _gh_command(single)
+            if stdout is None:
+                continue
+            try:
+                batch = json.loads(stdout)
+            except json.JSONDecodeError as e:
+                sys.stderr.write(
+                    f"[github_fetcher] Failed to parse gh output for label "
+                    f"'{label}': {e}\n"
+                )
+                continue
+            for item in batch if isinstance(batch, list) else []:
+                number = item.get("number")
+                if number is not None and number not in merged:
+                    merged[number] = item
+        raw_issues = [merged[n] for n in sorted(merged)]
+    else:
+        stdout = _gh_command(args)
+        if stdout is None:
+            return []
+        try:
+            raw_issues = json.loads(stdout)
+        except json.JSONDecodeError as e:
+            sys.stderr.write(f"[github_fetcher] Failed to parse gh output: {e}\n")
+            return []
 
     config = load_config()
     domain_overrides = config.get("domain_overrides", {})

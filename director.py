@@ -64,6 +64,14 @@ SYSTEM_PROMPTS = {
         "maintainability, and style. Provide actionable feedback with specific line references. "
         "Flag any potential bugs, race conditions, or security issues immediately."
     ),
+    "code-implementation": (
+        "You are a senior software engineer. Implement complete, working solutions. "
+        "Read the existing code first. Match the project's style and conventions. "
+        "Your output MUST be a complete implementation — not a stub, not a placeholder. "
+        "Every function must have a body. Every test must have real assertions. "
+        "If the task involves multiple files, output all of them. "
+        "Use the correct code block language for each file type (python, markdown, yaml, json)."
+    ),
 }
 
 # Shared preamble for the "BEFORE responding, reason step-by-step" verification
@@ -130,15 +138,23 @@ ROLE_SYSTEM_PROMPTS = {
         "  Does the selector work for all form states? What about validation errors?"
     ),
     "coder": (
-        "You are a Coder \u2014 a specialized code generation agent. "
+        "You are a Coder — a specialized code generation agent. "
         "Your tools: Python, TypeScript, testing frameworks, git. "
         "Write clean, correct, well-typed code. Follow [SOLID Principles]. "
-        "Apply [TDD] \u2014 test first, then implement. "
+        "Apply [TDD] — test first, then implement. "
         "Your output is used for [Distillation] into smaller models.\n"
         "\n"
         "[OUTPUT FORMAT — CRITICAL]\n"
-        "Output ONLY the code changes. Place EVERY code change inside a"
-        " ```python ... ``` code block (one block per file change). "
+        "Output ONLY the code changes. Use the correct format for each file type:\n"
+        "- Python files (.py): ```python ... ``` code block\n"
+        "- Markdown files (.md): ```markdown ... ``` code block\n"
+        "- YAML files (.yaml/.yml): ```yaml ... ``` code block\n"
+        "- JSON files (.json): ```json ... ``` code block\n"
+        "- Rust files (.rs): ```rust ... ``` code block\n"
+        "- TypeScript/JavaScript files (.ts/.tsx/.js/.jsx): ```typescript ... ``` code block\n"
+        "- Shell files (.sh): ```bash ... ``` code block\n"
+        "- Other files: use the appropriate language tag based on the file extension\n"
+        "CRITICAL: Detect the language from the file path/extension. Do NOT put Rust code in a python block.\n"
         "Do NOT include any planning, reasoning, step-by-step analysis, "
         "markdown headings, or explanatory text outside the code blocks.\n"
         "If the task has multiple files, output a separate code block for each.\n"
@@ -147,7 +163,17 @@ ROLE_SYSTEM_PROMPTS = {
         "\n"
         "Correct example (no preamble, just code blocks):\n"
         "```python\n# backend/file.py\nclass Foo:\n    BAR = 42\n```\n"
-        "```python\n# tests/test_file.py\ndef test_bar():\n    assert Foo.BAR == 42\n```\n"
+        "```markdown\n# docs/CONTRIBUTING.md\n## Section\nContent here.\n```\n"
+        "\n"
+        "[QUALITY — CRITICAL]\n"
+        "Your output MUST be a complete, working implementation. NOT a stub. NOT a placeholder.\n"
+        "- Do NOT output 'pass', 'TODO', 'Implementation will go here', or similar placeholders.\n"
+        "- Do NOT output a function signature without a body.\n"
+        "- Do NOT output a class without methods.\n"
+        "- Every function you write MUST have a complete implementation.\n"
+        "- Every test you write MUST have actual assertions that test behavior.\n"
+        "- If you are unsure how to implement something, implement it to the best of your ability.\n"
+        "  A partial implementation is better than a stub. A stub will be rejected.\n"
     ) + _VERIFICATION_PREAMBLE.replace("{ROLE_TERM}", "OUTPUT") + (
         "- If writing a function to chunk a list, verify:\n"
         "  Does it handle empty lists? Edge cases like n > len(lst)? n <= 0?\n"
@@ -161,6 +187,59 @@ ROLE_SYSTEM_PROMPTS = {
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful coding assistant. Provide clear, correct, and concise answers."
 )
+
+
+def _fix_code_block_languages(text: Optional[str]) -> Optional[str]:
+    """Fix code block language tags based on file path comments.
+
+    Detects patterns like:
+        ```python
+        # path/to/file.rs
+        ...rust code...
+
+    And fixes the language tag to match the file extension:
+        ```rust
+        # path/to/file.rs
+        ...rust code...
+    """
+    if text is None:
+        return None
+    import re
+
+    ext_to_lang = {
+        ".py": "python", ".pyi": "python",
+        ".rs": "rust",
+        ".go": "go",
+        ".ts": "typescript", ".tsx": "typescript",
+        ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
+        ".yaml": "yaml", ".yml": "yaml",
+        ".json": "json",
+        ".md": "markdown",
+        ".sh": "bash", ".bash": "bash",
+        ".toml": "toml",
+        ".c": "c", ".h": "c",
+        ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
+        ".java": "java",
+        ".rb": "ruby",
+        ".php": "php",
+    }
+
+    # Match code blocks with a file path comment on the first line
+    # Pattern: ```lang\n# path/to/file.ext\n...
+    pattern = r'```(\w+)\n# ([^\s]+\.\w+)\n'
+
+    def replace_lang(match):
+        current_lang = match.group(1).lower()
+        file_path = match.group(2)
+        # Get the extension
+        for ext, lang in ext_to_lang.items():
+            if file_path.endswith(ext):
+                if current_lang != lang:
+                    return f'```{lang}\n# {file_path}\n'
+                break
+        return match.group(0)
+
+    return re.sub(pattern, replace_lang, text)
 
 _escalation_log = EscalationLog()
 
@@ -398,7 +477,29 @@ def _run_two_judge_review(
                 if code.strip():
                     result = orca.execute(code=code, bead=bead, timeout_ms=30000)
 
-                    if result.timed_out:
+                    if getattr(result, "not_executable", False):
+                        # CRITICAL: the code cannot be executed at all
+                        # (syntax error or no-op module). A non-functional
+                        # submission must veto, not pass with score 100.
+                        reason = (
+                            getattr(result, "not_executable_reason", None)
+                            or result.stderr
+                            or "not_executable"
+                        )
+                        execution_findings.append(Finding(
+                            section="execution",
+                            issue_class="not_executable",
+                            severity=Severity.CRITICAL,
+                            citation=reason,
+                            description=reason[:300],
+                            suggestion=(
+                                "Ensure the code is syntactically valid and "
+                                "has an executable entry point (e.g., call "
+                                "your function at the top level or under "
+                                "`if __name__ == '__main__':`)"
+                            ),
+                        ))
+                    elif result.timed_out:
                         execution_findings.append(Finding(
                             section="execution",
                             issue_class="timeout",
@@ -529,6 +630,7 @@ def _run_two_judge_review(
                     repo_path=repo_path,
                     project_verify=None,
                     flake_path=Path(__file__).resolve().parent,
+                    diff_text=task.get("response", "") if isinstance(task, dict) else "",
                 )
                 if pipeline_metrics is not None:
                     gate_metrics = vg.get("telemetry") or {}
@@ -703,13 +805,20 @@ def _run_two_judge_review(
         accepted=accepted,
     )
 
-    # Update bookbag with review results
+    # Update bookbag with review results. The four decision inputs are persisted
+    # alongside `accepted` so a rejection is reconstructable from the record
+    # alone: a PASS/PASS bag with accepted=false and no scores is unauditable,
+    # and unauditable derived fields get misread as bugs.
     update_bookbag(
         bead,
         cto_verdict=cto_verdict,
         coo_verdict=coo_verdict,
         findings=[f.to_dict() for f in all_findings],
         accepted=accepted,
+        cto_score=cto_result.score,
+        coo_score=coo_result.score,
+        has_critical=has_critical,
+        parse_failed=parse_failed,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
         verification=verification_output or None,
         repo=repo,
@@ -1340,6 +1449,10 @@ def run_task(
                     )
                 else:
                     response = call_model(role, prompt, system_prompt=system_prompt)
+            # Fix code block language tags based on file path comments.
+            # The student model often puts Rust/Go/TS code in a ```python block.
+            if response:
+                response = _fix_code_block_languages(response)
         except Exception as e:
             error = str(e)
 

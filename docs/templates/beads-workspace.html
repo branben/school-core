@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Beads Workspace · school-core</title>
+  <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111114;
+        --sidebar: #151518;
+        --panel: #19191d;
+        --panel-raised: #1f1f24;
+        --line: #2b2b31;
+        --line-strong: #3b3b43;
+        --text: #f0f0f2;
+        --muted: #92929d;
+        --faint: #90909b;
+        --violet: #7c6cf2;
+        --violet-soft: #2a2744;
+        --blue: #5e8df6;
+        --green: #4bb78f;
+        --amber: #d9a441;
+        --red: #df6d78;
+        --focus: #a99cff;
+      }
+      * { box-sizing: border-box; }
+      html { min-width: 320px; background: var(--bg); }
+      body { min-height: 100vh; margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.45; }
+      button, input, textarea, select { font: inherit; }
+      button { color: inherit; }
+      button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      svg { display: block; }
+      .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+      .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+      .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+      .sidebar { position: sticky; top: 0; display: flex; height: 100vh; flex-direction: column; padding: 10px 8px; border-right: 1px solid #222227; background: var(--sidebar); }
+      .workspace-switcher { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: default; }
+      .workspace-mark { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 6px; background: #6657e8; font-size: 11px; font-weight: 800; }
+      .workspace-copy { display: grid; min-width: 0; flex: 1; }
+      .workspace-copy strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+      .workspace-copy span { color: var(--faint); font-size: 11px; }
+      .new-issue { display: flex; align-items: center; gap: 8px; min-height: 34px; margin: 10px 4px 14px; padding: 0 10px; border: 1px solid #3d394e; border-radius: 7px; background: #25232f; color: #ded9ff; cursor: pointer; font-size: 12px; font-weight: 600; }
+      .new-issue:hover { border-color: #5c537e; background: #2d2a3a; }
+      .new-issue kbd { margin-left: auto; color: #8d879e; font-family: inherit; font-size: 10px; }
+      .nav-group { margin: 0 0 14px; }
+      .nav-label { padding: 5px 10px; color: #8b8b95; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+      .nav-item { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 31px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #a8a8b1; cursor: pointer; text-align: left; font-size: 12px; }
+      .nav-item[aria-current="page"] { background: #222228; color: #f4f4f5; }
+      .nav-item .count { margin-left: auto; color: #92929d; font-size: 10px; font-variant-numeric: tabular-nums; }
+      .sidebar-footer { margin-top: auto; padding: 12px 10px 5px; border-top: 1px solid #242429; color: #9898a2; font-size: 10px; line-height: 1.5; }
+      .main { min-width: 0; }
+      .app-header { position: sticky; z-index: 10; top: 0; display: flex; min-height: 50px; align-items: center; gap: 10px; padding: 0 18px; border-bottom: 1px solid var(--line); background: rgba(17, 17, 20, .96); }
+      .breadcrumbs { display: flex; min-width: 0; align-items: center; gap: 8px; color: var(--faint); font-size: 12px; }
+      .breadcrumbs strong { overflow: hidden; color: #d8d8dd; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .header-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+      .icon-button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #85858f; cursor: pointer; }
+      .icon-button:hover { background: #202025; color: #ededf0; }
+      .study-label { margin-left: 7px; padding: 4px 7px; border: 1px solid #4a4a54; border-radius: 5px; color: #a3a3ad; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+      .mobile-study-note { display: none; }
+      .content-header { padding: 28px 28px 0; }
+      .title-row { display: flex; align-items: center; gap: 12px; }
+      .team-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: #2b2848; color: #b6adff; font-size: 12px; font-weight: 800; }
+      h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.025em; }
+      .title-row .quiet-action { margin-left: auto; }
+      .quiet-action { display: inline-flex; min-height: 30px; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: #18181c; color: #9898a2; cursor: pointer; font-size: 11px; }
+      .quiet-action:hover { border-color: var(--line-strong); color: #e0e0e4; }
+      .summary { max-width: 700px; margin: 8px 0 22px 42px; color: var(--muted); font-size: 12px; }
+      .tabs { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--line); }
+      .tab { position: relative; min-height: 36px; padding: 0 11px; border: 0; background: transparent; color: #7f7f89; cursor: pointer; font-size: 12px; white-space: nowrap; }
+      .tab:hover { color: #d6d6da; }
+      .tab[aria-selected="true"] { color: #ededf0; }
+      .tab[aria-selected="true"]::after { position: absolute; right: 9px; bottom: -1px; left: 9px; height: 1px; background: #8d7ff3; content: ""; }
+      .tab-count { margin-left: 5px; color: #92929c; font-size: 10px; }
+      .workspace-area { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: calc(100vh - 138px); }
+      .issue-pane { min-width: 0; border-right: 1px solid var(--line); }
+      .list-toolbar { display: flex; min-height: 45px; align-items: center; gap: 7px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+      .toolbar-label { color: #777780; font-size: 11px; }
+      .filter-chip { display: inline-flex; min-height: 26px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: #a0a0aa; font-size: 10px; }
+      .list-toolbar .spacer { flex: 1; }
+      .list-toolbar strong { color: #94949e; font-size: 10px; font-weight: 500; }
+      .issue-group-header { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid var(--line); background: #151518; color: #8c8c96; font-size: 11px; font-weight: 600; }
+      .status-dot { width: 10px; height: 10px; border: 2px solid #6f7080; border-radius: 50%; }
+      .status-dot.active { border-color: var(--amber); border-top-color: transparent; }
+      .issue-group-header span:last-child { margin-left: auto; color: #92929c; font-weight: 400; }
+      .issue-row { display: grid; grid-template-columns: 22px 70px minmax(190px, 1fr) 90px 88px 30px; gap: 8px; width: 100%; min-height: 43px; align-items: center; padding: 0 14px 0 18px; border: 0; border-bottom: 1px solid #242429; background: transparent; color: #c8c8ce; cursor: pointer; text-align: left; }
+      .issue-row:hover { background: #18181c; }
+      .issue-row[aria-selected="true"] { background: #202026; }
+      .issue-row[hidden] { display: none; }
+      .issue-status { width: 12px; height: 12px; border: 1.7px solid #676772; border-radius: 50%; }
+      .issue-status.progress { border-color: var(--amber); border-top-color: transparent; }
+      .issue-status.todo { border-style: dashed; }
+      .issue-key { color: #94949e; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .issue-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      .issue-tag { width: fit-content; max-width: 86px; overflow: hidden; padding: 2px 6px; border-radius: 4px; background: #23232a; color: #8d8d98; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .priority { color: #90909a; font-size: 10px; }
+      .priority.high { color: var(--red); }
+      .avatar-mini { display: grid; width: 21px; height: 21px; place-items: center; justify-self: end; border-radius: 50%; background: #303039; color: #b9b9c2; font-size: 8px; font-weight: 700; }
+      .detail-pane { min-width: 0; background: #17171a; }
+      .detail-head { display: flex; min-height: 45px; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line); color: #767680; font-size: 10px; }
+      .detail-head .icon-button { margin-left: auto; }
+      .detail-body { padding: 24px; }
+      .detail-key { color: #74747e; font-size: 11px; }
+      .detail-body h2 { margin: 9px 0 0; font-size: 21px; font-weight: 620; letter-spacing: -.025em; line-height: 1.25; }
+      .detail-body > p { margin: 14px 0 0; color: #9c9ca6; font-size: 12px; line-height: 1.65; }
+      .property-list { display: grid; gap: 10px; margin: 24px 0; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .property { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: center; font-size: 11px; }
+      .property dt { color: #92929c; }
+      .property dd { display: flex; align-items: center; gap: 7px; margin: 0; color: #bdbdc5; }
+      .property .pill { padding: 2px 6px; border-radius: 4px; background: var(--violet-soft); color: #bdb4ff; }
+      .activity-title { margin: 0 0 12px; color: #777780; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+      .activity { display: grid; grid-template-columns: 22px 1fr; gap: 10px; margin-top: 12px; color: #888892; font-size: 11px; }
+      .activity .avatar-mini { justify-self: start; }
+      .activity strong { color: #c4c4ca; font-weight: 600; }
+      .toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 13px; border: 1px solid #454550; border-radius: 8px; background: #232329; color: #d9d9de; box-shadow: 0 16px 40px rgba(0,0,0,.34); opacity: 0; pointer-events: none; transform: translateY(8px); transition: opacity 180ms ease-out, transform 180ms ease-out; }
+      .toast.is-visible { opacity: 1; transform: translateY(0); }
+      body.details-closed .workspace-area { grid-template-columns: minmax(0, 1fr); }
+      body.details-closed .detail-pane { display: none; }
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: 190px minmax(0, 1fr); }
+        .workspace-area { grid-template-columns: minmax(0, 1fr) 310px; }
+        .issue-row { grid-template-columns: 20px 62px minmax(160px, 1fr) 78px 26px; }
+        .issue-row .priority { display: none; }
+      }
+      @media (max-width: 760px) {
+        .shell { display: block; }
+        .sidebar { display: none; }
+        .study-label { display: none; }
+        .mobile-study-note { display: block; margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); color: #a3a3ad; font-size: 10px; line-height: 1.45; }
+        .app-header { padding: 0 10px; }
+        .content-header { padding: 22px 16px 0; }
+        .summary { margin-left: 0; }
+        .tabs { overflow-x: auto; }
+        .workspace-area { display: block; min-height: 0; }
+        .issue-pane { border-right: 0; }
+        .list-toolbar { padding: 0 12px; }
+        .issue-row { grid-template-columns: 18px 58px minmax(150px, 1fr) 24px; min-height: 48px; padding: 0 12px; }
+        .issue-row .issue-tag, .issue-row .priority { display: none; }
+        .detail-pane { position: fixed; z-index: 24; inset: 0; overflow-y: auto; transform: translateX(100%); transition: transform 220ms cubic-bezier(.16,1,.3,1); }
+        body.details-open .detail-pane { transform: translateX(0); }
+        .detail-head { position: sticky; top: 0; z-index: 2; background: #17171a; }
+      }
+      @media (prefers-reduced-motion: reduce) { .detail-pane, .toast { transition: none; } }
+      /* Additions for tracker controls; reference component rules above stay intact. */
+      .agent-live { margin: 0 28px 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 11px; }
+      .workspace-footer { padding: 12px 28px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+      @media (max-width:760px) { .workspace-footer { padding: 12px 16px; } }
+      .agent-live strong { color: var(--text); }
+      .agent-live .live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--amber); }
+      .nav-item[aria-current="page"] { cursor: pointer; }
+      .issue-row .activity-chip { justify-self: end; color: var(--green); font-size: 9px; }
+      .property-list select, .property-list input { min-width: 0; width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); font-size: 11px; }
+      .property-list textarea { width: 100%; min-height: 70px; resize: vertical; padding: 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); font-size: 11px; }
+      .property-list .quiet-action { justify-content: center; }
+      .empty-state { padding: 28px 18px; color: var(--muted); font-size: 12px; }
+      .skeleton { height: 43px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #17171b, #202026, #17171b); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; }
+      @keyframes shimmer { to { background-position: -200% 0; } }
+      .project-card { display:flex; align-items:center; gap:12px; width:100%; padding:14px 18px; border:0; border-bottom:1px solid #242429; background:transparent; color:var(--text); cursor:pointer; text-align:left; }
+      .project-card:hover { background:#18181c; }
+      .project-card strong { font-size:12px; font-weight:600; }
+      .project-card span { margin-left:auto; color:var(--muted); font-size:10px; }
+      .modal-backdrop { position:fixed; z-index:40; inset:0; display:grid; place-items:center; padding:16px; background:rgba(0,0,0,.64); }
+      .modal { width:min(480px,100%); padding:20px; border:1px solid var(--line-strong); border-radius:9px; background:var(--panel); box-shadow:0 24px 80px rgba(0,0,0,.45); }
+      .modal h2 { margin:0; font-size:16px; }
+      .modal p { color:var(--muted); font-size:12px; line-height:1.6; }
+      .modal pre { overflow:auto; white-space:pre-wrap; word-break:break-word; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:#d4d4dc; font:11px/1.5 ui-monospace,monospace; }
+      .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+      .modal-actions .new-issue { margin:0; }
+      .modal[hidden], .modal-backdrop[hidden] { display:none; }
+      #toast { left:18px; right:auto; }
+      @media (max-width:760px) { .agent-live { margin:0 16px 12px; } }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <div class="workspace-switcher"><span class="workspace-mark">S</span><span class="workspace-copy"><strong>school-core</strong><span>Beads workspace</span></span></div>
+    <button class="new-issue" id="newIssue"><span>＋</span> New issue <kbd>N</kbd></button>
+    <div class="nav-group"><div class="nav-label">Workspace</div>
+      <button class="nav-item" data-view="inbox"><span>⌂</span> Inbox <span class="count" id="inboxCount">—</span></button>
+      <button class="nav-item" data-view="todos"><span>◷</span> Todos <span class="count" id="todoCount">—</span></button>
+      <button class="nav-item" data-view="in_progress"><span>◌</span> In progress <span class="count" id="progressCount">—</span></button>
+      <button class="nav-item" data-view="blocked"><span>⊘</span> Blocked <span class="count" id="blockedCount">—</span></button>
+    </div>
+    <div class="nav-group"><div class="nav-label">Projects</div><div id="projectNav"></div></div>
+    <div class="sidebar-footer">Beads is the source of truth.<br>Assignments do not start agents.<br><span id="connectionState">Connecting…</span></div>
+  </aside>
+  <main class="main">
+    <header class="app-header"><div class="breadcrumbs"><span>school-core</span><span>›</span><strong id="breadcrumbCurrent">Inbox</strong></div><div class="header-actions"><button class="icon-button" id="refresh" aria-label="Refresh workspace" title="Refresh">↻</button><span class="study-label">Local · Beads-backed</span></div></header>
+    <p class="mobile-study-note">Beads issue tracker · assignments never launch agents.</p>
+    <section class="content-header"><div class="title-row"><span class="team-icon">B</span><h1 id="viewTitle">Inbox</h1><button class="quiet-action" id="newIssueInline">＋ Add issue</button></div><p class="summary" id="viewSummary">Unassigned tasks that have not been started. Status and assignee are read from your local Beads database.</p></section>
+    <nav class="tabs" aria-label="Issue filters"><button class="tab" data-filter="all" aria-selected="true">All issues <span class="tab-count" id="allCount">—</span></button><button class="tab" data-filter="active">Active <span class="tab-count" id="activeCount">—</span></button><button class="tab" data-filter="backlog">Backlog <span class="tab-count" id="backlogCount">—</span></button><button class="tab" data-filter="closed">Closed <span class="tab-count" id="closedCount">—</span></button></nav>
+    <div class="agent-live" id="agentLive"><span class="live-dot"></span><strong>Agent activity signals are event-based.</strong> These are recent lifecycle events, not a verified process heartbeat.</div>
+    <section class="workspace-area"><div class="issue-pane"><div class="list-toolbar"><span class="toolbar-label">Filter</span><label class="visually-hidden" for="search">Search issues</label><input class="filter-chip" id="search" type="search" placeholder="Search issues…"><label class="visually-hidden" for="assigneeFilter">Filter by assignee</label><select class="filter-chip" id="assigneeFilter"><option value="">All assignees</option><option>Brandon Bennett</option><option>Freebuff</option><option>Hermes</option><option value="unassigned">Unassigned</option></select><span class="spacer"></span><strong id="listMeta">Loading Beads…</strong></div><div id="issueList" aria-live="polite"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>
+      <aside class="detail-pane" id="detailPane"><div class="detail-head"><span>ISSUE DETAILS</span><button class="icon-button" id="closeDetails" aria-label="Close issue details">×</button></div><div class="detail-body" id="detailBody"><p>Select an issue to inspect its Beads state.</p></div></aside></section>
+    <footer class="workspace-footer">Local Beads workspace · assignment records ownership only · no agent is launched · no remote sync.</footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal-backdrop" id="confirmBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><h2 id="confirmTitle">Review Beads change</h2><p id="confirmSummary"></p><pre id="confirmCommand"></pre><p>This writes to the local Beads database only. It does not launch an agent or sync remotely.</p><div class="modal-actions"><button class="quiet-action" id="cancelConfirm">Cancel</button><button class="new-issue" id="applyConfirm">Confirm change</button></div></section></div>
+<div class="modal-backdrop" id="createBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="createTitle"><h2 id="createTitle">New Beads issue</h2><form id="createForm"><p><label>Title<br><input name="title" maxlength="200" required></label></p><p><label>Description<br><textarea name="description" maxlength="4000"></textarea></label></p><p><label>Type<br><select name="issue_type"><option>task</option><option>bug</option><option>feature</option><option>chore</option><option>decision</option><option>epic</option></select></label></p><p><label>Project (optional)<br><select name="parent" id="projectSelect"><option value="">No project</option></select></label></p><div class="modal-actions"><button type="button" class="quiet-action" id="cancelCreate">Cancel</button><button class="new-issue" type="submit">Review issue</button></div></form></section></div>
+<script>
+'use strict';
+(function () {
+  var data = null, view = 'inbox', filter = 'all', selectedId = null, pendingToken = null;
+  var titles = {inbox:'Inbox',todos:'Todos',in_progress:'In progress',blocked:'Blocked',projects:'Projects'};
+  var summaries = {
+    inbox:'Unassigned tasks that have not been started. Status and assignee are read from your local Beads database.',
+    todos:'Open work from the Beads database. Assigning a task records ownership; it does not start an agent.',
+    in_progress:'Issues whose Beads status is in progress. Recent activity shows lifecycle events only; those events do not prove a process is still alive.',
+    blocked:'Work marked blocked in Beads.',projects:'Epics and their child issues, grouped from Beads parent relationships.'
+  };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
+  function toast(text) { var el=document.getElementById('toast'); el.textContent=text; el.classList.add('is-visible'); setTimeout(function(){el.classList.remove('is-visible');},2600); }
+  function statusLabel(status) { return ({open:'Todo',in_progress:'In progress',blocked:'Blocked',closed:'Closed'})[status] || status; }
+  function allVisible() {
+    if (!data) return [];    if(view==='projects') return data.issues.filter(function(x){return x.project_id===selectedId;});
+    if (view === 'inbox') return data.inbox;
+    if (view === 'todos') return data.todos;
+    if (view === 'in_progress') return data.in_progress;
+    if (view === 'blocked') return data.blocked;
+    return data.issues;
+  }
+  function filtered() {
+    var q=document.getElementById('search').value.trim().toLowerCase(), who=document.getElementById('assigneeFilter').value;
+    return allVisible().filter(function(item){
+      if (filter==='active' && item.status!=='in_progress') return false;
+      if (filter==='backlog' && item.status!=='open') return false;
+      if (filter==='closed' && item.status!=='closed') return false;
+      if (who==='unassigned' && item.assignee) return false;
+      if (who && who!=='unassigned' && item.assignee!==who) return false;
+      return !q || (item.id+' '+item.title+' '+item.description+' '+(item.project_title||'')).toLowerCase().includes(q);
+    });
+  }
+  function renderNav() {
+    document.getElementById('inboxCount').textContent=data.inbox.length;
+    document.getElementById('todoCount').textContent=data.todos.length;
+    document.getElementById('progressCount').textContent=data.in_progress.length;
+    document.getElementById('blockedCount').textContent=data.blocked.length;
+    var nav=document.getElementById('projectNav'); nav.replaceChildren();
+    data.projects.filter(function(p){return p.status!=='closed';}).forEach(function(p){
+      var b=document.createElement('button'); b.className='nav-item'; b.dataset.project=p.id; b.setAttribute('aria-current',view==='projects'&&selectedId===p.id?'page':'false'); b.innerHTML='<span>◫</span><span class="issue-title">'+esc(p.title)+'</span><span class="count">'+p.open_count+'</span>'; b.addEventListener('click',function(){view='projects';selectedId=p.id;filter='all';render();}); nav.appendChild(b);
+    });
+    var select=document.getElementById('projectSelect'); select.replaceChildren(new Option('No project','')); data.projects.filter(function(p){return p.status!=='closed';}).forEach(function(p){select.add(new Option(p.title,p.id));});
+  }
+  function renderList() {
+    var root=document.getElementById('issueList'); root.replaceChildren();
+    var rows=filtered();
+    document.getElementById('listMeta').textContent=rows.length+' issues · refreshes every 10s';
+    if (!rows.length) { var empty=document.createElement('div');empty.className='empty-state';empty.textContent=data.issues.length?'No issues match this view.':'No Beads issues found.';root.appendChild(empty);return; }
+    var head=document.createElement('div');head.className='issue-group-header';head.innerHTML='<span class="status-dot '+(view==='in_progress'?'active':'')+'"></span>'+esc(view==='projects'?(data.projects.find(function(p){return p.id===selectedId;})||{}).title||'Project':(titles[view]||'Issues'))+'<span>'+rows.length+'</span>';root.appendChild(head);
+    rows.forEach(function(item){
+      var button=document.createElement('button');button.className='issue-row';button.setAttribute('aria-selected',item.id===selectedId?'true':'false');
+      var initial=(item.assignee||'').split(/\s+/).map(function(p){return p[0]||'';}).join('').slice(0,2).toUpperCase()||'·';
+      button.innerHTML='<span class="issue-status '+(item.status==='in_progress'?'progress':item.status==='open'?'todo':'')+'"></span><span class="issue-key">'+esc(item.id)+'</span><span class="issue-title">'+esc(item.title)+'</span><span class="issue-tag">'+esc(item.issue_type)+'</span><span class="priority '+(Number(item.priority)===0?'high':'')+'">P'+esc(item.priority)+'</span><span class="avatar-mini" title="'+esc(item.assignee||'Unassigned')+'">'+esc(initial)+'</span>'+(item.activity.state==='recent_event'?'<span class="activity-chip">EVENT</span>':'');
+      button.addEventListener('click',function(){selectedId=item.id;document.body.classList.add('details-open');renderList();renderDetail();});root.appendChild(button);
+    });
+  }
+  function renderDetail() {
+    var item=data&&data.issues.find(function(x){return x.id===selectedId;});var body=document.getElementById('detailBody');
+    if(!item){body.innerHTML='<p>Select an issue to inspect its Beads state.</p>';return;}
+    var activity=item.activity.state==='recent_event'?'<strong>Recent event · '+esc(item.activity.agent||'worker')+'</strong> <span>· '+esc(item.activity.stage)+' · '+esc(item.activity.timestamp)+'</span>':'<span>No recent exact-ID lifecycle event</span>';
+    body.innerHTML='<div class="detail-key">'+esc(item.id)+' · '+esc(item.issue_type)+'</div><h2>'+esc(item.title)+'</h2><p>'+esc(item.description||'No description provided.')+'</p><dl class="property-list">'+
+      '<div class="property"><dt>Status</dt><dd><select id="statusControl" aria-label="Change status"><option value="open">Todo</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="closed">Closed</option></select></dd></div>'+
+      '<div class="property"><dt>Assignee</dt><dd><select id="assigneeControl" aria-label="Change assignee"><option value="">Unassigned</option><option>Brandon Bennett</option><option>Freebuff</option><option>Hermes</option></select></dd></div>'+
+      '<div class="property"><dt>Project</dt><dd>'+esc(item.project_title||'—')+'</dd></div><div class="property"><dt>Priority</dt><dd><span class="pill">P'+esc(item.priority)+'</span></dd></div><div class="property"><dt>Agent runtime</dt><dd>'+activity+'</dd></div></dl><h3 class="activity-title">Activity</h3><div class="activity"><span class="avatar-mini">B</span><div><strong>Beads</strong><br>'+esc(statusLabel(item.status))+' · updated '+esc(item.updated_at||'—')+'</div></div>';
+    var status=document.getElementById('statusControl');status.value=item.status;status.addEventListener('change',function(){requestChange({action:'status',issue_id:item.id,status:status.value});});
+    var assignee=document.getElementById('assigneeControl');assignee.value=item.assignee||'';assignee.addEventListener('change',function(){if(assignee.value)requestChange({action:'assign',issue_id:item.id,assignee:assignee.value});else{assignee.value=item.assignee||'';toast('Use an explicit assignee to claim a task.');}});
+  }
+  function render() {
+    if(!data)return;renderNav();document.querySelectorAll('.nav-item[data-view]').forEach(function(b){b.setAttribute('aria-current',view===b.dataset.view?'page':'false');});
+    var title=view==='projects'?((data.projects.find(function(p){return p.id===selectedId;})||{}).title||'Projects'):(titles[view]||'Inbox');
+    document.getElementById('viewTitle').textContent=title;document.getElementById('breadcrumbCurrent').textContent=title;document.getElementById('viewSummary').textContent=summaries[view]||summaries.projects;
+    document.getElementById('allCount').textContent=allVisible().length;document.getElementById('activeCount').textContent=allVisible().filter(function(x){return x.status==='in_progress';}).length;document.getElementById('backlogCount').textContent=allVisible().filter(function(x){return x.status==='open';}).length;document.getElementById('closedCount').textContent=allVisible().filter(function(x){return x.status==='closed';}).length;
+    var active=data.issues.filter(function(x){return x.activity.state==='recent_event';});document.getElementById('agentLive').innerHTML=active.length?'<span class="live-dot"></span><strong>'+active.length+' recent lifecycle event'+(active.length===1?'':'s')+'.</strong> '+active.map(function(x){return esc(x.activity.agent||'Worker')+' · '+esc(x.id)+' · '+esc(x.activity.stage);}).join(' · ')+' — exact Beads ID, not a process heartbeat.':'<span class="live-dot"></span><strong>Agent activity signals are event-based.</strong> No recent exact-ID lifecycle event was found; events do not verify that a process is still alive.';
+    renderList();renderDetail();
+  }
+  function load() {fetch('/api/workspace',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Could not read local Beads data ('+r.status+').');return r.json();}).then(function(result){data=result;document.getElementById('connectionState').textContent='Connected · local Beads';render();}).catch(function(error){document.getElementById('connectionState').textContent='Connection error';document.getElementById('issueList').innerHTML='<div class="empty-state">'+esc(error.message)+'<br>Start <code>python3 activity_server.py</code> from the school-core repository.</div>';});}
+  function requestChange(payload) {fetch('/api/workspace/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Preview failed.');return d;});}).then(function(result){pendingToken=result.token;document.getElementById('confirmSummary').textContent=result.summary;document.getElementById('confirmCommand').textContent=result.command;document.getElementById('confirmBackdrop').hidden=false;document.getElementById('applyConfirm').focus();}).catch(function(error){toast(error.message);load();});}
+  document.querySelectorAll('.nav-item[data-view]').forEach(function(b){b.addEventListener('click',function(){view=b.dataset.view;selectedId=null;filter='all';render();});});
+  document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){filter=b.dataset.filter;document.querySelectorAll('.tab').forEach(function(t){t.setAttribute('aria-selected',t===b?'true':'false');});renderList();});});
+  document.getElementById('search').addEventListener('input',renderList);document.getElementById('assigneeFilter').addEventListener('change',renderList);document.getElementById('refresh').addEventListener('click',load);
+  document.getElementById('closeDetails').addEventListener('click',function(){document.body.classList.remove('details-open');document.body.classList.add('details-closed');selectedId=null;renderList();});
+  document.getElementById('cancelConfirm').addEventListener('click',function(){pendingToken=null;document.getElementById('confirmBackdrop').hidden=true;});
+  document.getElementById('applyConfirm').addEventListener('click',function(){if(!pendingToken)return;var token=pendingToken;pendingToken=null;document.getElementById('applyConfirm').disabled=true;fetch('/api/workspace/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Update failed.');return d;});}).then(function(d){document.getElementById('confirmBackdrop').hidden=true;document.getElementById('applyConfirm').disabled=false;toast(d.message);return load();}).catch(function(e){document.getElementById('confirmBackdrop').hidden=true;document.getElementById('applyConfirm').disabled=false;toast(e.message);load();});});
+  function openCreate(){document.getElementById('createBackdrop').hidden=false;document.querySelector('#createForm [name=title]').focus();}
+  document.getElementById('newIssue').addEventListener('click',openCreate);document.getElementById('newIssueInline').addEventListener('click',openCreate);document.getElementById('cancelCreate').addEventListener('click',function(){document.getElementById('createBackdrop').hidden=true;});
+  document.getElementById('createForm').addEventListener('submit',function(e){e.preventDefault();var form=new FormData(e.currentTarget);var payload={action:'create',title:form.get('title'),description:form.get('description'),issue_type:form.get('issue_type'),parent:form.get('parent')};document.getElementById('createBackdrop').hidden=true;requestChange(payload);});
+  document.addEventListener('keydown',function(e){if((e.key==='n'||e.key==='N')&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();openCreate();}if(e.key==='Escape'){document.getElementById('confirmBackdrop').hidden=true;document.getElementById('createBackdrop').hidden=true;}});
+  load();setInterval(load,10000);
+})();
+</script>
+</body>
+</html>

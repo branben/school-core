@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>school-core — whole-system layout (ELI10)</title>
+<style>
+  :root{
+    --bg:#0e1013; --panel:#14181f; --panel-2:#1a1f28; --border:#2a3242;
+    --ink:#e6ecf5; --muted:#8b97aa; --dim:#5b677d;
+    --good:#7ee787; --warn:#f0c674; --bad:#f28b82; --link:#79c0ff;
+    --accent:#79c0ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55}
+  body{padding:2rem 1.25rem 4rem}
+  h1{font-size:1.6rem;margin:.2rem 0 .4rem;letter-spacing:.2px}
+  .sub{color:var(--muted);max-width:70ch;margin:0 0 1.6rem}
+  .row{display:flex;gap:1rem;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:1rem 1.1rem;margin-bottom:1rem;max-width:100%}
+  .panel h2{margin:.15rem 0 .5rem;font-size:1.02rem;color:var(--ink);
+    display:flex;align-items:baseline;gap:.5rem}
+  .tag{font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--border);padding:.1rem .45rem;border-radius:4px;background:var(--panel-2)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+  code{background:rgba(121,192,255,.08);color:#9ecbff;border-radius:4px;
+    padding:.1rem .3rem;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em}
+  pre{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:.8rem 1rem;overflow:auto;margin:.4rem 0 0;font-size:.9em;line-height:1.45}
+  pre code{background:transparent;padding:0;color:var(--ink)}
+  ul{margin:.2rem 0 .4rem;padding-left:1.1rem}
+  li{margin:.1rem 0}
+  table{border-collapse:collapse;width:100%;margin:.3rem 0 0;font-size:.9rem}
+  th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600}
+  td.st{color:var(--good);white-space:nowrap}
+  td.warn{color:var(--warn);white-space:nowrap}
+  td.bad{color:var(--bad);white-space:nowrap}
+  .flow{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.88em;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:.7rem 1rem;white-space:pre;overflow:auto;margin:.4rem 0 0;line-height:1.5}
+  .legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.85rem;color:var(--muted);
+    margin:.2rem 0 1rem}
+  .legend span b{display:inline-block;width:9px;height:9px;border-radius:2px;
+    margin-right:.3rem;vertical-align:middle}
+  .section{max-width:100ch;margin:0 auto 1rem}
+  a{color:var(--link)}
+</style>
+</head>
+<body>
+<div class="section">
+  <h1>school-core — whole-system layout (ELI10)</h1>
+  <p class="sub">A wide, at-a-glance map of how the Agent School stack fits together today:
+  what owns what, where the evidence returns, and where the honest gaps are.
+  Reads top-to-bottom as <b>control → execute → assure → learn</b>.</p>
+
+  <div class="legend">
+    <span><b style="background:var(--good)"></b> wired / operational</span>
+    <span><b style="background:var(--warn)"></b> partial / half-wired</span>
+    <span><b style="background:var(--bad)"></b> gap / deferred</span>
+    <span><b style="background:var(--link)"></b> the seam under current review</span>
+  </div>
+
+  <div class="panel">
+    <h2>The stack in one view — four planes, not one repo</h2>
+    <div class="flow">
+Control plane                 Execution plane              Assurance plane            Learning plane
+─────────────────────         ──────────────────────       ─────────────────────      ─────────────────────
+
+KnowledgeCore ──┐              FirstMate ──► Orca ──► Hermes   project verify gate ──┐   trajectory +
+deterministic   │              dispatch       runtime  agent   (compile before critic) │   consolidation +
+intent route ───┤              (crew spawn)   (worktrees) (thinking)                    │   score
+                 ▼              ┌─────────────────────────────────────────────────────────┘
+            CE plan + U-IDs    │
+                 │              ▼
+            bd beads + deps    git artifact + evidence  Entire sensor ──┐
+                 │              (branch, commit, base,   (non-blocking)  │
+                 ▼              report.md, identity)                     ▼
+            CE work execution                            CTO + COO review ──┐
+                 │                                         (two-judge)      │
+                 ▼                                         both must pass   ▼
+            dispatch / crew / leaf                    acceptance + bookbag  bd close / update
+                 │                                         verdict card       │
+                 ▼                                         /approve /reject    ▼
+            EXECUTION PLANE ──────────────────────►  AgentMail human rail   next bounded route
+                                                         (human is apex judge)
+    </div>
+    <p style="margin:.5rem 0 0;color:var(--muted);font-size:.9rem">
+      The repo is the reference implementation, not the runtime. The runtime is
+      <b>Hermes</b> dispatched <b>by Orca</b>, with the student's thinking routed
+      <b>through OmniRoute</b>. school-core owns judgment + growth; it does not own the runtime.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2><span class="tag">L1</span> Runtime — Orca <span class="tag" style="color:var(--good)">wired</span></h2>
+      <ul>
+        <li><b>Owns:</b> worktrees (rooms), terminals (desks), schedules, click-to-task.</li>
+        <li>Persistent roles = <b>exactly 3</b>: <code>principal</code>, <code>cto</code>, <code>coo</code>.
+            Students are disposable per bead.</li>
+        <li>Rediscover-before-create for the 3 persistent roles (stops the <code>*-2</code> suffix leak).</li>
+        <li><b>Must not</b> own judgment, scoring, curriculum, or the model faucet.</li>
+      </ul>
+      <p style="margin:.3rem 0 0;color:var(--muted);font-size:.88rem">
+        Source of truth: <code>school-core-architecture.md</code> → Layer 1.</p>
+    </div>
+
+    <div class="panel">
+      <h2><span class="tag">L2</span> Brain — Hermes <span class="tag" style="color:var(--good)">wired</span></h2>
+      <ul>
+        <li><b>Owns:</b> persona/SOUL, skills, beads task tracking, AgentMail bidirectional rail.</li>
+        <li>The student leaf is a <b>Hermes agent in a child worktree</b>, not a one-shot.</li>
+        <li>AgentMail = agents report verdicts → human replies <code>/approve</code> <code>/reject</code> <code>/fix</code>.</li>
+      </ul>
+      <p style="margin:.3rem 0 0;color:var(--muted);font-size:.88rem">
+        Source of truth: <code>school-core-architecture.md</code> → Layer 2.</p>
+    </div>
+
+    <div class="panel">
+      <h2><span class="tag">L3</span> Curriculum — the school skill <span class="tag" style="color:var(--warn)">partial</span></h2>
+      <ul>
+        <li><b>Owns:</b> routing/classification, two-judge review (CTO/COO), EFC competency gates, acceptance rule, bookbag verdict record.</li>
+        <li>Bookbag is <b>verdict-record only</b> now; <code>bd</code> owns task lifecycle (bead id = bookbag id).</li>
+        <li>Goal: become a repo-parameterized Hermes skill so it is no longer coupled to the school-core checkout.</li>
+      </ul>
+      <p style="margin:.3rem 0 0;color:var(--muted);font-size:.88rem">
+        Source of truth: <code>school-core-architecture.md</code> → Layer 3; <code>docs/HANDOFF.md</code>.</p>
+    </div>
+
+    <div class="panel">
+      <h2><span class="tag">L4</span> Substrate — OmniRoute <span class="tag" style="color:var(--warn)">partial</span></h2>
+      <ul>
+        <li><b>Owns:</b> the model faucet — local gateway at <code>localhost:20128</code>, <code>/v1/chat/completions</code>.</li>
+        <li>Hermes <code>delegation.model</code> controls which alias a spawned child uses.</li>
+        <li><span class="tag" style="color:var(--bad)">gap</span> The live leaf path has historically bypassed OmniRoute (one-shot <code>hermes chat</code>) — the fix is to route student thinking through the delegation config so it actually flows through <code>localhost:20128</code>.</li>
+      </ul>
+      <p style="margin:.3rem 0 0;color:var(--muted);font-size:.88rem">
+        Source of truth: <code>school-core-architecture.md</code> → Layer 4.</p>
+    </div>
+
+    <div class="panel" style="grid-column:1/-1">
+      <h2><span class="tag">L5</span> Memory — four layers, cross-cutting <span class="tag" style="color:var(--warn)">partial</span></h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Name</th><th>What</th><th>Source</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>Ambient</td><td>domain glossary, conventions, role defs</td><td>CocoIndex vault</td><td class="st">wired</td></tr>
+          <tr><td>1</td><td>Structural</td><td>file tree, symbols, import graph</td><td>Serena LSP</td><td class="st">wired</td></tr>
+          <tr><td>2</td><td>Episodic</td><td>trajectories, decisions, recent obs</td><td>Engram</td><td class="st">wired</td></tr>
+          <tr><td>3</td><td>Archival</td><td>sleep/wake consolidation, handoff anchors</td><td>Obsidian + Engram REM</td><td class="warn">partial</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:.3rem 0 0;color:var(--muted);font-size:.88rem">
+        Layer 3 read side is wired; the <b>write-side hook</b> that saves
+        <code>loop-*</code> session consolidations is the pending half.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>The pipeline, ten stages (what actually runs today)</h2>
+    <div class="flow">
+GitHub issue
+  → Stage 0  bridge_issues()            fetch / dedupe / retry ledger / session id
+  → Stage 1  enrich_prompt()            Layer 0-3 context (non-blocking)
+  → Stage 2  _principal_dispatch()      competency-based persona routing
+  → Stage 3  dispatch_crew()            FirstMate → Orca → Hermes (U10 deterministic handshake)
+  → Stage 4  run_task()                 student model call / provided_student_output (crew path)
+  → Stage 5  run_verify_gate()          Nix verifyShell — compiler before critic
+  → Stage 6  _run_two_judge_review()    Orca sandbox + CTO + COO, both must pass
+  → Stage 7  entire_review()            non-blocking pre-merge sensor
+  → Stage 8  evaluate_and_update()      difficulty-adjusted EMA → data/scores.json
+  → Stage 9  bookbag + AgentMail        verdict card → /approve /reject /fix
+  → Stage 10 board + activity_server    kanban HTML + SSE, live 15s
+    </div>
+    <p style="margin:.5rem 0 0;color:var(--muted);font-size:.9rem">
+      Each stage has an honest "what's missing" note in
+      <a href="pipeline-explainer.md">pipeline-explainer.md</a>.
+      The pipeline is wired end-to-end; the gaps are named, not papered over.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Current seam — PR provider + bridge candidate path <span class="tag" style="color:var(--link)">under review</span></h2>
+    <p>This is the boundary that turns a <b>validated candidate</b> into a <b>published provider PR</b>,
+    and the durable school state that must never claim success the provider did not confirm.</p>
+    <table>
+      <thead><tr><th>Asset</th><th>Owner / protection</th></tr></thead>
+      <tbody>
+        <tr><td>The provider's PR surface</td><td>no duplicate PRs per candidate; no forged / unverifiable success claims</td></tr>
+        <tr><td>Durable school state</td><td>run record, issue close/label, processed checkpoint — must never claim success that the provider did not confirm</td></tr>
+        <tr><td>Candidate identity</td><td><code>(candidate_id, head_sha)</code> binding of everything published</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin:.7rem 0 .2rem;font-size:1rem">Fail-closed rules that actually matter</h3>
+    <ul>
+      <li><b>Journal before write.</b> <code>pr_pending</code> is durably recorded <i>before</i> the provider call.
+          A crash can only leave <code>pr_pending</code>, never a silent gap that invites a duplicate write.</li>
+      <li><b>Ambiguity never upgrades itself.</b> Only a provider answer bound to
+          <code>(candidate_id, head_sha)</code> — or a recorded <code>pr_published</code> row — turns publication into success. A guess is not reconciliation.</li>
+      <li><b>Reconcile before retry.</b> A <code>pr_pending</code> row is resolved by asking the provider for the PR bound to that candidate/head.
+          Found → adopt the URL, no second write. Definitively absent → a fresh write is safe.
+          Unknown (no <code>find_pr</code>, provider error) → <b>block</b>; we do not risk a duplicate PR.</li>
+      <li><b>Idempotent replay.</b> A <code>pr_published</code> row with the same <code>head_sha</code> returns the recorded URL without touching the provider.</li>
+      <li><b>Pre-write refusals are terminal</b> for that candidate (<code>pr_failed</code>); a retry must be a new candidate, not a re-press of a refused one.</li>
+    </ul>
+
+    <h3 style="margin:.7rem 0 .2rem;font-size:1rem">Failure model</h3>
+    <table>
+      <thead><tr><th>Failure</th><th>Example</th><th>Outcome</th></tr></thead>
+      <tbody>
+        <tr><td>Pre-write refusal</td><td>stale head, dirty tree, changed base, digest mismatch, empty diff, branch ownership lost</td><td class="bad">pr_failed — no provider write happened</td></tr>
+        <tr><td>Write attempted, result untrustworthy</td><td><code>publish()</code> raised mid-create, returned <code>None</code>, returned mismatched <code>candidate_id</code>/<code>head_sha</code>, or no valid PR URL</td><td class="warn">pr_pending — outcome unknown</td></tr>
+        <tr><td>Crash between journal and write</td><td>process dies after <code>pr_pending</code> is recorded</td><td class="warn">pr_pending — safe: replay reconciles</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin:.7rem 0 .2rem;font-size:1rem">Capability contract</h3>
+    <ul>
+      <li><code>publish_candidate_pr</code> (<code>candidate_pr.py</code>) validates the candidate against its store and extracts the exact
+          <code>base_sha..head_sha</code> diff <b>before</b> any provider call. Provider-write failures raise
+          <code>ProviderWriteError</code>; everything else is a pre-write refusal.</li>
+      <li><code>publish_candidate_pr_idempotent</code> (<code>pr_provider.py</code>) wraps it with the durable
+          <code>PrStateStore</code> journal and the reconcile-first retry rule above.</li>
+      <li>A <code>CandidatePublisher</code> supplies <code>publish(**request) -> dict</code>. Optional
+          <code>find_pr(repository=, candidate_id=, head_sha=, branch=) -> str | None</code> enables reconciliation;
+          without it, a <code>pr_pending</code> row can <b>never</b> clear (fail-closed).</li>
+    </ul>
+    <p style="margin:.5rem 0 0;color:var(--muted);font-size:.88rem">
+      Source of truth: <a href="pr-provider-boundary.md">pr-provider-boundary.md</a>.
+      Non-goals: merge is human-owned; provider selection + live external writes stay a standing human gate;
+      label/color/comment style stays in <code>issue_bridge</code>/<code>pr_creator</code>.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Honest state — what is wired vs aspirational vs gap</h2>
+    <table>
+      <thead><tr><th>Capability</th><th>Status</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Students (Hermes)</td><td class="st">wired</td><td><code>orca</code> terminal dispatch; <code>--yolo --accept-hooks</code></td></tr>
+        <tr><td>Principal verify gate (execute code)</td><td class="st">wired</td><td><code>verify_gate.py</code> + <code>flake.nix#verifyShell</code>; soft-skip by default, <code>VERIFY_GATE_STRICT=1</code> escalates</td></tr>
+        <tr><td>Layer 1 — Serena LSP symbols</td><td class="st">wired</td><td>resolves prompt identifiers to exact <code>file:line</code></td></tr>
+        <tr><td>Adversarial review (text)</td><td class="st">wired</td><td>judges student prose via the configured judge model</td></tr>
+        <tr><td>Layer 0 — CocoIndex vault</td><td class="st">wired</td><td><code>ccc search</code> for domain glossary</td></tr>
+        <tr><td>Layer 2 — Engram trajectories</td><td class="st">wired</td><td>episodic context; corpus also checkpointed to git</td></tr>
+        <tr><td>Layer 3 — archival consolidation</td><td class="warn">partial</td><td>read side wired; write-side hook for <code>loop-*</code> consolidations is the pending half</td></tr>
+        <tr><td>Verification scoring</td><td class="st">wired</td><td>execution correctness via the configured judge model</td></tr>
+        <tr><td>Pre-merge review (Entire)</td><td class="st">wired</td><td>non-blocking intent-aware sensor in bridge sync + async conductor paths</td></tr>
+        <tr><td>AgentMail bus (2-judge)</td><td class="warn">partial</td><td>two-judge via AgentMail + rubber-stamp poller; sync inline, async Phase 2 future</td></tr>
+        <tr><td>Bookbag-as-contract</td><td class="warn">partial</td><td><code>~/.hermes/bookbag/&lt;bead&gt;.json</code>; verify on disk</td></tr>
+        <tr><td>Verification-co-evolution loop</td><td class="st">wired</td><td>adversarial reviewer + two-judge; 15 unit tests</td></tr>
+        <tr><td>FirstMate dispatch</td><td class="st">wired</td><td>spawn proven live; U10 deterministic handshake landed; fresh-checkout live smoke still pending</td></tr>
+        <tr><td>Student thinking via OmniRoute (L4)</td><td class="bad">gap</td><td>leaf path has bypassed OmniRoute; the fix is to route through Hermes delegation so it flows through <code>localhost:20128</code></td></tr>
+        <tr><td>Skill/tool telemetry feeding routing</td><td class="bad">gap</td><td>deferred — teacher sees final artifact, not which books the student opened</td></tr>
+        <tr><td>Async teacher review (Phase 2)</td><td class="bad">gap</td><td>today review is sync-inline; overnight teacher review + dead-letter is future</td></tr>
+        <tr><td>Board state retention / compaction</td><td class="bad">gap</td><td>board state grows forever; deferred compaction question</td></tr>
+      </tbody>
+    </table>
+    <p style="margin:.5rem 0 0;color:var(--muted);font-size:.88rem">
+      The operational-reality table in <a href="../campus.md">campus.md</a> is the canonical wired-vs-aspirational record.
+      This row is a readable summary of the same claims.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Three invariants to keep the picture honest</h2>
+    <ul>
+      <li><b>One authority per concern.</b> <code>bd</code> owns lifecycle; CE owns plan decisions; Orca owns runtime;
+          school-core owns judgment + growth. Bookbag and Kanban must not duplicate <code>bd</code>.</li>
+      <li><b>Compiler before critic.</b> Mechanical verification runs before subjective review whenever the project can execute the artifact.</li>
+      <li><b>A report is not proof by itself.</b> The report, branch, commit, base, and inspected artifact must refer to the same work.</li>
+    </ul>
+    <p style="margin:.5rem 0 0;color:var(--muted);font-size:.88rem">
+      Source of truth: <a href="wayfinder-map.md">wayfinder-map.md</a> + <a href="route-envelope.md">route-envelope.md</a>.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Where to read next</h2>
+    <ul>
+      <li><b>Identity / soul of the school:</b> <a href="../campus.md">campus.md</a></li>
+      <li><b>Handoff contract + signal protocol:</b> <a href="HANDOFF.md">docs/HANDOFF.md</a></li>
+      <li><b>Wide topology + ownership boundaries:</b> <a href="wayfinder-map.md">docs/wayfinder-map.md</a></li>
+      <li><b>Route envelope (control→execution→assurance→learning contract):</b> <a href="route-envelope.md">docs/route-envelope.md</a></li>
+      <li><b>Stage-by-stage ELI breakdown with gaps:</b> <a href="pipeline-explainer.md">docs/pipeline-explainer.md</a></li>
+      <li><b>The PR-provider seam under review:</b> <a href="pr-provider-boundary.md">docs/pr-provider-boundary.md</a></li>
+      <li><b>Zoomed-out architecture (4 layers + coupling points to cut):</b> <a href="school-core-architecture.md">docs/school-core-architecture.md</a></li>
+    </ul>
+  </div>
+
+  <p style="margin-top:1.4rem;color:var(--dim);font-size:.82rem;border-top:1px solid var(--border);padding-top:.6rem">
+    Last reconciled from the docs that already exist in <code>school-core/docs/</code>.
+    This page is a readable wide layout; the source-of-truth documents above are the ones to update when the system changes.</p>
+</div>
+</body>
+</html>

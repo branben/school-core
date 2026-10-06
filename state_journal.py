@@ -159,6 +159,41 @@ class StateJournal:
             state=row["state"], issued_at=row["issued_at"], operation_id=row["operation_id"],
         )
 
+    def approvals(
+        self, *, candidate_id: str | None = None, head_sha: str | None = None,
+    ) -> list[ApprovalRecord]:
+        """List persisted approvals, optionally narrowed to one candidate/head.
+
+        The PR-creation gate needs to ask "does a live approval exist for this
+        exact candidate?" rather than "does this approval id exist?", because
+        the id it would be handed is not a trusted input.
+
+        Ordering is deterministic (issue order, then approval_id) so a resumed
+        cycle sees the same list after a restart.
+        """
+        clauses: list[str] = []
+        params: list[str] = []
+        if candidate_id is not None:
+            clauses.append("candidate_id = ?")
+            params.append(self._require_text(candidate_id, "candidate_id"))
+        if head_sha is not None:
+            clauses.append("head_sha = ?")
+            params.append(self._validate_sha(head_sha, "head_sha"))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT * FROM approvals{where} ORDER BY issued_at, approval_id", tuple(params)
+            ).fetchall()
+        return [
+            ApprovalRecord(
+                approval_id=row["approval_id"], candidate_id=row["candidate_id"],
+                head_sha=row["head_sha"], actor=row["actor"], scope=row["scope"],
+                state=row["state"], issued_at=row["issued_at"],
+                operation_id=row["operation_id"],
+            )
+            for row in rows
+        ]
+
     def consume_approval(
         self, *, approval_id: str, candidate_id: str, head_sha: str,
         operation_id: str, idempotency_key: str,

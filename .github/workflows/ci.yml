@@ -44,6 +44,16 @@ jobs:
         # notes. Fails if anything private/unknown enters data/vault/.
         run: python scripts/check_vault_allowlist.py --strict
 
+      - name: index-gate selftest (behavior hook)
+        # Proves the Rust behavior hook can still go red. A guard that only
+        # ever passes is worse than none: it launders an unverified claim into
+        # a green check, which is the exact failure that shipped the
+        # 2026-09-28 verify-gate bug. Runs the selftest, not a claim check,
+        # because claims depend on repo state and this step must be hermetic.
+        run: |
+          cargo build --release --manifest-path tools/index-gate/Cargo.toml
+          tools/index-gate/target/release/index-gate selftest
+
       - name: Run tests
         # Keep the hosted matrix hermetic and fast: live Orca tests have an
         # explicit marker and run only in the push-only self-hosted lane below.
@@ -164,6 +174,9 @@ jobs:
     #
     # No model is involved on purpose: a judgement call is not a merge
     # criterion, and this must work when every review bot is rate-limited.
+    #
+    # UPDATE 2026-10-06: review-gate IS now in required_status_checks on main.
+    # A red review-gate blocks merge. The comment above was stale.
     name: review-gate
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

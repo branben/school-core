@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Three ways to trace one video call</title>
+<style>
+  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
+        --clay:#D97757;--olive:#788C5D;--red:#B4553A;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
+       max-width:60rem;margin:0 auto;font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.5rem}
+  h1{font-family:Georgia,serif;font-weight:400;font-size:1.65rem;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin-top:.5rem;font-size:.95rem}
+  .call{background:var(--ink);color:#F0EEE6;border-radius:6px;padding:.85rem 1.1rem;
+        font-family:ui-monospace,Menlo,monospace;font-size:.83rem;margin:1.25rem 0 1.75rem}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem}
+  .opt{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:1.1rem;
+       display:flex;flex-direction:column}
+  .opt.rec{border:2px solid var(--olive)}
+  .tag{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+       color:var(--muted);margin-bottom:.35rem}
+  .rec .tag{color:var(--olive)}
+  h2{font-size:1rem;margin-bottom:.7rem;letter-spacing:-.01em}
+  .trace{font-family:ui-monospace,Menlo,monospace;font-size:.76rem;background:#FBFAF7;
+         border:1px solid var(--line);border-radius:6px;padding:.8rem .75rem;margin-bottom:.85rem;
+         min-height:7.5rem}
+  .sp{display:block;padding:.18rem 0}
+  .sp.child{padding-left:1.1rem;color:var(--muted)}
+  .sp .d{color:var(--olive);font-weight:700}
+  .sp .q{color:var(--red);font-weight:700}
+  .gap{margin:.5rem 0 0;padding:.5rem .6rem;background:#FBEAE5;border-radius:4px;
+       font-size:.79rem;color:var(--red)}
+  .yes{margin:.5rem 0 0;padding:.5rem .6rem;background:#EDF1E7;border-radius:4px;
+       font-size:.79rem;color:var(--olive)}
+  dl{margin:.3rem 0 0;font-size:.84rem}
+  dt{color:var(--muted);font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;
+     margin-top:.65rem}
+  dd{margin:.15rem 0 0}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em}
+  .verdict{margin-top:1.75rem;background:var(--card);border:1px solid var(--line);
+           border-radius:8px;padding:1.15rem 1.3rem}
+  .verdict h3{font-size:.98rem;color:var(--clay);margin-bottom:.5rem}
+  .verdict p{font-size:.9rem}
+  footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>One video call. Three possible trace outputs.</h1>
+  <p class="sub">Everything below is the <em>same</em> call with the same result. Only the recording differs.</p>
+</header>
+<main>
+
+<div class="call">
+  client.videos.create_and_poll(prompt="a cat surfing")
+  <span style="opacity:.65">→ OpenAI renders for 47 seconds → video returned</span>
+</div>
+
+<div class="cols">
+
+  <section class="opt rec">
+    <div class="tag">Option 1 · my recommendation</div>
+    <h2>Record both methods</h2>
+    <div class="trace">
+      <span class="sp"><span class="d">▸</span> Video Generation (and poll)  47.2s</span>
+      <span class="sp child">└ <span class="d">▸</span> Video Generation  0.3s</span>
+      <span class="sp child" style="padding-left:2.2rem">status: queued</span>
+      <span class="sp" style="padding-top:.3rem">status: completed</span>
+    </div>
+    <div class="yes">Records that it finished.</div>
+    <dl>
+      <dt>You get</dt><dd>submission latency <em>and</em> total render time</dd>
+      <dt>You give up</dt><dd>two spans per call; inner one reads "queued" alone</dd>
+      <dt>New code</dt><dd>none</dd>
+    </dl>
+  </section>
+
+  <section class="opt">
+    <div class="tag">Option 2</div>
+    <h2>Record the outer, hide the inner</h2>
+    <div class="trace">
+      <span class="sp"><span class="d">▸</span> Video Generation (and poll)  47.2s</span>
+      <span class="sp" style="padding-top:.3rem">status: completed</span>
+    </div>
+    <div class="yes">Records that it finished.</div>
+    <dl>
+      <dt>You get</dt><dd>total render time, one clean entry</dd>
+      <dt>You give up</dt><dd>submission latency — can't tell a slow call apart from a slow render</dd>
+      <dt>New code</dt><dd>yes; the existing guard doesn't fit this shape</dd>
+    </dl>
+  </section>
+
+  <section class="opt">
+    <div class="tag">Option 3 · what I filed</div>
+    <h2>Record only <code>create</code></h2>
+    <div class="trace">
+      <span class="sp"><span class="d">▸</span> Video Generation  0.3s</span>
+      <span class="sp" style="padding-top:.3rem">status: <span class="q">queued</span></span>
+      <span class="sp" style="color:var(--red)">── nothing else, ever ──</span>
+    </div>
+    <div class="gap">The 47 seconds and the completion are unrecorded.</div>
+    <dl>
+      <dt>You get</dt><dd>one entry, 0.3s</dd>
+      <dt>You give up</dt><dd>proof the video exists; render duration; completion</dd>
+      <dt>New code</dt><dd>none</dd>
+    </dl>
+  </section>
+
+</div>
+
+<div class="verdict">
+  <h3>How to read these</h3>
+  <p>Options 1 and 2 both end with a line proving the video arrived — that is the thing
+  that cannot be recovered later. Option 1 is recommended only because it costs no new
+  machinery; if submission latency is not something anyone looks at, Option 2's single
+  entry is the cleaner artifact.</p>
+  <p style="margin-bottom:0">Option 3 is not a tidier version of Option 1. It is a trace
+  for a video that never finished.</p>
+</div>
+
+</main>
+<footer>
+  Decision ticket <code>school-core-5c0</code> · nothing here is decided ·
+  upstream issue braintrustdata/braintrust-sdk-python#304
+</footer>
+</body>
+</html>

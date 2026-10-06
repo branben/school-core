@@ -222,18 +222,39 @@ class TestCloneRepo:
                 repo_path = Path(cmd[-1])
                 repo_path.mkdir(parents=True, exist_ok=True)
                 (repo_path / ".git").mkdir()
+                (repo_path / "README.md").write_text("fake cached repository\n")
                 (repo_path / "package.json").write_text('{"scripts": {"test": "vitest"}}')
                 (repo_path / "pnpm-lock.yaml").write_text("")
                 return subprocess.CompletedProcess(cmd, 0, "", "")
-            # pnpm install succeeds
+            # The install is wrapped by sandbox-exec and remains bounded.
+            assert cmd[0] == "/usr/bin/sandbox-exec"
+            assert "(allow network*)" in Path(cmd[2]).read_text()
+            assert "--ignore-scripts" in " ".join(cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
         mock_run.side_effect = fake_run
+        from execution_sandbox import sandbox_exec_path
+        monkeypatch.setattr("execution_sandbox.sandbox_exec_path", lambda: "/usr/bin/sandbox-exec")
         result = clone_repo("owner/repo")
         assert result is not None
         # Verify pnpm install was called
         install_calls = [c for c in mock_run.call_args_list if 'pnpm' in str(c)]
         assert len(install_calls) > 0, "pnpm install should be called for TS projects"
+
+    def test_installs_deps_for_cached_ts_projects_without_node_modules(self, tmp_path, monkeypatch):
+        cache = tmp_path / "cache"
+        repo = cache / "owner__repo"
+        repo.mkdir(parents=True)
+        (repo / ".git").mkdir()
+        (repo / "package.json").write_text('{"scripts": {"test": "vitest"}}')
+        (repo / "pnpm-lock.yaml").write_text("")
+        monkeypatch.setattr(repo_reader, "CACHE_DIR", cache)
+        monkeypatch.setattr(repo_reader, "_git", lambda *args, **kwargs: "")
+        installed = []
+        monkeypatch.setattr(repo_reader, "_install_js_dependencies", lambda path: installed.append(path) or path)
+
+        assert clone_repo("owner/repo") == repo
+        assert installed == [repo], "cached clone without node_modules must install dependencies"
 
 
 # --- force_fresh must not orphan live crew worktrees (B8 fix) ---
