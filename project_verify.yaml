@@ -62,6 +62,11 @@ verify:
     languages: [typescript, javascript]
 
   # ── Markdown/YAML/JSON checks (always run — these are data files) ────────
+  - name: markdown-validate
+    cmd: python3 -c "import sys; files=sys.argv[1:]; [open(f).read() for f in files]; print(f'{len(files)} markdown file(s) OK')" $(find . -name '*.md' | grep -v node_modules | head -5) 2>&1 || true
+    cwd: .
+    languages: [markdown]
+
   - name: yaml-validate
     cmd: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" $(find . -name '*.yaml' -o -name '*.yml' | grep -v node_modules | head -5) 2>&1 || true
     cwd: .

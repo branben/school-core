@@ -79,7 +79,7 @@ def _detect_languages_from_diff(diff_text: str) -> set[str]:
     # Also detect from code block language tags (```python, ```rust, etc.)
     for match in re.finditer(r'```(\w+)', diff_text):
         lang = match.group(1).lower()
-        if lang in ("python", "rust", "go", "typescript", "javascript", "yaml", "json", "bash", "toml"):
+        if lang in ("python", "rust", "go", "typescript", "javascript", "yaml", "json", "bash", "toml", "markdown", "md"):
             languages.add(lang)
     return languages
 
