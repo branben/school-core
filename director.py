@@ -263,6 +263,19 @@ BLOCKING_CLASSES = frozenset({
     "verify_gate_error",
 })
 
+# Runtime errors that usually mean the snippet needs context the standalone
+# sandbox does not provide (repo modules, stdin, fixtures), not that the
+# answer is wrong. These are emitted as ``runtime_missing_context``, which is
+# not in BLOCKING_CLASSES: advisory, and scored as "not run" (50), not 0.
+_MISSING_CONTEXT_ERROR_RE = re.compile(
+    r"\b(ModuleNotFoundError|ImportError|EOFError)\b"
+)
+
+
+def _is_missing_context_failure(stderr: str) -> bool:
+    """True when a runtime failure looks like missing context, not a bug."""
+    return bool(stderr) and bool(_MISSING_CONTEXT_ERROR_RE.search(stderr))
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -452,9 +465,10 @@ def _run_two_judge_review(
 
     # ── Orca Execution ──
     # Execute student code in an Orca terminal sandbox before CTO review.
-    # Exit code 0 → PASS signal. Runtime errors → HIGH findings (advisory, not
-    # veto-level — extracted code may be context-dependent and can't run
-    # standalone). OrcaUnavailableError is a hard failure — the pipeline cannot
+    # Exit code 0 → PASS signal. Runtime errors → HIGH findings that block via
+    # BLOCKING_CLASSES, except missing-context errors (ImportError,
+    # ModuleNotFoundError, EOFError), which stay advisory because extracted
+    # code may depend on context it can't get standalone. OrcaUnavailableError is a hard failure — the pipeline cannot
     # verify code without a sandbox, so the exception propagates up to run_task().
     #
     # Language detection: for code-implementation tasks, resolve the repo path
@@ -520,13 +534,20 @@ def _run_two_judge_review(
                             suggestion="Ensure the code terminates in reasonable time",
                         ))
                     elif result.exit_code != 0:
-                        # HIGH, not CRITICAL: extracted code may be a context-dependent
-                        # snippet (e.g. TypeScript refactoring in a JS project) that
-                        # can't run standalone in Orca.  The CTO/COO judges assess
-                        # correctness; this finding is advisory only.
+                        # HIGH severity either way. runtime_failure is a
+                        # blocking class (issue #139). A failure that looks
+                        # like missing context (ImportError,
+                        # ModuleNotFoundError, EOFError) is emitted as
+                        # runtime_missing_context instead and stays advisory:
+                        # the snippet may be correct but depend on repo
+                        # modules or stdin the standalone sandbox lacks.
+                        _missing_ctx = _is_missing_context_failure(result.stderr or "")
                         execution_findings.append(Finding(
                             section="execution",
-                            issue_class="runtime_failure",
+                            issue_class=(
+                                "runtime_missing_context" if _missing_ctx
+                                else "runtime_failure"
+                            ),
                             severity=Severity.HIGH,
                             citation=f"exit_code={result.exit_code}",
                             description=(result.stderr or "Unknown execution error")[:300],
