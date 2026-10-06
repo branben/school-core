@@ -28,7 +28,9 @@ class TestLoadConfig:
         cfg = load_config(fake)
         assert cfg["repo"] == ""
         assert cfg["poll_interval_seconds"] == 300
-        assert cfg["labels"] == ["bug", "enhancement"]
+        # No label filter by default: empty means "fetch every open issue and
+        # let triage_classifier decide readiness" (a conjunction list fetched 0).
+        assert cfg["labels"] == []
 
     def test_loads_yaml_file(self, tmp_path):
         """Parses fields from a real YAML file."""
@@ -46,7 +48,7 @@ class TestLoadConfig:
         cfg = load_config(str(cfg_file))
         assert cfg["repo"] == "user/test"
         assert cfg["poll_interval_seconds"] == 300  # default
-        assert cfg["labels"] == ["bug", "enhancement"]  # default
+        assert cfg["labels"] == []  # default: no server-side label filter
 
     def test_resolves_self_sentinel(self, tmp_path, monkeypatch):
         """The reserved '__self__' value resolves to the checkout's default repo."""
@@ -178,6 +180,55 @@ class TestFetchIssues:
         args = mock_gh.call_args[0][0]
         assert "--label" in args
         assert "bug" in args[args.index("--label") + 1]
+
+    @patch("github_fetcher._gh_command")
+    def test_multiple_labels_are_unioned_not_anded(self, mock_gh):
+        """REGRESSION: a label list is a UNION, not a conjunction.
+
+        `gh` ANDs repeated --label flags, so `["bug","enhancement"]` matched 0
+        issues on a repo where no issue carries both. fetch_issues must issue one
+        gh call per label and union the results by issue number.
+        """
+        ready = "Detailed bug report with reproduction steps and stack trace" * 15
+
+        def fake_gh(args, timeout=30):
+            if args[:2] == ["issue", "list"]:
+                label = args[args.index("--label") + 1] if "--label" in args else None
+                if label == "bug":
+                    return json.dumps([{
+                        "number": 10, "title": "Fix crash", "body": ready,
+                        "labels": [{"name": "T-bug"}, {"name": "P1"}],
+                    }])
+                if label == "enhancement":
+                    return json.dumps([{
+                        "number": 11, "title": "Add feature", "body": ready,
+                        "labels": [{"name": "enhancement"}],
+                    }])
+                return json.dumps([])
+            return None
+
+        mock_gh.side_effect = fake_gh
+        issues = fetch_issues("user/test", labels=["bug", "enhancement"])
+        # Both label sets are present (union), not the empty intersection.
+        assert {i["issue_number"] for i in issues} == {10, 11}
+        # One gh call per label — never a single ANDed invocation.
+        label_calls = [
+            c for c in mock_gh.call_args_list
+            if c[0][0][:2] == ["issue", "list"]
+        ]
+        assert len(label_calls) == 2
+
+    @patch("github_fetcher._gh_command")
+    def test_label_union_dedupes_overlapping_issues(self, mock_gh):
+        """An issue carrying both labels appears once, not twice."""
+        ready = "Detailed report with reproduction steps and a stack trace" * 15
+        both = {
+            "number": 12, "title": "Shared", "body": ready,
+            "labels": [{"name": "T-bug"}, {"name": "P1"}, {"name": "enhancement"}],
+        }
+        mock_gh.return_value = json.dumps([both])
+        issues = fetch_issues("user/test", labels=["bug", "enhancement"])
+        assert [i["issue_number"] for i in issues] == [12]
 
     @patch("github_fetcher._gh_command")
     def test_prompt_includes_title_and_body(self, mock_gh):

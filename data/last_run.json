@@ -3273,5 +3273,5126 @@
     "next_action": "change_capability",
     "retry_attempt": 0,
     "timestamp": "2026-08-31T04:06:36.724603+00:00"
+  },
+  {
+    "issue": 68,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 82.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=82.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_152944_759616--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T15:30:32.852809+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 82.0,
+      "coo_score": 82.0,
+      "combined_score": 82.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 2
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 4)",
+          "description": "SyntaxError: invalid syntax (line 4)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; h '/nix/store/qhj3q0z9v17q9jnnq4i8s77giz70wx1f-python3-3.12.13' from 'https://cache.nixos.org'...\ncopying path '/nix/store/36"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "CONTRIBUTING.md"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verification"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "CONTRIBUTING.md"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verification"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.82
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000019",
+    "lifecycle": "failed",
+    "quality": 0.82,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T15:30:33.494704+00:00"
+  },
+  {
+    "issue": 65,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 100.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_153051_251467--python-testing--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=python-testing; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T15:31:24.298611+00:00",
+      "agent": "coder",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 100.0,
+      "coo_score": 100.0,
+      "combined_score": 100.0,
+      "finding_counts": {
+        "CRITICAL": 2
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 1.0
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "python-testing",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000020",
+    "lifecycle": "failed",
+    "quality": 1.0,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T15:31:24.953925+00:00"
+  },
+  {
+    "issue": 124,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 73.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_153858_051725--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T15:39:07.900979+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 76.0,
+      "combined_score": 73.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "symbol_references"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "soft_skip_status"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "grep_result"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "acceptance_criteria"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "symbol_references"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "soft_skip_status"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.73
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000021",
+    "lifecycle": "failed",
+    "quality": 0.73,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T15:39:09.091446+00:00"
+  },
+  {
+    "issue": 68,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 76.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_153935_241064--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T15:39:48.893673+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 64.0,
+      "combined_score": 76.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 4)",
+          "description": "SyntaxError: invalid syntax (line 4)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "CONTRIBUTING.md"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "section_title"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "pipeline_stages"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "concrete_example"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "links_to_campus_md"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "git_diff_check"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.76
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000022",
+    "lifecycle": "failed",
+    "quality": 0.76,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T15:39:49.490418+00:00"
+  },
+  {
+    "issue": 139,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 60.5,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_164142_444367--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T16:42:12.170712+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 51.0,
+      "combined_score": 60.5,
+      "finding_counts": {
+        "CRITICAL": 3,
+        "HIGH": 4,
+        "MEDIUM": 1
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; h '/nix/store/qhj3q0z9v17q9jnnq4i8s77giz70wx1f-python3-3.12.13' from 'https://cache.nixos.org'...\ncopying path '/nix/store/36"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output contains multiple redundant definitions of the same functions, such as `_run_two_judge_review`, `_run_verify_gate`, `_run_execution_gate`, etc. Each function is defined multiple times with the same implementation comment."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output shows that the functions are only stubs with `pass` statements, indicating that the actual implementation is missing."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output lacks error handling mechanisms, which could lead to runtime errors if the functions are called with invalid inputs."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The code contains multiple duplicate function definitions for the same functions, which is redundant and can lead to confusion and potential errors."
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Most of the function implementations are placeholders with no actual code, which means they are not functional."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "There is no error handling in the function implementations, which can lead to unexpected behavior if errors occur."
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.605
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000023",
+    "lifecycle": "failed",
+    "quality": 0.605,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T16:42:12.677577+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_164239_776148--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T16:42:48.709155+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000024",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T16:42:49.160519+00:00"
+  },
+  {
+    "issue": 139,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 70.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_164349_829577--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T16:43:57.211430+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 70.0,
+      "combined_score": 70.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 3,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output contains multiple duplicate definitions of the same functions (_run_two_judge_review, _gate_and_readiness, _skipped_verdict)."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The functions _run_two_judge_review, _gate_and_readiness, and _skipped_verdict are defined but not implemented (only pass statements are present)."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output contains excessive repetition of the same function definitions, which is unnecessary and could be simplified."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "duplicate_functions"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "incomplete_implementation"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "missing_context"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.7
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000025",
+    "lifecycle": "failed",
+    "quality": 0.7,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T16:43:57.675194+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_164418_705872--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T16:44:25.750195+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000026",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T16:44:26.243480+00:00"
+  },
+  {
+    "issue": 139,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_165907_508562--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-10-05T17:01:07.933147+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170123_045074--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:01:31.887843+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "correct_paths"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "in_flight_files_excluded"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files_untouched"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "commit_message"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000027",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:01:32.502070+00:00"
+  },
+  {
+    "issue": 139,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 60.5,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170145_881374--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:01:52.078735+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 58.0,
+      "coo_score": 63.0,
+      "combined_score": 60.5,
+      "finding_counts": {
+        "CRITICAL": 3,
+        "HIGH": 4,
+        "MEDIUM": 1
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": ""
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": ""
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": ""
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": ""
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output includes placeholders for functions without any implementation details."
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The student output does not address the specific issues mentioned in the task, such as the veto mechanism, score calculation, and execution gate functionality."
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.605
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000028",
+    "lifecycle": "failed",
+    "quality": 0.605,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:01:52.636083+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170206_295060--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-10-05T17:04:06.638529+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 67.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170225_479022--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:04:07.967388+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 70.0,
+      "combined_score": 67.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "correct_paths"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "test_results"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_files"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.67
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000029",
+    "lifecycle": "failed",
+    "quality": 0.67,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:04:08.710006+00:00"
+  },
+  {
+    "issue": 128,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 73.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170428_343426--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:04:37.765526+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 76.0,
+      "coo_score": 70.0,
+      "combined_score": 73.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "implementation"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "acceptance_criteria"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "notes"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "completeness"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "correctness"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "acceptance_criteria"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.73
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000030",
+    "lifecycle": "failed",
+    "quality": 0.73,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:04:38.562068+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170513_970024--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:05:21.829561+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000031",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:05:22.439798+00:00"
+  },
+  {
+    "issue": 127,
+    "status": "school-failed",
+    "agent": "searcher",
+    "score": 76.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170543_903267--debugging--searcher.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "debugging",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "searcher",
+      "profile": "student-searcher",
+      "skills": [
+        "Five Whys"
+      ],
+      "allowed_tools": [
+        "rg",
+        "ast-grep",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "codegraph",
+        "cocoindex",
+        "file",
+        "memory",
+        "session_search",
+        "serena",
+        "skills",
+        "terminal"
+      ],
+      "selection_reason": "domain=debugging; task_role=searcher; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:05:48.617995+00:00",
+      "agent": "searcher",
+      "domain": "debugging",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 82.0,
+      "combined_score": 76.0,
+      "finding_counts": {
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Identify the relevant code by searching for 'NO_INDEXER' and 'try harder' in Python files."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Modify the code to change the 'NO_INDEXER' result to a 'READ (unverified)' result and update the remedy message to 'read the file directly and label it READ'."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Ensure that the 'UNSUPPORTED' result is still fired for files that the indexer can read but the user skipped."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Add a selftest to cover the '.yml' / 'NO_INDEXER' case."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "rg \"NO_INDEXER\" --type py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "rg \"try harder\" --type py"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.76
+      },
+      "routing_context": {
+        "agent": "searcher",
+        "domain": "debugging",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000032",
+    "lifecycle": "failed",
+    "quality": 0.76,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:05:49.228336+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170610_032145--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:06:21.703291+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000033",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:06:22.230617+00:00"
+  },
+  {
+    "issue": 126,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 79.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170640_528350--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:06:48.149805+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 82.0,
+      "coo_score": 76.0,
+      "combined_score": 79.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 4)",
+          "description": "SyntaxError: invalid syntax (line 4)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completion"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "reason"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completion"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issues"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "suggestions"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.79
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000034",
+    "lifecycle": "failed",
+    "quality": 0.79,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:06:48.723206+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 70.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170720_354860--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:07:30.113493+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 70.0,
+      "combined_score": 70.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "criteria_met"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.7
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000035",
+    "lifecycle": "failed",
+    "quality": 0.7,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:07:30.824514+00:00"
+  },
+  {
+    "issue": 126,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 79.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170748_603305--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:07:55.492283+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 76.0,
+      "coo_score": 82.0,
+      "combined_score": 79.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 4)",
+          "description": "SyntaxError: invalid syntax (line 4)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issue_understood"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completed"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "reason"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completion"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "reason"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.79
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000036",
+    "lifecycle": "failed",
+    "quality": 0.79,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:07:56.085954+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 67.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170815_906620--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:08:24.095801+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 64.0,
+      "combined_score": 67.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "acceptance_criteria"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.67
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000037",
+    "lifecycle": "failed",
+    "quality": 0.67,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:08:24.680230+00:00"
+  },
+  {
+    "issue": 126,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 82.0,
+    "rejection": "two-judge review rejected: cto=PASS coo=FAIL quality_score=82.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170846_834536--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:08:55.410660+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "PASS",
+      "coo_verdict": "FAIL",
+      "cto_score": 88.0,
+      "coo_score": 76.0,
+      "combined_score": 82.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "LOW": 4,
+        "MEDIUM": 1
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 4)",
+          "description": "SyntaxError: invalid syntax (line 4)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The CI workflow includes a step to run the index-gate check, which suggests that the check is integrated into the merge path."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The CI workflow does not explicitly label the index-gate check as opt-in linting."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The CI workflow does not provide a clear indication that the index-gate check is a gate that enforces constraints."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The bead should be updated to reflect the decision made regarding the index-gate check."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issue_understood"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completed"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.82
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000038",
+    "lifecycle": "failed",
+    "quality": 0.82,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": null,
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:08:56.033296+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170918_029206--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:09:29.597315+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000039",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:09:30.358628+00:00"
+  },
+  {
+    "issue": 125,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_170945_978998--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-10-05T17:09:46.391599+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_171010_049145--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:13:18.661212+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000040",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:13:19.172522+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_173731_790362--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:38:24.744891+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; h '/nix/store/qhj3q0z9v17q9jnnq4i8s77giz70wx1f-python3-3.12.13' from 'https://cache.nixos.org'...\ncopying path '/nix/store/36"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000041",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:38:25.405870+00:00"
+  },
+  {
+    "issue": 125,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 70.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_173854_531160--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:39:06.927682+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 70.0,
+      "combined_score": 70.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 2)",
+          "description": "SyntaxError: invalid syntax (line 2)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "receipt_contains_tool_version_and_output_hash"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "hand_written_receipt_rejected"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "normal_path_produces_valid_receipt"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "clean_room_selftest_passes"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "receipt_contains_tool_version_and_output_hash"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "hand_written_receipt_rejected"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.7
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000042",
+    "lifecycle": "failed",
+    "quality": 0.7,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:39:07.946755+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_174021_482439--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T17:40:29.816146+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000043",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T17:40:30.416857+00:00"
+  },
+  {
+    "issue": 125,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_174128_810042--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "none",
+    "failure_mode": "none",
+    "fallback_reason": null,
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-10-05T17:43:29.219386+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_182229_827211--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T18:23:14.760547+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; h '/nix/store/qhj3q0z9v17q9jnnq4i8s77giz70wx1f-python3-3.12.13' from 'https://cache.nixos.org'...\ncopying path '/nix/store/36"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "correct_paths"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000044",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T18:23:15.249873+00:00"
+  },
+  {
+    "issue": 125,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 73.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_182335_429350--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T18:23:46.740118+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 76.0,
+      "coo_score": 70.0,
+      "combined_score": 73.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 2)",
+          "description": "SyntaxError: invalid syntax (line 2)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completion"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issues"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "suggestions"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "receipt_structure"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "create_receipt_function"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_receipt_function"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.73
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000045",
+    "lifecycle": "failed",
+    "quality": 0.73,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T18:23:47.231976+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 67.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_191740_243227--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T19:18:18.743308+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 64.0,
+      "combined_score": 67.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; h '/nix/store/qhj3q0z9v17q9jnnq4i8s77giz70wx1f-python3-3.12.13' from 'https://cache.nixos.org'...\ncopying path '/nix/store/36"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "criteria_met"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.67
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000046",
+    "lifecycle": "failed",
+    "quality": 0.67,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T19:18:19.393152+00:00"
+  },
+  {
+    "issue": 125,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 88.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_191840_737561--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T19:18:58.790819+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "PASS",
+      "cto_score": 76.0,
+      "coo_score": 100.0,
+      "combined_score": 88.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 1,
+        "MEDIUM": 2
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "task_completion"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issues"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "suggestions"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.88
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000047",
+    "lifecycle": "failed",
+    "quality": 0.88,
+    "failure_edge": "judge",
+    "failure_mode": "disagreement",
+    "fallback_reason": null,
+    "next_action": "escalate",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T19:18:59.215779+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_200648_123034--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T20:07:16.982168+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; '/nix/store/85d0vza6gbvlvh7z2pf3jpis4i5hfp2p-stdenv-darwin' from 'https://cache.nixos.org'...\ncopying path '/nix/store/233s05"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "committed_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "deliberately_left_behind_list"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "untracked_files"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "commit_message"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "criteria_met"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000048",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T20:07:17.510832+00:00"
+  },
+  {
+    "issue": 123,
+    "status": "school-failed",
+    "agent": "executor",
+    "score": 72.5,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=72.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_200733_091656--git-operations--executor.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "executor",
+      "profile": "student-executor",
+      "skills": [
+        "Conventional Commits"
+      ],
+      "allowed_tools": [
+        "shell",
+        "git",
+        "build"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "file",
+        "memory",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=git-operations; task_role=executor; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T20:07:38.633930+00:00",
+      "agent": "executor",
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 75.0,
+      "coo_score": 70.0,
+      "combined_score": 72.5,
+      "finding_counts": {
+        "CRITICAL": 1,
+        "HIGH": 1,
+        "MEDIUM": 3
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "The verify gate is reporting false FAIL verdicts on every JavaScript/TypeScript target due to the `clone_repo` function not running an install step."
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "root_cause"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "options"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "recommended_option"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "reason"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.725
+      },
+      "routing_context": {
+        "agent": "executor",
+        "domain": "git-operations",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000049",
+    "lifecycle": "failed",
+    "quality": 0.725,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T20:07:39.556608+00:00"
+  },
+  {
+    "issue": 129,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 64.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_204455_213152--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T20:45:17.872534+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 64.0,
+      "combined_score": 64.0,
+      "finding_counts": {
+        "CRITICAL": 1,
+        "HIGH": 2,
+        "LOW": 1,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "no_code_found",
+          "citation": "code extraction returned empty",
+          "description": "No runnable code could be extracted from the student's output"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; re/1kk8g0c04pr2a1bpqjimbyv7yfkjl8aj-cargo-bootstrap-1.95.0' from 'https://cache.nixos.org'...\ncopying path '/nix/store/dgiw1j"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".gitignore"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "verify_gate.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_node_modules.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "tests/test_verify_gate_copy_invariants.py"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": ".github/workflows/ci.yml"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.64
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000050",
+    "lifecycle": "failed",
+    "quality": 0.64,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T20:45:18.389445+00:00"
+  },
+  {
+    "issue": 122,
+    "status": "school-failed",
+    "agent": "executor",
+    "score": 67.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_204528_508146--git-operations--executor.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "executor",
+      "profile": "student-executor",
+      "skills": [
+        "Conventional Commits"
+      ],
+      "allowed_tools": [
+        "shell",
+        "git",
+        "build"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "file",
+        "memory",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=git-operations; task_role=executor; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T20:45:32.297240+00:00",
+      "agent": "executor",
+      "domain": "git-operations",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 70.0,
+      "coo_score": 64.0,
+      "combined_score": 67.0,
+      "finding_counts": {
+        "HIGH": 2,
+        "MEDIUM": 6
+      },
+      "findings": [
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "file"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "function"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "issue"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "fix"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "git add uses explicit paths. Never git add -A."
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "The following in-flight files are NOT in the commit \u2014 they belong to other authors: bookbag.py, director.py, scripts/verify_context_lock.py, tests/test_verify_context_lock.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "Also untracked and NOT yours: envit.proposed.json, tests/test_bookbag_decision_provenance.py"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "pytest tests/test_verify_gate.py tests/test_verify_gate_node_modules.py tests/test_verify_gate_copy_invariants.py -> 29 passed"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.67
+      },
+      "routing_context": {
+        "agent": "executor",
+        "domain": "git-operations",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000051",
+    "lifecycle": "failed",
+    "quality": 0.67,
+    "failure_edge": "judge",
+    "failure_mode": "quality",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T20:45:32.870455+00:00"
+  },
+  {
+    "issue": 121,
+    "status": "success",
+    "agent": "searcher",
+    "score": 41.0,
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_211016_667190--debugging--searcher.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "debugging",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "searcher",
+      "profile": "student-searcher",
+      "skills": [
+        "Five Whys"
+      ],
+      "allowed_tools": [
+        "rg",
+        "ast-grep",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "codegraph",
+        "cocoindex",
+        "file",
+        "memory",
+        "session_search",
+        "serena",
+        "skills",
+        "terminal"
+      ],
+      "selection_reason": "domain=debugging; task_role=searcher; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T21:10:22.124272+00:00",
+      "agent": "searcher",
+      "domain": "debugging",
+      "difficulty": "medium",
+      "accepted": true,
+      "cto_verdict": "PASS",
+      "coo_verdict": "PASS",
+      "cto_score": 79.0,
+      "coo_score": 79.0,
+      "combined_score": 79.0,
+      "finding_counts": {
+        "LOW": 8
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Analyzed the problem and determined the right approach to address the issue with the verify shell's network posture."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Measured the current network posture of the verify shell to ensure it is open and not enforcing any isolation as claimed."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Investigated whether Nix offers any sandboxing options that can enforce isolation for the verify shell on darwin-arm64."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Implemented isolation if Nix sandboxing options are available and suitable."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Updated the comments in flake.nix to accurately reflect the actual network posture of the verify shell if isolation is not practical or not enforced."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Added tests to ensure that the isolation is maintained if isolation is enforced."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Recorded the decision made in the issue, including the option considered and rejected, to ensure transparency and accountability."
+        },
+        {
+          "severity": "LOW",
+          "issue_class": "unknown",
+          "citation": "",
+          "description": "Analyzed the problem and determined the right approach to address the issue with the verify shell's network posture."
+        }
+      ],
+      "routing_feedback": {
+        "success": true,
+        "quality": 0.79
+      },
+      "routing_context": {
+        "agent": "searcher",
+        "domain": "debugging",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "review_packet": null,
+    "shadow_routing": {
+      "schema_version": 1,
+      "mode": "shadow",
+      "live_routing_unchanged": true,
+      "insufficient_data": false,
+      "samples": 121,
+      "growth": {
+        "samples": 72,
+        "slope": 0.2185,
+        "difficulty_adjusted_mean": 67.2782
+      },
+      "difficulty": {
+        "easy": {
+          "attempted": 9,
+          "succeeded": 4,
+          "success_rate": 0.4444
+        },
+        "medium": {
+          "attempted": 112,
+          "succeeded": 13,
+          "success_rate": 0.1161
+        },
+        "hard": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "diploma": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        },
+        "blocker": {
+          "attempted": 0,
+          "succeeded": 0,
+          "success_rate": null
+        }
+      },
+      "retry": {
+        "attempted": 121,
+        "retried": 29,
+        "rate": 0.2397
+      },
+      "confidence": {
+        "samples": 1,
+        "mean": 1.0,
+        "slope": 0.0
+      },
+      "skills": {},
+      "tools": {
+        "offered": [
+          "ast-grep",
+          "git",
+          "rg"
+        ],
+        "used": [],
+        "usage_evidence": "absent"
+      },
+      "recommendation": {
+        "current_agent": "searcher",
+        "recommended_agent": "coder",
+        "changed": true,
+        "reason": "offline_shadow_score",
+        "candidates_with_history": 3
+      }
+    },
+    "title": "verify shell advertises hermeticity it does not enforce: untrusted student code runs with open network",
+    "domain": "debugging",
+    "difficulty": "medium",
+    "verify_skipped": false,
+    "entire": {
+      "status": "pass",
+      "findings": 0
+    },
+    "crew_id": null,
+    "crew_used": false,
+    "crew_fallback_reason": null,
+    "teardown_ok": null,
+    "evidence_join": {
+      "schema_version": 1,
+      "control": {
+        "route_id": "route-searcher-debugging-29d1170e",
+        "bd_id": null,
+        "plan_id": null,
+        "plan_unit": null,
+        "wayfinder_id": null,
+        "knowledge_anchor": null,
+        "primary_workflow": null,
+        "chosen_skill": null
+      },
+      "runtime": {
+        "dispatcher": "direct-orca",
+        "cycle_session_id": "loop-20261005-211000",
+        "firstmate_crew_id": null,
+        "orca_worktree_id": null,
+        "orca_terminal_id": null,
+        "hermes_session_id": null
+      },
+      "artifact": {
+        "repository": "branben/school-core",
+        "base_ref": null,
+        "branch": null,
+        "commit": null,
+        "report_ref": null,
+        "trajectory_ref": "~/school-core/data/trajectories/20261005_211016_667190--debugging--searcher.json",
+        "bookbag_ref": "~/.hermes/bookbag/__global__/searcher-debugging-29d1170e.json",
+        "changed_files": []
+      },
+      "verification": {
+        "project_gate": "fail",
+        "project_gate_reason": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; jxxi2iadv3xwckkfpq9jdmx9w3i-python3.12-flit-core-3.12.0' from 'ht",
+        "entire_status": "pass",
+        "entire_finding_count": 0,
+        "finding_classes": []
+      },
+      "judgment": {
+        "cto_verdict": "PASS",
+        "coo_verdict": "PASS",
+        "accepted": true,
+        "score": 79.0,
+        "critical_findings": 0
+      },
+      "outcome": {
+        "lifecycle": "completed",
+        "quality": 0.79,
+        "failure_edge": "verifier",
+        "failure_mode": "unknown",
+        "fallback_reason": null,
+        "next_action": "repair_contract"
+      }
+    },
+    "compound_observation_id": "obs-000052",
+    "lifecycle": "completed",
+    "quality": 0.79,
+    "failure_edge": "verifier",
+    "failure_mode": "unknown",
+    "fallback_reason": null,
+    "next_action": "repair_contract",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T21:10:52.228974+00:00",
+    "pipeline_metrics": {
+      "schema_version": 1,
+      "events": 26,
+      "calls": {
+        "two_judge_review": 1,
+        "verify_gate": 1,
+        "entire": 1,
+        "adversarial_review": 1,
+        "output_verification": 1
+      },
+      "timings_ms": {
+        "context": 9749.1,
+        "student_model": 5081.842,
+        "review": 8011.351,
+        "student_generation": 17810.025,
+        "verify": 17460.382,
+        "entire": 21.21,
+        "output_verification": 16.736,
+        "scoring": 596.401,
+        "persistence": 0.093,
+        "total": 50528.127
+      },
+      "model": {
+        "call_count": 3,
+        "retry_count": 0,
+        "prompt_chars": 38475,
+        "output_chars": 4391,
+        "roles": {
+          "searcher": 1,
+          "reviewer": 2
+        }
+      },
+      "verification": {
+        "gate_invocations": 1,
+        "shell_starts": 1,
+        "commands": 1,
+        "copied_bytes": 18662762
+      },
+      "context": {
+        "sources": {
+          "codebase": {
+            "hits": 1,
+            "misses": 0,
+            "latency_ms": 0.0
+          },
+          "archival": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 3.637
+          },
+          "serena": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 7130.838
+          },
+          "vault": {
+            "hits": 0,
+            "misses": 1,
+            "latency_ms": 0.0
+          }
+        }
+      },
+      "crew": {
+        "spawn_count": 0,
+        "poll_count": 0,
+        "blocked_wait_count": 0,
+        "fallback_count": 0,
+        "teardown_count": 0,
+        "in_flight_count": 0
+      },
+      "quality": {
+        "accepted": true,
+        "critical_findings": 1,
+        "retry_count": 0
+      }
+    }
+  },
+  {
+    "issue": 68,
+    "status": "school-failed",
+    "agent": "coder",
+    "score": 76.0,
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "trajectory": "/Users/brandonbennett/school-core/data/trajectories/20261005_211114_660550--code-implementation--coder.json",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "score": 25.0,
+      "school_role": "Teacher",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 25,
+      "gate_max": 74,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "selection_reason": "domain=code-implementation; task_role=coder; score=25.0; difficulty=medium"
+    },
+    "teacher_evidence": {
+      "schema_version": 1,
+      "reviewed_at": "2026-10-05T21:29:04.932314+00:00",
+      "agent": "coder",
+      "domain": "code-implementation",
+      "difficulty": "medium",
+      "accepted": false,
+      "cto_verdict": "FAIL",
+      "coo_verdict": "FAIL",
+      "cto_score": 64.0,
+      "coo_score": 88.0,
+      "combined_score": 76.0,
+      "finding_counts": {
+        "CRITICAL": 2,
+        "HIGH": 2,
+        "MEDIUM": 4
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "issue_class": "not_executable",
+          "citation": "SyntaxError: invalid syntax (line 1)",
+          "description": "SyntaxError: invalid syntax (line 1)"
+        },
+        {
+          "severity": "CRITICAL",
+          "issue_class": "verify_failed",
+          "citation": "cmd: (verify_shell)",
+          "description": "verify shell emitted 0/1 command markers; execution evidence is incomplete missing: python3 -m compileall -q *.py; [verify-shell] hermetic verify environment ready (no network provisioned)"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "section_title"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "pipeline_stages"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "concrete_example"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "links_to_campus_md"
+        },
+        {
+          "severity": "MEDIUM",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "git_diff_check"
+        },
+        {
+          "severity": "HIGH",
+          "issue_class": "review_finding",
+          "citation": "",
+          "description": "CONTRIBUTING.md"
+        }
+      ],
+      "routing_feedback": {
+        "success": false,
+        "quality": 0.76
+      },
+      "routing_context": {
+        "agent": "coder",
+        "domain": "code-implementation",
+        "difficulty": "medium",
+        "selection_scope": "agent"
+      },
+      "persisted_to_trajectory": true
+    },
+    "compound_observation_id": "obs-000053",
+    "lifecycle": "failed",
+    "quality": 0.76,
+    "failure_edge": "model",
+    "failure_mode": "syntax",
+    "fallback_reason": null,
+    "next_action": "change_capability",
+    "retry_attempt": 0,
+    "timestamp": "2026-10-05T21:29:05.373673+00:00"
   }
 ]

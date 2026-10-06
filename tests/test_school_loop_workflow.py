@@ -207,6 +207,46 @@ def test_workflow_preflight_is_distinct_from_library_soft_skip():
     assert workflow["jobs"]["loop"]["if"] == "always()"
 
 
+def test_orca_precondition_is_blocked_env_and_never_skips_the_bridge():
+    """SCH-11 defect 2: a runtime_unavailable Orca must not kill the job.
+
+    The old step ran `set -euo pipefail` around `orca repo add`; a
+    {"code":"runtime_unavailable"} response failed the whole execute job and
+    steps 6-11 (including the bridge loop) were SKIPPED. 21 of the last 30 runs
+    died this way. The step must now classify the condition as BLOCKED_ENV and
+    the bridge loop must run regardless.
+    """
+    workflow = _workflow()
+    steps = workflow["jobs"]["execute"]["steps"]
+
+    orca_step = next(
+        step for step in steps
+        if step.get("name") == "Register checkout with Orca (BLOCKED_ENV-aware)"
+    )
+    # Non-fatal by design: the environment condition must not kill the job.
+    assert orca_step["continue-on-error"] is True
+    assert orca_step.get("id") == "orca_precondition"
+    assert "orca_precondition.py" in orca_step["run"]
+    # The inline bash precondition that hard-failed is gone.
+    assert "set -euo pipefail" not in orca_step["run"]
+    assert "orca repo add" not in orca_step["run"]
+
+    # The bridge loop is downstream of it and must never be silently skipped.
+    orca_index = next(
+        i for i, item in enumerate(steps)
+        if item.get("name") == "Register checkout with Orca (BLOCKED_ENV-aware)"
+    )
+    bridge_index = next(
+        i for i, item in enumerate(steps)
+        if item.get("name") == "Run bridge loop (executes issues)"
+    )
+    assert orca_index < bridge_index
+
+    bridge_step = steps[bridge_index]
+    assert "orca_precondition" in bridge_step["run"]
+    assert "BLOCKED_ENV" in bridge_step["run"]
+
+
 def test_u8_crew_dispatch_wired_into_execute_job():
     """U8: crew path is enabled in the live workflow, bounded per cycle.
 
@@ -218,6 +258,24 @@ def test_u8_crew_dispatch_wired_into_execute_job():
     env = workflow["jobs"]["execute"]["env"]
     assert env.get("CREW_ENABLED") in ("1", 1), "crew dispatch must be on"
     assert int(env.get("CREW_MAX_PER_CYCLE", 1)) >= 1
+
+
+def test_grading_queue_is_seeded_and_checkpointed():
+    """Pending and dead-letter jobs must survive each fresh workflow checkout."""
+    workflow = _workflow()
+    steps = workflow["jobs"]["execute"]["steps"]
+    seed = next(step for step in steps if step.get("name") == "Seed retry/board state from board-publish")
+    checkpoint = next(
+        step for step in steps
+        if step.get("name") == "Sanitize + commit board state (durable, PII-free)"
+    )
+
+    assert "data/grading_queue.jsonl" in seed["run"]
+    assert "git cat-file -e origin/board-publish:data/grading_queue.jsonl" in seed["run"]
+    assert "touch data/grading_queue.jsonl" in seed["run"]
+    assert ": > data/grading_queue.jsonl" not in seed["run"]
+    assert "data/grading_queue.jsonl" in checkpoint["run"]
+    assert "data/grading_queue.jsonl" in checkpoint["run"].split("git add -f", 1)[1]
 
 
 def test_u8_crew_registry_is_checkpointed():

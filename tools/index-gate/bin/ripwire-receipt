@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# ripwire-receipt — run ripwire, then record what it actually indexed.
+#
+# WHY THIS EXISTS
+# ---------------
+# `index-gate check` requires a receipt from ripwire or envit. That requirement
+# is only real if receipts cannot be hand-written. An opt-in CLI that nobody has
+# to call is a presence check: it passes the moment you type the command, whether
+# or not the output informed anything. That is the 2026-09-28 verify-gate bug
+# wearing a guard's clothes.
+#
+# So the receipt is a BYPRODUCT of indexing, not a thing you remember to do.
+# Wrap the real ripwire, record its file list, and the gate's demand becomes
+# mechanical: the only way to a valid receipt is to have actually indexed.
+#
+# `index-gate receipt` refuses unknown tools, so a receipt cannot be minted by
+# anything but these two wrappers.
+#
+# USAGE
+#   ripwire-receipt <dir> [ripwire args...]   index, then record
+#   ripwire-receipt --status                 show what is currently backed
+#
+# EXIT: ripwire's own exit code. A failed index records no receipt -- you cannot
+# back a claim with an index that failed to build.
+
+set -uo pipefail
+
+GATE_BIN="${INDEX_GATE_BIN:-}"
+if [ -z "$GATE_BIN" ]; then
+  # Locate index-gate relative to this script (tools/index-gate/bin/ripwire-receipt).
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for cand in "$here/../target/release/index-gate" "$here/../../target/release/index-gate"; do
+    if [ -x "$cand" ]; then GATE_BIN="$cand"; break; fi
+  done
+fi
+
+if [ -z "$GATE_BIN" ] || [ ! -x "$GATE_BIN" ]; then
+  echo "ripwire-receipt: index-gate binary not found." >&2
+  echo "  build it:  cargo build --release --manifest-path tools/index-gate/Cargo.toml" >&2
+  echo "  or set INDEX_GATE_BIN=/path/to/index-gate" >&2
+  exit 3
+fi
+
+if [ "${1:-}" = "--status" ]; then
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  exec "$GATE_BIN" --root "$root" check --claim "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/README.md"
+fi
+
+DIR="${1:-.}"
+shift || true
+
+command -v ripwire >/dev/null 2>&1 || {
+  echo "ripwire-receipt: ripwire is not on PATH" >&2
+  exit 3
+}
+
+echo "ripwire-receipt: indexing $DIR ..." >&2
+ripwire "$DIR" "$@"
+rc=$?
+
+# Only a successful index earns a receipt. This is the load-bearing line: it is
+# what stops "ripwire was called" from becoming the same class of claim as
+# "ripwire succeeded and covered the file I am citing".
+if [ $rc -ne 0 ]; then
+  echo "ripwire-receipt: ripwire exited $rc -- no receipt recorded." >&2
+  exit $rc
+fi
+
+root="$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Ask ripwire what it actually INDEXED. The indexed set is in the normal map
+# output as <f p="...">; `--skipped` is the wrong source -- it names the files
+# ripwire DROPPED (oversize, unsupported-ext), so reading it produced a receipt
+# listing en.json and pnpm-lock.yaml while omitting verify_gate.py entirely.
+# That receipt would back claims about files the index could not read.
+files="$(ripwire "$DIR" --top-k=2000 2>/dev/null \
+  | grep -o '<f p="[^"]*"' \
+  | sed 's/<f p="//; s/"$//' \
+  | sort -u)"
+
+if [ -z "$files" ]; then
+  echo "ripwire-receipt: no indexed files found; no receipt." >&2
+  exit 1
+fi
+
+if [ -z "$files" ]; then
+  echo "ripwire-receipt: ripwire succeeded but reported no files; no receipt." >&2
+  echo "  This is a fail-closed outcome, not a pass: an empty index backs nothing." >&2
+  exit 0
+fi
+
+# Do NOT use `xargs`: with a large file list it can split into multiple
+# invocations, and the gate's `receipt` subcommand takes a SINGLE --root
+# followed by positionals. xargs silently ran the gate with no subcommand, the
+# gate printed its usage, exited 2, and this script then announced "recorded"
+# anyway -- a false success, the exact bug class this tool exists to stop.
+# Capture the exit code and only report success if the receipt really landed.
+count_before=0
+[ -d "$root/.index-gate" ] && count_before=$(ls -1 "$root/.index-gate" 2>/dev/null | wc -l | tr -d ' ')
+
+# shellcheck disable=SC2086
+printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 "$GATE_BIN" --root "$root" receipt --tool ripwire
+rc=$?
+
+if [ $rc -ne 0 ] || [ ! -f "$root/.index-gate/ripwire.json" ]; then
+  echo "ripwire-receipt: FAILED to record receipt (gate exit $rc)." >&2
+  echo "  No claim is backed. The index ran, but its receipt did not land." >&2
+  exit 1
+fi
+
+count=$(grep -c '' "$root/.index-gate/ripwire.json" 2>/dev/null || echo 0)
+echo "ripwire-receipt: receipt written for $root (${count} lines)." >&2

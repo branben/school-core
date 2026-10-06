@@ -44,9 +44,11 @@ HOME_RE = re.compile(r"/Users/[A-Za-z0-9_.-]+")
 
 # Runtime observations are untrusted. Redact sensitive fields before any
 # durable checkpoint, even when they arrive inside YAML/text artifacts.
-SENSITIVE_KEY_RE = re.compile(
-    r"(?i)(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|auth|secret|password|credential|private[_-]?key)"
+SENSITIVE_KEY_PATTERN = (
+    r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|auth|secret|password|credential|private[_-]?key)"
 )
+SENSITIVE_KEY_RE = re.compile(r"(?i)" + SENSITIVE_KEY_PATTERN)
+SENSITIVE_JSON_KEY_RE = re.compile(r"(?i)[\"']" + SENSITIVE_KEY_PATTERN + r"[\"']\s*:")
 SESSION_ID_RE = re.compile(r"^loop-\d{8}-\d{6}$")
 SENSITIVE_LINE_RE = re.compile(
     r"(?im)^(\s*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|auth|secret|password|credential)[^:]*:\s*).*$"
@@ -157,9 +159,11 @@ def sanitize_file(path: Path) -> int:
         len(HOME_RE.findall(raw))
         + len(REPO_PREFIX_RE.findall(raw))
         + len(SENSITIVE_LINE_RE.findall(raw))
+        + len(SENSITIVE_JSON_KEY_RE.findall(raw))
         + len(TOKEN_RE.findall(raw))
     )
-    if hits_before == 0:
+    is_jsonl = path.suffix.lower() == ".jsonl"
+    if hits_before == 0 and not is_jsonl:
         return 0
 
     try:
@@ -167,6 +171,23 @@ def sanitize_file(path: Path) -> int:
             data = yaml.safe_load(raw)
             data = scrub_value(data)
             path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+        elif path.suffix.lower() == ".jsonl":
+            sanitized_lines = []
+            for line in raw.splitlines():
+                if not line.strip():
+                    sanitized_lines.append(line)
+                    continue
+                try:
+                    sanitized_lines.append(
+                        json.dumps(scrub_value(json.loads(line)), ensure_ascii=False)
+                    )
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"invalid JSONL record in {path}; refusing unsafe text fallback"
+                    ) from exc
+            cleaned = "\n".join(sanitized_lines) + ("\n" if raw.endswith("\n") else "")
+            if cleaned != raw:
+                path.write_text(cleaned)
         else:
             data = json.loads(raw)
             data = scrub_value(data)

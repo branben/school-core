@@ -32,11 +32,16 @@
           pkgs.coreutils  # provides the per-command `timeout` wrapper
           pkgs.pnpm  # nodePackages was removed in nixpkgs 26.05; pnpm now lives at top level
           pkgs.python312
+          pkgs.python312Packages.mypy  # strict typecheck for student_vm_runner.py
           pkgs.ripgrep
           pkgs.fd
           pkgs.jq
           pkgs.gitFull
           pkgs.gh
+          pkgs.rustc  # Rust compiler for student code in tools/index-gate/
+          pkgs.cargo  # Rust build tool
+          pkgs.go  # Go toolchain for student code
+          pkgs.gopls  # Go language server (for typecheck)
         ];
         # Network is intentionally NOT enabled here. verify_gate mounts a
         # pre-cached clone; if a test needs network it must opt in explicitly.

@@ -11,8 +11,12 @@
     "coder": {
         "_difficulty_code-implementation": 1.0,
         "_difficulty_python-testing": 1.0,
-        "code-implementation": 14.12128930361028,
-        "python-testing": 23.347759035929997
+        "code-implementation": 18.493139260965528,
+        "python-testing": 17.528431325150997
+    },
+    "executor": {
+        "_difficulty_git-operations": 1.0,
+        "git-operations": 15.092999999999998
     },
     "foundry-coder-0.5b": {
         "_default": 15.0
@@ -52,6 +56,6 @@
     },
     "searcher": {
         "_difficulty_debugging": 1.0,
-        "debugging": 7.946999999999999
+        "debugging": 15.79413
     }
 }

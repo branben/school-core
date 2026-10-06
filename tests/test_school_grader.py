@@ -58,6 +58,98 @@ def test_queue_ack_removes_job(tmp_path):
     assert q.count() == 0
 
 
+def test_drain_retains_failed_job_with_attempt_and_error(tmp_path, monkeypatch):
+    from school_grader import MAX_GRADING_ATTEMPTS
+
+    q = GradingQueue(tmp_path / "q.jsonl")
+    job = GradingJob(issue_number=7, crew_id="retry-me")
+    q.enqueue(job)
+    monkeypatch.setattr("school_grader.grade", lambda *a, **k: {
+        "key": job.key, "error": "temporary score store outage",
+    })
+
+    results = drain(q, store=object())
+
+    assert len(results) == 1
+    assert q.count() == 1
+    pending = q.pending()[0]
+    assert pending.attempt_count == 1
+    assert pending.last_error == "temporary score store outage"
+    assert pending.queue_state == "pending"
+    assert q.dead_letters() == []
+    assert MAX_GRADING_ATTEMPTS > 1
+
+
+def test_drain_dead_letters_after_bounded_attempts_and_requeue_is_explicit(
+    tmp_path, monkeypatch,
+):
+    from school_grader import MAX_GRADING_ATTEMPTS
+
+    q = GradingQueue(tmp_path / "q.jsonl")
+    job = GradingJob(issue_number=8, crew_id="dead-letter")
+    q.enqueue(job)
+    monkeypatch.setattr("school_grader.grade", lambda *a, **k: {
+        "key": job.key, "error": "permanent grading error",
+    })
+
+    for _ in range(MAX_GRADING_ATTEMPTS):
+        results = drain(q, store=object())
+        assert len(results) == 1
+
+    assert q.count() == 0
+    dead = q.dead_letters()
+    assert len(dead) == 1
+    assert dead[0].key == job.key
+    assert dead[0].attempt_count == MAX_GRADING_ATTEMPTS
+    assert dead[0].last_error == "permanent grading error"
+    assert q.requeue_dead_letter(job.key) is True
+    assert q.requeue_dead_letter(job.key) is False
+    assert q.dead_letters() == []
+    assert q.count() == 1
+    requeued = q.pending()[0]
+    assert requeued.attempt_count == 0
+    assert requeued.queue_state == "pending"
+    assert requeued.requeued_from["attempt_count"] == MAX_GRADING_ATTEMPTS
+
+
+def test_cli_lists_and_requeues_dead_letter(tmp_path, capsys):
+    from school_grader import main
+
+    q_path = tmp_path / "q.jsonl"
+    q = GradingQueue(q_path)
+    job = GradingJob(issue_number=11, crew_id="operator-recovery")
+    q.enqueue(job)
+    q.record_failure(job.key, "visible failure", max_attempts=1)
+
+    assert main(["--queue-file", str(q_path), "--list-dead-letters"]) == 0
+    assert job.key in capsys.readouterr().out
+    assert main(["--queue-file", str(q_path), "--requeue-dead-letter", job.key]) == 0
+    assert q.count() == 1
+    assert q.dead_letters() == []
+
+
+def test_drain_processes_failed_job_once_and_continues_other_jobs(tmp_path, monkeypatch):
+    q = GradingQueue(tmp_path / "q.jsonl")
+    failed = GradingJob(issue_number=9, crew_id="fails")
+    succeeded = GradingJob(issue_number=10, crew_id="succeeds")
+    q.enqueue(failed)
+    q.enqueue(succeeded)
+    calls = []
+
+    def fake_grade(job, **kwargs):
+        calls.append(job.key)
+        return {"key": job.key, "error": "temporary" if job.key == failed.key else None}
+
+    monkeypatch.setattr("school_grader.grade", fake_grade)
+    results = drain(q, store=object())
+
+    assert len(results) == 2
+    assert calls.count(failed.key) == 1
+    assert calls.count(succeeded.key) == 1
+    assert q.count() == 1
+    assert q.pending()[0].key == failed.key
+
+
 # ── Two-judge label resolution ───────────────────────────────────────────────
 
 def test_two_judge_accept_authoritative():

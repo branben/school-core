@@ -122,13 +122,23 @@ def write_bookbag(
     files_changed: Optional[list[str]] = None,
     verification: str = "",
     summary: str = "",
-    blockers: Optional[list[str]] = None,
+    blockers: Optional[list] = None,
     accepted: bool = False,
+    cto_score: Optional[float] = None,
+    coo_score: Optional[float] = None,
+    has_critical: Optional[bool] = None,
+    parse_failed: Optional[bool] = None,
 ) -> dict:
     """Write a bookbag to disk. Returns the dict that was written.
 
     All fields are written as-provided. Callers should set verdicts and
     accepted flag after review is complete.
+
+    `accepted` is DERIVED from cto_verdict/coo_verdict/cto_score/coo_score/
+    has_critical/parse_failed. Persisting the inputs alongside it is what makes
+    a rejection auditable: without them a PASS/PASS record with accepted=false
+    cannot be explained, and an unexplainable field gets read as a bug. See
+    director._run_two_judge_review for the computation.
     """
     bag = {
         "bead": bead,
@@ -148,6 +158,11 @@ def write_bookbag(
         "summary": summary,
         "blockers": blockers or [],
         "accepted": accepted,
+        # The inputs `accepted` is derived from, so a rejection is auditable.
+        "cto_score": cto_score,
+        "coo_score": coo_score,
+        "has_critical": has_critical,
+        "parse_failed": parse_failed,
         "timestamp": _now_iso(),
     }
     path = bead_path(bead, repo)
