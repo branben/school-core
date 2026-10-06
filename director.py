@@ -387,6 +387,32 @@ def _should_auto_sleep(session_id: str) -> bool:
     return False
 
 
+# Issue #139: execution finding classes that mean the submission did not run.
+# These veto acceptance regardless of severity and cap the combined score.
+_EXECUTION_BLOCKING_CLASSES = frozenset({
+    "not_executable",
+    "syntax_error",
+    "runtime_failure",
+})
+# Classes that cap the score but do not veto. A timeout may be a snippet
+# blocking on input() rather than an infinite loop; until a real-input driver
+# exists we cannot tell the two apart, so it lowers the score only.
+_EXECUTION_SCORE_CAP_CLASSES = _EXECUTION_BLOCKING_CLASSES | {"timeout"}
+_EXECUTION_FAILURE_SCORE_CAP = 40.0
+
+# Runtime errors that usually mean the snippet needs context the standalone
+# sandbox does not provide (repo modules, stdin, fixtures), not that the
+# answer is wrong. These stay advisory: no veto, no score cap.
+_MISSING_CONTEXT_ERROR_RE = re.compile(
+    r"\b(ModuleNotFoundError|ImportError|EOFError)\b"
+)
+
+
+def _is_missing_context_failure(stderr: str) -> bool:
+    """True when a runtime failure looks like missing context, not a bug."""
+    return bool(stderr) and bool(_MISSING_CONTEXT_ERROR_RE.search(stderr))
+
+
 def _run_two_judge_review(
     bead: str,
     output: str,
@@ -441,9 +467,11 @@ def _run_two_judge_review(
 
     # ── Orca Execution ──
     # Execute student code in an Orca terminal sandbox before CTO review.
-    # Exit code 0 → PASS signal. Runtime errors → HIGH findings (advisory, not
-    # veto-level — extracted code may be context-dependent and can't run
-    # standalone). OrcaUnavailableError is a hard failure — the pipeline cannot
+    # Exit code 0 → PASS signal. Runtime errors → HIGH findings that veto by
+    # class (issue #139), except missing-context errors (ImportError,
+    # ModuleNotFoundError, EOFError), which stay advisory because extracted
+    # code may depend on context it can't get standalone. Timeouts cap the
+    # score without vetoing. OrcaUnavailableError is a hard failure — the pipeline cannot
     # verify code without a sandbox, so the exception propagates up to run_task().
     #
     # Language detection: for code-implementation tasks, resolve the repo path
@@ -509,13 +537,19 @@ def _run_two_judge_review(
                             suggestion="Ensure the code terminates in reasonable time",
                         ))
                     elif result.exit_code != 0:
-                        # HIGH, not CRITICAL: extracted code may be a context-dependent
-                        # snippet (e.g. TypeScript refactoring in a JS project) that
-                        # can't run standalone in Orca.  The CTO/COO judges assess
-                        # correctness; this finding is advisory only.
+                        # HIGH severity either way. A failure that looks like
+                        # missing context (ImportError, ModuleNotFoundError,
+                        # EOFError) is advisory: the snippet may be correct
+                        # but depend on repo modules or stdin the standalone
+                        # sandbox lacks. Any other runtime failure is a
+                        # blocking class (issue #139) and vetoes acceptance.
+                        _missing_ctx = _is_missing_context_failure(result.stderr or "")
                         execution_findings.append(Finding(
                             section="execution",
-                            issue_class="runtime_failure",
+                            issue_class=(
+                                "runtime_missing_context" if _missing_ctx
+                                else "runtime_failure"
+                            ),
                             severity=Severity.HIGH,
                             citation=f"exit_code={result.exit_code}",
                             description=(result.stderr or "Unknown execution error")[:300],
@@ -733,8 +767,16 @@ def _run_two_judge_review(
     # Acceptance requires both judges PASS at score >= 50. A CRITICAL finding
     # (from lens findings) is an automatic veto — broken or unsafe output cannot
     # be accepted even if both judges happen to say PASS.
+    # Issue #139: execution failures emit HIGH, not CRITICAL, so a
+    # CRITICAL-only veto could never block them. The veto is also keyed on
+    # the execution finding class (see _EXECUTION_BLOCKING_CLASSES).
     has_critical = any(
-        getattr(f, "severity", None) == Severity.CRITICAL for f in all_findings
+        getattr(f, "severity", None) == Severity.CRITICAL
+        or (
+            getattr(f, "section", None) == "execution"
+            and getattr(f, "issue_class", None) in _EXECUTION_BLOCKING_CLASSES
+        )
+        for f in all_findings
     )
     # A judge whose raw output could not be parsed is INCONCLUSIVE, not
     # approving. adversarial_reviewer's parse-failure branches return
@@ -755,6 +797,14 @@ def _run_two_judge_review(
         and not parse_failed
     )
     combined_score = (cto_result.score + coo_result.score) / 2.0
+    # Execution evidence is part of the score, not only a veto: a failed run
+    # (including a timeout, which does not veto) cannot read as near-perfect.
+    if any(
+        getattr(f, "section", None) == "execution"
+        and getattr(f, "issue_class", None) in _EXECUTION_SCORE_CAP_CLASSES
+        for f in execution_findings
+    ):
+        combined_score = min(combined_score, _EXECUTION_FAILURE_SCORE_CAP)
 
     # ── Verification-co-evolution pass (P2.2) ──
     # As the agent/harness improves, *fixed* acceptance checks stop measuring real

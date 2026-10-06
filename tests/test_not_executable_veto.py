@@ -231,10 +231,9 @@ class TestVetoNonExecutable:
         finding = _finding(result, "not_executable")
         assert finding is not None
         assert finding["severity"] == "CRITICAL"
-        # Judges still award 100.0 — but the CRITICAL finding vetoes acceptance.
-        # This is the exact trajectory defect: accepted=true with score 100.0
-        # despite a finding.  Now accepted=false even at score 100.0.
-        assert result["combined_score"] == 100.0
+        # Issue #139: execution evidence now enters the score. The judges
+        # award 100.0, but a blocking execution failure caps it.
+        assert result["combined_score"] <= 40.0
 
     def test_never_called_def_rejected(self, monkeypatch, tmp_path):
         """A never-called def yields accepted=false, CRITICAL."""
@@ -272,11 +271,13 @@ class TestVetoNonExecutable:
         assert finding is None
 
     def test_runnable_exit_nonzero_still_high_not_critical(self, monkeypatch, tmp_path):
-        """A runtime error (not a syntax error) stays HIGH — advisory, not veto.
+        """A runtime error keeps severity HIGH but now vetoes by issue class.
 
-        This ensures we don't over-escalate: a syntax error is CRITICAL
-        (not_executable), but a NameError or ZeroDivisionError at runtime
-        is still HIGH (runtime_failure) per the existing contract.
+        Issue #139: the veto used to key on CRITICAL only, which the
+        execution path never emits for runtime_failure, so a detected
+        failure could not block acceptance. Severity is unchanged; the
+        class is what blocks. (Missing-context errors such as ImportError
+        stay advisory; see tests/test_execution_blocking_veto.py.)
         """
         # Override the fake Orca to return a runtime failure (not not_executable)
         class _FakeOrcaRuntimeError:
@@ -324,7 +325,7 @@ class TestVetoNonExecutable:
                 repo=_REPO,
             )
 
-        assert result["accepted"] is True  # judges PASS, runtime_failure is HIGH
+        assert result["accepted"] is False  # runtime_failure is a blocking class
         finding = _finding(result, "runtime_failure")
         assert finding is not None
         assert finding["severity"] == "HIGH"
