@@ -231,10 +231,9 @@ class TestVetoNonExecutable:
         finding = _finding(result, "not_executable")
         assert finding is not None
         assert finding["severity"] == "CRITICAL"
-        # Judges still award 100.0 — but the CRITICAL finding vetoes acceptance.
-        # This is the exact trajectory defect: accepted=true with score 100.0
-        # despite a finding.  Now accepted=false even at score 100.0.
-        assert result["combined_score"] == 100.0
+        # Judges award 100.0, but execution_score=0 (not_executable).
+        # combined_score = (100 + 100 + 0) / 3 = 66.67
+        assert result["combined_score"] == pytest.approx(66.67, abs=0.1)
 
     def test_never_called_def_rejected(self, monkeypatch, tmp_path):
         """A never-called def yields accepted=false, CRITICAL."""
@@ -271,12 +270,12 @@ class TestVetoNonExecutable:
         finding = _finding(result, "not_executable")
         assert finding is None
 
-    def test_runnable_exit_nonzero_still_high_not_critical(self, monkeypatch, tmp_path):
-        """A runtime error (not a syntax error) stays HIGH — advisory, not veto.
+    def test_runnable_exit_nonzero_blocks_via_blocking_classes(self, monkeypatch, tmp_path):
+        """A runtime error (NameError) blocks acceptance via BLOCKING_CLASSES.
 
-        This ensures we don't over-escalate: a syntax error is CRITICAL
-        (not_executable), but a NameError or ZeroDivisionError at runtime
-        is still HIGH (runtime_failure) per the existing contract.
+        Issue #139 fix: runtime_failure is now a blocking class. The finding
+        stays HIGH severity, but it vetoes acceptance because the issue_class
+        is in BLOCKING_CLASSES. The score also drops because execution_score=0.
         """
         # Override the fake Orca to return a runtime failure (not not_executable)
         class _FakeOrcaRuntimeError:
@@ -324,7 +323,11 @@ class TestVetoNonExecutable:
                 repo=_REPO,
             )
 
-        assert result["accepted"] is True  # judges PASS, runtime_failure is HIGH
+        # runtime_failure is now a blocking class — acceptance is vetoed
+        assert result["accepted"] is False
+        assert result["has_blocking_finding"] is True
         finding = _finding(result, "runtime_failure")
         assert finding is not None
         assert finding["severity"] == "HIGH"
+        # combined_score = (100 + 100 + 0) / 3 = 66.67
+        assert result["combined_score"] == pytest.approx(66.67, abs=0.1)

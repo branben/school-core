@@ -252,6 +252,17 @@ _active_sessions = {}  # session_id -> {agent, building, task_queue, layer_0, ep
 SLEEP_TIMEOUT_MINUTES = 15
 SLEEP_CONTEXT_PRESSURE_THRESHOLD = 0.70  # 70% of context window
 
+# Issue classes that indicate non-functional code. These block acceptance at
+# whatever severity the path emits — a veto that depends on a severity the
+# path never produces is unreachable code.
+BLOCKING_CLASSES = frozenset({
+    "runtime_failure",
+    "not_executable",
+    "timeout",
+    "verify_failed",
+    "verify_gate_error",
+})
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -730,11 +741,11 @@ def _run_two_judge_review(
     cto_verdict = cto_result.verdict.value  # "PASS" or "FAIL"
     coo_verdict = coo_result.verdict.value
     all_findings = execution_findings + build_findings + cto_result.findings + coo_result.findings
-    # Acceptance requires both judges PASS at score >= 50. A CRITICAL finding
-    # (from lens findings) is an automatic veto — broken or unsafe output cannot
-    # be accepted even if both judges happen to say PASS.
-    has_critical = any(
-        getattr(f, "severity", None) == Severity.CRITICAL for f in all_findings
+    # Acceptance requires both judges PASS at score >= 50. A blocking finding
+    # (from execution or verify paths) is an automatic veto — non-functional
+    # output cannot be accepted even if both judges happen to say PASS.
+    has_blocking_finding = any(
+        getattr(f, "issue_class", None) in BLOCKING_CLASSES for f in all_findings
     )
     # A judge whose raw output could not be parsed is INCONCLUSIVE, not
     # approving. adversarial_reviewer's parse-failure branches return
@@ -751,10 +762,19 @@ def _run_two_judge_review(
         and coo_verdict == "PASS"
         and cto_result.score >= 50
         and coo_result.score >= 50
-        and not has_critical
+        and not has_blocking_finding
         and not parse_failed
     )
-    combined_score = (cto_result.score + coo_result.score) / 2.0
+    # Execution score: 100 if passed, 50 if not run, 0 if failed.
+    # Feeds execution findings into the score, not just into a veto.
+    execution_score = 50.0  # default: not run
+    for f in execution_findings:
+        if f.issue_class == "execution_passed":
+            execution_score = 100.0
+        elif f.issue_class in BLOCKING_CLASSES:
+            execution_score = 0.0
+
+    combined_score = (cto_result.score + coo_result.score + execution_score) / 3.0
 
     # ── Verification-co-evolution pass (P2.2) ──
     # As the agent/harness improves, *fixed* acceptance checks stop measuring real
@@ -817,7 +837,7 @@ def _run_two_judge_review(
         accepted=accepted,
         cto_score=cto_result.score,
         coo_score=coo_result.score,
-        has_critical=has_critical,
+        has_blocking_finding=has_blocking_finding,
         parse_failed=parse_failed,
         lens=f"cto({cto_verdict})+coo({coo_verdict})",
         verification=verification_output or None,
@@ -863,6 +883,7 @@ def _run_two_judge_review(
         "build_findings": [f.to_dict() for f in build_findings],
         "build_verification": verification_output or None,
         "accepted": accepted,
+        "has_blocking_finding": has_blocking_finding,
         "coevolution": coevolution_report.to_dict() if coevolution_report else None,
         "cto_narrative": cto_narrative,
         "coo_narrative": coo_narrative,
