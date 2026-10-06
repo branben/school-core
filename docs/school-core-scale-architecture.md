@@ -119,11 +119,23 @@ one teacher watching one whiteboard.
   idempotent lock-safe `ScoreStore` write (N5.2 / N2.3 — replay = no-op),
   `compound_learning` observation (fail-soft), GitHub label via the non-fatal
   `LabelWriteQueue` (N7.2). Never raises.
-- `drain(queue, ...)` — processes all pending jobs in **bounded waves**
+- `drain(queue, ...)` — processes one pending snapshot in **bounded waves**
   (`bounded_grader_pool_size`, N6.1) so ledger writes never exceed what the
-  lock-safe store can absorb.
+  lock-safe store can absorb. Failed jobs retain a bounded error and attempt
+  count for the next drain; after three failed drains they remain visible as
+  `dead_letter` entries in the JSONL queue. A job is attempted at most once in
+  one drain call.
 - CLI: `python -m school_grader --drain [--score-store PATH]
-  [--compound-store PATH] [--max-workers N]` — a standalone pipeline stage.
+  [--compound-store PATH] [--max-workers N] [--max-attempts N]` — a standalone
+  pipeline stage. Operators can inspect failures with `--list-dead-letters`
+  and explicitly retry one with `--requeue-dead-letter KEY`; requeue resets
+  the attempt budget while preserving the prior failure summary.
+- The scheduled School Loop seeds `data/grading_queue.jsonl` from
+  `board-publish` and checkpoints it with the other allowlisted state. The
+  sanitizer handles each JSONL record structurally, preserving queue identity
+  and retry/dead-letter fields while redacting sensitive keys and values. The
+  fresh-checkout test verifies pending and dead-letter state survives restore;
+  no live workflow execution is implied by this local wiring.
 - Integration seam: `issue_bridge.process_issues` enqueues a `GradingJob` on
   every successful task (non-fatal). At cap=1 the inline finalization still
   runs (behavior unchanged); the queue is the ready hook for the 20+ separate

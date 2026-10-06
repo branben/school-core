@@ -140,3 +140,99 @@ PATH and therefore still resolves to the broker wrapper when the broker is
 unavailable. In a real hosted/verifyShell run that has no broker, the runner's
 own commit step will hit the same exit-128. The seam tests pass because
 conftest repairs PATH for the whole process; the product path is untouched.
+
+---
+
+## Addendum — `_git_env()["PATH"]` fix, differential probe (2026-10-03)
+
+Author: lucas (Assistant Director), at Brandon's request. Recorded so the next
+reviewer does not have to re-derive this, and so the two claims below are not
+conflated again.
+
+### The residual risk above is REAL — and the fix closes it
+
+Working-tree change (uncommitted at time of writing), one line,
+`student_vm_runner.py:624`:
+
+```diff
+-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
++        "PATH": "/usr/bin:/bin",
+```
+
+Probed by invoking the **product** helper directly — not the suite — against a
+node shim at `/tmp/brokerbin/git` that reproduces the wrapper's documented
+behaviour (`tests/conftest.py:12-29`): it deletes `GIT_AUTHOR_*` /
+`GIT_COMMITTER_*` from the child env and re-sets them to `''`, repopulating
+only when its broker answers. Detected as a wrapper by
+`conftest._is_git_broker_wrapper` → `True`.
+
+Ambient env hostile: `GIT_AUTHOR_NAME= GIT_AUTHOR_EMAIL= GIT_COMMITTER_NAME=
+GIT_COMMITTER_EMAIL= GIT_CONFIG_COUNT=` (empty-but-set), wrapper first on PATH.
+
+| Arm | `_git_env()["PATH"]` | `git init` | `git add` | `git commit` |
+|---|---|---|---|---|
+| with fix | `/usr/bin:/bin` | 0 | 0 | **0** |
+| fix reverted | `/tmp/brokerbin:…` (ambient) | 0 | 0 | **128** |
+
+`git commit` stderr in the reverted arm:
+`fatal: empty ident name (for <>) not allowed`.
+
+This is the exit-128 the residual-risk note predicted, reached through the
+product path. **The fix is correct and is not cosmetic.**
+
+### The seam suite CANNOT evidence this fix — do not use it as proof
+
+Suite runs use the canonical 5-file set named at lines 30-34
+(`test_student_vm_runner`, `test_student_vm_artifact`,
+`test_student_verify_flow`, `test_verifier_vm`, `test_student_vm_guest_probes`),
+`-p no:randomly`, empty-but-set `GIT_AUTHOR_*`:
+
+| Configuration | Result |
+|---|---|
+| hostile env, **with** fix | 47 passed, 9 skipped |
+| hostile env, **fix reverted** | 47 passed, 9 skipped |
+| hostile env **+ broker wrapper on PATH** | 47 passed, 9 skipped |
+| wrapper on PATH, `hermetic_git_identity` neutralized, fix reverted | **8 failed**, 19 passed, 1 skipped, 28 errors |
+| wrapper on PATH, `hermetic_git_identity` neutralized, **fix restored** | **8 failed**, 19 passed, 1 skipped, 28 errors |
+
+Reading: the autouse fixture at `tests/conftest.py:32-64` deletes the empty
+identity vars and drops the broker wrapper from PATH for the whole process
+before any test runs. With it active, `:624` is inert — both arms green. With
+it neutralized, `:624` is *also* inert — both arms equally red, because the
+failing tests (`test_student_vm_artifact.py`, 8 of them) drive bare
+`git -C … commit` in their own setup rather than going through `_git_env()`
+(confirmed: `CalledProcessError` on `['git', '-C', …, 'commit', '-qm', 'base']`,
+stderr `fatal: empty ident name`).
+
+**Conclusion: suite green is not evidence for this line, in either direction.**
+The only instrument that discriminates is a direct product-helper probe with a
+wrapper shim. Keep the existing `conftest.py` fixture — it is a correct and
+independent hardening — but do not let it be read as coverage of `:624`.
+
+### Correction to a prior skip-count claim
+
+A report stated the seam suite now yields `47 passed, 3 skipped` versus a
+`47 passed, 9 skipped` baseline, and offered the 6-skip delta as acceptance
+evidence for this change. **Not reproducible on this host (2026-10-03).** Every
+configuration above measures 9 skips. The acceptance-(2) figures at lines
+106-107 (`47 passed, 9 skipped`, identical hostile vs neutralized) were already
+satisfied by commit `b340510` plus the conftest fixture; this change did not
+move them. The 9 skips are all gated on `SCHOOL_CORE_SMOLVM_PACK`
+(`test_student_vm_runner.py:74`, `test_student_vm_guest_probes.py:59`,
+`test_verifier_vm.py:86`) — an operator-pinned local pack, unrelated to git
+identity.
+
+### Open items for the owner
+
+- `bd show sch-20` → *no issue found matching "sch-20"*. The bead does not
+  resolve under that id; a prior `recovery:resolve` no-op is consistent with
+  that. Confirm the tracker id before closing anything.
+- The working tree on `school/sch-20-seam-hygiene` carries ~30 modified files
+  (`director.py`, `scoring.py`, `leaderboard.py`, `recovery.py`,
+  `state_journal.py`, CI workflows, …), not the 4 previously reported. Stage
+  only `student_vm_runner.py`.
+- Probe artifacts live in `/tmp` (`/tmp/brokerbin/git`, `/tmp/probe_git_env.py`)
+  and are not durable. `tests/conftest.py` was temporarily neutralized during
+  probing and **restored** — verified: `git diff -- tests/conftest.py` is empty,
+  `:624` reads `"/PATH": "/usr/bin:/bin"`, no probe markers remain, no new
+  stashes.
