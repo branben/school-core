@@ -69,6 +69,7 @@ def test_happy_path_reads_report_and_tears_down(monkeypatch, tmp_path):
         return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
 
     monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+    (tmp_path / "school-project").mkdir()
     result = dispatch_crew(
         issue_number=42,
         task_text="Fix the bug",
@@ -359,6 +360,7 @@ def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_pa
         return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
 
     monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+    (tmp_path / "school-project").mkdir()
     result = dispatch_crew(
         issue_number=43,
         task_text="Use the selected coder capability",
@@ -1571,3 +1573,26 @@ def test_brief_signal_first_precedes_worktree(monkeypatch, tmp_path):
         f"(pos {worktree_pos}) so the crew's first append is before any shell "
         f"round-trips"
     )
+
+
+def test_contract_is_frozen_before_spawn(monkeypatch, tmp_path):
+    configure_paths(monkeypatch, tmp_path)
+    project = tmp_path / "base"
+    project.mkdir()
+    (project / "project_verify.yaml").write_text('verify:\n  - name: check\n    cmd: exit 1\n')
+    events = []
+    import verify_gate
+    real = verify_gate.freeze_verification_contract
+    def freeze(path):
+        events.append("freeze")
+        return real(path)
+    monkeypatch.setattr(verify_gate, "freeze_verification_contract", freeze)
+    def spawn(*args):
+        events.append("spawn")
+        (project / "project_verify.yaml").write_text('verify:\n  - name: check\n    cmd: true\n')
+        raise crew_dispatch.CrewUnavailableError("fixture stopped")
+    monkeypatch.setattr(crew_dispatch, "_spawn", spawn)
+    with pytest.raises(crew_dispatch.CrewUnavailableError):
+        dispatch_crew(issue_number=901, task_text="task", project_dir=project,
+                      cycle_session_id="fixture", timeout=1)
+    assert events == ["freeze", "spawn"]
