@@ -71,10 +71,10 @@ def load_config(path: Optional[str] = None) -> dict:
     defaults = {
         "repo": "",
         "poll_interval_seconds": 300,
-        # No label filter by default. A non-empty list is a UNION after
-        # fetch_issues ORs it, but empty is the safe default: it fetches every
-        # open issue and lets the classifier decide readiness.
+        # Labels narrow discovery only, never authorize execution. Admission
+        # is closed until an owner-selected association allowlist is set.
         "labels": [],
+        "allowed_author_associations": [],
         "difficulty_overrides": {},
         "domain_overrides": {},
         "target_repos": [],
@@ -199,11 +199,30 @@ def fetch_issues(repo: str, labels: Optional[list[str]] = None) -> list[dict]:
     domain_overrides = config.get("domain_overrides", {})
     results = []
 
+    allowed = config.get("allowed_author_associations", [])
+    valid = {"OWNER", "MEMBER", "COLLABORATOR"}
+    if not isinstance(allowed, list) or not allowed or any(a not in valid for a in allowed):
+        sys.stderr.write("[github_fetcher] intake disabled: configure allowed_author_associations\n")
+        return []
     for issue in raw_issues:
+        # gh issue list does not expose authorAssociation. Fetch authenticated
+        # API metadata separately; issue body/labels cannot grant admission.
+        number = issue.get("number")
+        if not isinstance(number, int) or number <= 0:
+            continue
+        detail = _gh_command(["api", f"repos/{repo}/issues/{number}"])
+        try:
+            metadata = json.loads(detail) if detail else {}
+            if metadata.get("number") != number or metadata.get("author_association") not in allowed:
+                continue
+            if metadata.get("state") != "open" or metadata.get("pull_request"):
+                continue
+        except (ValueError, TypeError, AttributeError):
+            continue
         number = issue.get("number", 0)
-        title = issue.get("title", "")
-        body = issue.get("body", "") or ""
-        gh_labels = issue.get("labels", [])
+        title = metadata.get("title", issue.get("title", ""))
+        body = metadata.get("body", issue.get("body", "")) or ""
+        gh_labels = metadata.get("labels", issue.get("labels", []))
         label_names = [l.get("name", "") for l in gh_labels] if isinstance(gh_labels, list) else []
 
         category, state = classify_issue(title, label_names, body)
