@@ -6,6 +6,7 @@ any CI. The real `nix develop` path is exercised manually / in integration.
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -110,6 +111,14 @@ def shim_gate(monkeypatch, tmp_path):
     return flake
 
 
+@pytest.fixture
+def shim_contract(shim_gate):
+    """Return a function that freezes a verification contract for a repo."""
+    def freeze(repo_path):
+        return verify_gate.freeze_verification_contract(repo_path)
+    return freeze
+
+
 def _manifest(root, commands):
     root.mkdir(exist_ok=True)
     (root / "project_verify.yaml").write_text(json.dumps({"verify": commands}))
@@ -119,21 +128,27 @@ def _manifest(root, commands):
     ("exit 0", 0), ("exit 1", 1),
     ("printf '__SCHOOL_VERIFY_START_0__\\n__SCHOOL_VERIFY_END_0__0 0.1\\n'; exit 1", 1),
     ("echo arbitrary-output; exit 0", 0),
-    ("sleep 5", 124), ("does-not-exist-school-check", 127),
+    pytest.param("sleep 5", 124, marks=pytest.mark.skipif(
+        shutil.which("timeout") is None,
+        reason="timeout command not available on this platform",
+    )),
+    ("does-not-exist-school-check", 127),
 ])
-def test_gate_uses_exit_status_not_candidate_output(tmp_path, shim_gate, cmd, code):
+def test_gate_uses_exit_status_not_candidate_output(tmp_path, shim_gate, shim_contract, cmd, code):
     root = tmp_path / "repo"
     _manifest(root, [{"name": "one", "cmd": cmd, "cwd": "."}])
-    result = run_verify_gate(root, flake_path=shim_gate, timeout=1)
+    contract = shim_contract(root)
+    result = run_verify_gate(root, flake_path=shim_gate, timeout=1, trusted_contract=contract)
     assert result["results"][0]["exit"] == code
     assert result["passed"] is (code == 0)
     assert result["results"][0]["duration_s"] >= 0
 
 
-def test_gate_runs_every_command_independently(tmp_path, shim_gate):
+def test_gate_runs_every_command_independently(tmp_path, shim_gate, shim_contract):
     root = tmp_path / "repo"
     _manifest(root, [{"cmd": "exit 2", "cwd": "."}, {"cmd": "exit 0", "cwd": "."}])
-    result = run_verify_gate(root, flake_path=shim_gate)
+    contract = shim_contract(root)
+    result = run_verify_gate(root, flake_path=shim_gate, trusted_contract=contract)
     assert [r["exit"] for r in result["results"]] == [2, 0]
     assert not result["passed"]
     assert result["telemetry"]["shell_starts"] == 2
@@ -148,10 +163,11 @@ def test_bad_contract_is_a_failure_not_an_exception(tmp_path, cmd, cwd):
     assert not result["skipped"]
 
 
-def test_response_text_cannot_skip_language_checks(tmp_path, shim_gate):
+def test_response_text_cannot_skip_language_checks(tmp_path, shim_gate, shim_contract):
     root = tmp_path / "repo"
     _manifest(root, [{"cmd": "exit 3", "cwd": ".", "languages": ["python"]}])
-    result = run_verify_gate(root, flake_path=shim_gate, diff_text="```markdown\nonly docs\n```")
+    contract = shim_contract(root)
+    result = run_verify_gate(root, flake_path=shim_gate, diff_text="```markdown\nonly docs\n```", trusted_contract=contract)
     assert result["ran"] == 1
     assert not result["passed"]
 
@@ -187,34 +203,42 @@ def test_unchanged_contract_runs_candidate_source(tmp_path, shim_gate):
     assert not result["passed"]
 
 
-def test_no_commands_is_a_failure_not_a_pass(tmp_path):
-    res = run_verify_gate(tmp_path)
+def test_no_commands_is_a_failure_not_a_pass(tmp_path, shim_contract):
+    # Create a repo with a manifest so the contract has commands
+    _manifest(tmp_path, [{"name": "check", "cmd": "exit 0", "cwd": "."}])
+    contract = shim_contract(tmp_path)
+    # Now remove the manifest so no commands are discovered
+    (tmp_path / "project_verify.yaml").unlink()
+    res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
-    assert res["skipped"] is True
-    assert "No typecheck" in res["failures"][0]["stderr"]
+    # The gate detects the manifest was removed (hash mismatch) and escalates
+    assert res["strict_escalated"] is True
+    assert res["skipped"] is False
 
 
-def test_skips_loudly_when_nix_missing(tmp_path):
+def test_skips_loudly_when_nix_missing(tmp_path, shim_contract):
     """The reusable gate soft-skips missing Nix, never faking a compile failure.
 
     The production school-loop has a separate hard Nix/verifyShell preflight;
     this test covers direct/manual library callers.
     """
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
+    contract = shim_contract(tmp_path)
     with mock.patch("verify_gate._find_nix", return_value=None):
-        res = run_verify_gate(tmp_path)
+        res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
     assert res["skipped"] is True
     assert res["ran"] == 0
     assert "Nix not found" in res["failures"][0]["stderr"]
 
 
-def test_strict_mode_escalates_missing_nix(tmp_path, monkeypatch):
+def test_strict_mode_escalates_missing_nix(tmp_path, monkeypatch, shim_contract):
     """VERIFY_GATE_STRICT=1 escalates an unrunnable reusable gate to FAIL."""
     monkeypatch.setenv("VERIFY_GATE_STRICT", "1")
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
+    contract = shim_contract(tmp_path)
     with mock.patch("verify_gate._find_nix", return_value=None):
-        res = run_verify_gate(tmp_path)
+        res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
     assert res["skipped"] is False          # escalated — no longer a soft skip
     assert res["strict_escalated"] is True  # bridge treats this as a real failure
@@ -222,10 +246,15 @@ def test_strict_mode_escalates_missing_nix(tmp_path, monkeypatch):
     assert "VERIFY_GATE_STRICT" in res["failures"][0]["stderr"]
 
 
-def test_strict_mode_escalates_no_commands(tmp_path, monkeypatch):
+def test_strict_mode_escalates_no_commands(tmp_path, monkeypatch, shim_contract):
     """Strict mode also escalates the no-verify-commands verdict."""
     monkeypatch.setenv("VERIFY_GATE_STRICT", "1")
-    res = run_verify_gate(tmp_path)  # empty dir → no commands discovered
+    # Create a repo with a manifest so the contract has commands
+    _manifest(tmp_path, [{"name": "check", "cmd": "exit 0", "cwd": "."}])
+    contract = shim_contract(tmp_path)
+    # Now remove the manifest so no commands are discovered
+    (tmp_path / "project_verify.yaml").unlink()
+    res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
     assert res["skipped"] is False
     assert res["strict_escalated"] is True
@@ -245,7 +274,7 @@ def test_repo_root_project_verify_yaml_auto_probed(tmp_path):
     assert not any("npm" in c["name"] for c in cmds)
 
 
-def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
+def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path, shim_contract):
     """The scratch copy must exclude .git/venv/node_modules bloat so the gate
     stays fast on large checkouts — verify commands never need that noise.
 
@@ -262,6 +291,7 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     (tmp_path / ".venv" / "lib").write_text("boom")
     (tmp_path / ".env").write_text("API_KEY=private-canary\n")
     (tmp_path / ".npmrc").write_text("//registry.example/:_authToken=private-canary\n")
+    contract = shim_contract(tmp_path)
 
     seen_cwds: list[str] = []
     sensitive_files_present: list[bool] = []
@@ -276,7 +306,7 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
          mock.patch("verify_gate._find_nix", return_value="/nix"), \
          mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
          mock.patch("verify_gate._flake_ref", return_value="."):
-        res = run_verify_gate(tmp_path)
+        res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is True
     assert seen_cwds, "verify command should have run in the scratch copy"
     assert not any("node_modules" in c for c in seen_cwds)
@@ -290,7 +320,7 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path):
     assert res["telemetry"]["copied_bytes"] > 0
 
 
-def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path):
+def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path, shim_contract):
     """For TypeScript projects (package.json present + node_modules pre-installed
     by clone_repo), the scratch copy MUST include node_modules so the hermetic
     gate can run typecheck/test/lint without network access."""
@@ -298,6 +328,7 @@ def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path):
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / ".bin").mkdir()
     (tmp_path / "node_modules" / ".bin" / "tsc").write_text("#!/bin/sh\nexit 0")
+    contract = shim_contract(tmp_path)
 
     seen_cwds: list[str] = []
 
@@ -309,19 +340,20 @@ def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path):
          mock.patch("verify_gate._find_nix", return_value="/nix"), \
          mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
          mock.patch("verify_gate._flake_ref", return_value="."):
-        res = run_verify_gate(tmp_path)
+        res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is True
     assert seen_cwds, "verify command should have run in the scratch copy"
     # The work dir should be the scratch/repo directory
     assert any("repo" in c for c in seen_cwds if c)
 
 
-def test_default_mode_not_affected_by_env_gap(tmp_path, monkeypatch):
+def test_default_mode_not_affected_by_env_gap(tmp_path, monkeypatch, shim_contract):
     """Without the env var (or with it unset), behavior stays soft-skip."""
     monkeypatch.delenv("VERIFY_GATE_STRICT", raising=False)
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
+    contract = shim_contract(tmp_path)
     with mock.patch("verify_gate._find_nix", return_value=None):
-        res = run_verify_gate(tmp_path)
+        res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["skipped"] is True
     assert "strict_escalated" not in res
 

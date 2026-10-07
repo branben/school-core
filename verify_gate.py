@@ -283,15 +283,18 @@ def _flake_ref(flake_path: Path) -> Path:
 
 def _yaml_load(path: Path) -> dict:
     """Parse YAML faithfully; missing parser must not change command semantics."""
+    text = path.read_text()
+    # Try JSON first (JSON is a subset of YAML, and many manifests are JSON)
+    try:
+        return json.loads(text) or {}
+    except json.JSONDecodeError:
+        pass
+    # Fall back to PyYAML for non-JSON YAML files
     try:
         import yaml  # type: ignore
     except ImportError:
-        # Fallback: return empty dict when PyYAML is not installed.
-        # This is safe because verification contracts are frozen by the
-        # supervisor before candidate runs, so a missing parser only
-        # affects the supervisor's own tooling, not candidate verification.
         return {}
-    return yaml.safe_load(path.read_text()) or {}
+    return yaml.safe_load(text) or {}
 
 
 def freeze_verification_contract(repo_path: Path) -> dict:
@@ -418,6 +421,27 @@ def run_verify_gate(
                 return _skipped_verdict("(node_modules)", "Dependencies exceed the 500MB isolated-copy limit.")
 
         _copy_repo_to_scratch(repo_path, work, copy_function=copy_file)
+        # TOCTOU fix: verify hashes on copied files, not before copy.
+        # A candidate could modify files between the pre-copy hash check
+        # and the actual copy. Re-verify on the copied files.
+        if trusted_contract is not None:
+            for rel_path, expected_hash in trusted_contract["files"].items():
+                copied_file = work / rel_path
+                if not copied_file.exists():
+                    result = _skipped_verdict(
+                        "(toctou)",
+                        f"Copied file missing: {rel_path}",
+                    )
+                    result.update(skipped=False, strict_escalated=True)
+                    return result
+                actual_hash = hashlib.sha256(copied_file.read_bytes()).hexdigest()
+                if actual_hash != expected_hash:
+                    result = _skipped_verdict(
+                        "(toctou)",
+                        f"Copied file hash mismatch: {rel_path}",
+                    )
+                    result.update(skipped=False, strict_escalated=True)
+                    return result
         failures, results = [], []
         for command in commands:
             cwd = (work / command["cwd"]).resolve()
@@ -433,8 +457,18 @@ def run_verify_gate(
             # Expand only Nix's PATH. All other values are shell literals.
             path_assignment = "PATH=" + shlex.quote(str(work / "node_modules" / ".bin")) + ':"$PATH"'
             shell = "exec " + " ".join(map(shlex.quote, env_args)) + " " + path_assignment
-            shell += " " + " ".join(map(shlex.quote, [
-                "timeout", f"{int(timeout)}s", "/bin/bash", "-c", command["cmd"]]))
+            # Use absolute path for timeout to prevent candidate shim bypass.
+            # A candidate-controlled node_modules/.bin/timeout could exit 0
+            # without running the check. If timeout is not available (e.g.,
+            # macOS), run the command directly — the subprocess timeout will
+            # still kill it if it takes too long.
+            timeout_bin = shutil.which("timeout")
+            if timeout_bin is not None:
+                shell += " " + " ".join(map(shlex.quote, [
+                    timeout_bin, f"{int(timeout)}s", "/bin/bash", "-c", command["cmd"]]))
+            else:
+                shell += " " + " ".join(map(shlex.quote, [
+                    "/bin/bash", "-c", command["cmd"]]))
             argv = [nix_bin, "develop", f"{flake_ref}#verifyShell", "--command",
                     "/bin/bash", "-c", shell]
             started = time.monotonic()
