@@ -134,6 +134,27 @@ class ExecutionResult:
 # ── Code Extraction ───────────────────────────────────────────────────────────
 
 
+_REDACTION_PLACEHOLDER_RE = re.compile(r"^[A-Z][A-Z0-9_]*_REDACTED$")
+
+
+def _bound_names(tree: ast.AST) -> set:
+    """Names the code itself defines (assignments, defs, imports, args)."""
+    bound: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            bound.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+    return bound
+
+
 class CodeExtractor:
     """Extract runnable code from LLM responses.
 
@@ -302,6 +323,27 @@ class CodeExtractor:
             tree = ast.parse(code)
         except SyntaxError as e:
             return f"SyntaxError: {e.msg} (line {e.lineno})"
+
+        # 1b. Unresolved sanitizer placeholder (e.g. ``[IP_REDACTED]``). Such
+        #     code parses (``s[[IP_REDACTED]-1]`` is a subscript) but raises
+        #     NameError the moment it runs, so the syntax gate alone is blind.
+        #     Only bare names are matched (string literals are unaffected),
+        #     and a name the code defines itself is never flagged.
+        bound = None
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Load)
+                and _REDACTION_PLACEHOLDER_RE.match(node.id)
+            ):
+                if bound is None:
+                    bound = _bound_names(tree)
+                if node.id in bound:
+                    continue
+                return (
+                    f"Unresolved placeholder: name '{node.id}' is a redaction "
+                    "marker, not defined code (NameError at runtime)"
+                )
 
         # 2. Executable-statement check — a module that only contains
         #    def/class/import/docstring produces no output when run.
