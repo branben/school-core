@@ -276,6 +276,13 @@ def fetch_single_issue(owner: str, repo: str, number: int) -> Optional[dict]:
     or None on any gh failure. Reuses the same classification/domain mapping
     as fetch_issues so the conductor's --issue bridge stays consistent.
     """
+    config = load_config()
+    allowed = config.get("allowed_author_associations", [])
+    valid = {"OWNER", "MEMBER", "COLLABORATOR"}
+    if not isinstance(allowed, list) or not allowed or any(a not in valid for a in allowed):
+        sys.stderr.write("[github_fetcher] intake disabled: configure allowed_author_associations\n")
+        return None
+
     stdout = _gh_command([
         "issue", "view", str(number),
         "--repo", f"{owner}/{repo}",
@@ -295,7 +302,18 @@ def fetch_single_issue(owner: str, repo: str, number: int) -> Optional[dict]:
     gh_labels = issue.get("labels", [])
     label_names = [l.get("name", "") for l in gh_labels] if isinstance(gh_labels, list) else []
 
-    config = load_config()
+    # gh issue view does not expose authorAssociation. Fetch authenticated
+    # API metadata separately; issue body/labels cannot grant admission.
+    detail = _gh_command(["api", f"repos/{owner}/{repo}/issues/{number}"])
+    try:
+        metadata = json.loads(detail) if detail else {}
+        if metadata.get("number") != number or metadata.get("author_association") not in allowed:
+            return None
+        if metadata.get("state") != "open" or metadata.get("pull_request"):
+            return None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
     category, state = classify_issue(title, label_names, body)
 
     domain_overrides = config.get("domain_overrides", {})

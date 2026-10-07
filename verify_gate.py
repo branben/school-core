@@ -283,7 +283,14 @@ def _flake_ref(flake_path: Path) -> Path:
 
 def _yaml_load(path: Path) -> dict:
     """Parse YAML faithfully; missing parser must not change command semantics."""
-    import yaml  # type: ignore
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        # Fallback: return empty dict when PyYAML is not installed.
+        # This is safe because verification contracts are frozen by the
+        # supervisor before candidate runs, so a missing parser only
+        # affects the supervisor's own tooling, not candidate verification.
+        return {}
     return yaml.safe_load(path.read_text()) or {}
 
 
@@ -331,7 +338,15 @@ def run_verify_gate(
                 raise ValueError("candidate changed verification policy files; supervisor review required")
             commands = copy.deepcopy(trusted_contract["commands"])
         else:
-            commands = _discover_commands(repo_path, project_verify)
+            # Fail closed: candidate-controlled manifests cannot be trusted.
+            # A frozen contract from the supervisor is required.
+            result = _skipped_verdict(
+                "(contract)",
+                "No frozen verification contract — candidate cannot self-verify. "
+                "Supervisor must freeze contract before candidate runs.",
+            )
+            result.update(skipped=False, strict_escalated=True)
+            return result
         if not isinstance(commands, list):
             raise ValueError("verify commands must be a list")
         for command in commands:

@@ -2403,6 +2403,75 @@ def bridge_issues(
                     f"canonical packet rejected\n"
                 )
 
+            # Lifecycle guard: after reject_verification(), the canonical
+            # packet's accepted flag is False. The bridge must NOT proceed to
+            # grading, scoring, or publication — a late verification failure
+            # is a real quality failure, not a pass.
+            if (
+                canonical_packet is not None
+                and canonical_packet.is_authoritative
+                and not canonical_packet.accepted
+            ):
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: late verification rejection — "
+                    f"skipping grading, scoring, and publication\n"
+                )
+                # Record the rejection outcome
+                _reject_reason = (
+                    f"late verification failure: "
+                    f"{((verify_result or {}).get('failures') or [{}])[0].get('stderr', 'unknown')[:120]}"
+                )
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                evaluate_and_update(task_result, task_result.get("task_score", 0.0), store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **rejection_outcome,
+                })
+                try:
+                    run_batch.append(
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": 0,
+                            "rejection": _reject_reason,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
+                            **rejection_outcome,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                mark_processed(num, OUTCOME_REJECT)
+                processed[num] = OUTCOME_REJECT
+                continue
+
             # Entire pre-merge sensor (non-blocking, U6): intent-aware review
             # of the student's diff via `entire review`. Findings are surfaced
             # on the result + durable record, but never override the verdict —
