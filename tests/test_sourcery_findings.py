@@ -25,7 +25,7 @@ from verify_gate import run_verify_gate, freeze_verification_contract
 class TestUntrustedContractFailsClosed:
     """When trusted_contract is None, gate must fail closed."""
 
-    def test_no_contract_fails_closed(self, tmp_path):
+    def test_no_contract_skips_loudly(self, tmp_path):
         """Direct call without frozen contract must not discover commands."""
         # Create a minimal repo with a verify command
         repo = tmp_path / "repo"
@@ -37,9 +37,11 @@ class TestUntrustedContractFailsClosed:
         # Call without trusted_contract
         result = run_verify_gate(repo)
 
-        # Must fail closed (strict_escalated or skipped)
+        # Must not run candidate-discovered commands; soft-skip instead.
         assert result.get("passed") is False
-        assert result.get("strict_escalated") is True or result.get("skipped") is True
+        assert result.get("skipped") is True
+        assert result.get("ran", 0) == 0
+        assert "contract" in result["failures"][0]["stderr"].lower()
 
     def test_frozen_contract_allows_commands(self, tmp_path):
         """With frozen contract, commands run normally."""

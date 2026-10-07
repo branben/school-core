@@ -155,9 +155,10 @@ def test_gate_runs_every_command_independently(tmp_path, shim_gate, shim_contrac
 
 
 @pytest.mark.parametrize("cmd,cwd", [(True, "."), (42, "."), ("true", "../outside"), ("", ".")])
-def test_bad_contract_is_a_failure_not_an_exception(tmp_path, cmd, cwd):
+def test_bad_contract_is_a_failure_not_an_exception(tmp_path, cmd, cwd, shim_contract):
     _manifest(tmp_path, [{"cmd": cmd, "cwd": cwd}])
-    result = run_verify_gate(tmp_path)
+    contract = shim_contract(tmp_path)
+    result = run_verify_gate(tmp_path, trusted_contract=contract)
     assert not result["passed"]
     assert result["strict_escalated"]
     assert not result["skipped"]

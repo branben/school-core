@@ -1015,7 +1015,7 @@ def _run_verify_gate(
     if not repo_path or not repo_path.exists():
         return None
     try:
-        from verify_gate import run_verify_gate
+        from verify_gate import run_verify_gate, freeze_verification_contract
         project_verify = Path(repo_path) / "project_verify.yaml"
         # Pin the flake to the school-core checkout (this module's directory),
         # NEVER Path.cwd() — the runner invokes the bridge from the checkout
@@ -1024,6 +1024,7 @@ def _run_verify_gate(
         # CRITICAL failure (missing-flake errors aren't exit-127, so the infra
         # filter can't catch them). The hermetic shell's flake lives with the
         # bridge, deterministically.
+        trusted_contract = freeze_verification_contract(repo_path)
         return run_verify_gate(
             repo_path,
             project_verify if project_verify.exists() else None,
@@ -1032,6 +1033,7 @@ def _run_verify_gate(
             # cwd dependence we are eliminating.
             flake_path=Path(__file__).resolve().parent,
             diff_text=diff_text,
+            trusted_contract=trusted_contract,
         )
     except ImportError:
         # verify_gate module not available — not a blocker (unless strict).

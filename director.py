@@ -44,7 +44,7 @@ from adversarial_reviewer import (
 )
 from orca_executor import OrcaExecutionManager, CodeExtractor, OrcaUnavailableError
 from scripts.spec_gate import check_dod, _load_spec
-from verify_gate import run_verify_gate
+from verify_gate import run_verify_gate, freeze_verification_contract
 from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
 from score_finalizer import finalize_score
@@ -658,11 +658,13 @@ def _run_two_judge_review(
                 # Pin the runner flake to this module's checkout. The review
                 # may run from a workflow working-directory unrelated to the
                 # school-core flake that provides verifyShell.
+                trusted_contract = freeze_verification_contract(repo_path)
                 vg = run_verify_gate(
                     repo_path=repo_path,
                     project_verify=None,
                     flake_path=Path(__file__).resolve().parent,
                     diff_text=task.get("response", "") if isinstance(task, dict) else "",
+                    trusted_contract=trusted_contract,
                 )
                 if pipeline_metrics is not None:
                     gate_metrics = vg.get("telemetry") or {}

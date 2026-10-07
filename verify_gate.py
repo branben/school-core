@@ -341,15 +341,19 @@ def run_verify_gate(
                 raise ValueError("candidate changed verification policy files; supervisor review required")
             commands = copy.deepcopy(trusted_contract["commands"])
         else:
-            # Fail closed: candidate-controlled manifests cannot be trusted.
-            # A frozen contract from the supervisor is required.
-            result = _skipped_verdict(
+            # No supervisor-frozen contract: an UNRUNNABLE gate, not a failed
+            # one. Never discover commands from the candidate's repo (that is
+            # candidate self-verification), but do not manufacture a hard
+            # "verified-failed" verdict either — that turned every unrunnable
+            # direct/manual gate into a CRITICAL build finding and zeroed the
+            # adversarial score. Report the soft-skip the callers already
+            # surface loudly (bridge log, director LOW advisory), and let
+            # VERIFY_GATE_STRICT=1 escalate the skip to a veto upstream.
+            return _skipped_verdict(
                 "(contract)",
                 "No frozen verification contract — candidate cannot self-verify. "
                 "Supervisor must freeze contract before candidate runs.",
             )
-            result.update(skipped=False, strict_escalated=True)
-            return result
         if not isinstance(commands, list):
             raise ValueError("verify commands must be a list")
         for command in commands:
