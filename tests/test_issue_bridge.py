@@ -774,7 +774,11 @@ class TestVerifyGateMerge:
         self, mock_verify, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
         tmp_path, monkeypatch, store,
     ):
-        """A real compile/test failure (ran > 0) must force FAIL + CRITICAL."""
+        """A real compile/test failure (ran > 0) must force FAIL + CRITICAL.
+
+        Without a canonical packet, the no-packet lifecycle guard blocks
+        publication — the result is error, not success.
+        """
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
             '"gaps": [], "strengths": []}'
@@ -790,12 +794,9 @@ class TestVerifyGateMerge:
         mock_task.return_value = self._task_ok()
 
         results = bridge_issues("user/test", store=store)
-        assert results[0]["status"] == "success"
-        adv = results[0]["adversarial_review"]
-        assert any(f.get("section") == "build/verify" for f in adv.get("findings", []))
-        assert adv["verdict"] == "FAIL"
-        assert adv["score"] == 0.0
-        assert results[0]["verify_skipped"] is False
+        # No-packet lifecycle guard: verify FAIL blocks publication
+        assert results[0]["status"] == "error"
+        assert "verify failure" in results[0]["error"]
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")
@@ -811,6 +812,8 @@ class TestVerifyGateMerge:
         Strict mode flips an unrunnable gate (Nix missing, no commands) from a
         soft SKIP into `strict_escalated: True` — the merge must treat that as
         a real failure even though ran == 0 (compiler-before-critic enforced).
+        Without a canonical packet, the no-packet lifecycle guard blocks
+        publication.
         """
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
@@ -828,12 +831,9 @@ class TestVerifyGateMerge:
         mock_task.return_value = self._task_ok()
 
         results = bridge_issues("user/test", store=store)
-        assert results[0]["status"] == "success"
-        adv = results[0]["adversarial_review"]
-        assert any(f.get("section") == "build/verify" for f in adv.get("findings", []))
-        assert adv["verdict"] == "FAIL"
-        assert adv["score"] == 0.0
-        assert results[0]["verify_skipped"] is False
+        # No-packet lifecycle guard: strict_escalated FAIL blocks publication
+        assert results[0]["status"] == "error"
+        assert "verify failure" in results[0]["error"]
 
     def test_run_verify_gate_strict_exception_escalates(self, monkeypatch):
         """Strict mode: verify_gate raising must escalate, not return None."""
@@ -2468,7 +2468,13 @@ class TestCrewDispatchPath:
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("executor.call_model", return_value='{"findings": []}'), \
+             patch("issue_bridge._select_verification", return_value={
+                 "passed": True, "ran": 0, "failures": [], "skipped": False,
+             }), \
+             patch("issue_bridge._run_adversarial_review", return_value={
+                 "verdict": "PASS", "score": 85.0, "findings": [],
+             }):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         r = results[0]
         assert r["status"] == "success"

@@ -194,11 +194,11 @@ class TestLateVerificationLifecycleGuard:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_no_canonical_packet_proceeds_normally(
+    def test_no_canonical_packet_verify_fail_blocks_publication(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
         tmp_path, monkeypatch, store,
     ):
-        """When there's no canonical packet, bridge proceeds normally."""
+        """When there's no canonical packet and verify fails, bridge must NOT publish."""
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_exec_call.return_value = '{"findings": []}'
         mock_fetch.return_value = [{
@@ -228,7 +228,53 @@ class TestLateVerificationLifecycleGuard:
 
         results = bridge_issues("user/test", store=store)
 
-        # PR creation MUST be called (no canonical packet to reject)
-        assert len(pr_calls) == 1, "PR creation must be called when there's no canonical packet"
+        # PR creation must NOT be called (no-packet lifecycle guard)
+        assert len(pr_calls) == 0, "PR creation must not be called when verify fails without packet"
+        # Result must be error, not success
+        assert results[0]["status"] == "error"
+        assert "verify failure" in results[0]["error"]
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_no_canonical_packet_verify_pass_proceeds_normally(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """When there's no canonical packet and verify passes, bridge proceeds normally."""
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_fetch.return_value = [{
+            "issue_number": 24, "title": "No canonical packet", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        # Task result without review_packet
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "foundry-coder-7b",
+            "domain": "debugging",
+            "difficulty": "easy",
+            "prompt": "fix",
+            "response": "fixed",
+        }
+
+        # Mock _select_verification to return a passed verify result
+        monkeypatch.setattr("issue_bridge._select_verification", lambda **kwargs: {
+            "passed": True, "ran": 2, "failures": [],
+        })
+
+        # Track PR creation calls
+        pr_calls = []
+        def track_pr(**kwargs):
+            pr_calls.append(kwargs)
+            return "https://github.com/user/test/pull/1"
+        monkeypatch.setattr("issue_bridge.create_pr_for_issue", track_pr)
+
+        results = bridge_issues("user/test", store=store)
+
+        # PR creation MUST be called (verify passed, no packet to reject)
+        assert len(pr_calls) == 1, "PR creation must be called when verify passes without packet"
         # Result must be success
         assert results[0]["status"] == "success"
