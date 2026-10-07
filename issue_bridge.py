@@ -2380,6 +2380,29 @@ def bridge_issues(
                 _reason = ((verify_result.get("failures") or [{}])[0].get("stderr") or "n/a")[:120]
                 sys.stderr.write(f"[issue_bridge] verify gate SKIPPED for #{num}: {_reason}\n")
 
+            # Late verification rejection: when _select_verification returns a
+            # real failure (passed=False, ran > 0, not skipped), the canonical
+            # packet's accepted flag must be updated BEFORE the PR gate reads
+            # it. Without this, a PR can be created despite a verify failure
+            # because the PR gate checks review_evidence (director's review),
+            # not the bridge's adversarial_review.
+            if (
+                verify_result
+                and not verify_result.get("passed")
+                and not verify_skipped
+                and (
+                    verify_result.get("ran", 0) > 0
+                    or verify_result.get("strict_escalated")
+                )
+                and canonical_packet is not None
+                and canonical_packet.is_authoritative
+            ):
+                canonical_packet.reject_verification(verify_result)
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: late verification failure — "
+                    f"canonical packet rejected\n"
+                )
+
             # Entire pre-merge sensor (non-blocking, U6): intent-aware review
             # of the student's diff via `entire review`. Findings are surfaced
             # on the result + durable record, but never override the verdict —
