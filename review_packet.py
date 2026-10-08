@@ -193,6 +193,13 @@ class ReviewPacket:
     def verification(self) -> dict:
         return self._data["verification"]
 
+    def reject_verification(self, verification: dict) -> None:
+        """Record a later failed sensor without rewriting the judges' votes."""
+        self._data["verification"] = _verification(verification)
+        self._data["verification_authoritative"] = True
+        self._data["accepted"] = False
+        self._data["verdict"] = "REJECTED"
+
     def attach_entire(self, entire: Optional[dict]) -> None:
         self._data["entire"] = self._sensor(entire)
 

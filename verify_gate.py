@@ -26,6 +26,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import copy
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -103,7 +106,11 @@ def _discover_commands(
     if project_verify and project_verify.exists():
         try:
             data = json.loads(project_verify.read_text()) if project_verify.suffix == ".json" else _yaml_load(project_verify)
-            for entry in data.get("verify", []):
+            if not isinstance(data, dict) or not isinstance(data.get("verify"), list):
+                raise ValueError("manifest must contain a verify list")
+            for entry in data["verify"]:
+                if not isinstance(entry, dict):
+                    raise ValueError("verify entry must be an object")
                 cmd_languages = set(entry.get("languages", []))
                 # If languages are specified, filter; otherwise include all
                 if languages is not None and cmd_languages:
@@ -116,7 +123,7 @@ def _discover_commands(
                 })
             return commands
         except Exception as exc:  # pragma: no cover - defensive manifest parsing
-            print(f"[verify_gate] project_verify parse failed: {exc}")
+            raise ValueError(f"project_verify parse failed: {exc}") from exc
 
     if (repo_path / "package.json").exists():
         packages = sorted(repo_path.rglob("package.json"))
@@ -275,54 +282,33 @@ def _flake_ref(flake_path: Path) -> Path:
 
 
 def _yaml_load(path: Path) -> dict:
-    """Load project_verify.yaml, with a small stdlib fallback."""
+    """Parse YAML faithfully; missing parser must not change command semantics."""
+    text = path.read_text()
+    # Try JSON first (JSON is a subset of YAML, and many manifests are JSON)
+    try:
+        return json.loads(text) or {}
+    except json.JSONDecodeError:
+        pass
+    # Fall back to PyYAML for non-JSON YAML files
     try:
         import yaml  # type: ignore
-        return yaml.safe_load(path.read_text()) or {}
-    except Exception:
-        pass
-    out: dict = {"verify": []}
-    cur: dict | None = None
-    for line in path.read_text().splitlines():
-        if line.strip().startswith("- name:"):
-            cur = {"name": line.split("name:")[1].strip()}
-            out["verify"].append(cur)
-        elif cur is not None and line.strip().startswith("cmd:"):
-            cur["cmd"] = line.split("cmd:")[1].strip()
-        elif cur is not None and line.strip().startswith("cwd:"):
-            cur["cwd"] = line.split("cwd:")[1].strip()
-    return out
+    except ImportError:
+        return {}
+    return yaml.safe_load(text) or {}
 
 
-def _build_verify_script(commands: list[dict], work: Path, timeout: int) -> tuple[str, list[str], list[str]]:
-    """Build bounded command wrappers with parseable start/end markers."""
-    starts, ends = [], []
-    lines = ["set +e", f'export PATH="{work}/node_modules/.bin:$PATH"']
-    for index, command in enumerate(commands):
-        cwd = (work / command["cwd"]).resolve()
-        start, end = f"__SCHOOL_VERIFY_START_{index}__", f"__SCHOOL_VERIFY_END_{index}__"
-        starts.append(start)
-        ends.append(end)
-        lines.append(f"printf '%s\\n' {shlex.quote(start)}")
-        # Wall-clock timing is ADDITIVE: it is emitted as a second token AFTER
-        # the integer status, so the existing `status_text.split()[0]` parser in
-        # run_verify_gate still reads the exit code. If either timestamp or awk
-        # is unavailable the elapsed field is empty — never fatal to the gate.
-        lines.append("__verify_t0=$(date +%s.%N 2>/dev/null)")
-        lines.append(
-            f"(cd -- {shlex.quote(str(cwd))} && "
-            f"timeout {int(timeout)}s bash -c {shlex.quote(command['cmd'])}) 2>&1"
-        )
-        lines.append("status=$?")
-        lines.append("__verify_t1=$(date +%s.%N 2>/dev/null)")
-        lines.append(
-            "__verify_elapsed=$(awk -v s=\"$__verify_t0\" -v e=\"$__verify_t1\" "
-            "'BEGIN { if (s == \"\" || e == \"\") { exit } printf \"%.3f\", e - s }' "
-            "2>/dev/null)"
-        )
-        lines.append(f"printf '\\n%s%d %s\\n' {shlex.quote(end)} \"$status\" \"$__verify_elapsed\"")
-    lines.append("exit 0")
-    return "\n".join(lines), starts, ends
+def freeze_verification_contract(repo_path: Path) -> dict:
+    """Supervisor-only snapshot. Call before giving the candidate any tools."""
+    root = Path(repo_path)
+    _validate_copy_symlinks(root)
+    files = {}
+    for name in ALLOWED_CONFIG_NAMES:
+        for path in root.rglob(name):
+            rel = path.relative_to(root)
+            if any(part in {".git", "node_modules", ".venv", "venv", ".envit"} for part in rel.parts):
+                continue
+            files[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return {"commands": copy.deepcopy(_discover_commands(root, None)), "files": files}
 
 
 def run_verify_gate(
@@ -331,12 +317,13 @@ def run_verify_gate(
     flake_path: Path | None = None,
     timeout: int = 300,
     diff_text: str = "",
+    trusted_contract: Optional[dict] = None,
 ) -> dict:
     """Run each declared check in a fresh copy inside a network-denied OS sandbox.
 
-    When *diff_text* is provided, the gate detects the languages present in the
-    diff and only runs verify commands relevant to those languages. This allows
-    the gate to handle Python, Rust, Go, TypeScript, and other languages.
+    diff_text is retained for caller compatibility but never narrows checks.
+    A crew supplies trusted_contract frozen before candidate tool access.
+    Policy-file changes require a separate supervisor review, not auto-pass.
     """
     repo_path = Path(repo_path)
     try:
@@ -345,8 +332,44 @@ def run_verify_gate(
         return _skipped_verdict("(copy)", f"Unsafe repository symlink: {exc}")
 
     flake_path = Path(flake_path) if flake_path else Path.cwd()
-    languages = _detect_languages_from_diff(diff_text) if diff_text else None
-    commands = _discover_commands(repo_path, project_verify, languages)
+    # Response prose is candidate-controlled, never a verification selector.
+    # Crew callers freeze this list from the supervisor checkout before launch.
+    try:
+        if trusted_contract is not None:
+            current = freeze_verification_contract(repo_path)
+            if current["files"] != trusted_contract["files"]:
+                raise ValueError("candidate changed verification policy files; supervisor review required")
+            commands = copy.deepcopy(trusted_contract["commands"])
+        else:
+            # No supervisor-frozen contract: an UNRUNNABLE gate, not a failed
+            # one. Never discover commands from the candidate's repo (that is
+            # candidate self-verification), but do not manufacture a hard
+            # "verified-failed" verdict either — that turned every unrunnable
+            # direct/manual gate into a CRITICAL build finding and zeroed the
+            # adversarial score. Report the soft-skip the callers already
+            # surface loudly (bridge log, director LOW advisory), and let
+            # VERIFY_GATE_STRICT=1 escalate the skip to a veto upstream.
+            return _skipped_verdict(
+                "(contract)",
+                "No frozen verification contract — candidate cannot self-verify. "
+                "Supervisor must freeze contract before candidate runs.",
+            )
+        if not isinstance(commands, list):
+            raise ValueError("verify commands must be a list")
+        for command in commands:
+            if not isinstance(command, dict):
+                raise ValueError("verify entry must be an object")
+            for key in ("cmd", "cwd"):
+                value = command.get(key, "." if key == "cwd" else None)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"verify {key} must be a nonempty string")
+                command[key] = value
+            cwd = (repo_path / command["cwd"]).resolve()
+            cwd.relative_to(repo_path.resolve())
+    except (OSError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        result = _skipped_verdict("(manifest)", f"Invalid verification contract: {exc}")
+        result.update(skipped=False, strict_escalated=True)
+        return result
     if not commands:
         return _skipped_verdict("(discovery)", "No typecheck/test/lint commands discovered in repo.")
 
@@ -402,91 +425,78 @@ def run_verify_gate(
                 return _skipped_verdict("(node_modules)", "Dependencies exceed the 500MB isolated-copy limit.")
 
         _copy_repo_to_scratch(repo_path, work, copy_function=copy_file)
-        script, starts, ends = _build_verify_script(commands, work, timeout)
-        sandboxed_script = (
-            f"exec {shlex.quote(sandbox_bin)} -f {shlex.quote(str(sandbox_profile))} "
-            f"/usr/bin/env -i PATH=\"$PATH\" HOME={shlex.quote(str(isolated_home))} "
-            f"TMPDIR={shlex.quote(str(isolated_tmp))} TMP={shlex.quote(str(isolated_tmp))} "
-            f"npm_config_userconfig={shlex.quote(str(isolated_home / '.npmrc'))} "
-            f"CI=1 /bin/bash -c {shlex.quote(script)}"
-        )
-        try:
-            result = subprocess.run(
-                [nix_bin, "develop", f"{flake_ref}#verifyShell", "--command", "/bin/bash", "-c", sandboxed_script],
-                cwd=str(work),
-                capture_output=True,
-                text=True,
-                timeout=(timeout * max(1, len(commands))) + 30,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            failures = [{"cmd": "(verify_shell)", "exit": None, "stderr": "verify shell timed out"}]
-            output = ""
-            returncode = 124
-        else:
-            failures = []
-            output = result.stdout or ""
-            if result.stderr:
-                output += f"\n{result.stderr}"
-            returncode = result.returncode
-
-        found_markers = 0
-        results: list[dict] = []
-        for index, command in enumerate(commands):
-            start = output.find(starts[index])
-            end = output.find(ends[index], start + len(starts[index]))
-            status_text = output[end + len(ends[index]):].lstrip() if end >= 0 else ""
-            exit_code = None
-            duration_s = None
-            tokens = status_text.split()
+        # TOCTOU fix: verify hashes on copied files, not before copy.
+        # A candidate could modify files between the pre-copy hash check
+        # and the actual copy. Re-verify on the copied files.
+        if trusted_contract is not None:
+            for rel_path, expected_hash in trusted_contract["files"].items():
+                copied_file = work / rel_path
+                if not copied_file.exists():
+                    result = _skipped_verdict(
+                        "(toctou)",
+                        f"Copied file missing: {rel_path}",
+                    )
+                    result.update(skipped=False, strict_escalated=True)
+                    return result
+                actual_hash = hashlib.sha256(copied_file.read_bytes()).hexdigest()
+                if actual_hash != expected_hash:
+                    result = _skipped_verdict(
+                        "(toctou)",
+                        f"Copied file hash mismatch: {rel_path}",
+                    )
+                    result.update(skipped=False, strict_escalated=True)
+                    return result
+        failures, results = [], []
+        for command in commands:
+            cwd = (work / command["cwd"]).resolve()
             try:
-                exit_code = int(tokens[0])
-            except (IndexError, ValueError):
-                exit_code = None
-            if len(tokens) > 1:
-                # Duration is an ADDITIVE second token; a malformed/missing
-                # value must never crash the gate — fall back to None.
-                try:
-                    duration_s = float(tokens[1])
-                except (IndexError, ValueError):
-                    duration_s = None
-
-            if start >= 0 and end >= 0 and exit_code is not None:
-                status = "pass" if exit_code == 0 else "fail"
+                cwd.relative_to(work.resolve())
+            except ValueError:
+                failures.append({"cmd": command["cmd"], "exit": None, "stderr": "cwd escapes scratch"})
+                continue
+            # The parent owns status. No candidate stdout is parsed as evidence.
+            env_args = [sandbox_bin, "-f", str(sandbox_profile), "/usr/bin/env", "-i",
+                        f"HOME={isolated_home}", f"TMPDIR={isolated_tmp}", f"TMP={isolated_tmp}",
+                        f"npm_config_userconfig={isolated_home / '.npmrc'}", "CI=1"]
+            # Expand only Nix's PATH. All other values are shell literals.
+            path_assignment = "PATH=" + shlex.quote(str(work / "node_modules" / ".bin")) + ':"$PATH"'
+            shell = "exec " + " ".join(map(shlex.quote, env_args)) + " " + path_assignment
+            # Use absolute path for timeout to prevent candidate shim bypass.
+            # A candidate-controlled node_modules/.bin/timeout could exit 0
+            # without running the check. If timeout is not available (e.g.,
+            # macOS), run the command directly — the subprocess timeout will
+            # still kill it if it takes too long.
+            timeout_bin = shutil.which("timeout")
+            if timeout_bin is not None:
+                shell += " " + " ".join(map(shlex.quote, [
+                    timeout_bin, f"{int(timeout)}s", "/bin/bash", "-c", command["cmd"]]))
             else:
-                status = "no_marker"
-            results.append({
-                "name": command.get("name") or command["cmd"],
-                "cmd": command["cmd"],
-                "exit": exit_code,
-                "status": status,
-                "duration_s": duration_s,
-            })
+                shell += " " + " ".join(map(shlex.quote, [
+                    "/bin/bash", "-c", command["cmd"]]))
+            argv = [nix_bin, "develop", f"{flake_ref}#verifyShell", "--command",
+                    "/bin/bash", "-c", shell]
+            started = time.monotonic()
+            try:
+                result = subprocess.run(argv, cwd=str(cwd), capture_output=True,
+                                        text=True, timeout=timeout + 30, check=False)
+                exit_code = result.returncode
+                output = (result.stdout or "") + (result.stderr or "")
+            except subprocess.TimeoutExpired:
+                exit_code, output = 124, "verify command timed out"
+            except OSError as exc:
+                exit_code, output = None, str(exc)
+            status = "pass" if exit_code == 0 else "fail"
+            results.append({"name": command.get("name") or command["cmd"],
+                            "cmd": command["cmd"], "exit": exit_code,
+                            "status": status, "duration_s": time.monotonic() - started})
+            if status != "pass":
+                failures.append({"cmd": command["cmd"], "exit": exit_code,
+                                 "stderr": output[-1500:] or "verify command failed"})
+        return {"passed": not failures and len(results) == len(commands),
+                "failures": failures, "ran": len(results), "results": results,
+                "telemetry": {"shell_starts": len(results), "commands": len(results),
+                              "copied_bytes": copied_bytes}}
 
-            if status != "no_marker":
-                found_markers += 1
-                if exit_code != 0:
-                    detail = output[start + len(starts[index]):end].strip()
-                    failures.append({"cmd": command["cmd"], "exit": exit_code, "stderr": (detail or "verify command failed")[-1500:]})
-
-        if found_markers < len(commands) and not any(failure["cmd"] == "(sandbox)" for failure in failures):
-            missing = [command["cmd"] for index, command in enumerate(commands)
-                       if output.find(starts[index]) < 0
-                       or output.find(ends[index], output.find(starts[index]) + len(starts[index])) < 0]
-            detail = f"verify shell emitted {found_markers}/{len(commands)} command markers; execution evidence is incomplete"
-            if missing:
-                detail += " missing: " + "; ".join(missing)
-            if returncode != 0:
-                detail += "; " + output[-1500:]
-            failures.append({"cmd": "(verify_shell)", "exit": returncode, "stderr": detail})
-
-        return {
-            "passed": not failures,
-            "failures": failures,
-            "ran": len(commands),
-            "results": results,
-            "telemetry": {"shell_starts": 1, "commands": len(commands), "copied_bytes": copied_bytes},
-        }
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
