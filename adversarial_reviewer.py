@@ -698,6 +698,10 @@ class AdversarialReviewer:
             )
 
         findings = []
+        parse_failed = False
+        if not isinstance(data.get("findings"), list):
+            return ReviewResult(verdict=Verdict.FAIL, findings=[], lens_used=lens_name,
+                                difficulty=difficulty, parse_failed=True)
         string_count = 0
         MAX_STRING_FINDINGS = 5  # Cap string entries to prevent score bottoming out
         for entry in data.get("findings", []):
@@ -718,16 +722,26 @@ class AdversarialReviewer:
                         description=entry,
                     ))
                     continue
+                if not isinstance(entry, dict):
+                    raise ValueError("finding must be an object")
+                raw_severity = entry.get("severity")
+                if not isinstance(raw_severity, str):
+                    raise ValueError("severity must be a string")
+                severity = Severity(raw_severity.strip().upper())
                 findings.append(Finding(
                     section=entry.get("section", "unknown"),
                     issue_class=entry.get("issue_class", "unknown"),
-                    severity=Severity(entry.get("severity", "LOW")),
+                    severity=severity,
                     citation=entry.get("citation", ""),
                     description=entry.get("description", ""),
                     suggestion=entry.get("suggestion"),
                 ))
-            except (ValueError, KeyError):
-                continue
+            except (ValueError, KeyError, TypeError, AttributeError):
+                # Keep a blocking finding; never silently delete review evidence.
+                parse_failed = True
+                findings.append(Finding(section="review", issue_class="invalid_finding",
+                                        severity=Severity.HIGH, citation="",
+                                        description=str(entry)[:500]))
 
         has_critical = any(f.severity in (Severity.CRITICAL, Severity.HIGH) for f in findings)
 
@@ -735,6 +749,7 @@ class AdversarialReviewer:
             verdict=Verdict.FAIL if has_critical else Verdict.PASS,
             findings=findings,
             lens_used=lens_name,
+            parse_failed=parse_failed,
             confidence=min(1.0, len(findings) * 0.3 + 0.2) if findings else 0.5,
             difficulty=difficulty,
         )

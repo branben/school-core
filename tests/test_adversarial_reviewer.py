@@ -828,8 +828,9 @@ class TestParseLensOutput:
             '"description": "Unknown severity"}]}',
             "correctness",
         )
-        # ValueError from Severity("COSMIC") is caught silently, entry skipped
-        assert result.findings == []
+        assert result.verdict == Verdict.FAIL
+        assert result.parse_failed
+        assert result.findings[0].severity == Severity.HIGH
 
 
 # ── _parse_lens_output — Extended Edge Cases ────────────────────────────────
@@ -1210,3 +1211,21 @@ class TestParseLensOutputExtended:
         assert result.findings[0].severity == Severity.HIGH
         assert result.findings[1].severity == Severity.HIGH
         assert result.verdict == Verdict.FAIL  # both HIGH
+
+
+@pytest.mark.parametrize("severity", ["critical", "Critical", " CRITICAL ", "high"])
+def test_severity_case_is_normalized(severity):
+    reviewer = AdversarialReviewer(call_model_fn=lambda *a, **k: "")
+    result = reviewer._parse_lens_output(json.dumps({"findings": [{"severity": severity}]}), "test")
+    assert result.verdict == Verdict.FAIL
+    assert not result.parse_failed
+    assert len(result.findings) == 1
+
+
+@pytest.mark.parametrize("entry", [{"severity": "BLOCKER"}, {"severity": None}, {}, 42, []])
+def test_invalid_finding_never_silently_passes(entry):
+    reviewer = AdversarialReviewer(call_model_fn=lambda *a, **k: "")
+    result = reviewer._parse_lens_output(json.dumps({"findings": [entry]}), "test")
+    assert result.verdict == Verdict.FAIL
+    assert result.parse_failed
+    assert len(result.findings) == 1

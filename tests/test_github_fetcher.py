@@ -19,6 +19,33 @@ from github_fetcher import (
 )
 
 
+@pytest.fixture(autouse=True)
+def trusted_test_intake(monkeypatch, request):
+    if request.node.name.startswith("test_intake_"):
+        return
+    import github_fetcher
+    real_load = github_fetcher.load_config
+    monkeypatch.setattr(github_fetcher, "load_config", lambda *a, **k: dict(
+        real_load(*a, **k), allowed_author_associations=["OWNER"]))
+    real_gh = github_fetcher._gh_command
+    # Tested fetch fixtures patch _gh_command themselves. Wrap that mock lazily
+    # at the API metadata seam while preserving label-query call accounting.
+    real_fetch = github_fetcher.fetch_issues
+    def wrapped(*args, **kwargs):
+        current = github_fetcher._gh_command
+        def metadata_or_list(argv, **kw):
+            if argv[0] == "api":
+                return json.dumps({"number": int(argv[1].split("/")[-1]),
+                                   "state": "open", "author_association": "OWNER"})
+            return current(argv, **kw)
+        monkeypatch.setattr(github_fetcher, "_gh_command", metadata_or_list)
+        try:
+            return real_fetch(*args, **kwargs)
+        finally:
+            monkeypatch.setattr(github_fetcher, "_gh_command", current)
+    monkeypatch.setattr(__import__(__name__, fromlist=["fetch_issues"]), "fetch_issues", wrapped)
+
+
 # ── Config Tests ──────────────────────────────────────────────────────────
 
 class TestLoadConfig:
@@ -245,3 +272,28 @@ class TestFetchIssues:
         assert len(issues) == 1
         assert "Fix crash" in issues[0]["prompt"]
         assert "stack trace" in issues[0]["prompt"]
+
+
+@pytest.mark.parametrize("association,admitted", [("OWNER", True), ("MEMBER", False), ("NONE", False), ("CONTRIBUTOR", False), (None, False)])
+def test_intake_association_gate(monkeypatch, association, admitted):
+    import github_fetcher as g
+    monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": ["OWNER"]})
+    issue = {"number": 1, "title": "task", "body": "untrusted", "labels": []}
+    monkeypatch.setattr(g, "_gh_command", lambda args: json.dumps([issue]) if args[0] == "issue" else json.dumps({"number": 1, "state": "open", "author_association": association}))
+    monkeypatch.setattr(g, "classify_issue", lambda *a: ("enhancement", "ready-for-agent"))
+    assert bool(g.fetch_issues("owner/repo")) is admitted
+
+
+@pytest.mark.parametrize("allowed", [[], ["NONE"], "OWNER", None])
+def test_intake_default_and_invalid_policy_are_closed(monkeypatch, allowed):
+    import github_fetcher as g
+    monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": allowed})
+    monkeypatch.setattr(g, "_gh_command", lambda args: '[{"number":1}]')
+    assert g.fetch_issues("owner/repo") == []
+
+
+def test_intake_metadata_failure_is_closed(monkeypatch):
+    import github_fetcher as g
+    monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": ["OWNER"]})
+    monkeypatch.setattr(g, "_gh_command", lambda args: '[{"number":1}]' if args[0] == "issue" else None)
+    assert g.fetch_issues("owner/repo") == []

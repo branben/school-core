@@ -998,6 +998,7 @@ def _run_verify_gate(
     repo_path: Optional[Path],
     issue: dict,
     diff_text: str = "",
+    trusted_contract: Optional[dict] = None,
 ) -> Optional[dict]:
     """Run the hermetic verify gate (compile/typecheck/test) on the cloned repo.
 
@@ -1011,11 +1012,14 @@ def _run_verify_gate(
 
     When *diff_text* is provided (the student's code output), the gate detects
     the languages present and only runs relevant verify commands.
+
+    When *trusted_contract* is provided (pre-frozen before dispatch), it is
+    used directly. Otherwise the contract is frozen here (legacy path).
     """
     if not repo_path or not repo_path.exists():
         return None
     try:
-        from verify_gate import run_verify_gate
+        from verify_gate import run_verify_gate, freeze_verification_contract
         project_verify = Path(repo_path) / "project_verify.yaml"
         # Pin the flake to the school-core checkout (this module's directory),
         # NEVER Path.cwd() — the runner invokes the bridge from the checkout
@@ -1024,6 +1028,8 @@ def _run_verify_gate(
         # CRITICAL failure (missing-flake errors aren't exit-127, so the infra
         # filter can't catch them). The hermetic shell's flake lives with the
         # bridge, deterministically.
+        if trusted_contract is None:
+            trusted_contract = freeze_verification_contract(repo_path)
         return run_verify_gate(
             repo_path,
             project_verify if project_verify.exists() else None,
@@ -1032,6 +1038,7 @@ def _run_verify_gate(
             # cwd dependence we are eliminating.
             flake_path=Path(__file__).resolve().parent,
             diff_text=diff_text,
+            trusted_contract=trusted_contract,
         )
     except ImportError:
         # verify_gate module not available — not a blocker (unless strict).
@@ -1054,6 +1061,7 @@ def _select_verification(
     repo_path: Optional[Path],
     metrics: "PipelineMetrics",
     task_result: Optional[dict] = None,
+    trusted_contract: Optional[dict] = None,
 ) -> Optional[dict]:
     """Select the verify-gate result, enforcing the fc7.3 / worst-day-ever N5.3
     invariant: a CREW run must reuse its live-worktree verification and NEVER
@@ -1104,7 +1112,7 @@ def _select_verification(
         diff_text = ""
         if task_result and isinstance(task_result, dict):
             diff_text = task_result.get("response", "") or ""
-        return _run_verify_gate(repo_path, issue, diff_text=diff_text)
+        return _run_verify_gate(repo_path, issue, diff_text=diff_text, trusted_contract=trusted_contract)
 
 
 def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
@@ -1838,6 +1846,16 @@ def bridge_issues(
     from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
     cleanup_stale_caches()
     repo_path = clone_repo(repo)
+    # Freeze the verification contract BEFORE any dispatch. The contract
+    # must be frozen from the clean base before run_task (dispatch) runs,
+    # so a candidate cannot modify project_verify.yaml after the snapshot.
+    # Crew path already freezes before _spawn; this covers the direct path.
+    from verify_gate import freeze_verification_contract
+    trusted_contract = (
+        freeze_verification_contract(repo_path)
+        if repo_path and repo_path.exists()
+        else None
+    )
     # Shadow evidence is observational and bounded. Load the same snapshot
     # once per bridge cycle rather than reparsing last_run.json for every
     # issue; this also gives all issues in a cycle a consistent baseline.
@@ -2091,6 +2109,7 @@ def bridge_issues(
                         provided_student_output=deliverable,
                         preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
+                        trusted_contract=trusted_contract,
                     )
                 elif crew_result is not None and crew_result.status == "resolved":
                     # The crew determined the work was already satisfied. This is
@@ -2114,6 +2133,7 @@ def bridge_issues(
                         repo=repo,
                         repo_path=repo_path,
                         pipeline_metrics=metrics,
+                        trusted_contract=trusted_contract,
                     )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
@@ -2225,26 +2245,7 @@ def bridge_issues(
         if task_result["status"] == "success":
             canonical_packet = ReviewPacket.from_dict(task_result.get("review_packet"))
             # Option-B integration seam: durably record this finished job on the
-            # grading queue so the grader consumer (school_grader.drain) can
-            # finalize it asynchronously at 20+ scale. At cap=1 the loop still
-            # runs the inline finalization below (behavior unchanged); the queue
-            # is the ready hook for the future separate grading stage. The
-            # enqueue is non-fatal — a queue failure must never break dispatch.
-            try:
-                from school_grader import GradingQueue, GradingJob
-                _gq = GradingQueue()
-                _gq.enqueue(GradingJob(
-                    issue_number=num,
-                    crew_id=(crew_result.crew_id if crew_result else None),
-                    repo=repo,
-                    domain=issue.get("domain", ""),
-                    difficulty=issue.get("difficulty", ""),
-                    task_score=task_result.get("task_score"),
-                    review_packet=task_result.get("review_packet"),
-                    canonical_review=task_result.get("review"),
-                ))
-            except Exception as _e:
-                sys.stderr.write(f"[issue_bridge] #{num}: grading enqueue skipped ({_e})\n")
+
             # ── Two-judge acceptance gate ──
             # run_task already ran the CTO+COO review; both must PASS at
             # score >= 50 with no CRITICAL finding for accepted=True. The
@@ -2362,6 +2363,7 @@ def bridge_issues(
                 repo_path=repo_path,
                 metrics=metrics,
                 task_result=task_result,
+                trusted_contract=trusted_contract,
             )
             if verify_result:
                 gate_metrics = verify_result.get("telemetry") or {}
@@ -2379,6 +2381,98 @@ def bridge_issues(
             if verify_skipped:
                 _reason = ((verify_result.get("failures") or [{}])[0].get("stderr") or "n/a")[:120]
                 sys.stderr.write(f"[issue_bridge] verify gate SKIPPED for #{num}: {_reason}\n")
+
+            # Late verification rejection: when _select_verification returns a
+            # real failure (passed=False, ran > 0, not skipped), the canonical
+            # packet's accepted flag must be updated BEFORE the PR gate reads
+            # it. Without this, a PR can be created despite a verify failure
+            # because the PR gate checks review_evidence (director's review),
+            # not the bridge's adversarial_review.
+            if (
+                verify_result
+                and not verify_result.get("passed")
+                and not verify_skipped
+                and (
+                    verify_result.get("ran", 0) > 0
+                    or verify_result.get("strict_escalated")
+                )
+                and canonical_packet is not None
+                and canonical_packet.is_authoritative
+            ):
+                canonical_packet.reject_verification(verify_result)
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: late verification failure — "
+                    f"canonical packet rejected\n"
+                )
+
+            # Lifecycle guard: after reject_verification(), the canonical
+            # packet's accepted flag is False. The bridge must NOT proceed to
+            # grading, scoring, or publication — a late verification failure
+            # is a real quality failure, not a pass.
+            if (
+                canonical_packet is not None
+                and canonical_packet.is_authoritative
+                and not canonical_packet.accepted
+            ):
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: late verification rejection — "
+                    f"skipping grading, scoring, and publication\n"
+                )
+                # Record the rejection outcome
+                _reject_reason = (
+                    f"late verification failure: "
+                    f"{((verify_result or {}).get('failures') or [{}])[0].get('stderr', 'unknown')[:120]}"
+                )
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                evaluate_and_update(task_result, 0.0, store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **rejection_outcome,
+                })
+                try:
+                    run_batch.append(
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": 0,
+                            "rejection": _reject_reason,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
+                            **rejection_outcome,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                mark_processed(num, OUTCOME_REJECT)
+                processed[num] = OUTCOME_REJECT
+                continue
 
             # Entire pre-merge sensor (non-blocking, U6): intent-aware review
             # of the student's diff via `entire review`. Findings are surfaced
@@ -2471,6 +2565,83 @@ def bridge_issues(
                     adversarial_review["verdict"] = "FAIL"
                     adversarial_review["score"] = 0.0
 
+            # No-packet lifecycle guard: when there is no canonical packet to
+            # reject, a verify FAIL must still block publication. Without
+            # this, a failed run with no packet would continue to grading,
+            # scoring, and publication — the combined score could still be
+            # positive (execution*0.5 + heuristic*0.2) even with review=0.
+            # This fires on ANY verify failure (passed=False, ran > 0 or
+            # strict_escalated), not just when adversarial_review verdict is
+            # FAIL — the infra filter at line 2537 leaves exit127 as PASS,
+            # so the adversarial merge alone is insufficient.
+            if (
+                canonical_packet is None
+                and verify_result
+                and not verify_result.get("passed")
+                and (
+                    verify_result.get("ran", 0) > 0
+                    or verify_result.get("strict_escalated")
+                )
+            ):
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: verify FAIL without canonical packet — "
+                    f"skipping grading, scoring, and publication\n"
+                )
+                _reject_reason = (
+                    f"verify failure (no packet): "
+                    f"{((verify_result or {}).get('failures') or [{}])[0].get('stderr', 'unknown')[:120]}"
+                )
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                evaluate_and_update(task_result, 0.0, store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    **rejection_outcome,
+                })
+                try:
+                    run_batch.append(
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": 0,
+                            "rejection": _reject_reason,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
+                            **rejection_outcome,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                mark_processed(num, OUTCOME_REJECT)
+                processed[num] = OUTCOME_REJECT
+                continue
+
             # Verify output correctness with codebase context
             metrics.record_call("output_verification")
             with metrics.stage("output_verification"):
@@ -2529,6 +2700,27 @@ def bridge_issues(
             task_result["shadow_routing"] = shadow_routing
             with metrics.stage("scoring"):
                 updated = evaluate_and_update(task_result, combined_score, store=store)
+            # Enqueue for grading AFTER verification and scoring — only successfully
+            # verified issues should reach the grading queue. The grader consumer
+            # (school_grader.drain) writes job.task_score to the ScoreStore, so
+            # enqueuing before verification would let a later verify failure retract
+            # the packet but leave the stale pre-verification score in the queue.
+            # The enqueue is non-fatal — a queue failure must never break dispatch.
+            try:
+                from school_grader import GradingQueue, GradingJob
+                _gq = GradingQueue()
+                _gq.enqueue(GradingJob(
+                    issue_number=num,
+                    crew_id=(crew_result.crew_id if crew_result else None),
+                    repo=repo,
+                    domain=issue.get("domain", ""),
+                    difficulty=issue.get("difficulty", ""),
+                    task_score=task_result.get("task_score"),
+                    review_packet=task_result.get("review_packet"),
+                    canonical_review=task_result.get("review"),
+                ))
+            except Exception as _e:
+                sys.stderr.write(f"[issue_bridge] #{num}: grading enqueue skipped ({_e})\n")
             review_evidence = task_result.get("review") or {}
             critical_findings = sum(
                 1 for finding in (review_evidence.get("findings") or [])

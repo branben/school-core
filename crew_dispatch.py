@@ -1167,6 +1167,7 @@ def _changed_files_diff_text(worktree_path: Path) -> str:
 
 def _run_premerge_sensors(
     worktree_id: str,
+    trusted_contract: Optional[dict] = None,
 ) -> tuple[Optional[dict], Optional[dict]]:
     """Run verification sensors against the live student worktree.
 
@@ -1184,16 +1185,12 @@ def _run_premerge_sensors(
     try:
         from verify_gate import run_verify_gate
 
-        # The worktree has the student's patch APPLIED, so the language set
-        # must come from its changed files. Without this, `languages=None`
-        # disables filtering and every declared command runs — a Rust or
-        # TypeScript patch gets `python3 -m compileall -q *.py` executed
-        # against it, producing a spurious CRITICAL verify failure.
-        diff_text = _changed_files_diff_text(worktree_path)
+        # Run the frozen contract in the candidate worktree. Response text
+        # and candidate-edited manifests cannot weaken supervisor checks.
         verification = run_verify_gate(
             worktree_path,
             flake_path=Path(__file__).resolve().parent,
-            diff_text=diff_text,
+            trusted_contract=trusted_contract,
         )
     except Exception as exc:  # pragma: no cover - defensive runtime boundary
         log.exception("pre-merge verify failed for %s: %s", worktree_path, exc)
@@ -1254,6 +1251,9 @@ def dispatch_crew(
     crew_id = _crew_id(cycle_session_id, issue_number)
     sweep_stale_runs(now=now_fn(), path=CREW_RUNS_FILE)
     project_dir = Path(project_dir)
+    # Freeze supervisor-owned commands before candidate tools can alter files.
+    from verify_gate import freeze_verification_contract
+    trusted_contract = freeze_verification_contract(project_dir)
     _write_brief(crew_id, task_text, issue_number, project_dir, capability)
     _write_capability_file(crew_id, capability)
     started_at = datetime.now(timezone.utc).isoformat()
@@ -1446,7 +1446,7 @@ def dispatch_crew(
     # The bridge reuses these authoritative results after this function tears
     # the worktree down; it must never silently verify the clean target base.
     if terminal_status == "done" and report_path and worktree_id:
-        verification_result, entire_review_result = _run_premerge_sensors(worktree_id)
+        verification_result, entire_review_result = _run_premerge_sensors(worktree_id, trusted_contract=trusted_contract)
         if artifact_identity and "::" in worktree_id:
             try:
                 from src.entire_review import _get_changed_files
