@@ -278,3 +278,81 @@ class TestLateVerificationLifecycleGuard:
         assert len(pr_calls) == 1, "PR creation must be called when verify passes without packet"
         # Result must be success
         assert results[0]["status"] == "success"
+
+
+class TestGradingEnqueueAfterVerification:
+    """Grading enqueue must happen AFTER verification, not before.
+
+    The grader consumer (school_grader.drain) writes job.task_score to the
+    ScoreStore. If enqueue happens before verification, a later verify failure
+    retracts the packet but leaves the stale pre-verification score in the queue.
+    """
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_verify_failure_does_not_enqueue_grading(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """When verify fails, grading enqueue must NOT be called."""
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_fetch.return_value = [{
+            "issue_number": 30, "title": "Verify fail no enqueue", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.return_value = _make_task_result_with_packet(accepted=True)
+        monkeypatch.setattr("issue_bridge._select_verification", lambda **kwargs: _make_failed_verify())
+
+        # Track GradingQueue.enqueue calls
+        enqueue_calls = []
+        original_enqueue = None
+        def track_enqueue(self, job):
+            enqueue_calls.append(job)
+            if original_enqueue:
+                return original_enqueue(job)
+            return True
+        monkeypatch.setattr("school_grader.GradingQueue.enqueue", track_enqueue)
+
+        results = bridge_issues("user/test", store=store)
+
+        # Enqueue must NOT be called on verify failure
+        assert len(enqueue_calls) == 0, "Grading enqueue must not be called when verify fails"
+        assert results[0]["status"] == "error"
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("director.run_task")
+    @patch("executor.call_model")
+    @patch("issue_bridge.call_model")
+    def test_verify_pass_enqueues_grading(
+        self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
+        tmp_path, monkeypatch, store,
+    ):
+        """When verify passes, grading enqueue MUST be called."""
+        mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_fetch.return_value = [{
+            "issue_number": 31, "title": "Verify pass enqueue", "body": "",
+            "domain": "debugging", "difficulty": "easy", "prompt": "fix",
+            "category": "bug", "state": "ready-for-agent",
+        }]
+        mock_task.return_value = _make_task_result_with_packet(accepted=True)
+        monkeypatch.setattr("issue_bridge._select_verification", lambda **kwargs: {
+            "passed": True, "ran": 2, "failures": [],
+        })
+
+        # Track GradingQueue.enqueue calls
+        enqueue_calls = []
+        def track_enqueue(self, job):
+            enqueue_calls.append(job)
+            return True
+        monkeypatch.setattr("school_grader.GradingQueue.enqueue", track_enqueue)
+
+        results = bridge_issues("user/test", store=store)
+
+        # Enqueue MUST be called on verify pass
+        assert len(enqueue_calls) == 1, "Grading enqueue must be called when verify passes"
+        assert results[0]["status"] == "success"
