@@ -998,6 +998,7 @@ def _run_verify_gate(
     repo_path: Optional[Path],
     issue: dict,
     diff_text: str = "",
+    trusted_contract: Optional[dict] = None,
 ) -> Optional[dict]:
     """Run the hermetic verify gate (compile/typecheck/test) on the cloned repo.
 
@@ -1011,6 +1012,9 @@ def _run_verify_gate(
 
     When *diff_text* is provided (the student's code output), the gate detects
     the languages present and only runs relevant verify commands.
+
+    When *trusted_contract* is provided (pre-frozen before dispatch), it is
+    used directly. Otherwise the contract is frozen here (legacy path).
     """
     if not repo_path or not repo_path.exists():
         return None
@@ -1024,7 +1028,8 @@ def _run_verify_gate(
         # CRITICAL failure (missing-flake errors aren't exit-127, so the infra
         # filter can't catch them). The hermetic shell's flake lives with the
         # bridge, deterministically.
-        trusted_contract = freeze_verification_contract(repo_path)
+        if trusted_contract is None:
+            trusted_contract = freeze_verification_contract(repo_path)
         return run_verify_gate(
             repo_path,
             project_verify if project_verify.exists() else None,
@@ -1056,6 +1061,7 @@ def _select_verification(
     repo_path: Optional[Path],
     metrics: "PipelineMetrics",
     task_result: Optional[dict] = None,
+    trusted_contract: Optional[dict] = None,
 ) -> Optional[dict]:
     """Select the verify-gate result, enforcing the fc7.3 / worst-day-ever N5.3
     invariant: a CREW run must reuse its live-worktree verification and NEVER
@@ -1106,7 +1112,7 @@ def _select_verification(
         diff_text = ""
         if task_result and isinstance(task_result, dict):
             diff_text = task_result.get("response", "") or ""
-        return _run_verify_gate(repo_path, issue, diff_text=diff_text)
+        return _run_verify_gate(repo_path, issue, diff_text=diff_text, trusted_contract=trusted_contract)
 
 
 def _run_entire_sensor(repo_path: Optional[Path]) -> Optional[dict]:
@@ -1840,6 +1846,16 @@ def bridge_issues(
     from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
     cleanup_stale_caches()
     repo_path = clone_repo(repo)
+    # Freeze the verification contract BEFORE any dispatch. The contract
+    # must be frozen from the clean base before run_task (dispatch) runs,
+    # so a candidate cannot modify project_verify.yaml after the snapshot.
+    # Crew path already freezes before _spawn; this covers the direct path.
+    from verify_gate import freeze_verification_contract
+    trusted_contract = (
+        freeze_verification_contract(repo_path)
+        if repo_path and repo_path.exists()
+        else None
+    )
     # Shadow evidence is observational and bounded. Load the same snapshot
     # once per bridge cycle rather than reparsing last_run.json for every
     # issue; this also gives all issues in a cycle a consistent baseline.
@@ -2093,6 +2109,7 @@ def bridge_issues(
                         provided_student_output=deliverable,
                         preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
+                        trusted_contract=trusted_contract,
                     )
                 elif crew_result is not None and crew_result.status == "resolved":
                     # The crew determined the work was already satisfied. This is
@@ -2116,6 +2133,7 @@ def bridge_issues(
                         repo=repo,
                         repo_path=repo_path,
                         pipeline_metrics=metrics,
+                        trusted_contract=trusted_contract,
                     )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
@@ -2364,6 +2382,7 @@ def bridge_issues(
                 repo_path=repo_path,
                 metrics=metrics,
                 task_result=task_result,
+                trusted_contract=trusted_contract,
             )
             if verify_result:
                 gate_metrics = verify_result.get("telemetry") or {}
@@ -2430,7 +2449,7 @@ def bridge_issues(
                     review=_review,
                     fallback_reason=crew_fallback_reason,
                 )
-                evaluate_and_update(task_result, task_result.get("task_score", 0.0), store=store)
+                evaluate_and_update(task_result, 0.0, store=store)
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],
@@ -2570,9 +2589,12 @@ def bridge_issues(
             # this, a failed run with no packet would continue to grading,
             # scoring, and publication — the combined score could still be
             # positive (execution*0.5 + heuristic*0.2) even with review=0.
+            # This fires on ANY verify failure (passed=False, ran > 0 or
+            # strict_escalated), not just when adversarial_review verdict is
+            # FAIL — the infra filter at line 2537 leaves exit127 as PASS,
+            # so the adversarial merge alone is insufficient.
             if (
                 canonical_packet is None
-                and adversarial_review.get("verdict") == "FAIL"
                 and verify_result
                 and not verify_result.get("passed")
                 and (
@@ -2595,7 +2617,7 @@ def bridge_issues(
                     review=_review,
                     fallback_reason=crew_fallback_reason,
                 )
-                evaluate_and_update(task_result, task_result.get("task_score", 0.0), store=store)
+                evaluate_and_update(task_result, 0.0, store=store)
                 results.append({
                     "issue_number": num,
                     "title": issue["title"],

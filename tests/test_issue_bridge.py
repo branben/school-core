@@ -2744,6 +2744,73 @@ class TestCrewDispatchPath:
         assert _crew_report_content(blank) is None
 
 
+# ── PR #145: frozen-contract threading (freeze BEFORE dispatch) ─────────────
+
+
+class TestFrozenContractThreading:
+    """The verification contract must be frozen from the clean base BEFORE
+    dispatch, and the same snapshot must reach run_task → _run_two_judge_review
+    → run_verify_gate. If it is not threaded, the review gate re-freezes from a
+    repo the candidate may already have touched (TOCTOU).
+
+    Regression: the pre-frozen contract was computed in bridge_issues but never
+    passed to run_task, so the freeze was dead code on the direct path.
+    """
+
+    @staticmethod
+    def _issue(num):
+        return [{"issue_number": num, "title": f"T{num}", "body": "",
+                 "domain": "debugging", "difficulty": "easy", "prompt": "p",
+                 "category": "bug", "state": "ready-for-agent"}]
+
+    @staticmethod
+    def _task_ok(num):
+        return {
+            "status": "success", "agent": "auto/best-free",
+            "domain": "debugging", "difficulty": "easy",
+            "prompt": "p", "response": "ok",
+        }
+
+    def _run(self, monkeypatch, tmp_path, store, repo_path):
+        import issue_bridge
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(500)), \
+             patch("repo_reader.clone_repo", return_value=repo_path), \
+             patch("repo_reader.build_codebase_context", return_value=""), \
+             patch("repo_reader.cleanup_stale_caches"), \
+             patch("issue_bridge.dispatch_crew") as mock_crew, \
+             patch("director.run_task", return_value=self._task_ok(500)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("executor.call_model", return_value='{"findings": []}'):
+            bridge_issues("user/test", store=store)
+        mock_crew.assert_not_called()
+        mock_task.assert_called_once()
+        return mock_task.call_args[1]
+
+    def test_frozen_contract_reaches_run_task(self, monkeypatch, tmp_path, store):
+        """Direct path: a real repo dir → a non-None frozen contract is passed."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package.json").write_text('{"name": "x"}')
+        kwargs = self._run(monkeypatch, tmp_path, store, repo)
+        contract = kwargs.get("trusted_contract")
+        assert isinstance(contract, dict), "frozen contract must be threaded to run_task"
+        assert "files" in contract and "commands" in contract
+
+    def test_missing_repo_path_does_not_crash(self, monkeypatch, tmp_path, store):
+        """clone_repo returning a non-existent path must not raise: freeze is
+        skipped (None) rather than crashing on resolve(strict=True).
+
+        Regression: the unguarded freeze at bridge_issues crashed 15 tests
+        whose clone_repo mock points at a path that is never created.
+        """
+        missing = tmp_path / "repo"  # never created
+        kwargs = self._run(monkeypatch, tmp_path, store, missing)
+        assert kwargs.get("trusted_contract") is None
+
+
 # ── SCH-32a: hosted student execution flag (SCHOOL_CORE_HOSTED_STUDENT) ──────
 
 

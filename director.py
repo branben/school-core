@@ -422,6 +422,7 @@ def _run_two_judge_review(
     preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: Optional[bool] = None,
+    trusted_contract: Optional[dict] = None,
 ) -> dict:
     """Run CTO+COO two-judge adversarial review on student output.
 
@@ -658,13 +659,15 @@ def _run_two_judge_review(
                 # Pin the runner flake to this module's checkout. The review
                 # may run from a workflow working-directory unrelated to the
                 # school-core flake that provides verifyShell.
-                trusted_contract = freeze_verification_contract(repo_path)
+                # Use the pre-frozen contract if provided (frozen before
+                # dispatch); otherwise freeze here (legacy path).
+                _frozen = trusted_contract or freeze_verification_contract(repo_path)
                 vg = run_verify_gate(
                     repo_path=repo_path,
                     project_verify=None,
                     flake_path=Path(__file__).resolve().parent,
                     diff_text=task.get("response", "") if isinstance(task, dict) else "",
-                    trusted_contract=trusted_contract,
+                    trusted_contract=_frozen,
                 )
                 if pipeline_metrics is not None:
                     gate_metrics = vg.get("telemetry") or {}
@@ -1151,6 +1154,7 @@ def run_task(
     preverified_verification: Optional[dict] = None,
     pipeline_metrics: Optional[PipelineMetrics] = None,
     synthesize_narratives: bool = False,
+    trusted_contract: Optional[dict] = None,
 ) -> dict:
     """Route task to the specialized role for this domain. One role = one attempt.
     If the role fails, escalate to A2A fallback.
@@ -1598,6 +1602,7 @@ def run_task(
             preverified_verification=preverified_verification,
             pipeline_metrics=pipeline_metrics,
             synthesize_narratives=synthesize_narratives,
+            trusted_contract=trusted_contract,
         )
     except OrcaUnavailableError as e:
         # Hard fail: Orca sandbox is required for executable domains.
