@@ -258,8 +258,14 @@ class TestBridgeIssues:
         assert results == []
 
     @patch("issue_bridge.fetch_issues")
-    def test_skips_already_processed(self, mock_fetch, tmp_path, monkeypatch, store):
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.cleanup_stale_caches")
+    def test_skips_already_processed(self, mock_cleanup, mock_clone, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        # No network: bridge_issues() clones unconditionally before the
+        # processed-check, so a real clone would hang/credential-prompt on
+        # cold caches. Mock it like the other bridge tests do.
+        mock_clone.return_value = None
         mark_processed(1)
         mock_fetch.return_value = [
             {"issue_number": 1, "title": "Already done", "body": "",
@@ -267,6 +273,7 @@ class TestBridgeIssues:
         ]
         results = bridge_issues("user/test", store=store)
         assert len(results) == 0
+        mock_cleanup.assert_called_once()
 
     @patch("issue_bridge.fetch_issues")
     @patch("director.run_task")

@@ -227,8 +227,45 @@ def verify_consolidations_safe(consolidation_dir: Path | None = None) -> list[tu
     return findings
 
 
+def verify_data_safe() -> list[tuple[Path, list[str]]]:
+    """Check every git-tracked file under data/ for residual PII/secret indicators.
+
+    The school-loop checkpoint sanitizes before pushing, but a malicious or
+    careless commit can land on main directly with raw /Users/ paths (see the
+    2026-10-14 audit: 51x /Users/brandonbennett in data/last_run.json). CI runs
+    this before merge so the public branch stays clean.
+    """
+    import subprocess
+
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "data/"],
+            capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        # Not a git checkout — fall back to a broad local scan.
+        tracked = [str(p) for p in Path("data").rglob("*") if p.is_file()]
+    findings = []
+    for rel in tracked:
+        path = Path(rel)
+        if not path.is_file():
+            continue
+        residual = unsafe_text(path)
+        if residual:
+            findings.append((path, residual))
+    return findings
+
+
 def main() -> int:
     args = list(sys.argv[1:])
+    if "--verify" in args:
+        findings = verify_data_safe()
+        if findings:
+            for path, labels in findings:
+                print(f"[sanitize] UNSAFE {path}: {', '.join(labels)}", file=sys.stderr)
+            return 1
+        print("[sanitize] verify OK: no PII/secret indicators in tracked data files")
+        return 0
     # U2: `--trim-trajectories [N]` trims the trajectory dir to the newest N
     # files (default DEFAULT_TRAJECTORY_KEEP) before sanitizing, then sanitizes
     # each remaining trajectory alongside the explicit file args.

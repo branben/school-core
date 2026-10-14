@@ -33,10 +33,13 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
+
+if TYPE_CHECKING:
+    from candidate_pr_gate import TeacherApproval, VerificationEvidence
 
 from github_fetcher import fetch_issues, load_config, _gh_command
-from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
+from executor import call_model, get_role_for_domain
 from capabilities import CapabilityBundle, resolve_capability
 from resilience import sanitize_input_text
 from scoring import ScoreStore
@@ -44,7 +47,6 @@ from school_mail import notify_issue_alert
 from pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
 from compound_learning import CompoundLearningStore
-from crew_admission import decide_admission
 from shadow_routing import load_shadow_history
 from scripts.ce_router import route_id_for
 from bridge_seams import (
@@ -59,7 +61,6 @@ from bridge_seams import (
 # bridge.
 from crew_dispatch import (
     CrewResult,
-    CrewUnavailableError,
     CREW_RUNS_FILE as CREW_RUNS_FILE,
     DEFAULT_TIMEOUT as CREW_DEFAULT_TIMEOUT,
     dispatch_crew as dispatch_crew,
@@ -71,6 +72,7 @@ from candidate_manifest import (
     CandidateManifest,
     CandidateManifestError,
     CandidateStore,
+    create_candidate,
 )
 from candidate_pr import CandidatePublicationError
 from pr_provider import (
@@ -79,7 +81,6 @@ from pr_provider import (
     publish_candidate_pr_idempotent,
 )
 from candidate_pr_gate import (
-    GateDecision,
     gate_candidate_publication,
 )
 from candidate_binding import (
@@ -744,7 +745,7 @@ def _render_judge_block(
     # Distinct per-judge marker: CTO is technical (👔), COO conversational (🗣️).
     marker = "👔" if tone == "technical" else "🗣️"
     lines = [
-        f"<details>",
+        "<details>",
         f"<summary>{marker} {judge} review — {lenses} ({verdict or 'n/a'}{', ' + score_txt if score_txt else ''})</summary>",
         "",
     ]
@@ -1786,7 +1787,7 @@ def bridge_issues(
     hosted_student_runner = None
     if hosted_student_enabled:
         from smol_cloud_runner import SmolCloudRunner
-        hosted_student_runner = SmolCloudRunner(
+        hosted_student_runner = SmolCloudRunner(  # noqa: F841 - construction validates runner config eagerly
             image_reference=os.environ.get("SCHOOL_CORE_SMOL_CLOUD_IMAGE", ""),
             source_type=os.environ.get(
                 "SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE", "smolmachine"
@@ -2552,7 +2553,6 @@ def bridge_issues(
                     if (not _is_infrastructure_failure(f)) or verify_escalated
                 ]
                 if real_failures:
-                    from adversarial_reviewer import Finding, Severity
                     for f in real_failures:
                         adversarial_review.setdefault("findings", []).append({
                             "section": "build/verify",
@@ -3257,7 +3257,7 @@ def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optiona
 
     labels = labels or cfg.get("labels")
     print(f"[issue_bridge] Polling {repo} every {interval}s (labels={labels})")
-    print(f"[issue_bridge] Press Ctrl+C to stop")
+    print("[issue_bridge] Press Ctrl+C to stop")
 
     try:
         while True:

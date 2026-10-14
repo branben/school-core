@@ -1,7 +1,7 @@
 # Agent School Core
 
 <a href="https://github.com/branben/school-core">
-  <img src="/.github/animated-badge.svg" alt="Agent School Core – live" width="380" height="80">
+  <img src="https://raw.githubusercontent.com/branben/school-core/main/.github/animated-badge.svg" alt="Agent School Core – live" width="380" height="80">
 </a>
 
 > ⚠️ **Qodo Command CLI is discontinued.** The pre-merge review now uses
@@ -165,15 +165,25 @@ school-core/
 │   └── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
 ├── scripts/
 │   └── run_teacher_review_once.py  # One-shot teacher review pass
-├── tests/                     # 942-test suite (TDD)
+├── tests/                     # 2400-test suite (TDD)
 └── flake.nix                  # Reproducible dev env (Nix)
 ```
+
+### Utility scripts (repo root)
+
+One-shot tools that are intentionally not part of the runtime pipeline:
+
+| Script | Purpose |
+|--------|---------|
+| `regenerate_budgets.py` | Print the live per-difficulty turn-budget table, read from `orca_executor` (read-only) |
+| `patch_papers.py` | Patch the generated leaderboard HTML (`docs/site/leaderboard.html`) with paper references |
+| `school_md_generator.py` | Generate a `school.md` teaching doc for another repo via a cloud agent |
 
 ## Live Stats
 
 | Component | Status |
 |-----------|--------|
-| Test suite | ✅ 942 tests passing, 15 skipped |
+| Test suite | ✅ 2371 tests passing, 29 skipped (2400 non-live) |
 | Entire pre-merge | ✅ Wired (`entire review`, intent-aware; replaces discontinued Qodo) |
 | AgentMail loop | ✅ Cron every 2 min |
 | Beads kanban | ✅ 0 blocked, 0 open |
