@@ -321,8 +321,12 @@ class TestBridgeIssues:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_successful_bridge(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.cleanup_stale_caches")
+    def test_successful_bridge(self, mock_cleanup, mock_clone, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_clone.return_value = None
+        mock_cleanup.return_value = None
         mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
