@@ -9,7 +9,6 @@ Provides:
     cleanup_stale_caches(max_age_hours=1)
 """
 
-import json
 import os
 import re
 import shlex

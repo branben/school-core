@@ -39,10 +39,39 @@ jobs:
       - name: Syntax check (compile all modules)
         run: python -m compileall -q -x "school-output" .
 
+      - name: Lint (ruff, F-class)
+        # Real-bug static analysis on the core pipeline modules plus any
+        # Python changed in this PR. The repo grew without a linter for years;
+        # the F (pyflakes) rules catch undefined names / unused imports and
+        # unassigned variables without imposing a formatting style. Scoping to
+        # core + changed files keeps the gate green while it bites on
+        # regressions. (2026-10-14 audit: no lint config existed; F821 in
+        # director.py/issue_bridge.py hid real NameErrors behind untested
+        # paths.)
+        run: |
+          pip install ruff
+          CORE="issue_bridge.py director.py conductor.py repo_reader.py"
+          CHANGED=""
+          # git fetch origin <sha> records the commit in FETCH_HEAD, not as
+          # origin/<sha>, so diff against FETCH_HEAD (surrogate escaping: the
+          # base sha is a hex string, never a path character).
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- '*.py' | tr '\n' ' ')
+          fi
+          ruff check $CORE $CHANGED
+
       - name: Vault allowlist (privacy guard)
         # The repo knowledge vault must contain only curated, non-personal
         # notes. Fails if anything private/unknown enters data/vault/.
         run: python scripts/check_vault_allowlist.py --strict
+
+      - name: Data PII guard
+        # Tracked data/ files must never contain /Users/<name> home paths,
+        # repo-root absolute prefixes, or secret indicators. The school-loop
+        # checkpoint sanitizes before pushing, but this blocks a direct commit
+        # to main (2026-10-14 audit: 51x /Users/brandonbennett had landed).
+        run: python scripts/sanitize_data.py --verify
 
       - name: index-gate selftest (behavior hook)
         # Proves the Rust behavior hook can still go red. A guard that only

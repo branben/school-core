@@ -32,7 +32,7 @@ PyYAML and pytest.
 
 | Environment | Python | Notes |
 |---|---|---|
-| CI (`ci.yml`) | 3.9 (compileall) + 3.12 (pytest matrix) | `str \| None` only safe with `from __future__ import annotations` |
+| CI (`ci.yml`) | pytest matrix: 3.9, 3.11, 3.12 (compileall on each) | `str \| None` only safe with `from __future__ import annotations` |
 | Hermes venv | 3.11 | Where most developers run tests |
 | Runtime | varies | Orca worktrees use agent profile pins |
 

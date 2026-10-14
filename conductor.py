@@ -44,7 +44,6 @@ from director import evaluate_and_update
 from bookbag import (
     BookbagSignal,
     read_bookbag,
-    list_bookbags,
     list_bookbags_full,
     wait_for_verdicts,
     locked_update_bookbag,
@@ -55,8 +54,6 @@ from leaf import run_leaf, StudentLeaf
 from teacher import TeacherWorktree
 from principal_doubt import run_doubt_cycle
 from scripts.ce_router import classify_task, route_decision
-from scripts.spec_gate import check_dod, _load_spec
-from scripts.student_plan import generate_plan, execute_plan, is_complex, COMPLEXITY_THRESHOLD
 from src.entire_review import run_entire_review
 from orca_executor import OrcaUnavailableError, OrcaExecutionManager
 from github_fetcher import fetch_single_issue, load_config
@@ -642,7 +639,7 @@ def _run_issue_async(
             if entire_status == "fail":
                 print(f"  ⚠ Entire review: {len(entire_findings)} real issue(s) found")
             elif entire_status == "skipped":
-                print(f"  ⊘ Entire review: skipped (entire CLI not found)")
+                print("  ⊘ Entire review: skipped (entire CLI not found)")
             else:
                 print(f"  ✅ Entire review: {entire_status} — no issues")
         except Exception as e:
@@ -1280,7 +1277,7 @@ def _run_single_task(args, store):
 
         print(f"\u2705 Student ({role}) produced {len(result.get('response', ''))} chars")
         print()
-        print(f"\U0001f50d TWO-JUDGE REVIEW")
+        print("\U0001f50d TWO-JUDGE REVIEW")
         print(f"  CTO: {cto} (score={review.get('cto_score', 0):.0f})")
         print(f"  COO: {coo} (score={review.get('coo_score', 0):.0f})")
         mark = "\u2705 YES" if accepted else "\u274c NO"
@@ -1387,7 +1384,7 @@ def _resume_loop(args, store):
                 completed += 1
                 print(f"  {idx+1}/{len(pending)} {bead[:30]} [{student}/{domain}] "
                       f"CTO={cto_v} COO={coo_v}")
-            except Exception as e:
+            except Exception:
                 print(f"  {idx+1}/{len(pending)} {bead[:30]} [{student}/{domain}] \u274c Timeout")
                 # Mark as reviewed anyway (will be scored as failure)
                 bag["cto_verdict"] = bag.get("cto_verdict", "FAIL")
@@ -2485,7 +2482,7 @@ def _print_leaderboard(store: ScoreStore) -> None:
         gate = store.gate_for_score(score)
         print(f"  {rank}. {agent:12s} {score:6.1f} ({gate})")
     print()
-    print(f"\U0001f4a1 To clean up: python conductor.py --clean-worktrees")
+    print("\U0001f4a1 To clean up: python conductor.py --clean-worktrees")
 
 
 if __name__ == "__main__":
