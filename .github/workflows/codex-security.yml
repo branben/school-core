@@ -8,13 +8,10 @@ on:
 permissions:
   contents: read
 
-# codex-security refuses to write scan output inside the scanned worktree
-# ("Scan artifacts cannot be written inside the protected scan root"), so the
-# output lands in the runner's temp dir (outside the repo). runner.temp is only
-# available inside job steps, so each step below resolves the path itself.
-env:
-  CODEX_SECURITY_STATE_DIR: ${{ github.workspace }}/.codex-security-state
-
+# codex-security refuses to write scan output OR its state dir inside the
+# scanned worktree ("Scan artifacts cannot be written inside the protected scan
+# root"), so both live under runner.temp (outside the repo). runner.temp is only
+# available inside job steps, so each step below resolves the paths itself.
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -34,7 +31,7 @@ jobs:
       - name: Run Codex Security scan
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_SECURITY_STATE_DIR: ${{ env.CODEX_SECURITY_STATE_DIR }}
+          CODEX_SECURITY_STATE_DIR: ${{ runner.temp }}/codex-security-state
           CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
         run: |
           set -euo pipefail
