@@ -39,6 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$CODEX_SECURITY_STATE_DIR" "$CODEX_SECURITY_OUTPUT_DIR"
+          # codex-security requires the output dir be private (chmod 700).
+          chmod 700 "$CODEX_SECURITY_OUTPUT_DIR" "$CODEX_SECURITY_STATE_DIR"
           npx @openai/codex-security scan . \
             --auth api-key \
             --format json \
