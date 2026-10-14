@@ -42,14 +42,23 @@ DEFAULT_CONSOLIDATION_KEEP = 60
 # 2) Any remaining /Users/<username> prefix → ~  (removes username + home layout)
 HOME_RE = re.compile(r"/Users/[A-Za-z0-9_.-]+")
 
+# 3) Plaintext private-key material (PEM armor or an unquoted key field). The
+#    sanitizer redacts scoped key files by name, but a stray PEM block pasted
+#    into a tracked artifact bypasses the JSON-key checks, so the verifier
+#    flags the armor boundary itself.
+PEM_ARMOR_RE = re.compile(
+    r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----"
+)
+PRIVATE_KEY_FIELD_RE = re.compile(r"(?i)\bprivate\s*key\b")
+
 # Runtime observations are untrusted. Redact sensitive fields before any
 # durable checkpoint, even when they arrive inside YAML/text artifacts.
 SENSITIVE_KEY_PATTERN = (
     r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|auth|secret|password|credential|private[_-]?key)"
 )
 SENSITIVE_KEY_RE = re.compile(r"(?i)" + SENSITIVE_KEY_PATTERN)
-SENSITIVE_JSON_KEY_RE = re.compile(r"(?i)[\"']" + SENSITIVE_KEY_PATTERN + r"[\"']\s*:")
 SESSION_ID_RE = re.compile(r"^loop-\d{8}-\d{6}$")
+SENSITIVE_JSON_KEY_RE = re.compile(r"(?i)[\"']" + SENSITIVE_KEY_PATTERN + r"[\"']\s*:")
 SENSITIVE_LINE_RE = re.compile(
     r"(?im)^(\s*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|auth|secret|password|credential)[^:]*:\s*).*$"
 )
@@ -201,16 +210,92 @@ def sanitize_file(path: Path) -> int:
     return hits_before
 
 
+def _is_redacted(value) -> bool:
+    """True for the sanitizer's redaction markers.
+
+    JSON writes ``"[REDACTED]"``; YAML dumps the same string via ``scrub_value``,
+    but a bare ``[REDACTED]`` unquoted in YAML parses as the one-element flow
+    list ``['REDACTED']`` whose element is the bare word ``REDACTED``. Accept
+    the optional brackets in both forms.
+    """
+    if value is None:
+        return True  # JSON null / YAML ~ — no live secret
+    if isinstance(value, str):
+        candidate = value.strip()
+    elif isinstance(value, (list, tuple)) and len(value) == 1 and isinstance(value[0], str):
+        candidate = value[0].strip()
+    else:
+        return False
+    return candidate in ("", "[REDACTED]", "REDACTED")
+
+
+def _sensitive_key_with_live_value(value, key: str, findings: list[str]) -> None:
+    """Flag a sensitive key whose value is an actual secret (not redacted/empty)."""
+    if not isinstance(key, str) or not SENSITIVE_KEY_RE.match(key.strip()):
+        return
+    if not _is_redacted(value):
+        findings.append("sensitive JSON key")
+
+
+def _walk_sensitive(value, findings: list[str]) -> None:
+    """Recursively find sensitive keys holding live (non-redacted) values."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _sensitive_key_with_live_value(v, k, findings)
+            _walk_sensitive(v, findings)
+    elif isinstance(value, list):
+        for item in value:
+            _walk_sensitive(item, findings)
+
+
+# A line whose value is already redacted (e.g. "password: '[REDACTED]'" or
+# "authorization: [REDACTED]") is not a residual finding. The sanitizer keeps
+# the key but replaces the value, so the line-regex must not flag it.
+REDACTED_LINE_TAIL_RE = re.compile(r":\s*[\"']?\[?REDACTED\]?[\"']?\s*$")
+
+
 def unsafe_text(path: Path) -> list[str]:
-    """Return common secret indicators still present after sanitization."""
+    """Return common secret indicators still present after sanitization.
+
+    Mirrors the patterns ``sanitize_file`` uses to *scrub*, so a value the
+    sanitizer would rewrite cannot survive ``--verify`` with a clean bill.
+    Catches quoted JSON keys (``{"password": ...}``), repo-root paths, and
+    private-key material, which line-anchored regexes alone miss. Structured
+    files additionally walk the parsed values so a redacted key (kept as
+    ``[REDACTED]``) is not a false positive.
+    """
     try:
         text = path.read_text()
     except OSError:
         return []
     findings = []
-    for pattern, label in ((SENSITIVE_LINE_RE, "sensitive field"), (TOKEN_RE, "token"), (HOME_RE, "home path")):
-        if pattern.search(text):
-            findings.append(label)
+    for line in text.splitlines():
+        if REDACTED_LINE_TAIL_RE.search(line):
+            continue
+        for pattern, label in (
+            (SENSITIVE_LINE_RE, "sensitive field"),
+            (TOKEN_RE, "token"),
+            (HOME_RE, "home path"),
+            (REPO_PREFIX_RE, "repo path"),
+            (PEM_ARMOR_RE, "private key"),
+            (PRIVATE_KEY_FIELD_RE, "private key"),
+        ):
+            if pattern.search(line):
+                findings.append(label)
+                break
+    # Structured JSON/YAML: walk actual values so quoted keys with redacted or
+    # empty values are not flagged (the sanitizer keeps the key). Each JSONL
+    # record is its own document.
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".jsonl":
+            for line in text.splitlines():
+                if line.strip():
+                    _walk_sensitive(json.loads(line), findings)
+        elif suffix in {".json", ".yaml", ".yml"}:
+            _walk_sensitive(yaml.safe_load(text), findings)
+    except (ValueError, TypeError, yaml.YAMLError):
+        pass
     return findings
 
 
@@ -227,8 +312,45 @@ def verify_consolidations_safe(consolidation_dir: Path | None = None) -> list[tu
     return findings
 
 
+def verify_data_safe() -> list[tuple[Path, list[str]]]:
+    """Check every git-tracked file under data/ for residual PII/secret indicators.
+
+    The school-loop checkpoint sanitizes before pushing, but a malicious or
+    careless commit can land on main directly with raw /Users/ paths (see the
+    2026-10-14 audit: 51x /Users/brandonbennett in data/last_run.json). CI runs
+    this before merge so the public branch stays clean.
+    """
+    import subprocess
+
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "data/"],
+            capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        # Not a git checkout — fall back to a broad local scan.
+        tracked = [str(p) for p in Path("data").rglob("*") if p.is_file()]
+    findings = []
+    for rel in tracked:
+        path = Path(rel)
+        if not path.is_file():
+            continue
+        residual = unsafe_text(path)
+        if residual:
+            findings.append((path, residual))
+    return findings
+
+
 def main() -> int:
     args = list(sys.argv[1:])
+    if "--verify" in args:
+        findings = verify_data_safe()
+        if findings:
+            for path, labels in findings:
+                print(f"[sanitize] UNSAFE {path}: {', '.join(labels)}", file=sys.stderr)
+            return 1
+        print("[sanitize] verify OK: no PII/secret indicators in tracked data files")
+        return 0
     # U2: `--trim-trajectories [N]` trims the trajectory dir to the newest N
     # files (default DEFAULT_TRAJECTORY_KEEP) before sanitizing, then sanitizes
     # each remaining trajectory alongside the explicit file args.
