@@ -8,13 +8,12 @@ on:
 permissions:
   contents: read
 
+# codex-security refuses to write scan output inside the scanned worktree
+# ("Scan artifacts cannot be written inside the protected scan root"), so the
+# output lands in the runner's temp dir (outside the repo). runner.temp is only
+# available inside job steps, so each step below resolves the path itself.
 env:
   CODEX_SECURITY_STATE_DIR: ${{ github.workspace }}/.codex-security-state
-  # codex-security refuses to write scan output inside the scanned worktree
-  # ("Scan artifacts cannot be written inside the protected scan root"), so the
-  # output lands in the runner's temp dir (outside the repo) and the upload +
-  # gate steps read it from there.
-  CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
 
 jobs:
   scan:
@@ -36,7 +35,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_SECURITY_STATE_DIR: ${{ env.CODEX_SECURITY_STATE_DIR }}
-          CODEX_SECURITY_OUTPUT_DIR: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}
+          CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
         run: |
           set -euo pipefail
           mkdir -p "$CODEX_SECURITY_STATE_DIR" "$CODEX_SECURITY_OUTPUT_DIR"
@@ -54,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codex-security-results
-          path: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}/
+          path: ${{ runner.temp }}/codex-security-results/
           retention-days: 30
           if-no-files-found: warn
 
@@ -65,7 +64,7 @@ jobs:
         # scan step would let medium+ findings merge green). Artifacts are always
         # uploaded first, so this step can fail without losing the report.
         env:
-          CODEX_SECURITY_OUTPUT_DIR: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}
+          CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
         run: |
           node <<'NODE'
           const fs = require('fs');
