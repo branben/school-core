@@ -319,6 +319,111 @@ class TestRunTask:
         assert "Model call failed" in result["error"]
 
 
+# ── run_via_hermes Transport Tests (Gap-G1) ──────────────────────────────────
+
+
+class TestRunViaHermesTransport:
+    """run_via_hermes() OmniRoute delegation modes (Gap-G1)."""
+
+    def _booted_leaf(self, mock_mgr, role="coder", domain="python-coding"):
+        leaf = StudentLeaf(role, domain)
+        leaf.boot()
+        return leaf
+
+    def test_default_transport_is_hermes(self):
+        """LEAF_TRANSPORT must default to the Hermes terminal path."""
+        import leaf as leaf_module
+        assert leaf_module.LEAF_TRANSPORT == "hermes"
+
+    def test_omniroute_transport_calls_call_model(
+        self, mock_mgr, mock_bookbag_signal, monkeypatch
+    ):
+        """LEAF_TRANSPORT=omniroute must route the student through executor.call_model."""
+        monkeypatch.setenv("LEAF_TRANSPORT", "omniroute")
+        import leaf as leaf_module
+        # Re-read the env var so the module constant reflects the test value.
+        monkeypatch.setattr(leaf_module, "LEAF_TRANSPORT", "omniroute")
+
+        fake_output = "OmniRoute student answer"
+        mock_mgr.write_student_output.return_value = None
+        with patch(
+            "leaf._run_student_via_omniroute", return_value=fake_output
+        ) as mock_or:
+            with patch("leaf.write_bookbag") as mock_wb:
+                leaf = self._booted_leaf(mock_mgr)
+                result = leaf.run_via_hermes("Build a thing")
+
+        mock_or.assert_called_once()
+        assert result["status"] == "success"
+        assert result["response"] == fake_output
+        assert result["transport"] == "omniroute"
+        # A successful OmniRoute dispatch must feed the router outcome loop.
+        with patch(
+            "leaf._record_leaf_routing_outcome"
+        ) as mock_record:
+            with patch("leaf._run_student_via_omniroute", return_value=fake_output):
+                leaf2 = self._booted_leaf(mock_mgr)
+                leaf2.run_via_hermes("Build a thing")
+        mock_record.assert_called_once_with("coder", success=True, quality=1.0)
+
+    def test_omniroute_failure_writes_error_bookbag(
+        self, mock_mgr, mock_bookbag_signal, monkeypatch
+    ):
+        """When OmniRoute is selected and fails, result is error + error bookbag."""
+        monkeypatch.setenv("LEAF_TRANSPORT", "omniroute")
+        import leaf as leaf_module
+        monkeypatch.setattr(leaf_module, "LEAF_TRANSPORT", "omniroute")
+
+        with patch(
+            "leaf._run_student_via_omniroute", side_effect=RuntimeError("no model")
+        ):
+            with patch("leaf.write_bookbag") as mock_wb:
+                leaf = self._booted_leaf(mock_mgr)
+                result = leaf.run_via_hermes("Build a thing")
+
+        assert result["status"] == "error"
+        assert "no model" in result["error"]
+        mock_wb.assert_called_once()
+
+    def test_auto_transport_falls_back_to_omniroute_on_orca_down(
+        self, mock_mgr, mock_bookbag_signal, monkeypatch
+    ):
+        """LEAF_TRANSPORT=auto must fall back to OmniRoute when Orca is down."""
+        monkeypatch.setenv("LEAF_TRANSPORT", "auto")
+        import leaf as leaf_module
+        monkeypatch.setattr(leaf_module, "LEAF_TRANSPORT", "auto")
+        mock_mgr.run_hermes.side_effect = OrcaUnavailableError("Orca down")
+
+        fake_output = "fallback answer"
+        with patch("leaf._run_student_via_omniroute", return_value=fake_output):
+            with patch("leaf.write_bookbag"):
+                leaf = self._booted_leaf(mock_mgr)
+                result = leaf.run_via_hermes("Build a thing")
+
+        assert result["status"] == "success"
+        assert result["response"] == fake_output
+        assert result["transport"] == "omniroute"
+
+    def test_hermes_transport_run_hermes_in_terminal(
+        self, mock_mgr, mock_bookbag_signal
+    ):
+        """Default (hermes) transport must call the Orca terminal path."""
+        fake_output = "terminal answer"
+        mock_mgr.run_hermes.return_value = fake_output
+        with patch("leaf.write_bookbag"):
+            leaf = self._booted_leaf(mock_mgr)
+            result = leaf.run_via_hermes("Build a thing")
+        assert result["status"] == "success"
+        assert result["transport"] == "hermes"
+        assert result["response"] == fake_output
+        mock_mgr.run_hermes.assert_called_once()
+        # No router feedback when dispatched through the terminal.
+        with patch("leaf._record_leaf_routing_outcome") as mock_record:
+            leaf2 = self._booted_leaf(mock_mgr)
+            leaf2.run_via_hermes("Build a thing")
+        mock_record.assert_not_called()
+
+
 # ── Signal Tests ─────────────────────────────────────────────────────────────
 
 

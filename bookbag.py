@@ -7,6 +7,14 @@ The bookbag is the ground-truth artifact — teachers review the bookbag,
 not the student's raw output. Write to disk, verify on disk, don't trust
 the report.
 
+SCOPE (Gap-G2): the bookbag is the DURABLE JUDGMENT/RESULT record for a task.
+It is NOT a task tracker. Task lifecycle (status, claim, dispatch, ownership,
+=the board/kanban row, `bd close`/`bd update`) lives in **bd (beads)** — the
+repository-mandated tracker (see AGENTS.md). The bead id IS the bookbag id:
+``bd`` names the slice, the bookbag records what the two judges decided about
+it. Two concerns, two stores — do not add claim/status/tracker fields here.
+See docs/bookbag-vs-bd.md for the full boundary.
+
 Schema (proven against live data in ~/.hermes/bookbag/):
     bead: str           — unique task identifier
     task: str | None    — task description
