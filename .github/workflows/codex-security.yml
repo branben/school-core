@@ -10,11 +10,16 @@ permissions:
 
 env:
   CODEX_SECURITY_STATE_DIR: ${{ github.workspace }}/.codex-security-state
+  # codex-security refuses to write scan output inside the scanned worktree
+  # ("Scan artifacts cannot be written inside the protected scan root"), so the
+  # output lands in the runner's temp dir (outside the repo) and the upload +
+  # gate steps read it from there.
+  CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,13 +36,14 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_SECURITY_STATE_DIR: ${{ env.CODEX_SECURITY_STATE_DIR }}
+          CODEX_SECURITY_OUTPUT_DIR: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}
         run: |
           set -euo pipefail
-          mkdir -p "$CODEX_SECURITY_STATE_DIR"
+          mkdir -p "$CODEX_SECURITY_STATE_DIR" "$CODEX_SECURITY_OUTPUT_DIR"
           npx @openai/codex-security scan . \
             --auth api-key \
             --format json \
-            --output-dir results \
+            --output-dir "$CODEX_SECURITY_OUTPUT_DIR" \
             --model gpt-5.6-sol \
             --effort medium \
             --fail-on-severity medium
@@ -48,7 +54,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codex-security-results
-          path: results/
+          path: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}/
           retention-days: 30
           if-no-files-found: warn
 
@@ -58,11 +64,13 @@ jobs:
         # at or above the configured severity (otherwise continue-on-error on the
         # scan step would let medium+ findings merge green). Artifacts are always
         # uploaded first, so this step can fail without losing the report.
+        env:
+          CODEX_SECURITY_OUTPUT_DIR: ${{ env.CODEX_SECURITY_OUTPUT_DIR }}
         run: |
           node <<'NODE'
           const fs = require('fs');
           const path = require('path');
-          const resultsDir = 'results';
+          const resultsDir = process.env.CODEX_SECURITY_OUTPUT_DIR;
 
           const severityRank = { informational: 0, low: 1, medium: 2, high: 3, critical: 4 };
           const threshold = { medium: 2, high: 3, critical: 4 }[process.env.CODEX_SECURITY_FAIL_SEVERITY || 'medium'];
