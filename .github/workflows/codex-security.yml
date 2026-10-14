@@ -14,7 +14,11 @@ permissions:
 # available inside job steps, so each step below resolves the paths itself.
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    # ubuntu-latest (24.04) restricts unprivileged user namespaces
+    # (kernel.apparmor_restrict_unprivileged_userns=1), which breaks codex's
+    # Bubblewrap sandbox with "bwrap: loopback: Failed RTM_NEWADDR". Use 22.04
+    # where that restriction is not enforced.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
