@@ -3853,3 +3853,244 @@ class TestCandidatePublicationProductionSeam:
         assert record is not None
         assert record.state == "pr_failed"
         assert record.head_sha == env.manifest.head_sha
+
+
+# ── Gap-G4: Async teacher review (opt-in) ────────────────────────────────
+
+
+class TestAsyncTeacherMerge:
+    """_merge_async_teacher_verdicts() — the ISSUE_ASYNC_TEACHERS seam."""
+
+    def _task_result(self):
+        return {
+            "status": "success",
+            "domain": "code-implementation",
+            "difficulty": "medium",
+            "agent": "coder",
+            "response": "def foo(): pass",
+            "bead": "coder-code-implementation-abc123",
+        }
+
+    def _write_bookbag(self, monkeypatch, tmp_path, **kwargs):
+        """Write a bookbag file in a sandboxed repo namespace and return repo."""
+        import bookbag
+        repo = test_repo = f"test/async-{kwargs.pop('suffix', 'x')}"
+        # bookbag.bead_path resolves under ~/.hermes/bookbag/<repo>/ — sandbox
+        # it to tmp_path so tests never touch the real bookbag store.
+        monkeypatch.setattr(
+            bookbag, "bead_path",
+            lambda bead, _repo: tmp_path / f"{_repo.replace('/', '__')}__{bead}.json",
+        )
+        bag = {"bead": kwargs.get("bead", self._task_result()["bead"]),
+               "student": "coder", "output": "def foo(): pass", "timestamp": 1}
+        bag.update({k: v for k, v in kwargs.items() if v is not None})
+        (tmp_path / f"{repo.replace('/', '__')}__{bag['bead']}.json").write_text(
+            json.dumps(bag)
+        )
+        return repo
+
+    def test_no_bead_returns_none(self, monkeypatch, tmp_path):
+        """A task result without a bead is not a skip_review candidate."""
+        r = self._task_result()
+        r.pop("bead")
+        assert issue_bridge._merge_async_teacher_verdicts(
+            r, issue_num=1, repo="test/x"
+        ) is None
+
+    def test_merges_two_pass_verdicts(self, monkeypatch, tmp_path):
+        r = self._task_result()
+        repo = self._write_bookbag(
+            monkeypatch, tmp_path, bead=r["bead"],
+            cto_verdict="PASS", coo_verdict="PASS",
+            cto_score=90, coo_score=88,
+            cto_findings=[], coo_findings=[],
+        )
+        with patch("issue_bridge.time.sleep"):
+            merged = issue_bridge._merge_async_teacher_verdicts(
+                r, issue_num=7, repo=repo, timeout=0.01,
+            )
+        assert merged == 2
+        rev = r["review"]
+        assert rev["cto_verdict"] == "PASS"
+        assert rev["coo_verdict"] == "PASS"
+        assert rev["accepted"] is True
+        assert r["task_score"] == max(60, (90 + 88) / 2)
+        # The synthetic adversarial_review feeds the bridge's score block.
+        assert r["adversarial_review"]["lens_used"] == "async-teachers"
+        assert r["adversarial_review"]["score"] == (90 + 88) / 2
+
+    def test_merges_rejection_from_critical_finding(self, monkeypatch, tmp_path):
+        r = self._task_result()
+        repo = self._write_bookbag(
+            monkeypatch, tmp_path, bead=r["bead"],
+            cto_verdict="PASS", coo_verdict="PASS",
+            cto_score=95, coo_score=95,
+            cto_findings=[{"severity": "CRITICAL", "description": "auth bypass"}],
+            coo_findings=[],
+        )
+        with patch("issue_bridge.time.sleep"):
+            merged = issue_bridge._merge_async_teacher_verdicts(
+                r, issue_num=8, repo=repo, timeout=0.01,
+            )
+        assert merged == 2
+        assert r["review"]["accepted"] is False
+        assert r["task_score"] == min(40, 95)
+
+    def test_timeout_with_no_verdicts_leaves_review_empty(self, monkeypatch, tmp_path):
+        r = self._task_result()
+        repo = self._write_bookbag(
+            monkeypatch, tmp_path, bead=r["bead"],
+            cto_verdict=None, coo_verdict=None,
+        )
+        with patch("issue_bridge.time.sleep"):
+            merged = issue_bridge._merge_async_teacher_verdicts(
+                r, issue_num=9, repo=repo, timeout=0.01,
+            )
+        assert merged == 0
+        assert "review" not in r  # untouched → passes through as retryable
+
+    def test_env_flag_off_by_default(self, monkeypatch):
+        monkeypatch.delenv("ISSUE_ASYNC_TEACHERS", raising=False)
+        assert issue_bridge._async_teachers_enabled_from_env() is False
+
+    def test_env_flag_on_with_truthy(self, monkeypatch):
+        monkeypatch.setenv("ISSUE_ASYNC_TEACHERS", "1")
+        assert issue_bridge._async_teachers_enabled_from_env() is True
+        monkeypatch.setenv("ISSUE_ASYNC_TEACHERS", "true")
+        assert issue_bridge._async_teachers_enabled_from_env() is True
+        monkeypatch.setenv("ISSUE_ASYNC_TEACHERS", "garbage")
+        assert issue_bridge._async_teachers_enabled_from_env() is False
+
+
+class TestAsyncTeacherBridgeDispatch:
+    """bridge_issues() with async_teachers=True dispatches skip_review."""
+
+    @pytest.fixture
+    def mock_repo_dir(self, tmp_path):
+        d = tmp_path / "cloned_repo"
+        d.mkdir(parents=True)
+        return d
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._merge_async_teacher_verdicts")
+    def test_async_teachers_passes_skip_review_and_merges(
+        self,
+        mock_merge, mock_ib_call,
+        mock_task, mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """With ISSUE_ASYNC_TEACHERS=1, run_task gets skip_review=True and the
+        verdict merge is invoked for the successful issue."""
+        monkeypatch.delenv("CREW_ENABLED", raising=False)
+        monkeypatch.setenv("ISSUE_ASYNC_TEACHERS", "1")
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        mock_fetch.return_value = [{
+            "issue_number": 200,
+            "title": "Add home endpoint",
+            "body": "Add a GET / endpoint",
+            "domain": "code-implementation",
+            "difficulty": "easy",
+            "prompt": "Add endpoint",
+            "category": "feature",
+            "state": "ready-for-agent",
+        }]
+        mock_clone.return_value = mock_repo_dir
+        mock_build_ctx.return_value = "Repository: test-repo\n"
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "coder",
+            "domain": "code-implementation",
+            "difficulty": "easy",
+            "prompt": "Add endpoint",
+            "response": "def home(): return 'ok'",
+            "bead": "coder-code-implementation-abc123",
+            "review": {"cto_verdict": ""},
+        }
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": ["handles endpoint"]}'
+        )
+        # Simulate teacher verdicts merged in before scoring.
+        def _fake_merge(task_result, **kwargs):
+            task_result["review"] = {
+                "cto_verdict": "PASS", "coo_verdict": "PASS",
+                "cto_score": 90, "coo_score": 88,
+                "findings": [], "accepted": True,
+            }
+            task_result["adversarial_review"] = {
+                "verdict": "PASS", "score": 89, "findings": [],
+                "lens_used": "async-teachers", "confidence": 1.0,
+                "gaps": [], "suggestions": [],
+            }
+            task_result["task_score"] = 89
+            return 2
+        mock_merge.side_effect = _fake_merge
+
+        results = bridge_issues(
+            "user/test", store=store, crew_enabled=False, async_teachers=True,
+        )
+
+        assert mock_task.call_count == 1
+        kwargs = mock_task.call_args[1]
+        assert kwargs["skip_review"] is True
+        mock_merge.assert_called_once()
+        r = results[0]
+        assert r["status"] == "success"
+        assert r["teacher_evidence"] is not None
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.build_codebase_context")
+    @patch("repo_reader.cleanup_stale_caches")
+    @patch("director.run_task")
+    @patch("issue_bridge.call_model")
+    def test_sync_path_does_not_skip_review(
+        self,
+        mock_ib_call, mock_task,
+        mock_cleanup, mock_build_ctx, mock_clone, mock_fetch,
+        tmp_path, monkeypatch, store, mock_repo_dir,
+    ):
+        """Without the flag, historical synchronous path: skip_review=False."""
+        monkeypatch.delenv("CREW_ENABLED", raising=False)
+        monkeypatch.delenv("ISSUE_ASYNC_TEACHERS", raising=False)
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+
+        mock_fetch.return_value = [{
+            "issue_number": 201,
+            "title": "Add home endpoint",
+            "body": "Add a GET / endpoint",
+            "domain": "code-implementation",
+            "difficulty": "easy",
+            "prompt": "Add endpoint",
+            "category": "feature",
+            "state": "ready-for-agent",
+        }]
+        mock_clone.return_value = mock_repo_dir
+        mock_build_ctx.return_value = "Repository: test-repo\n"
+        mock_task.return_value = {
+            "status": "success",
+            "agent": "coder",
+            "domain": "code-implementation",
+            "difficulty": "easy",
+            "prompt": "Add endpoint",
+            "response": "def home(): return 'ok'",
+        }
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": ["handles endpoint"]}'
+        )
+
+        results = bridge_issues(
+            "user/test", store=store, crew_enabled=False,
+        )
+
+        assert mock_task.call_count == 1
+        kwargs = mock_task.call_args[1]
+        assert kwargs["skip_review"] is False
+        assert results[0]["status"] == "success"

@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,54 @@ from scoring import ScoreStore
 from capabilities import capability_for_task_role, resolve_capability
 
 logger = logging.getLogger(__name__)
+
+# Transport selection for the leaf's student dispatch (gap-fix G1).
+#   "hermes"    — (default) run Hermes agent in the leaf's Orca terminal.
+#   "omniroute" — call the student role via OmniRoute from the principal
+#                 process (the path that feeds ACRouter outcome feedback).
+#   "auto"      — try the Hermes terminal first; fall back to OmniRoute only
+#                 when Orca/Hermes is unavailable for this dispatch.
+LEAF_TRANSPORT = os.environ.get("LEAF_TRANSPORT", "hermes").strip().lower()
+
+
+def _run_student_via_omniroute(leaf: "StudentLeaf", task_prompt: str) -> str:
+    """Dispatch the student task through ``executor.call_model`` (OmniRoute).
+
+    This is the ACRouter-compliant path the sync director uses: it selects a
+    model combo through outcome-feedback routing and calls OmniRoute from the
+    principal process. Used when ``LEAF_TRANSPORT=omniroute`` or when the
+    Hermes-terminal path auto-falls back (Gap-G1).
+
+    Returns the raw student response text. Raises on transport failure.
+    """
+    from context_orchestrator import enrich_prompt
+    from executor import call_model
+    from scoring import ScoreStore
+
+    context_blob = enrich_prompt(
+        leaf.domain, task_prompt,
+        vault_path=None,
+        session_id=None,
+        repo_path=getattr(leaf, "repo_path", None),
+    )
+    system_prompt = f"Role: {leaf.role}, Domain: {leaf.domain}, Difficulty: {leaf.difficulty}."
+    if context_blob:
+        system_prompt += "\n\nContext:\n" + context_blob
+    return call_model(leaf.role, task_prompt, system_prompt=system_prompt)
+
+
+def _record_leaf_routing_outcome(agent_name: str, success: bool, quality: float) -> None:
+    """Record a routing outcome for a leaf dispatch (best-effort, never raises).
+
+    Mirrors ``director._record_acrouter_outcome`` so async/kanban dispatches
+    feed the same ACRouter feedback loop as the sync path (Gap-G1). A failure
+    here must never break the dispatch itself.
+    """
+    try:
+        from executor import record_routing_outcome
+        record_routing_outcome(agent_name, success=success, quality=quality)
+    except Exception:
+        pass
 
 
 def load_soul(profile_name: str) -> str:
@@ -270,41 +319,53 @@ class StudentLeaf:
         # ── Run Hermes in the leaf's Orca terminal ───────────────────────
         logger.info("[leaf:%s] Running Hermes (%s) in Orca terminal...", self.bead[:12], self._hermes_profile)
 
-        try:
-            response = self._mgr.run_hermes(
-                worktree_path=self.worktree_path,
-                bead=self.bead,
-                task=full_prompt,
-                role=self.role,
-                difficulty=self.difficulty,
-            )
-        except OrcaUnavailableError as e:
-            logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)
-            # Write a failed bookbag so pipeline doesn't hang
-            write_bookbag(
-                self.bead,
-                student=self.role,
-                domain=self.domain,
-                difficulty=self.difficulty,
-                task=task_prompt[:200],
-                output=f"[Hermes error: {e}]",
-                repo=self._repo_slug(),
-            )
-            return {
-                "status": "error",
-                "bead": self.bead,
-                "agent": self.role,
-                "domain": self.domain,
-                "response": "",
-                "error": str(e),
-                "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
-                "review": {
-                    "cto_verdict": "", "coo_verdict": "",
-                    "cto_score": 0, "coo_score": 0,
-                    "findings": [], "accepted": False,
-                },
-                "async": True,
-            }
+        transport = LEAF_TRANSPORT
+        response = None
+        transport_used = "hermes"
+        hermes_error: Optional[str] = None
+
+        # Gap-fix G1: when OmniRoute delegation is selected ("omniroute") or
+        # auto-fallback triggers, run the student through the ACRouter path
+        # (executor.call_model) instead of the one-shot `hermes chat -q`
+        # shell-out. That keeps async/kanban dispatch on the same routing
+        # feedback loop as the sync director path.
+        if transport == "omniroute":
+            try:
+                response = _run_student_via_omniroute(self, task_prompt)
+                transport_used = "omniroute"
+            except Exception as e:
+                _record_leaf_routing_outcome(self.role, success=False, quality=0.0)
+                return self._hermes_failure(task_prompt, str(e))
+        else:
+            try:
+                response = self._mgr.run_hermes(
+                    worktree_path=self.worktree_path,
+                    bead=self.bead,
+                    task=full_prompt,
+                    role=self.role,
+                    difficulty=self.difficulty,
+                )
+            except OrcaUnavailableError as e:
+                hermes_error = str(e)
+                logger.error("[leaf:%s] Hermes failed: %s", self.bead[:12], e)
+                if transport == "auto":
+                    logger.info(
+                        "[leaf:%s] Hermes unavailable — falling back to OmniRoute",
+                        self.bead[:12],
+                    )
+                    try:
+                        response = _run_student_via_omniroute(self, task_prompt)
+                        transport_used = "omniroute"
+                    except Exception as e2:
+                        _record_leaf_routing_outcome(self.role, success=False, quality=0.0)
+                        return self._hermes_failure(
+                            task_prompt, f"{hermes_error}; omniroute: {e2}"
+                        )
+                else:
+                    return self._hermes_failure(task_prompt, str(e))
+
+        if response is None:
+            return self._hermes_failure(task_prompt, hermes_error or "no student response")
 
         # ── Write output for audit trail ─────────────────────────────────
         output_data = {
@@ -316,6 +377,7 @@ class StudentLeaf:
             "response": response,
             "response_chars": len(response),
             "hermes_profile": self._hermes_profile,
+            "transport": transport_used,
             "capability": self.capability.to_dict(),
         }
         self._mgr.write_student_output(self.worktree_path, self.bead, output_data)
@@ -332,6 +394,11 @@ class StudentLeaf:
         )
 
         logger.info("[leaf:%s] Hermes completed: %d chars", self.bead[:12], len(response))
+        # Gap-fix G1: a successful OmniRoute dispatch feeds the router outcome
+        # feedback loop — the completion is a positive signal for the combo
+        # that was selected (mirrors director._record_acrouter_outcome).
+        if transport_used == "omniroute":
+            _record_leaf_routing_outcome(self.role, success=True, quality=1.0)
 
         return {
             "status": "success",
@@ -341,6 +408,44 @@ class StudentLeaf:
             "difficulty": self.difficulty,
             "response": response,
             "error": None,
+            "transport": transport_used,
+            "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
+            "review": {
+                "cto_verdict": "",
+                "coo_verdict": "",
+                "cto_score": 0,
+                "coo_score": 0,
+                "findings": [],
+                "accepted": False,
+            },
+            "async": True,
+        }
+
+    def _hermes_failure(self, task_prompt: str, error: str) -> dict:
+        """Write a failed bookbag and return an error result for the dispatch.
+
+        Prevents the parent pipeline from hanging when the Hermes terminal or
+        the OmniRoute fallback both fail (Gap-G1). The bookbag is written with
+        the error text so teachers / the dashboard see a terminal failure state.
+        """
+        logger.error("[leaf:%s] Dispatch failed: %s", self.bead[:12], error)
+        write_bookbag(
+            self.bead,
+            student=self.role,
+            domain=self.domain,
+            difficulty=self.difficulty,
+            task=task_prompt[:200],
+            output=f"[Dispatch error: {error}]",
+            repo=self._repo_slug(),
+        )
+        return {
+            "status": "error",
+            "bead": self.bead,
+            "agent": self.role,
+            "domain": self.domain,
+            "response": "",
+            "error": error,
+            "transport": LEAF_TRANSPORT,
             "bookbag": str(Path.home() / ".hermes" / "bookbag" / f"{self.bead}.json"),
             "review": {
                 "cto_verdict": "",
