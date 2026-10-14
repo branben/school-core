@@ -52,9 +52,12 @@ jobs:
           pip install ruff
           CORE="issue_bridge.py director.py conductor.py repo_reader.py"
           CHANGED=""
+          # git fetch origin <sha> records the commit in FETCH_HEAD, not as
+          # origin/<sha>, so diff against FETCH_HEAD (surrogate escaping: the
+          # base sha is a hex string, never a path character).
           if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
             git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            CHANGED=$(git diff --name-only "origin/${{ github.event.pull_request.base.sha }}" HEAD -- '*.py' | tr '\n' ' ')
+            CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- '*.py' | tr '\n' ' ')
           fi
           ruff check $CORE $CHANGED
 

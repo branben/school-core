@@ -7,7 +7,7 @@ Run: python -m pytest tests/test_issue_bridge.py -v
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch
 
 import pytest
 
@@ -27,7 +27,6 @@ from issue_bridge import (
     verify_task_output,
     _mark_github_issue,
     _build_school_comment,
-    _scrub_comment_text,
     _ensure_school_labels,
     _load_retries,
     _save_retries,
@@ -37,13 +36,10 @@ from issue_bridge import (
     _crew_report_content,
     SCHOOL_DONE_LABEL,
     SCHOOL_FAILED_LABEL,
-    PROCESSED_FILE,
-    RETRY_FILE,
     RETRY_LIMIT,
 )
 from candidate_binding import CandidateBinding, CandidateBindingStore, bind_trusted_evidence
 from pr_provider import PrStateStore, _BoundFakePublisher
-from scoring import ScoreStore
 
 
 @pytest.fixture(autouse=True)
@@ -328,8 +324,12 @@ class TestBridgeIssues:
     @patch("director.run_task")
     @patch("executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_successful_bridge(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
+    @patch("repo_reader.clone_repo")
+    @patch("repo_reader.cleanup_stale_caches")
+    def test_successful_bridge(self, mock_cleanup, mock_clone, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
+        mock_clone.return_value = None
+        mock_cleanup.return_value = None
         mock_exec_call.return_value = '{"findings": []}'
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
@@ -670,8 +670,6 @@ class TestAdversarialReviewStep:
 
     def test_heuristic_score_hard(self):
         task_result = {"response": "x" * 200}
-        issue = {"difficulty": "hard"}
-        score = _heuristic_score(task_result, issue)
         hard_score = _heuristic_score(task_result, {"difficulty": "hard"})
         easy_score = _heuristic_score(task_result, {"difficulty": "easy"})
         assert hard_score >= easy_score
@@ -2417,7 +2415,6 @@ class TestCrewDispatchPath:
 
     def test_flag_off_is_direct_path(self, monkeypatch, tmp_path, store):
         """CREW_ENABLED absent → crew never dispatched; run_task called direct."""
-        import issue_bridge
         calls = []
         def fake_gh(args, timeout=30):
             calls.append(list(args))
@@ -2425,7 +2422,7 @@ class TestCrewDispatchPath:
                 return "[]"
             return None
         monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
-        with patch("issue_bridge.fetch_issues", return_value=self._issue(400)) as mock_fetch, \
+        with patch("issue_bridge.fetch_issues", return_value=self._issue(400)), \
              patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
              patch("repo_reader.build_codebase_context", return_value=""), \
              patch("repo_reader.cleanup_stale_caches"), \
@@ -2463,7 +2460,6 @@ class TestCrewDispatchPath:
         self, monkeypatch, tmp_path, store,
     ):
         """done → report.md content flows through run_task as the deliverable."""
-        import issue_bridge
         monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", tmp_path / "crew_runs.json")
         with patch("issue_bridge.fetch_issues", return_value=self._issue(402)), \
              patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
@@ -2522,7 +2518,7 @@ class TestCrewDispatchPath:
     def test_timeout_falls_back_direct(self, monkeypatch, tmp_path, store):
         """Non-done terminal status (timeout) → direct path, reason recorded."""
         timeout = SimpleNamespace(
-            crew_id=f"fm-loop-20260811-120000-404", status="timeout",
+            crew_id="fm-loop-20260811-120000-404", status="timeout",
             report_path=None, fallback_reason="timeout",
             teardown_ok=True, orca_worktree_id=None,
         )
@@ -2548,7 +2544,7 @@ class TestCrewDispatchPath:
     def test_failed_falls_back_direct(self, monkeypatch, tmp_path, store):
         """Crew 'failed' → direct path, reason recorded."""
         failed = SimpleNamespace(
-            crew_id=f"fm-loop-20260811-120000-405", status="failed",
+            crew_id="fm-loop-20260811-120000-405", status="failed",
             report_path=None, fallback_reason="crew_failed",
             teardown_ok=True, orca_worktree_id=None,
         )
@@ -2600,7 +2596,6 @@ class TestCrewDispatchPath:
         (interrupted) cycle must still block this issue.
         """
         import datetime as _dt
-        import issue_bridge
         runs = tmp_path / "crew_runs.json"
         recent = _dt.datetime.now(_dt.timezone.utc).isoformat()
         runs.write_text(json.dumps([{
@@ -2632,7 +2627,6 @@ class TestCrewDispatchPath:
         Without this, an interrupted crew would be skipped forever: the sweep
         only runs inside dispatch_crew, which the skip prevents.
         """
-        import issue_bridge
         runs = tmp_path / "crew_runs.json"
         runs.write_text(json.dumps([{
             "crew_id": "fm-loop-20260701-000000-407",
@@ -2687,7 +2681,7 @@ class TestCrewDispatchPath:
     def test_crew_done_report_missing_falls_back(self, monkeypatch, tmp_path, store):
         """done without a usable report → treat as fallback, direct path."""
         no_report = SimpleNamespace(
-            crew_id=f"fm-loop-20260811-120000-410", status="done",
+            crew_id="fm-loop-20260811-120000-410", status="done",
             report_path=tmp_path / "missing.md", fallback_reason="report_missing",
             teardown_ok=True, orca_worktree_id="repo::/tmp/wt",
         )
@@ -2779,7 +2773,6 @@ class TestFrozenContractThreading:
         }
 
     def _run(self, monkeypatch, tmp_path, store, repo_path):
-        import issue_bridge
         with patch("issue_bridge.fetch_issues", return_value=self._issue(500)), \
              patch("repo_reader.clone_repo", return_value=repo_path), \
              patch("repo_reader.build_codebase_context", return_value=""), \
@@ -3358,7 +3351,7 @@ class TestCandidateBindingResume:
     def _seed_binding(self, env, *, head_sha=None, verification_passed=True,
                       approval_state="approved"):
         """Persist a binding the way a prior (pre-restart) process would have."""
-        from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+        from candidate_binding import CandidateBindingStore
 
         head = head_sha or env.manifest.head_sha
         verification = SimpleNamespace(
@@ -3411,7 +3404,7 @@ class TestCandidateBindingResume:
 
     def test_resume_does_not_surface_a_superseded_head(self, resume_env):
         """A binding for a different head is not this candidate's posture."""
-        from candidate_binding import CandidateBinding, CandidateBindingStore
+        from candidate_binding import CandidateBindingStore
 
         stale = CandidateBinding(
             candidate_id=resume_env.manifest.candidate_id,
@@ -3617,9 +3610,7 @@ def _seed_pub_binding(env, *, verification_passed=True, approval_state="approved
     directly — this is the shape a restart would actually find on disk.
     """
     from candidate_binding import (
-        CandidateBinding,
         CandidateBindingStore,
-        bind_trusted_evidence,
     )
 
     head = head_sha or env.manifest.head_sha

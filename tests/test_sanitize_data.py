@@ -101,6 +101,57 @@ class TestSanitizeFile:
         assert "/Users/" not in p.read_text()
 
 
+class TestUnsafeTextGaps:
+    """Regression coverage for verify gaps bots flagged on the audit PR."""
+
+    def test_quoted_json_key_with_live_secret(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.json"
+        p.write_text('{"password": "hunter2", "user": "bob"}')
+        assert unsafe_text(p) == ["sensitive JSON key"]
+
+    def test_quoted_nested_json_key_live_secret(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.json"
+        p.write_text('{"meta": {"authorization": "Bearer abcd"}}')
+        assert "sensitive JSON key" in unsafe_text(p)
+
+    def test_redacted_keys_are_not_false_positives(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        for content in (
+            '{"authorization": "[REDACTED]"}',
+            '{"password": ""}',
+            '{"password": null}',
+        ):
+            p = tmp_path / "x.json"
+            p.write_text(content)
+            assert "sensitive JSON key" not in unsafe_text(p)
+
+    def test_redacted_yaml_flow_list_not_false_positive(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.yaml"
+        p.write_text("password: [REDACTED]\n")
+        assert "sensitive JSON key" not in unsafe_text(p)
+
+    def test_repo_root_path_flagged(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.json"
+        p.write_text('{"path": "/home/runner/work/school-core/school-core/data/t.json"}')
+        assert "repo path" in unsafe_text(p)
+
+    def test_pem_private_key_flagged(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.txt"
+        p.write_text("-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n")
+        assert "private key" in unsafe_text(p)
+
+    def test_clean_file_no_findings(self, tmp_path):
+        from scripts.sanitize_data import unsafe_text
+        p = tmp_path / "x.json"
+        p.write_text('{"name": "bob", "score": 10}')
+        assert unsafe_text(p) == []
+
+
 class TestRegexes:
     def test_mac_regex(self):
         assert REPO_PREFIX_RE.sub(
@@ -221,8 +272,6 @@ class TestSanitizeConsolidation:
         assert "sk-1234567890abcdef" not in cleaned
 
     def test_fresh_checkout_can_read_sanitized_consolidation(self, tmp_path, monkeypatch):
-        from context_orchestrator import _archival_context
-
         source = tmp_path / "source" / "data" / "sessions" / "consolidation" / "loop-20260811-120000"
         source.mkdir(parents=True)
         artifact = source / "debugging.yaml"

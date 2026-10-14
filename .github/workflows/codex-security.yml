@@ -14,6 +14,11 @@ permissions:
 # available inside job steps, so each step below resolves the paths itself.
 jobs:
   scan:
+    # Fork PRs cannot receive OPENAI_API_KEY (GitHub Actions does not forward
+    # secrets to pull_request events from forks), so the gate would always fail
+    # red for a clean fork contribution. Skip for forks — an explicit neutral
+    # pass rather than a silent skip.
+    if: github.event.pull_request.head.repo.fork != true
     # ubuntu-latest (24.04) restricts unprivileged user namespaces
     # (kernel.apparmor_restrict_unprivileged_userns=1), which breaks codex's
     # Bubblewrap sandbox with "bwrap: loopback: Failed RTM_NEWADDR". Use 22.04
@@ -87,7 +92,14 @@ jobs:
             process.exit(1);
           }
 
-          const list = findings?.findings?.findings ?? [];
+          // Schema drift guard: if findings.json parses but does not have the
+          // expected shape, fail loudly instead of defaulting to [] and green-
+          // lighting the scan (a tool upgrade could silently change the layout).
+          if (typeof findings !== 'object' || findings === null || !Array.isArray(findings?.findings?.findings)) {
+            console.error(`findings.json has an unexpected shape — refusing to pass an unparsed scan. See the results artifact.`);
+            process.exit(1);
+          }
+          const list = findings.findings.findings;
           const blocking = list
             .map(f => ({ title: f.title, sev: f.severity?.level ?? 'informational' }))
             .filter(f => (severityRank[f.sev] ?? 0) >= threshold);
