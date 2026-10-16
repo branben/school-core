@@ -2,7 +2,10 @@
   "repos": [
     { "source": "redhat-et/ripwire", "ref": "v0.6.0", "update": "frozen" },
     { "source": "plannotator/effective-html", "ref": "HEAD", "update": "frozen" },
-    { "source": "plannotator/guides", "ref": "HEAD", "update": "frozen" }
+    { "source": "plannotator/guides", "ref": "HEAD", "update": "frozen" },
+    { "source": "plannotator/envit", "ref": "HEAD", "update": "frozen" },
+    { "source": "Gentleman-Programming/engram", "ref": "HEAD", "update": "frozen" },
+    { "source": "oraios/serena", "ref": "HEAD", "update": "frozen" }
   ],
   "skills": {
     "redhat-et/ripwire": {
@@ -29,6 +32,16 @@
       "path": "skills",
       "pick": "*",
       "modelInvocable": false
+    },
+    "plannotator/envit": {
+      "path": "skills",
+      "pick": ["envit"],
+      "modelInvocable": true
+    },
+    "Gentleman-Programming/engram": {
+      "path": "skills",
+      "pick": ["memory-protocol"],
+      "modelInvocable": true
     }
   }
 }

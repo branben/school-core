@@ -18,6 +18,24 @@
       "source": "https://github.com/plannotator/guides.git",
       "ref": "HEAD",
       "commit": "da10932bcb861cc3830bcd50c2249249b2bbb538"
+    },
+    {
+      "name": "envit",
+      "source": "https://github.com/plannotator/envit.git",
+      "ref": "HEAD",
+      "commit": "129de79b5e2c781fdbddb3bacfb0914c0379c2c9"
+    },
+    {
+      "name": "engram",
+      "source": "https://github.com/Gentleman-Programming/engram.git",
+      "ref": "HEAD",
+      "commit": "bf53121c7d33e2a5acd112ce3c42f8d892c813f1"
+    },
+    {
+      "name": "serena",
+      "source": "https://github.com/oraios/serena.git",
+      "ref": "HEAD",
+      "commit": "d9e4c796fae0207ba6848d1df4b331122a5567b5"
     }
   ]
 }
