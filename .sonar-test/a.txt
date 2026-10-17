@@ -1,0 +1,1 @@
+Throwaway file A from Sonar (Town assistant) to verify atomic multi-file commits. Safe to delete.
