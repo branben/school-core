@@ -102,7 +102,7 @@ class TestSanitizeFile:
 
 
 class TestUnsafeTextGaps:
-    """Regression coverage for verify gaps surfaced by bot code review."""
+    """Regression coverage for verify gaps bots flagged on the audit PR."""
 
     def test_quoted_json_key_with_live_secret(self, tmp_path):
         from scripts.sanitize_data import unsafe_text
@@ -272,8 +272,6 @@ class TestSanitizeConsolidation:
         assert "sk-1234567890abcdef" not in cleaned
 
     def test_fresh_checkout_can_read_sanitized_consolidation(self, tmp_path, monkeypatch):
-        from context_orchestrator import _archival_context
-
         source = tmp_path / "source" / "data" / "sessions" / "consolidation" / "loop-20260811-120000"
         source.mkdir(parents=True)
         artifact = source / "debugging.yaml"

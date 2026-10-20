@@ -11,7 +11,6 @@ import re
 import sqlite3
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -420,12 +419,19 @@ def run_doctor(root: Path, env=None) -> Report:
     return report
 
 
+# Both the flat key (sync.remote:) and the nested YAML block (sync:\n  remote:)
+# appear in the wild; `.beads/config.yaml` uses the nested form.
+sync_remote_re = re.compile(r"^\s*(?:sync\.)?remote:\s*(.*?)\s*(?:#.*)?$")
+
+
 def _beads_remote(root: Path) -> str | None:
     config = root / ".beads" / "config.yaml"
     if not config.is_file():
         return None
     for line in config.read_text(errors="replace").splitlines():
-        match = re.match(r"^\s*sync\.remote:\s*(.*?)\s*(?:#.*)?$", line)
+        if line.lstrip().startswith("sync:") and not line.lstrip().startswith("sync.remote:"):
+            continue  # nested block; the remote line follows
+        match = sync_remote_re.match(line)
         if match:
             value = match.group(1).strip().strip("\\\"'")
             return value or None

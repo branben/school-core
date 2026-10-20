@@ -45,12 +45,20 @@ class _Stub(BaseHTTPRequestHandler):
         elif "/repos/x/y/issues/3" in self.path:
             self._send(json.dumps({"number": 3, "title": "Async dispatch slice",
                                    "body": "", "labels": [{"name": "ready-for-agent"}]}))
+        elif "/repos/x/y/issues/4" in self.path:
+            self._send(json.dumps({"number": 4, "title": "UI URL slice",
+                                   "body": "", "labels": [{"name": "ready-for-agent"}]}))
         elif "/repos/x/y/issues/99" in self.path:
             self._send(json.dumps({}), code=404)
         elif "/app-conversations/start-tasks" in self.path:
             # Async start-task poll (GET): app_conversation_id appears late.
             if "start-2" in self.path:
+                # No conversation_ui_url → dispatch must synthesize the canvas link.
                 self._send(json.dumps([{"id": "start-2", "app_conversation_id": "late42"}]))
+            elif "start-3" in self.path:
+                # start-3 carries the server-provided UI URL; dispatch must use it.
+                self._send(json.dumps([{"id": "start-3", "app_conversation_id": "withui",
+                                        "conversation_ui_url": "https://app.all-hands.dev/canvas/conversations/withui"}]))
             else:
                 self._send(json.dumps([{"id": "start-1", "app_conversation_id": "abc123"}]))
         else:
@@ -64,6 +72,8 @@ class _Stub(BaseHTTPRequestHandler):
             # Issue 3's prompt includes its title; use it to select start-2.
             if "Async dispatch slice" in json.dumps(body):
                 self._send(json.dumps({"id": "start-2"}))
+            elif "UI URL slice" in json.dumps(body):
+                self._send(json.dumps({"id": "start-3"}))
             else:
                 self._send(json.dumps({"id": "start-1"}))
         elif self.path.endswith("/labels"):
@@ -108,7 +118,8 @@ def test_auto_apply_starts_cloud_conversation(stub_server):
     assert result.returncode == 0
     assert "auto-apply" in result.stdout
     assert any("Auto-apply" in c for c in _Stub.comments)
-    assert "https://app.all-hands.dev/conversations/abc123" in " ".join(_Stub.comments)
+    # start-1 carries no conversation_ui_url → canvas link is synthesized.
+    assert "https://app.all-hands.dev/canvas/conversations/abc123" in " ".join(_Stub.comments)
 
 
 def test_human_approve_pauses_and_labels(stub_server):
@@ -125,7 +136,19 @@ def test_async_start_task_polled_via_get_for_conversation_id(stub_server):
     result = _run(stub_server, 3)
     assert result.returncode == 0
     assert "auto-apply" in result.stdout
-    assert "https://app.all-hands.dev/conversations/late42" in " ".join(_Stub.comments)
+    # No conversation_ui_url on start-2 → canvas link is synthesized.
+    assert "https://app.all-hands.dev/canvas/conversations/late42" in " ".join(_Stub.comments)
+
+
+def test_server_provided_conversation_ui_url_preferred(stub_server):
+    """When the API returns conversation_ui_url (canvas page), use it as-is
+    instead of synthesizing https://app.all-hands.dev/conversations/{id}
+    (which 404s)."""
+    result = _run(stub_server, 4)
+    assert result.returncode == 0
+    assert "auto-apply" in result.stdout
+    assert "https://app.all-hands.dev/canvas/conversations/withui" in " ".join(_Stub.comments)
+    assert "app.all-hands.dev/conversations/withui" not in " ".join(_Stub.comments)
 
 
 def test_missing_issue_is_input_error(stub_server):
