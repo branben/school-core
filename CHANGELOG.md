@@ -14,10 +14,11 @@
   (`OMNIROUTE_API_KEY`) and fail loudly when unset.
 - CI: `tests/test_leaf.py::test_run_task_delegates_to_director` mock expectation
   drifted when `skip_readiness` was added to `run_task()` — updated, suite green
-  (942 passed).
+  (2371 passed, 29 skipped).
 - `scripts/terminal_drift_check.sh` — repo root now derived from the script
   location instead of a hardcoded user path.
-- `.scratch/` untracked and gitignored (local diagnostic files only).
+- `.scratch/` untracked and gitignored (local diagnostic files only):
+  `wayfinder-map-pipeline-gaps.md` removed from tracking.
 
 ## [0.1.0] — 2026-07-27
 
