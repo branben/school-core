@@ -20,24 +20,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from scoring import ScoreStore, GATES
-from routing import route_task
-from sleep_state import execute_sleep, execute_wake
-from executor import call_model, COMBO_MAP, get_role_for_domain
-from trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
-from engram_adapter import engram_available
+from src.core.scoring import ScoreStore, GATES
+from src.core.routing import route_task
+from src.crew.sleep_state import execute_sleep, execute_wake
+from src.crew.executor import call_model, COMBO_MAP, get_role_for_domain
+from src.sensors.trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
+from src.tools.engram_adapter import engram_available
 from training.lora_pipeline import has_adapter
-from cocoindex_client import cocoindex_available
-from context_orchestrator import DEFAULT_VAULT, enrich_prompt
-from repo_reader import CACHE_DIR as _REPO_CACHE_DIR
-from anchor_loader import AnchorRegistry
-from triage_classifier import classify_issue
-from activity_log import get_log
-from decision_log import get_decision_log, DecisionType
-from escalation_log import EscalationLog
+from src.tools.cocoindex_client import cocoindex_available
+from src.core.context_orchestrator import DEFAULT_VAULT, enrich_prompt
+from src.core.repo_reader import CACHE_DIR as _REPO_CACHE_DIR
+from src.core.anchor_loader import AnchorRegistry
+from src.core.triage_classifier import classify_issue
+from src.sensors.activity_log import get_log
+from src.sensors.decision_log import get_decision_log, DecisionType
+from src.sensors.escalation_log import EscalationLog
 from bookbag import write_bookbag, update_bookbag, bead_path, REPO_GLOBAL
-from teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
-from adversarial_reviewer import (
+from src.tools.teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
+from src.review.adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
     VerificationCoevolution, CoevolutionReport, ReviewResult,
     extract_balanced_json,

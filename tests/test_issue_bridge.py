@@ -3358,7 +3358,7 @@ class TestCandidateBindingResume:
     def _seed_binding(self, env, *, head_sha=None, verification_passed=True,
                       approval_state="approved"):
         """Persist a binding the way a prior (pre-restart) process would have."""
-        from candidate_binding import CandidateBindingStore
+        from src.bridge.candidate_binding import CandidateBindingStore
 
         head = head_sha or env.manifest.head_sha
         verification = SimpleNamespace(
@@ -3411,7 +3411,7 @@ class TestCandidateBindingResume:
 
     def test_resume_does_not_surface_a_superseded_head(self, resume_env):
         """A binding for a different head is not this candidate's posture."""
-        from candidate_binding import CandidateBindingStore
+        from src.bridge.candidate_binding import CandidateBindingStore
 
         stale = CandidateBinding(
             candidate_id=resume_env.manifest.candidate_id,
@@ -3616,7 +3616,7 @@ def _seed_pub_binding(env, *, verification_passed=True, approval_state="approved
     bridge's refusal on a stale or foreign stored posture, write the record
     directly — this is the shape a restart would actually find on disk.
     """
-    from candidate_binding import (
+    from src.bridge.candidate_binding import (
         CandidateBindingStore,
     )
 

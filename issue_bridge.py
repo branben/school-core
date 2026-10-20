@@ -36,18 +36,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
-    from candidate_pr_gate import TeacherApproval, VerificationEvidence
+    from src.bridge.candidate_pr_gate import TeacherApproval, VerificationEvidence
 
-from github_fetcher import fetch_issues, load_config, _gh_command
-from executor import call_model, get_role_for_domain
-from capabilities import CapabilityBundle, resolve_capability
-from resilience import sanitize_input_text
-from scoring import ScoreStore
-from school_mail import notify_issue_alert
-from pipeline_metrics import PipelineMetrics
+from src.tools.github_fetcher import fetch_issues, load_config, _gh_command
+from src.crew.executor import call_model, get_role_for_domain
+from src.core.capabilities import CapabilityBundle, resolve_capability
+from src.core.resilience import sanitize_input_text
+from src.core.scoring import ScoreStore
+from src.tools.school_mail import notify_issue_alert
+from src.tools.pipeline_metrics import PipelineMetrics
 from review_packet import ReviewPacket
-from compound_learning import CompoundLearningStore
-from shadow_routing import load_shadow_history
+from src.core.compound_learning import CompoundLearningStore
+from src.core.shadow_routing import load_shadow_history
 from scripts.ce_router import route_id_for
 from src.bridge.bridge_seams import (
     build_evidence_join as _build_evidence_join,

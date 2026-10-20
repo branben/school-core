@@ -71,9 +71,9 @@ def _run_student_via_omniroute(leaf: "StudentLeaf", task_prompt: str) -> str:
 
     Returns the raw student response text. Raises on transport failure.
     """
-    from context_orchestrator import enrich_prompt
-    from executor import call_model
-    from scoring import ScoreStore
+    from src.core.context_orchestrator import enrich_prompt
+    from src.crew.executor import call_model
+    from src.core.scoring import ScoreStore
 
     context_blob = enrich_prompt(
         leaf.domain, task_prompt,
@@ -95,7 +95,7 @@ def _record_leaf_routing_outcome(agent_name: str, success: bool, quality: float)
     here must never break the dispatch itself.
     """
     try:
-        from executor import record_routing_outcome
+        from src.crew.executor import record_routing_outcome
         record_routing_outcome(agent_name, success=success, quality=quality)
     except Exception:
         pass
