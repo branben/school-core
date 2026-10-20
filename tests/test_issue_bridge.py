@@ -254,8 +254,8 @@ class TestBridgeIssues:
         assert results == []
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.cleanup_stale_caches")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
     def test_skips_already_processed(self, mock_cleanup, mock_clone, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         # No network: bridge_issues() clones unconditionally before the
@@ -324,8 +324,8 @@ class TestBridgeIssues:
     @patch("src.core.director.run_task")
     @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.cleanup_stale_caches")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
     def test_successful_bridge(self, mock_cleanup, mock_clone, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_clone.return_value = None
@@ -2430,9 +2430,9 @@ class TestCrewDispatchPath:
             return None
         monkeypatch.setattr("issue_bridge._gh_command", fake_gh)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(400)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
              patch("src.core.director.run_task", return_value=self._task_ok(400)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
@@ -3977,10 +3977,10 @@ class TestAsyncTeacherBridgeDispatch:
         return d
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._merge_async_teacher_verdicts")
     def test_async_teachers_passes_skip_review_and_merges(
@@ -4050,10 +4050,10 @@ class TestAsyncTeacherBridgeDispatch:
         assert r["teacher_evidence"] is not None
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge.call_model")
     def test_sync_path_does_not_skip_review(
         self,
