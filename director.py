@@ -22,8 +22,8 @@ from typing import Optional
 
 from scoring import ScoreStore, GATES
 from routing import route_task
-from sleep_state import execute_sleep, execute_wake, load_session, SessionNotFoundError
-from executor import call_model, COMBO_MAP, ExecutorError, get_role_for_domain
+from sleep_state import execute_sleep, execute_wake
+from executor import call_model, COMBO_MAP, get_role_for_domain
 from trajectory import capture_trajectory, trajectories_for_training, list_trajectories as _list_trajectories
 from engram_adapter import engram_available
 from training.lora_pipeline import has_adapter
@@ -35,7 +35,7 @@ from triage_classifier import classify_issue
 from activity_log import get_log
 from decision_log import get_decision_log, DecisionType
 from escalation_log import EscalationLog
-from bookbag import write_bookbag, update_bookbag, read_bookbag, bead_path, REPO_GLOBAL
+from bookbag import write_bookbag, update_bookbag, bead_path, REPO_GLOBAL
 from teacher_feedback import build_teacher_evidence, persist_teacher_evidence, routing_signal
 from adversarial_reviewer import (
     AdversarialReviewer, LensType, Verdict, Finding, Severity,
@@ -1708,8 +1708,10 @@ def run_staff(
     config_path: str = None,
 ) -> list:
     """Run one or all Staff plugins and return results."""
-    from engram_adapter import engram_available
     from context_orchestrator import DEFAULT_VAULT
+    from staff.loader import StaffLoader
+    from staff.sandbox import StaffSandbox
+    from staff.plugin import StaffContext, StaffResult
 
     store = ScoreStore()
     vault = vault_path or str(DEFAULT_VAULT)
@@ -1811,7 +1813,8 @@ def wake(session_id: str) -> dict:
 
 def staff_list(vault_path: str = None, config_path: str = None) -> list:
     from context_orchestrator import DEFAULT_VAULT
-    vault = vault_path or str(DEFAULT_VAULT)
+    from staff.loader import StaffLoader
+    vault = vault_path or str(DEFAULT_VAULT)  # noqa: F841 - reserved for later plugin filtering
     cfg = {}
     if config_path:
         import yaml

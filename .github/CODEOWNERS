@@ -1,0 +1,9 @@
+# Default owners: repo maintainer. Add specific owners for sensitive areas.
+# (2026-10-14 audit: repo had no CODEOWNERS, templates, or tags.)
+* @branben
+
+# CI and security gates — require the maintainer's explicit review
+.github/workflows/ @branben
+
+# Privacy-sensitive data (must never contain PII / home paths)
+data/last_run.json @branben

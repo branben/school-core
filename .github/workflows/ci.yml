@@ -39,10 +39,61 @@ jobs:
       - name: Syntax check (compile all modules)
         run: python -m compileall -q -x "school-output" .
 
+      - name: Lint (ruff, F-class)
+        # Real-bug static analysis on the core pipeline modules plus any
+        # Python changed in this PR. The repo grew without a linter for years;
+        # the F (pyflakes) rules catch undefined names / unused imports and
+        # unassigned variables without imposing a formatting style. Scoping to
+        # core + changed files keeps the gate green while it bites on
+        # regressions. (2026-10-14 audit: no lint config existed; F821 in
+        # director.py/issue_bridge.py hid real NameErrors behind untested
+        # paths.)
+        run: |
+          pip install ruff
+          CORE="issue_bridge.py director.py conductor.py repo_reader.py"
+          CHANGED=""
+          # git fetch origin <sha> records the commit in FETCH_HEAD, not as
+          # origin/<sha>, so diff against FETCH_HEAD (surrogate escaping: the
+          # base sha is a hex string, never a path character).
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- '*.py' | tr '\n' ' ')
+          fi
+          ruff check $CORE $CHANGED
+
       - name: Vault allowlist (privacy guard)
         # The repo knowledge vault must contain only curated, non-personal
         # notes. Fails if anything private/unknown enters data/vault/.
         run: python scripts/check_vault_allowlist.py --strict
+
+      - name: Data PII guard
+        # Tracked data/ files must never contain /Users/<name> home paths,
+        # repo-root absolute prefixes, or secret indicators. The school-loop
+        # checkpoint sanitizes before pushing, but this blocks a direct commit
+        # to main (2026-10-14 audit: 51x /Users/brandonbennett had landed).
+        run: python scripts/sanitize_data.py --verify
+
+      - name: Cache index-gate Rust build
+        # The selftest below runs `cargo build --release` from scratch on every
+        # matrix job — measured 12-22s each on run 38996180856, so ~40-60s of
+        # the run is compiling one small crate three times. The build target is
+        # 77M and depends only on the crate sources + Cargo.lock, so caching it
+        # skips the compile entirely when nothing changed.
+        #
+        # The key includes matrix.python-version on purpose: all three matrix
+        # legs would otherwise write the SAME key concurrently, and a concurrent
+        # save fails with "reserveCache failed ... Cache already exists"
+        # (actions/toolkit#537) — turning three green jobs red. Per-leg keys are
+        # the documented matrix pattern, and each leg still skips its own
+        # compile on the next run. Keyed on Cargo.lock so a dependency bump
+        # rebuilds rather than restoring a stale target. This is the one cache
+        # in this workflow that pays: unlike the 4-package pip install (2-7s),
+        # a Rust release build is expensive — which is why there is no pip cache
+        # step here.
+        uses: actions/cache@v4
+        with:
+          path: tools/index-gate/target
+          key: index-gate-${{ runner.os }}-py${{ matrix.python-version }}-cargo-${{ hashFiles('tools/index-gate/Cargo.lock') }}
 
       - name: index-gate selftest (behavior hook)
         # Proves the Rust behavior hook can still go red. A guard that only
@@ -57,7 +108,13 @@ jobs:
       - name: Run tests
         # Keep the hosted matrix hermetic and fast: live Orca tests have an
         # explicit marker and run only in the push-only self-hosted lane below.
-        run: python -m pytest -q -m "not live"
+        # --durations=20: this workflow cannot be timed from a developer laptop.
+        # The OmniRoute gateway runs on the Mac, so LLM-calling tests hang (and
+        # hit the 60s timeout) locally, while in CI there is no gateway and the
+        # same call fails instantly — local timings are not representative. This
+        # prints the 20 slowest test atoms from inside CI, where the measurement
+        # is real. Reporting only: it does not change the exit code.
+        run: python -m pytest -q -m "not live" --durations=20
 
   integration-gate:
     # Hosted-runner pre-flight check for the live-Orca integration job. The

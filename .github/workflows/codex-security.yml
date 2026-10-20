@@ -8,13 +8,23 @@ on:
 permissions:
   contents: read
 
-env:
-  CODEX_SECURITY_STATE_DIR: ${{ github.workspace }}/.codex-security-state
-
+# codex-security refuses to write scan output OR its state dir inside the
+# scanned worktree ("Scan artifacts cannot be written inside the protected scan
+# root"), so both live under runner.temp (outside the repo). runner.temp is only
+# available inside job steps, so each step below resolves the paths itself.
 jobs:
   scan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Fork PRs cannot receive OPENAI_API_KEY (GitHub Actions does not forward
+    # secrets to pull_request events from forks), so the gate would always fail
+    # red for a clean fork contribution. Skip for forks — an explicit neutral
+    # pass rather than a silent skip.
+    if: github.event.pull_request.head.repo.fork != true
+    # ubuntu-latest (24.04) restricts unprivileged user namespaces
+    # (kernel.apparmor_restrict_unprivileged_userns=1), which breaks codex's
+    # Bubblewrap sandbox with "bwrap: loopback: Failed RTM_NEWADDR". Use 22.04
+    # where that restriction is not enforced.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,14 +40,17 @@ jobs:
       - name: Run Codex Security scan
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_SECURITY_STATE_DIR: ${{ env.CODEX_SECURITY_STATE_DIR }}
+          CODEX_SECURITY_STATE_DIR: ${{ runner.temp }}/codex-security-state
+          CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
         run: |
           set -euo pipefail
-          mkdir -p "$CODEX_SECURITY_STATE_DIR"
+          mkdir -p "$CODEX_SECURITY_STATE_DIR" "$CODEX_SECURITY_OUTPUT_DIR"
+          # codex-security requires the output dir be private (chmod 700).
+          chmod 700 "$CODEX_SECURITY_OUTPUT_DIR" "$CODEX_SECURITY_STATE_DIR"
           npx @openai/codex-security scan . \
             --auth api-key \
             --format json \
-            --output-dir results \
+            --output-dir "$CODEX_SECURITY_OUTPUT_DIR" \
             --model gpt-5.6-sol \
             --effort medium \
             --fail-on-severity medium
@@ -48,18 +61,68 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codex-security-results
-          path: results/
+          path: ${{ runner.temp }}/codex-security-results/
           retention-days: 30
           if-no-files-found: warn
 
       - name: Check scan exit status
         if: always()
+        # Real gate: parse the scan artifacts and fail the job when findings are
+        # at or above the configured severity (otherwise continue-on-error on the
+        # scan step would let medium+ findings merge green). Artifacts are always
+        # uploaded first, so this step can fail without losing the report.
+        env:
+          CODEX_SECURITY_OUTPUT_DIR: ${{ runner.temp }}/codex-security-results
         run: |
-          # The scan step uses continue-on-error so artifacts are always uploaded.
-          # This step re-checks: if results exist and contain findings at or above
-          # medium severity, fail the check so the PR gets the red gate.
-          if [ -d results ] && [ -n "$(ls -A results/ 2>/dev/null)" ]; then
-            echo "Codex Security scan completed — review results artifact for findings."
-          else
-            echo "Codex Security scan produced no results (check API key / network)."
-          fi
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const resultsDir = process.env.CODEX_SECURITY_OUTPUT_DIR;
+
+          const severityRank = { informational: 0, low: 1, medium: 2, high: 3, critical: 4 };
+          const threshold = { medium: 2, high: 3, critical: 4 }[process.env.CODEX_SECURITY_FAIL_SEVERITY || 'medium'];
+          const thresholdLabel = process.env.CODEX_SECURITY_FAIL_SEVERITY || 'medium';
+
+          let findings;
+          try {
+            const raw = fs.readFileSync(path.join(resultsDir, 'findings.json'), 'utf8');
+            findings = JSON.parse(raw);
+          } catch (e) {
+            console.error(`No findings.json in ${resultsDir} — scan did not complete or API key/network failed.`);
+            process.exit(1);
+          }
+
+          // Schema drift guard: if findings.json parses but does not have the
+          // expected shape, fail loudly instead of defaulting to [] and green-
+          // lighting the scan (a tool upgrade could silently change the layout).
+          if (typeof findings !== 'object' || findings === null || !Array.isArray(findings?.findings?.findings)) {
+            console.error(`findings.json has an unexpected shape — refusing to pass an unparsed scan. See the results artifact.`);
+            process.exit(1);
+          }
+          const list = findings.findings.findings;
+          const blocking = list
+            .map(f => ({ title: f.title, sev: f.severity?.level ?? 'informational' }))
+            .filter(f => (severityRank[f.sev] ?? 0) >= threshold);
+
+          // Tool-reported findings drive the gate only when the manifest says the
+          // scan actually completed (exit 1 = policy failed, exit 2 = incomplete).
+          let manifestOk = true;
+          try {
+            const manifest = JSON.parse(fs.readFileSync(path.join(resultsDir, 'scan-manifest.json'), 'utf8'));
+            manifestOk = manifest?.manifest?.scan?.status === 'completed';
+          } catch (e) { manifestOk = false; }
+
+          if (!manifestOk) {
+            console.error(`Scan did not complete (manifest missing or status != completed). See the results artifact.`);
+            process.exit(1);
+          }
+          const ticket = blocking.length
+            ? `${blocking.length} finding(s) at/above ${thresholdLabel}: ` +
+              blocking.map(f => `[${f.sev}] ${f.title}`).join('; ')
+            : 'no findings at/above ' + thresholdLabel;
+          if (blocking.length) {
+            console.error(`Codex Security gate FAILED — ${ticket}`);
+            process.exit(1);
+          }
+          console.log(`Codex Security scan passed — ${ticket}`);
+          NODE

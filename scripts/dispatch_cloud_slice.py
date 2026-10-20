@@ -125,16 +125,21 @@ def start_cloud_conversation(issue: dict, repo: str, api_key: str, dry_run: bool
     # Asynchronous start: the returned record is a start-task; the real
     # app_conversation_id appears only after the sandbox is provisioned.
     conv_id = start.get("app_conversation_id") or start.get("id")
+    ui_url = start.get("conversation_ui_url")
     if not start.get("app_conversation_id"):
         try:
             poll = _start_task_status(api_key, start["id"])
             if poll:
                 conv_id = poll.get("app_conversation_id") or conv_id
+                ui_url = ui_url or poll.get("conversation_ui_url")
         except Exception as exc:  # noqa: BLE001
             print(f"[dispatch] start-task poll failed (still commenting URL): {exc}", file=sys.stderr)
     if not conv_id:
         return None
-    url = f"https://app.all-hands.dev/conversations/{conv_id}"
+    # The app server returns conversation_ui_url (canvas page) once the
+    # sandbox is provisioned; prefer it and only synthesize a link as a
+    # last resort. https://app.all-hands.dev/conversations/{id} is a 404.
+    url = ui_url or f"https://app.all-hands.dev/canvas/conversations/{conv_id}"
     print(f"[dispatch] started cloud conversation: {url}")
     return url
 

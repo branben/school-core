@@ -250,11 +250,11 @@ jobs:
       # Match the code default (issue_bridge.py:1028) and the job timeout, so
       # the budget can never promise time GitHub will not grant.
       CREW_CYCLE_BUDGET_SECONDS: "3600"
-      # VERIFY_GATE_STRICT (U3): uncomment to enforce campus #3 inside the
-      # bridge. The workflow preflight below already hard-fails missing Nix or
-      # verifyShell; this flag additionally escalates an internal/direct gate
-      # failure into a real issue failure instead of a soft skip.
-      # VERIFY_GATE_STRICT: "1"
+      # VERIFY_GATE_STRICT (U3): enforce campus #3 inside the bridge. The
+      # workflow preflight below already hard-fails missing Nix or verifyShell;
+      # this flag additionally escalates an internal/direct gate failure into a
+      # real issue failure instead of a soft skip (gap-fix G3).
+      VERIFY_GATE_STRICT: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

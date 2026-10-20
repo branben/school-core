@@ -1,0 +1,18 @@
+# Ruff lint config for school-core.
+# Kept deliberately small: this repo is a mostly-stdlib Python 3.9+ codebase
+# with no lint/type infrastructure historically. The F (pyflakes) rules catch
+# real defects (undefined names, unused imports/vars) without imposing a
+# formatting style, so the gate can stay green while growing incrementally.
+
+target-version = "py39"
+line-length = 100
+exclude = [
+    "data",
+    ".beads",
+    ".openhands",
+    "school-output",
+    "scripts/prior_solutions",
+    "tests/__pycache__",
+]
+
+lint.select = ["F"]
