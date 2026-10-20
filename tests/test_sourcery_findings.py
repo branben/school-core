@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from verify_gate import run_verify_gate, freeze_verification_contract
+from src.review.verify_gate import run_verify_gate, freeze_verification_contract
 
 
 class TestUntrustedContractFailsClosed:
@@ -113,10 +113,10 @@ class TestSingleIssueAllowlist:
 
     def test_single_issue_checks_allowlist(self, monkeypatch):
         """fetch_single_issue must check allowed_author_associations."""
-        from github_fetcher import fetch_single_issue, load_config
+        from src.tools.github_fetcher import fetch_single_issue, load_config
 
         # Mock config with allowlist
-        monkeypatch.setattr("github_fetcher.load_config", lambda: {
+        monkeypatch.setattr("src.tools.github_fetcher.load_config", lambda: {
             "allowed_author_associations": ["OWNER"],
             "domain_overrides": {},
         })
@@ -138,7 +138,7 @@ class TestSingleIssueAllowlist:
                 })
             return None
 
-        monkeypatch.setattr("github_fetcher._gh_command", mock_gh)
+        monkeypatch.setattr("src.tools.github_fetcher._gh_command", mock_gh)
 
         result = fetch_single_issue("owner", "repo", 1)
 
@@ -148,10 +148,10 @@ class TestSingleIssueAllowlist:
 
     def test_single_issue_rejects_non_allowlisted(self, monkeypatch):
         """fetch_single_issue must reject non-allowlisted authors."""
-        from github_fetcher import fetch_single_issue
+        from src.tools.github_fetcher import fetch_single_issue
 
         # Mock config with allowlist
-        monkeypatch.setattr("github_fetcher.load_config", lambda: {
+        monkeypatch.setattr("src.tools.github_fetcher.load_config", lambda: {
             "allowed_author_associations": ["OWNER"],
             "domain_overrides": {},
         })
@@ -173,7 +173,7 @@ class TestSingleIssueAllowlist:
                 })
             return None
 
-        monkeypatch.setattr("github_fetcher._gh_command", mock_gh)
+        monkeypatch.setattr("src.tools.github_fetcher._gh_command", mock_gh)
 
         result = fetch_single_issue("owner", "repo", 1)
 
@@ -182,10 +182,10 @@ class TestSingleIssueAllowlist:
 
     def test_single_issue_disabled_intake_returns_none(self, monkeypatch):
         """fetch_single_issue must return None when intake is disabled."""
-        from github_fetcher import fetch_single_issue
+        from src.tools.github_fetcher import fetch_single_issue
 
         # Mock config with empty allowlist (disabled)
-        monkeypatch.setattr("github_fetcher.load_config", lambda: {
+        monkeypatch.setattr("src.tools.github_fetcher.load_config", lambda: {
             "allowed_author_associations": [],
             "domain_overrides": {},
         })
@@ -201,7 +201,7 @@ class TestYAMLFallback:
 
     def test_yaml_fallback_when_pyyaml_missing(self, tmp_path):
         """_yaml_load must handle missing PyYAML gracefully."""
-        from verify_gate import _yaml_load
+        from src.review.verify_gate import _yaml_load
 
         # Create a simple YAML file
         yaml_file = tmp_path / "test.yaml"

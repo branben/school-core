@@ -26,8 +26,8 @@ import json
 
 import pytest
 
-from omni_relay import OmniRouteTransport, TransportError
-from omni_relay_tools import ToolRegistry
+from src.tools.omni_relay import OmniRouteTransport, TransportError
+from src.tools.omni_relay_tools import ToolRegistry
 
 
 class FakeUpstream:

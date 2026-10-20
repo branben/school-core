@@ -2,7 +2,7 @@
 
 import pytest
 
-from lifecycle_states import LifecycleState, map_task_state, project_board_state
+from src.core.lifecycle_states import LifecycleState, map_task_state, project_board_state
 
 
 def test_success_and_legacy_resolved_map_to_success():

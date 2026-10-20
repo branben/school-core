@@ -1,0 +1,661 @@
+#!/usr/bin/env python3
+"""
+activity_server.py — Serve the activity log as JSON for the live dashboard.
+
+Serves:
+  GET /api/activity         — full activity log (all entries)
+  GET /api/activity/recent  — last N entries (?n=50)
+  GET /api/activity/since   — entries since ISO timestamp (?ts=2026-06-13T...)
+  GET /api/agents           — current state of all agents
+  GET /                     — the live dashboard HTML
+
+Usage:
+  python activity_server.py              # serve on port 8765
+  python activity_server.py --port 9000  # custom port
+"""
+
+import argparse
+import json
+import sys
+import threading
+import time
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+import src.bridge.beads_workspace as beads_workspace
+# Add parent to path so we can import school-core modules
+sys.path.insert(0, str(Path(__file__).parent))
+
+ACTIVITY_LOG_PATH = Path(__file__).parent.parent.parent / "data" / "activity_log.json"
+SCORES_PATH = Path(__file__).parent.parent.parent / "data" / "scores.json"
+DASHBOARD_PATH = Path(__file__).parent.parent.parent / "docs" / "site" / "live_activity_dashboard.html"
+BEADS_WORKSPACE_PATH = Path(__file__).parent.parent.parent / "docs" / "templates" / "beads-workspace.html"
+WORKSPACE_SERVICE = beads_workspace.WorkspaceService()
+TRAJECTORY_DIR = Path(__file__).parent.parent.parent / "data" / "trajectories"
+
+# Board data paths (network-free — local files only)
+BOARD_PROCESSED_PATH = Path(__file__).parent.parent.parent / "data" / "processed_issues.json"
+BOARD_LAST_RUN_PATH = Path(__file__).parent.parent.parent / "data" / "last_run.json"
+BOARD_CACHE_PATH = Path(__file__).parent.parent.parent / "data" / "issues_cache.json"
+
+# Outcome classes that must NOT render as "Done" on the board. Kept in sync
+# with issue_bridge's ledger contract (INFRA is retryable, not terminal).
+_RETRYABLE_OUTCOME_CLASSES = frozenset({"INFRA"})
+
+
+def _terminal_issue_numbers(raw) -> list[int]:
+    """Normalize the processed ledger to the TERMINAL issue numbers only.
+
+    The ledger is ``{issue: outcome_class}``; an INFRA entry is retryable and
+    must not appear as Done. Accepts the legacy flat-list shape (every number
+    terminal) so a board built from an un-migrated file is unchanged.
+    """
+    if isinstance(raw, list):
+        return [int(n) for n in raw if isinstance(n, (int, str)) and str(n).lstrip("-").isdigit()]
+    if not isinstance(raw, dict):
+        return []
+    out: list[int] = []
+    for key, value in raw.items():
+        if value in _RETRYABLE_OUTCOME_CLASSES:
+            continue
+        try:
+            out.append(int(key))
+        except (TypeError, ValueError):
+            continue
+    return sorted(out)
+
+
+def _load_timeline_events() -> list[dict]:
+    """Load and normalize activity events for timeline consumers.
+
+    The activity log is append-only but has accumulated older shapes over time.
+    Keep the timeline projection tolerant: malformed files and non-dict records
+    are ignored, and missing optional learning fields become empty strings.
+    """
+    if not ACTIVITY_LOG_PATH.exists():
+        return []
+    try:
+        data = json.loads(ACTIVITY_LOG_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    raw_entries = data.get("entries", []) if isinstance(data, dict) else []
+    if not isinstance(raw_entries, list):
+        return []
+
+    events: list[dict] = []
+    for raw in raw_entries:
+        if not isinstance(raw, dict):
+            continue
+        raw_type = raw.get("type", raw.get("kind", "activity"))
+        raw_type = getattr(raw_type, "value", raw_type)
+        raw_issue = raw.get("issue", raw.get("bead", raw.get("issue_id", "")))
+        evidence = raw.get("evidence", [])
+        if not isinstance(evidence, list):
+            evidence = []
+        events.append({
+            "id": raw.get("id"),
+            "timestamp": str(raw.get("timestamp", "")),
+            "kind": str(raw_type),
+            "type": str(raw_type),
+            "issue": str(raw_issue) if raw_issue not in (None, "") else "",
+            "agent": str(raw.get("agent", raw.get("actor", ""))),
+            "domain": str(raw.get("domain", "")),
+            "summary": str(raw.get("summary", raw.get("message", raw.get("description", "")))),
+            "plan_expected": str(raw.get("plan_expected", "")),
+            "code_revealed": str(raw.get("code_revealed", "")),
+            "decision": str(raw.get("decision", "")),
+            "revisit": str(raw.get("revisit", "")),
+            "evidence": [str(item) for item in evidence],
+            "description": str(raw.get("description", "")),
+        })
+    return events
+
+
+def _filter_timeline_events(
+    events: list[dict],
+    issue: str = "",
+    kind: str = "",
+) -> list[dict]:
+    """Return matching events in append order."""
+    if issue:
+        events = [event for event in events if event["issue"] == str(issue)]
+    if kind:
+        events = [event for event in events if event["kind"] == str(kind)]
+    return events
+
+
+def _load_board_data() -> tuple[list[dict], list[int], list[dict]]:
+    """Load board data from local JSON files.
+
+    Returns (issues_cache, processed, last_run) triple.
+    All three sources are network-free — reads ``data/`` files only.
+    Missing or corrupt files are handled gracefully (empty defaults).
+    """
+    issues_cache: list[dict] = []
+    if BOARD_CACHE_PATH.exists():
+        try:
+            issues_cache = json.loads(BOARD_CACHE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            issues_cache = []
+
+    processed: list[int] = []
+    if BOARD_PROCESSED_PATH.exists():
+        try:
+            processed = _terminal_issue_numbers(
+                json.loads(BOARD_PROCESSED_PATH.read_text())
+            )
+        except (json.JSONDecodeError, OSError):
+            processed = []
+
+    last_run: list[dict] = []
+    if BOARD_LAST_RUN_PATH.exists():
+        try:
+            last_run = json.loads(BOARD_LAST_RUN_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            last_run = []
+
+    return issues_cache, processed, last_run
+
+
+class ActivityHandler(SimpleHTTPRequestHandler):
+    """Serve activity log JSON and the dashboard."""
+
+    def handle(self) -> None:
+        # Silence client disconnects (SSE streams + Cloudflare edge re-requests
+        # drop connections mid-stream). A reset peer is normal, not an error.
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/")
+        qs = parse_qs(parsed.query)
+
+        if path == "/api/workspace":
+            self._serve_workspace()
+        elif path == "/api/activity" or path == "/api/activity/recent":
+            self._serve_activity(qs)
+        elif path == "/api/activity/since":
+            self._serve_activity_since(qs)
+        elif path == "/api/agents":
+            self._serve_agents()
+        elif path == "/api/timeline":
+            self._serve_timeline(qs)
+        elif path == "/health":
+            self._serve_health()
+        elif path == "/api/board.json":
+            self._serve_board_json()
+        elif path == "/board":
+            self._serve_board()
+        elif path == "/stream":
+            self._serve_stream()
+        elif path.startswith("/trajectory/"):
+            self._serve_trajectory(path[len("/trajectory/"):])
+        elif path == "/workspace":
+            self._serve_workspace_page()
+        else:
+            self._serve_dashboard()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path not in {"/api/workspace/preview", "/api/workspace/confirm"}:
+            self._json_response({"error": "Not found"}, 404, allow_cors=False)
+            return
+        fetch_site = self.headers.get("Sec-Fetch-Site")
+        if fetch_site and fetch_site not in {"same-origin", "none"}:
+            self._json_response({"error": "Cross-site tracker writes are not allowed."}, 403, allow_cors=False)
+            return
+        origin = self.headers.get("Origin")
+        if origin:
+            parsed_origin = urlparse(origin)
+            expected_host = self.headers.get("Host", "").lower()
+            is_local_host = expected_host == "localhost" or expected_host == "127.0.0.1" or expected_host.startswith("localhost:") or expected_host.startswith("127.0.0.1:")
+            if parsed_origin.scheme != "http" or parsed_origin.netloc.lower() != expected_host or not is_local_host:
+                self._json_response({"error": "Cross-origin tracker writes are not allowed."}, 403, allow_cors=False)
+                return
+        if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            self._json_response({"error": "Tracker writes require application/json."}, 415, allow_cors=False)
+            return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            size = 0
+        if size < 1 or size > 16_384:
+            self._json_response({"error": "Request body must be between 1 and 16384 bytes."}, 413, allow_cors=False)
+            return
+        try:
+            payload = json.loads(self.rfile.read(size))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._json_response({"error": "Request body must be valid JSON."}, 400, allow_cors=False)
+            return
+        try:
+            if parsed.path == "/api/workspace/preview":
+                result = WORKSPACE_SERVICE.preview(payload)
+                command = "bd " + " ".join(_shell_display_arg(arg) for arg in result["args"])
+                self._json_response({key: value for key, value in {**result, "command": command}.items() if key != "args"}, allow_cors=False)
+            else:
+                token = payload.get("token") if isinstance(payload, dict) else None
+                self._json_response(WORKSPACE_SERVICE.confirm(token), allow_cors=False)
+        except beads_workspace.WorkspaceValidationError as exc:
+            self._json_response({"error": str(exc)}, 400, allow_cors=False)
+        except beads_workspace.WorkspaceConflict as exc:
+            self._json_response({"error": str(exc)}, 409, allow_cors=False)
+        except beads_workspace.WorkspaceError as exc:
+            self._json_response({"error": str(exc)}, 500, allow_cors=False)
+
+    def _serve_workspace(self):
+        try:
+            self._json_response(WORKSPACE_SERVICE.workspace(), allow_cors=False)
+        except beads_workspace.WorkspaceError as exc:
+            self._json_response({"error": str(exc)}, 500, allow_cors=False)
+
+    def _serve_workspace_page(self):
+        try:
+            body = BEADS_WORKSPACE_PATH.read_bytes()
+        except OSError:
+            self.send_error(404, "Beads workspace page not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_activity(self, qs):
+        n = int(qs.get("n", [50])[0])
+        try:
+            if ACTIVITY_LOG_PATH.exists():
+                data = json.loads(ACTIVITY_LOG_PATH.read_text())
+                entries = data.get("entries", [])
+                if n:
+                    entries = entries[-n:]
+                self._json_response({"entries": entries, "total": len(data.get("entries", []))})
+            else:
+                self._json_response({"entries": [], "total": 0})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _serve_activity_since(self, qs):
+        ts = qs.get("ts", [""])[0]
+        try:
+            if ACTIVITY_LOG_PATH.exists():
+                data = json.loads(ACTIVITY_LOG_PATH.read_text())
+                entries = [e for e in data.get("entries", []) if e.get("timestamp", "") > ts]
+                self._json_response({"entries": entries})
+            else:
+                self._json_response({"entries": []})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _serve_timeline(self, qs):
+        """GET /api/timeline — normalized events, newest first.
+
+        Query parameters: ``n`` (1-200, default 50), ``issue``, and ``kind``.
+        Missing or corrupt activity logs produce an empty, successful projection.
+        """
+        raw_n = qs.get("n", [50])[0]
+        try:
+            n = int(raw_n)
+        except (TypeError, ValueError):
+            n = 50
+        n = max(1, min(n, 200))
+        issue = qs.get("issue", [""])[0].strip()
+        kind = qs.get("kind", [""])[0].strip()
+        events = _filter_timeline_events(_load_timeline_events(), issue=issue, kind=kind)
+        newest_first = list(reversed(events))[:n]
+        self._json_response({
+            "events": newest_first,
+            "total": len(events),
+            "filters": {"issue": issue, "kind": kind, "n": n},
+        })
+
+    def _serve_agents(self):
+        try:
+            if SCORES_PATH.exists():
+                scores = json.loads(SCORES_PATH.read_text())
+            else:
+                scores = {}
+            # Also read latest activity per agent
+            latest_activity = {}
+            if ACTIVITY_LOG_PATH.exists():
+                act_data = json.loads(ACTIVITY_LOG_PATH.read_text())
+                for e in act_data.get("entries", []):
+                    a = e.get("agent", "")
+                    if a and not a.startswith("staff:"):
+                        latest_activity[a] = e
+            agents = []
+            for agent, domains in scores.items():
+                if agent.startswith("ses_"):
+                    continue
+                max_score = max(domains.values()) if domains else 0
+                gate = "easy"
+                for gname, gthr in sorted({"easy": 0, "medium": 25, "hard": 50, "diploma": 75}.items(), key=lambda x: x[1]):
+                    if max_score >= gthr:
+                        gate = gname
+                role = "Student"
+                if max_score >= 75:
+                    role = "Faculty"
+                elif max_score >= 50:
+                    role = "Teacher"
+                elif max_score >= 25:
+                    role = "Senior Student"
+                act = latest_activity.get(agent, {})
+                agents.append({
+                    "id": agent,
+                    "name": agent,
+                    "score": domains.get("_default", 0),
+                    "max_score": max_score,
+                    "gate": gate,
+                    "role": role,
+                    "domains": {k: v for k, v in domains.items() if k != "_default"},
+                    "latest_activity": act,
+                })
+            agents.sort(key=lambda a: a["score"], reverse=True)
+            self._json_response({"agents": agents})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 500)
+
+    def _serve_health(self):
+        self._json_response({"status": "ok"})
+
+    def _serve_board_json(self):
+        """GET /api/board.json — column-grouped board data (network-free)."""
+        try:
+            payload = self._build_board_json_payload()
+        except Exception as e:
+            self._json_response({"error": f"Failed to load board data: {e}"}, 500)
+            return
+        self._json_response(payload)
+
+    def _serve_board(self):
+        """GET /board — rendered kanban board HTML."""
+        from src.bridge.board import build_board_html
+
+        try:
+            issues_cache, processed, last_run = _load_board_data()
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Failed to load board data: {e}".encode())
+            return
+
+        timeline = list(reversed(_load_timeline_events()))[:50]
+        html = build_board_html(issues_cache, processed, last_run, timeline=timeline)
+        body = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _build_board_json_payload(self) -> dict:
+        """Build the board JSON payload (same shape as ``/api/board.json``).
+
+        Returns ``{"columns": {"todo": […], "in_progress": […], …}}`` with
+        the same eight lifecycle keys as ``board._COLUMN_META``.
+        Safe to call from the SSE streaming loop — never sends HTTP headers.
+        """
+        from src.bridge.board import assign_column, _build_last_run_map
+
+        try:
+            issues_cache, processed, last_run = _load_board_data()
+        except Exception:
+            return {
+                "columns": {
+                    "todo": [],
+                    "in_progress": [],
+                    "in_review": [],
+                    "retry": [],
+                    "blocked": [],
+                    "crew_in_flight": [],
+                    "school_failed": [],
+                    "done": [],
+                },
+                "timeline": list(reversed(_load_timeline_events()))[:50],
+            }
+
+        processed_set: set[int] = set(processed)
+        lr_map = _build_last_run_map(last_run)
+
+        columns: dict[str, list[dict]] = {
+            "todo": [],
+            "in_progress": [],
+            "in_review": [],
+            "retry": [],
+            "blocked": [],
+            "crew_in_flight": [],
+            "school_failed": [],
+            "done": [],
+        }
+
+        for issue in issues_cache:
+            col = assign_column(issue, processed_set, lr_map)
+            lr_entry = lr_map.get(issue["issue_number"])
+            columns[col].append({
+                "n": issue["issue_number"],
+                "t": issue.get("title", ""),
+                "dom": issue.get("domain", ""),
+                "diff": issue.get("difficulty", ""),
+                "a": str(lr_entry.get("agent", "")) if lr_entry else "",
+                "s": lr_entry.get("score") if lr_entry else None,
+            })
+
+        return {
+            "columns": columns,
+            "timeline": list(reversed(_load_timeline_events()))[:50],
+        }
+
+    def _serve_stream(self):
+        """GET /stream — SSE live-update endpoint.
+
+        Sends an initial ``event: board`` with the current column-grouped board
+        JSON, then polls ``data/`` files every ~2 seconds.  When any watched
+        file changes (mtime or size) a fresh ``event: board`` is emitted.  If
+        ``activity_log.json`` has grown since the last check, an additional
+        ``event: activity`` is emitted with the new entries.
+
+        Gracefully handles missing/corrupt data files via
+        :meth:`_build_board_json_payload`.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+        watch_files: list[Path] = [
+            BOARD_CACHE_PATH,
+            BOARD_PROCESSED_PATH,
+            BOARD_LAST_RUN_PATH,
+            ACTIVITY_LOG_PATH,
+        ]
+
+        def _snapshot() -> dict[str, tuple]:
+            """Return ``{str(path): (mtime, size)}`` for every watch file."""
+            snap: dict[str, tuple] = {}
+            for f in watch_files:
+                try:
+                    s = f.stat()
+                    snap[str(f)] = (s.st_mtime, s.st_size)
+                except OSError:
+                    snap[str(f)] = None
+            return snap
+
+        def _emit_board() -> None:
+            data = json.dumps(
+                self._build_board_json_payload(), ensure_ascii=False
+            )
+            self.wfile.write(f"event: board\ndata: {data}\n\n".encode())
+            self.wfile.flush()
+
+        # ── Track activity-log size ──────────────────────────────────────
+        prev_activity_count = 0
+        if ACTIVITY_LOG_PATH.exists():
+            try:
+                prev_activity_count = len(
+                    json.loads(ACTIVITY_LOG_PATH.read_text()).get("entries", [])
+                )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        prev_snap = _snapshot()
+
+        # ── Initial push ─────────────────────────────────────────────────
+        _emit_board()
+
+        try:
+            while True:
+                time.sleep(2)
+
+                new_snap = _snapshot()
+                if new_snap == prev_snap:
+                    continue
+                prev_snap = new_snap
+
+                # At least one watched file changed → re-emit board
+                _emit_board()
+
+                # Check for new activity entries since last emit
+                new_count = 0
+                if ACTIVITY_LOG_PATH.exists():
+                    try:
+                        new_count = len(
+                            json.loads(ACTIVITY_LOG_PATH.read_text()).get(
+                                "entries", []
+                            )
+                        )
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
+                if new_count != prev_activity_count:
+                    # Any change (grow OR shrink from rotation) means new data.
+                    # On rotation the count drops — still must emit so the
+                    # observer's view resyncs with the (now smaller) log.
+                    try:
+                        all_entries: list[dict] = json.loads(
+                            ACTIVITY_LOG_PATH.read_text()
+                        ).get("entries", [])
+                        if new_count > prev_activity_count:
+                            new_entries = all_entries[prev_activity_count:]
+                        else:
+                            # Rotation (or full rewrite): send the whole list
+                            new_entries = all_entries
+                        if new_entries:
+                            payload = json.dumps(
+                                new_entries, ensure_ascii=False
+                            )
+                            self.wfile.write(
+                                f"event: activity\ndata: {payload}\n\n".encode()
+                            )
+                            self.wfile.flush()
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                    prev_activity_count = new_count
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Client disconnected — stop the stream quietly
+            pass
+
+    def _serve_trajectory(self, traj_id: str) -> None:
+        """GET /trajectory/<id> — serve a run's trajectory JSON (text/plain).
+
+        ``traj_id`` is a bare filename (e.g. ``20260612_001113_x--_default--m.json``).
+        Rejects path traversal / non-filename characters with 400, missing files
+        with 404, and pretty-prints the JSON as text/plain on 200.
+        """
+        import re
+
+        if not traj_id or not re.fullmatch(r"[A-Za-z0-9_.\-]+", traj_id):
+            self.send_response(400)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Invalid trajectory id")
+            return
+
+        traj_path = TRAJECTORY_DIR / traj_id
+        if not traj_path.exists():
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Trajectory not found")
+            return
+
+        try:
+            data = json.loads(traj_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(f"Failed to read trajectory: {e}".encode())
+            return
+
+        body = json.dumps(data, indent=2, ensure_ascii=False).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_dashboard(self):
+        if DASHBOARD_PATH.exists():
+            html = DASHBOARD_PATH.read_text()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html.encode())))
+            self.end_headers()
+            self.wfile.write(html.encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Dashboard not found. Generate it first.")
+
+    def _json_response(self, data, status=200, *, allow_cors=True):
+        body = json.dumps(data, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if allow_cors:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        # Suppress default logging for cleanliness
+        pass
+
+
+def _shell_display_arg(value: str) -> str:
+    """Display a safely quoted command for confirmation; execution uses argv."""
+    if value and all(char.isalnum() or char in "@%_+=:,./-" for char in value):
+        return value
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Serve activity log for live dashboard")
+    parser.add_argument("--port", type=int, default=8765, help="Port to serve on")
+    args = parser.parse_args()
+
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), ActivityHandler)
+    print(f"Activity server running at http://127.0.0.1:{args.port}")
+    print(f"  Dashboard:     http://127.0.0.1:{args.port}/")
+    print(f"  Activity API:  http://127.0.0.1:{args.port}/api/activity")
+    print(f"  Agents API:    http://127.0.0.1:{args.port}/api/agents")
+    print(f"  Beads workspace: http://127.0.0.1:{args.port}/workspace")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down.")
+        server.shutdown()
+
+
+if __name__ == "__main__":
+    main()

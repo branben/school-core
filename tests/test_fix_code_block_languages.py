@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from director import _fix_code_block_languages
+from src.core.director import _fix_code_block_languages
 
 
 def test_rust_in_python_block():

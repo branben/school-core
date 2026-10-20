@@ -1,6 +1,6 @@
 """Security adversarial lens — OWASP-informed vulnerability detection."""
 
-from adversarial_reviewer import LensType
+from src.review.adversarial_reviewer import LensType
 
 LENS_TYPE = LensType.SECURITY
 

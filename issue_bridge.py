@@ -49,7 +49,7 @@ from review_packet import ReviewPacket
 from compound_learning import CompoundLearningStore
 from shadow_routing import load_shadow_history
 from scripts.ce_router import route_id_for
-from bridge_seams import (
+from src.bridge.bridge_seams import (
     build_evidence_join as _build_evidence_join,
     build_shadow_routing_packet as _build_shadow_routing_packet,
     observability_fields as _observability_fields,
@@ -59,7 +59,7 @@ from bridge_seams import (
 # U8: crew dispatch (FirstMate -> Orca). Imported at module level so tests can
 # monkeypatch the symbols; the crew module itself stays dependency-free of the
 # bridge.
-from crew_dispatch import (
+from src.crew.crew_dispatch import (
     CrewResult,
     CREW_RUNS_FILE as CREW_RUNS_FILE,
     DEFAULT_TIMEOUT as CREW_DEFAULT_TIMEOUT,
@@ -67,28 +67,28 @@ from crew_dispatch import (
     sweep_stale_runs as sweep_stale_runs,
 )
 from bookbag import REPO_GLOBAL, locked_update_bookbag
-from pr_creator import create_pr_for_issue
-from candidate_manifest import (
+from src.bridge.pr_creator import create_pr_for_issue
+from src.bridge.candidate_manifest import (
     CandidateManifest,
     CandidateManifestError,
     CandidateStore,
     create_candidate,
 )
-from candidate_pr import CandidatePublicationError
-from pr_provider import (
+from src.bridge.candidate_pr import CandidatePublicationError
+from src.bridge.pr_provider import (
     GitHubCliPublisher,
     PrStateStore,
     publish_candidate_pr_idempotent,
 )
-from candidate_pr_gate import (
+from src.bridge.candidate_pr_gate import (
     gate_candidate_publication,
 )
-from candidate_binding import (
+from src.bridge.candidate_binding import (
     CandidateBinding,
     teacher_approval_from_binding,
     trusted_verification_from_binding,
 )
-from failure_taxonomy import normalize_outcome  # noqa: F401  (re-exported; seam for ledger classification)
+from src.core.failure_taxonomy import normalize_outcome  # noqa: F401  (re-exported; seam for ledger classification)
 
 PROCESSED_FILE = Path(__file__).parent / "data" / "processed_issues.json"
 
@@ -974,7 +974,7 @@ def verify_task_output(
         candidates = [re.sub(r'^(?:json|JSON)\s*', '', c) for c in candidates]
 
         # --- Step 3: balanced extraction from first parseable candidate ---
-        from adversarial_reviewer import extract_balanced_json
+        from src.review.adversarial_reviewer import extract_balanced_json
 
         result = None
         for candidate_str in candidates:
@@ -1036,7 +1036,7 @@ def _run_verify_gate(
     if not repo_path or not repo_path.exists():
         return None
     try:
-        from verify_gate import run_verify_gate, freeze_verification_contract
+        from src.review.verify_gate import run_verify_gate, freeze_verification_contract
         project_verify = Path(repo_path) / "project_verify.yaml"
         # Pin the flake to the school-core checkout (this module's directory),
         # NEVER Path.cwd() — the runner invokes the bridge from the checkout
@@ -1169,8 +1169,8 @@ def _run_adversarial_review(
     Lazy-imports adversarial_reviewer and executor to avoid circular deps.
     """
     try:
-        from adversarial_reviewer import AdversarialReviewer, LensType
-        from executor import call_model
+        from src.review.adversarial_reviewer import AdversarialReviewer, LensType
+        from src.crew.executor import call_model
 
         # Use cloud model for adversarial review (fast, reliable); avoid local foundry models
         # which can hang with 300s timeouts on M1.
@@ -1648,7 +1648,7 @@ def _build_trusted_verification_evidence(
     if verify_result is None:
         return None
     try:
-        from verifier_vm import VerifierEvidence
+        from src.crew.verifier_vm import VerifierEvidence
     except ImportError:
         return None
     if not isinstance(verify_result, VerifierEvidence):
@@ -1677,7 +1677,7 @@ def _trusted_approval_journal() -> Any | None:
     cannot be opened, this returns None, which the ingress treats as "no
     approval exists" and the gate refuses with `teacher_approval_required`.
     """
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     raw = os.environ.get("APPROVAL_JOURNAL_FILE", "").strip()
     if not raw:
@@ -1727,7 +1727,7 @@ def _build_trusted_approval_evidence(
     including an unreadable journal — yields None so the gate fails closed
     with `teacher_approval_required`.
     """
-    from teacher_approval_ingress import trusted_approval_from_journal
+    from src.tools.teacher_approval_ingress import trusted_approval_from_journal
 
     return trusted_approval_from_journal(
         journal=journal,
@@ -1757,7 +1757,7 @@ def _resume_candidate_binding(
     """
     if manifest is None:
         return None
-    from candidate_binding import CandidateBindingStore
+    from src.bridge.candidate_binding import CandidateBindingStore
 
     path = CANDIDATE_BINDING_FILE if store_path is None else store_path
     try:
@@ -1795,7 +1795,7 @@ def _persist_candidate_binding(
     """
     if manifest is None:
         return None
-    from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+    from src.bridge.candidate_binding import CandidateBindingStore, bind_trusted_evidence
 
     if verification is None:
         # No verification posture to bind: the gate refuses this candidate
@@ -1902,7 +1902,7 @@ def bridge_issues(
     the environment. When ON the student runs with skip_review=True and the
     bridge merges teacher verdicts from the concurrent teacher loop (Gap-G4).
     """
-    from director import run_task, evaluate_and_update
+    from src.core.director import run_task, evaluate_and_update
 
     if store is None:
         store = ScoreStore()
@@ -1931,7 +1931,7 @@ def bridge_issues(
     hosted_student_enabled = _hosted_student_enabled_from_env()
     hosted_student_runner = None
     if hosted_student_enabled:
-        from smol_cloud_runner import SmolCloudRunner
+        from src.crew.smol_cloud_runner import SmolCloudRunner
         hosted_student_runner = SmolCloudRunner(  # noqa: F841 - construction validates runner config eagerly
             image_reference=os.environ.get("SCHOOL_CORE_SMOL_CLOUD_IMAGE", ""),
             source_type=os.environ.get(
@@ -1941,7 +1941,7 @@ def bridge_issues(
     if not repo:
         # school-loop passes --repo "$SCHOOL_REPO" (usually empty) → resolve the
         # repo from the current checkout's origin remote, same as bridge_poll.
-        from repo_default import default_repo
+        from src.tools.repo_default import default_repo
         repo = default_repo()
     issues = fetch_issues(repo, labels)
     max_issues_per_cycle = int(
@@ -1989,14 +1989,14 @@ def bridge_issues(
         return results
 
     # Clone repo and build codebase context for enrichment
-    from repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
+    from src.core.repo_reader import clone_repo, build_codebase_context, cleanup_stale_caches
     cleanup_stale_caches()
     repo_path = clone_repo(repo)
     # Freeze the verification contract BEFORE any dispatch. The contract
     # must be frozen from the clean base before run_task (dispatch) runs,
     # so a candidate cannot modify project_verify.yaml after the snapshot.
     # Crew path already freezes before _spawn; this covers the direct path.
-    from verify_gate import freeze_verification_contract
+    from src.review.verify_gate import freeze_verification_contract
     trusted_contract = (
         freeze_verification_contract(repo_path)
         if repo_path and repo_path.exists()
@@ -2140,7 +2140,7 @@ def bridge_issues(
             # live_active reflects in-flight crews so the office's lock-safe
             # admission (decide_admission) stays honest under concurrency.
             live_active = _crew_active_count(CREW_RUNS_FILE)
-            from school_scheduler import get_dispatch_office
+            from src.tools.school_scheduler import get_dispatch_office
             _outcome = get_dispatch_office().dispatch(
                 issue_number=num,
                 task_text=enriched_prompt,
@@ -2686,6 +2686,33 @@ def bridge_issues(
                         if entire_review else None,
                     )
 
+            # CRITICAL entire finding → veto the review, matching
+            # conductor._persist_acceptance (the async path): a CRITICAL sensor
+            # finding rejects acceptance even when both judges PASS. Mirror the
+            # verify-failure injection below so the sensor is a real gate, not a
+            # sticky note. HIGH alone stays a warning unless ENTIRE_HIGH_STRICT=1.
+            _entire_critical = [
+                f for f in ((entire_review or {}).get("findings") or [])
+                if str((f or {}).get("severity", "")).upper() == "CRITICAL"
+            ]
+            if not _entire_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
+                _entire_critical = [
+                    f for f in ((entire_review or {}).get("findings") or [])
+                    if str((f or {}).get("severity", "")).upper() == "HIGH"
+                ]
+            if _entire_critical:
+                for f in _entire_critical:
+                    adversarial_review.setdefault("findings", []).append({
+                        "section": "pre-merge-sensor",
+                        "issue_class": "entire_finding",
+                        "severity": "CRITICAL",
+                        "citation": f"{f.get('file')}:{f.get('line')}",
+                        "description": (f.get("message") or "")[:500],
+                        "suggestion": "Fix the issue the pre-merge sensor flagged.",
+                    })
+                adversarial_review["verdict"] = "FAIL"
+                adversarial_review["score"] = 0.0
+
             # Merge verify-gate failures into the review as CRITICAL findings.
             # This is the enforcement of campus.md #3: the compiler runs before
             # the critic speaks; a broken build cannot earn a PASS.
@@ -2872,7 +2899,7 @@ def bridge_issues(
             # the packet but leave the stale pre-verification score in the queue.
             # The enqueue is non-fatal — a queue failure must never break dispatch.
             try:
-                from school_grader import GradingQueue, GradingJob
+                from src.tools.school_grader import GradingQueue, GradingJob
                 _gq = GradingQueue()
                 _gq.enqueue(GradingJob(
                     issue_number=num,
@@ -3393,7 +3420,7 @@ def bridge_issues(
     # source run/processed state is durable. It cannot change GitHub outcomes,
     # PR gating, or school-core acceptance if the Paperclip instance is down.
     try:
-        from paperclip_status import sync_paperclip_results
+        from src.tools.paperclip_status import sync_paperclip_results
         sync_paperclip_results(repo, results)
     except Exception as mirror_error:
         sys.stderr.write(
@@ -3414,7 +3441,7 @@ def bridge_poll(repo: Optional[str] = None, interval: int = 300, labels: Optiona
     cfg = load_config()
     repo = repo or cfg.get("repo", "")
     if not repo:
-        from repo_default import default_repo
+        from src.tools.repo_default import default_repo
         repo = default_repo()
     if not repo:
         sys.stderr.write("[issue_bridge] No repo configured. Set repo in config/github.yaml, use __self__ in target_repos, or pass --repo\n")
@@ -3463,7 +3490,38 @@ if __name__ == "__main__":
     parser.add_argument("--force-agent", help="Skip readiness checks; use a specific agent directly")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
     parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
+    # onboard — generate ICM L0-L4 context + envit + project_verify for --repo.
+    # Delegates to `onboard.main()`; every flag below is a passthrough.
+    parser.add_argument("--onboard", action="store_true",
+                        help="Generate L0-L4 context, envit entries, and project_verify.yaml "
+                             "for --repo, then exit (repo-agnostic onboarding)")
+    parser.add_argument("--write", action="store_true",
+                        help="with --onboard: write generated files (default: report only)")
+    parser.add_argument("--out", help="with --onboard: directory for L0/L1/project_verify")
+    parser.add_argument("--no-clone", action="store_true",
+                        help="with --onboard: do not clone; --repo must be a local checkout")
+    parser.add_argument("--offline", action="store_true",
+                        help="with --onboard: never call gh; use the checkout's own evidence")
+    parser.add_argument("--require-evidence", action="store_true",
+                        help="with --onboard: fail unless real repo facts were read")
     args = parser.parse_args()
+
+    if args.onboard:
+        if not args.repo:
+            parser.error("--onboard requires --repo <owner/repo>")
+        import onboard
+        onboard_argv = ["--repo", args.repo]
+        if args.write:
+            onboard_argv.append("--write")
+        if args.out:
+            onboard_argv += ["--out", args.out]
+        if args.no_clone:
+            onboard_argv.append("--no-clone")
+        if args.offline:
+            onboard_argv.append("--offline")
+        if args.require_evidence:
+            onboard_argv.append("--require-evidence")
+        sys.exit(onboard.main(onboard_argv))
 
     labels = args.labels.split(",") if args.labels else None
     if args.once:

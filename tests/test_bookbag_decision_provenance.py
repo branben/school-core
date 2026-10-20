@@ -24,8 +24,8 @@ import unittest
 import unittest.mock as mock
 
 import bookbag
-import director
-from adversarial_reviewer import ReviewResult, Verdict
+import src.core.director as director
+from src.review.adversarial_reviewer import ReviewResult, Verdict
 
 
 class _Judge:

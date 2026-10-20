@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from scoring import ScoreStore
-from director import evaluate_and_update
+from src.core.scoring import ScoreStore
+from src.core.director import evaluate_and_update
 from bookbag import (
     BookbagSignal,
     read_bookbag,
@@ -49,15 +49,15 @@ from bookbag import (
     locked_update_bookbag,
     REPO_GLOBAL,
 )
-from school_mail import notify_verdict, notify_issue_alert
-from leaf import run_leaf, StudentLeaf
-from teacher import TeacherWorktree
-from principal_doubt import run_doubt_cycle
+from src.tools.school_mail import notify_verdict, notify_issue_alert
+from src.core.leaf import run_leaf, StudentLeaf
+from src.tools.teacher import TeacherWorktree
+from src.tools.principal_doubt import run_doubt_cycle
 from scripts.ce_router import classify_task, route_decision
 from src.entire_review import run_entire_review
-from orca_executor import OrcaUnavailableError, OrcaExecutionManager
-from github_fetcher import fetch_single_issue, load_config
-from activity_log import ActivityLog
+from src.crew.orca_executor import OrcaUnavailableError, OrcaExecutionManager
+from src.tools.github_fetcher import fetch_single_issue, load_config
+from src.sensors.activity_log import ActivityLog
 
 _log = ActivityLog()
 
@@ -99,7 +99,7 @@ def _agent_to_role(agent: str) -> Optional[str]:
     if AGENT_TO_ROLE_CACHE is None:
         AGENT_TO_ROLE_CACHE = {}
         try:
-            from executor import COMBO_MAP
+            from src.crew.executor import COMBO_MAP
             for role, entry in COMBO_MAP.items():
                 # COMBO_MAP values are dicts with "default" model or lists
                 if isinstance(entry, dict):
@@ -125,7 +125,7 @@ def _resolve_agent(args) -> str:
     if args.agent:
         # Direct role match (coder, searcher, executor, reviewer, browser)
         try:
-            from executor import COMBO_MAP
+            from src.crew.executor import COMBO_MAP
             if args.agent in COMBO_MAP:
                 return args.agent
         except Exception:
@@ -364,7 +364,7 @@ def _prepare_issue_context(target_repo: str, task: str) -> tuple[Optional[Path],
     once the correct clone exists, a reader error may degrade to an empty
     context without changing the target path.
     """
-    from repo_reader import clone_repo, build_codebase_context
+    from src.core.repo_reader import clone_repo, build_codebase_context
 
     try:
         target_path = clone_repo(target_repo, force_fresh=True)
@@ -647,6 +647,23 @@ def _run_issue_async(
             entire_status = "error"
             entire_findings = []
         # ──────────────────────────────────────────────────────────────────────
+
+        # Persist the sensor result to the bookbag BEFORE the acceptance gate
+        # reads it. `_persist_acceptance` derives the CRITICAL veto from
+        # bag["entire_findings"] (conductor.py:233-243), but this async path
+        # never wrote it — the findings only reached notify_verdict — so a
+        # CRITICAL entire finding could not veto acceptance. Write them here,
+        # repo-namespaced to match read_bookbag/_persist_acceptance.
+        try:
+            locked_update_bookbag(
+                leaf.bead,
+                repo=target_repo or "__global__",
+                lock_timeout=10.0,
+                entire_findings=entire_findings,
+                entire_status=entire_status,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"  ⚠ Entire review result persist failed: {e}")
 
         cto_v, coo_v = wait_for_verdicts(leaf.bead, repo=target_repo or "__global__", timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead, target_repo or "__global__") or {}

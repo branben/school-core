@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import threading
 
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 def test_concurrent_save_does_not_corrupt_file(tmp_path):

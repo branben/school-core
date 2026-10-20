@@ -28,7 +28,7 @@ import sys
 
 import pytest
 
-from omni_relay import (
+from src.tools.omni_relay import (
     ToolError,
     ToolRegistry,
     build_tool_request,
@@ -120,7 +120,7 @@ def test_read_is_capped_so_a_huge_file_cannot_exhaust_memory(root):
     on a partial view. Asserting only `len(out) < size` passes even with no
     cap at all, so the marker is what makes this test discriminating.
     """
-    from omni_relay_tools import MAX_READ_BYTES
+    from src.tools.omni_relay_tools import MAX_READ_BYTES
     (root / "big.txt").write_text("A" * (MAX_READ_BYTES * 2), encoding="utf-8")
     reg = ToolRegistry(root=root)
     out = reg.call("read_file", {"path": "big.txt"})

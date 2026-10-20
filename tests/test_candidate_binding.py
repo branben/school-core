@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateManifest, CandidateStore, create_candidate
-from candidate_pr_gate import GateDecision, TeacherApproval, VerificationEvidence, gate_candidate_publication
-from candidate_binding import (
+from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, create_candidate
+from src.bridge.candidate_pr_gate import GateDecision, TeacherApproval, VerificationEvidence, gate_candidate_publication
+from src.bridge.candidate_binding import (
     CandidateBinding,
     CandidateBindingStore,
     bind_trusted_evidence,

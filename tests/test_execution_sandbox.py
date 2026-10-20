@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from execution_sandbox import sandbox_exec_path, write_sandbox_profile
+from src.crew.execution_sandbox import sandbox_exec_path, write_sandbox_profile
 
 
 def test_verify_profile_denies_network_and_confines_writes(tmp_path):

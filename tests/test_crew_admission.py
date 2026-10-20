@@ -1,6 +1,6 @@
 """F6: adaptive but bounded crew admission policy."""
 
-from crew_admission import decide_admission
+from src.crew.crew_admission import decide_admission
 
 
 def test_default_capacity_admits_first_task():

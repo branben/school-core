@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-from pipeline_metrics import PipelineMetrics
+from src.tools.pipeline_metrics import PipelineMetrics
 
 
 def test_concurrent_recording_preserves_counts_and_snapshot_shape():

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import crew_dispatch
-from capabilities import resolve_capability
-from crew_dispatch import CrewResult, CrewUnavailableError, dispatch_crew
+import src.crew.crew_dispatch as crew_dispatch
+from src.core.capabilities import resolve_capability
+from src.crew.crew_dispatch import CrewResult, CrewUnavailableError, dispatch_crew
 
 
 class FakeClock:
@@ -1581,7 +1581,7 @@ def test_contract_is_frozen_before_spawn(monkeypatch, tmp_path):
     project.mkdir()
     (project / "project_verify.yaml").write_text('verify:\n  - name: check\n    cmd: exit 1\n')
     events = []
-    import verify_gate
+    import src.review.verify_gate as verify_gate
     real = verify_gate.freeze_verification_contract
     def freeze(path):
         events.append("freeze")
@@ -1605,7 +1605,7 @@ def test_frozen_contract_created_before_spawn(monkeypatch, tmp_path):
     project.mkdir()
     (project / "project_verify.yaml").write_text('verify:\n  - name: check\n    cmd: exit 1\n')
     captured_contract = []
-    import verify_gate
+    import src.review.verify_gate as verify_gate
     real = verify_gate.freeze_verification_contract
     def freeze(path):
         contract = real(path)

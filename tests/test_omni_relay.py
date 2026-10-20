@@ -23,7 +23,7 @@ import json
 
 import pytest
 
-from omni_relay import (
+from src.tools.omni_relay import (
     OmniRouteTransport,
     TransportError,
     _redact,

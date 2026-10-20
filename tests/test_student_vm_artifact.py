@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from candidate_gate import run_candidate_gate
-from candidate_manifest import CandidateStore
-from student_vm_runner import (
+from src.bridge.candidate_gate import run_candidate_gate
+from src.bridge.candidate_manifest import CandidateStore
+from src.crew.student_vm_runner import (
     StudentTaskResult,
     StudentVMBlocked,
     durable_record_from_verified_candidate,

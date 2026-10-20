@@ -3,8 +3,8 @@ from io import BytesIO
 from urllib.parse import parse_qs, urlsplit
 from urllib.error import URLError
 
-import paperclip_status
-from paperclip_status import PaperclipStatusMirror
+import src.tools.paperclip_status as paperclip_status
+from src.tools.paperclip_status import PaperclipStatusMirror
 
 
 class FakeResponse(BytesIO):

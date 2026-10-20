@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from anchor_loader import Anchor, AnchorRegistry
-from scoring import GATES, ScoreStore
+from src.core.anchor_loader import Anchor, AnchorRegistry
+from src.core.scoring import GATES, ScoreStore
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_has_bracket_notation(self, registry, store):
         """compose_prompt output includes bracket notation for all anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="code-review",
@@ -155,7 +155,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_enriches_with_activation_patterns(self, registry, store):
         """compose_prompt output includes activation patterns from registry."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="code-review",
@@ -173,7 +173,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_role_anchors_present(self, registry, store):
         """compose_prompt includes role-based anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="debugging",
@@ -190,7 +190,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_difficulty_anchors(self, registry, store):
         """compose_prompt includes difficulty-based anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="debugging",
@@ -207,7 +207,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_domain_extra_context(self, registry, store):
         """compose_prompt preserves domain extra_context."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="python-testing",

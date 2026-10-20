@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from github_fetcher import (
+from src.tools.github_fetcher import (
     fetch_issues,
     load_config,
     _map_domain,
@@ -23,7 +23,7 @@ from github_fetcher import (
 def trusted_test_intake(monkeypatch, request):
     if request.node.name.startswith("test_intake_"):
         return
-    import github_fetcher
+    import src.tools.github_fetcher as github_fetcher
     real_load = github_fetcher.load_config
     monkeypatch.setattr(github_fetcher, "load_config", lambda *a, **k: dict(
         real_load(*a, **k), allowed_author_associations=["OWNER"]))
@@ -148,7 +148,7 @@ class TestDifficultyMapping:
 # ── Fetch Issues (mocked gh CLI) ──────────────────────────────────────────
 
 class TestFetchIssues:
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_returns_actionable_issues(self, mock_gh):
         """Only 'ready-for-agent' issues are returned."""
         mock_gh.return_value = json.dumps([
@@ -172,7 +172,7 @@ class TestFetchIssues:
         assert issues[1]["issue_number"] == 2
         assert issues[1]["domain"] == "code-implementation"
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_filters_non_actionable(self, mock_gh):
         """Issues with state != 'ready-for-agent' are excluded."""
         mock_gh.return_value = json.dumps([
@@ -187,19 +187,19 @@ class TestFetchIssues:
         # Single bug label + empty body → needs-triage, not ready-for-agent
         assert len(issues) == 0
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_handles_empty_response(self, mock_gh):
         """Returns empty list when no issues match filters."""
         mock_gh.return_value = json.dumps([])
         assert fetch_issues("user/test") == []
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_handles_gh_failure(self, mock_gh):
         """Returns empty list when gh CLI call fails."""
         mock_gh.return_value = None
         assert fetch_issues("user/test") == []
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_passes_label_filter(self, mock_gh):
         """Label filter is forwarded to gh CLI args."""
         mock_gh.return_value = json.dumps([])
@@ -208,7 +208,7 @@ class TestFetchIssues:
         assert "--label" in args
         assert "bug" in args[args.index("--label") + 1]
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_multiple_labels_are_unioned_not_anded(self, mock_gh):
         """REGRESSION: a label list is a UNION, not a conjunction.
 
@@ -245,7 +245,7 @@ class TestFetchIssues:
         ]
         assert len(label_calls) == 2
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_label_union_dedupes_overlapping_issues(self, mock_gh):
         """An issue carrying both labels appears once, not twice."""
         ready = "Detailed report with reproduction steps and a stack trace" * 15
@@ -257,7 +257,7 @@ class TestFetchIssues:
         issues = fetch_issues("user/test", labels=["bug", "enhancement"])
         assert [i["issue_number"] for i in issues] == [12]
 
-    @patch("github_fetcher._gh_command")
+    @patch("src.tools.github_fetcher._gh_command")
     def test_prompt_includes_title_and_body(self, mock_gh):
         """The prompt field contains both title and body."""
         mock_gh.return_value = json.dumps([
@@ -276,7 +276,7 @@ class TestFetchIssues:
 
 @pytest.mark.parametrize("association,admitted", [("OWNER", True), ("MEMBER", False), ("NONE", False), ("CONTRIBUTOR", False), (None, False)])
 def test_intake_association_gate(monkeypatch, association, admitted):
-    import github_fetcher as g
+    import src.tools.github_fetcher as g
     monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": ["OWNER"]})
     issue = {"number": 1, "title": "task", "body": "untrusted", "labels": []}
     monkeypatch.setattr(g, "_gh_command", lambda args: json.dumps([issue]) if args[0] == "issue" else json.dumps({"number": 1, "state": "open", "author_association": association}))
@@ -286,14 +286,14 @@ def test_intake_association_gate(monkeypatch, association, admitted):
 
 @pytest.mark.parametrize("allowed", [[], ["NONE"], "OWNER", None])
 def test_intake_default_and_invalid_policy_are_closed(monkeypatch, allowed):
-    import github_fetcher as g
+    import src.tools.github_fetcher as g
     monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": allowed})
     monkeypatch.setattr(g, "_gh_command", lambda args: '[{"number":1}]')
     assert g.fetch_issues("owner/repo") == []
 
 
 def test_intake_metadata_failure_is_closed(monkeypatch):
-    import github_fetcher as g
+    import src.tools.github_fetcher as g
     monkeypatch.setattr(g, "load_config", lambda: {"allowed_author_associations": ["OWNER"]})
     monkeypatch.setattr(g, "_gh_command", lambda args: '[{"number":1}]' if args[0] == "issue" else None)
     assert g.fetch_issues("owner/repo") == []

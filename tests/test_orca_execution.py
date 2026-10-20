@@ -35,7 +35,7 @@ import pytest
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from orca_executor import (
+from src.crew.orca_executor import (
     OrcaExecutionManager,
     CodeExtractor,
     ExecutionResult,
@@ -511,8 +511,8 @@ class TestConductorOrcaFlow:
         Orca should execute it and verify it works.
         The review should see the execution evidence.
         """
-        from leaf import run_leaf
-        from scoring import ScoreStore
+        from src.core.leaf import run_leaf
+        from src.core.scoring import ScoreStore
 
         store = ScoreStore()
         task = (
@@ -789,7 +789,7 @@ class TestTeacherCloseAdminEntryCleanup:
            repo (REPO_PATH was honored), not just pruned everywhere.
         """
         from unittest.mock import MagicMock
-        from teacher import TeacherWorktree
+        from src.tools.teacher import TeacherWorktree
 
         main_repo = tmp_path / "main"
         sentinel_repo = tmp_path / "sentinel"

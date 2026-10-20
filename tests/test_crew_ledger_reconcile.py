@@ -20,7 +20,7 @@ import json
 
 import pytest
 
-from crew_ledger_reconcile import reconcile
+from src.crew.crew_ledger_reconcile import reconcile
 
 
 def _state(tmp_path, **crews: str):
@@ -155,8 +155,7 @@ class TestCliIsAdvisory:
         no useful work is possible, an unreconciled ledger means the work
         happened and wasn't recorded.
         """
-        import crew_ledger_reconcile as mod
-
+        import src.crew.crew_ledger_reconcile as mod
         monkeypatch.setattr(mod, "STATE_DIR", _state(tmp_path, c1=DONE, c2=DONE))
         monkeypatch.setattr(mod, "CREW_RUNS_FILE", _ledger(tmp_path))
         assert mod.main() == 0
@@ -165,8 +164,7 @@ class TestCliIsAdvisory:
         assert "MISSING" in out
 
     def test_cli_says_unknown_is_not_a_pass(self, monkeypatch, tmp_path, capsys):
-        import crew_ledger_reconcile as mod
-
+        import src.crew.crew_ledger_reconcile as mod
         monkeypatch.setattr(mod, "STATE_DIR", tmp_path / "gone")
         monkeypatch.setattr(mod, "CREW_RUNS_FILE", tmp_path / "gone.json")
         assert mod.main() == 0

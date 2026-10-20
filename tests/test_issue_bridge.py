@@ -38,8 +38,8 @@ from issue_bridge import (
     SCHOOL_FAILED_LABEL,
     RETRY_LIMIT,
 )
-from candidate_binding import CandidateBinding, CandidateBindingStore, bind_trusted_evidence
-from pr_provider import PrStateStore, _BoundFakePublisher
+from src.bridge.candidate_binding import CandidateBinding, CandidateBindingStore, bind_trusted_evidence
+from src.bridge.pr_provider import PrStateStore, _BoundFakePublisher
 
 
 @pytest.fixture(autouse=True)
@@ -272,7 +272,7 @@ class TestBridgeIssues:
         mock_cleanup.assert_called_once()
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     def test_dry_run_does_not_execute(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
@@ -285,10 +285,10 @@ class TestBridgeIssues:
         mock_task.assert_not_called()
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
     def test_dry_run_is_side_effect_free(
         self, mock_task, mock_cleanup, mock_clone, mock_build_context,
         mock_fetch, tmp_path, monkeypatch, store,
@@ -321,8 +321,8 @@ class TestBridgeIssues:
         assert not (tmp_path / "last_run.json").exists()
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("repo_reader.clone_repo")
     @patch("repo_reader.cleanup_stale_caches")
@@ -349,7 +349,7 @@ class TestBridgeIssues:
             raise RuntimeError("simulated Paperclip outage")
 
         monkeypatch.setattr(
-            "paperclip_status.sync_paperclip_results",
+            "src.tools.paperclip_status.sync_paperclip_results",
             fail_mirror_after_recording,
         )
         results = bridge_issues("user/test", store=store)
@@ -362,8 +362,8 @@ class TestBridgeIssues:
 
     @pytest.mark.parametrize("publisher_outcome", ["none", "raises"])
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_pr_publication_failure_remains_retryable(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -380,9 +380,9 @@ class TestBridgeIssues:
         monkeypatch.setattr("issue_bridge.RETRY_FILE", tmp_path / "retries.json")
         repo_path = tmp_path / "target-repo"
         repo_path.mkdir()
-        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-        monkeypatch.setattr("repo_reader.clone_repo", lambda repo: repo_path)
-        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda repo: repo_path)
+        monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda *args: "")
         monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
         monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
         monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
@@ -422,8 +422,8 @@ class TestBridgeIssues:
         )
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_success_is_checkpointed_before_loop_end(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store
@@ -485,7 +485,7 @@ class TestBridgeIssues:
         assert not is_processed(11), "issue 11 never completed"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     def test_capability_failure_skips_crew_and_uses_direct_fallback(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         monkeypatch.setattr("issue_bridge._resolve_crew_capability", lambda *args, **kwargs: None)
@@ -506,7 +506,7 @@ class TestBridgeIssues:
 
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     def test_task_failure_retries_once_then_marks_processed(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
@@ -530,7 +530,7 @@ class TestBridgeIssues:
         assert _load_processed()[20] == "INFRA"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     def test_handles_run_task_exception_retries_once(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
@@ -558,8 +558,8 @@ class TestBridgeIssues:
 
 class TestAdversarialReviewStep:
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_adversarial_review_attached_to_result(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
@@ -585,7 +585,8 @@ class TestAdversarialReviewStep:
         assert "findings" in adv
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
+    @pytest.mark.timeout(10)
     def test_adversarial_review_failure_falls_back(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
         mock_fetch.return_value = [
@@ -598,8 +599,12 @@ class TestAdversarialReviewStep:
             "domain": "debugging", "difficulty": "easy",
             "prompt": "fix", "response": "```python\nfixed\n```",
         }
-        # Patch the executor.call_model used by _run_adversarial_review to simulate failure
-        with patch("executor.call_model", side_effect=RuntimeError("model unavailable")):
+        # Patch the executor.call_model used by _run_adversarial_review to simulate failure.
+        # NOTE: This test is not hermetic — if the patch fails (e.g. due to import
+        # caching), it makes a live HTTP call to the LLM backend and hangs on a
+        # socket read. The @pytest.mark.timeout(10) above ensures it fails fast
+        # instead of hanging the suite. Pre-existing issue, not caused by CFA lens.
+        with patch("src.crew.executor.call_model", side_effect=RuntimeError("model unavailable")):
             results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
@@ -611,8 +616,8 @@ class TestAdversarialReviewStep:
         assert "correctness" in adv["lens_used"]
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_combined_score_uses_all_three_signals(self, mock_ib_call, mock_exec_call, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
@@ -633,7 +638,7 @@ class TestAdversarialReviewStep:
         assert results[0]["status"] == "success"
         assert "new_score" in results[0]
 
-    @patch("executor.call_model")
+    @patch("src.crew.executor.call_model")
     def test_run_adversarial_review_returns_dict(self, mock_call_model):
         mock_call_model.return_value = '{"findings": []}'
         task_result = {
@@ -656,7 +661,7 @@ class TestAdversarialReviewStep:
     def test_run_adversarial_review_fallback_on_error(self):
         task_result = {"status": "success", "response": "```python\ncode\n```"}
         issue = {"title": "T", "body": "", "domain": "debugging", "difficulty": "easy", "prompt": "p"}
-        with patch("executor.call_model", side_effect=ImportError("no module")):
+        with patch("src.crew.executor.call_model", side_effect=ImportError("no module")):
             result = _run_adversarial_review(task_result, issue, "")
         assert result["verdict"] == "PASS"
         # Adversarial reviewer catches exceptions internally and returns lens names
@@ -708,8 +713,8 @@ class TestVerifyGateMerge:
         }
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     def test_skipped_verdict_does_not_force_fail(
@@ -759,7 +764,7 @@ class TestVerifyGateMerge:
         import issue_bridge
         # Prove cwd-independence: run from a totally unrelated directory.
         monkeypatch.chdir(tmp_path)
-        with patch("verify_gate.run_verify_gate", return_value={
+        with patch("src.review.verify_gate.run_verify_gate", return_value={
             "passed": True, "failures": [], "ran": 0, "skipped": False,
         }) as mock_gate:
             result = _run_verify_gate(repo, {"issue_number": 1, "title": "t"})
@@ -771,8 +776,8 @@ class TestVerifyGateMerge:
         assert result is not None
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     def test_real_verify_failure_forces_fail(
@@ -804,8 +809,8 @@ class TestVerifyGateMerge:
         assert "verify failure" in results[0]["error"]
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     def test_strict_escalated_verdict_forces_fail(
@@ -865,8 +870,8 @@ class TestVerifyGateMerge:
         assert res["passed"] is False
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     @patch("issue_bridge._mark_github_issue")
@@ -923,8 +928,8 @@ class TestVerifyGateMerge:
         assert store.get_score("auto/best-free", "code-implementation") < 50
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     def test_accepted_two_judge_review_passes_through(
@@ -967,10 +972,11 @@ class TestVerifyGateMerge:
 
 
 class TestEntireSensor:
-    """The sync path must run `entire review` as a non-blocking sensor.
+    """The sync path must run `entire review` as a pre-merge sensor.
 
-    Findings are surfaced (result + last_run) but never override the verdict —
-    the adversarial LLM review is the semantic gate.
+    Findings are surfaced (result + last_run); a CRITICAL finding vetoes the
+    review, matching the conductor's `_persist_acceptance` gate. HIGH alone is a
+    warning unless `ENTIRE_HIGH_STRICT=1`.
     """
 
     ISSUE = [{
@@ -1000,8 +1006,8 @@ class TestEntireSensor:
         assert "[issue_bridge] entire CLI not found — pre-merge sensor will be skipped." in captured.err
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     @patch("issue_bridge._run_entire_sensor")
@@ -1009,7 +1015,7 @@ class TestEntireSensor:
         self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
         mock_task, mock_fetch, tmp_path, monkeypatch, store,
     ):
-        """Sensor findings ride on the result + last_run, without a FAIL override."""
+        """Sensor findings ride on the result + last_run; CRITICAL vetoes."""
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
             '"gaps": [], "strengths": []}'
@@ -1020,7 +1026,7 @@ class TestEntireSensor:
         }
         mock_sensor.return_value = {
             "status": "fail",
-            "findings": [{"file": "x.py", "line": 3, "severity": "HIGH",
+            "findings": [{"file": "x.py", "line": 3, "severity": "CRITICAL",
                            "message": "unused var"}],
         }
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -1032,15 +1038,16 @@ class TestEntireSensor:
         # Surfaced on the result…
         assert results[0]["entire_review"]["status"] == "fail"
         assert len(results[0]["entire_review"]["findings"]) == 1
-        # …but NOT a verdict override — the LLM review stays the semantic gate.
-        assert results[0]["adversarial_review"]["verdict"] != "FAIL"
+        # …and a CRITICAL entire finding DOES cause rejection, matching the
+        # conductor's _persist_acceptance gate (tests/test_entire_gate.py).
+        assert results[0]["adversarial_review"]["verdict"] == "FAIL"
         # Durable record carries a compact summary.
         runs = json.loads((tmp_path / "last_run.json").read_text())
         assert runs[-1]["entire"] == {"status": "fail", "findings": 1}
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._run_verify_gate")
     @patch("issue_bridge._run_entire_sensor")
@@ -1082,8 +1089,8 @@ class TestCycleSessionId:
                  "category": "bug", "state": "ready-for-agent"}]
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_run_task_receives_cycle_session_id(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -1109,8 +1116,8 @@ class TestCycleSessionId:
         assert re.fullmatch(r"loop-\d{8}-\d{6}", sid), f"unexpected session_id: {sid}"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_same_session_id_for_issues_in_one_cycle(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -1344,11 +1351,11 @@ class TestE2EPipeline:
     # ── Happy path: clean output, all signals positive ──────────────────
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_e2e_happy_path_all_pass(
         self,
@@ -1460,11 +1467,11 @@ class TestE2EPipeline:
     # ── Failure path: output with issues, review finds problems ─────────
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_e2e_with_review_findings(
         self,
@@ -1542,11 +1549,11 @@ class TestE2EPipeline:
     # ── Error path: model call failure ───────────────────────────────────
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_e2e_verification_fallback_on_model_failure(
         self,
@@ -1603,11 +1610,11 @@ class TestE2EPipeline:
     # ── Score weighting verification ─────────────────────────────────────
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_e2e_combined_score_weighting(
         self,
@@ -1909,7 +1916,7 @@ class TestSchoolComment:
 
     def test_imperfect_narrative_json_returns_none(self, monkeypatch):
         """A fenced/unparseable synthesis response must degrade to None, not crash."""
-        from director import _synthesize_judge_narratives
+        from src.core.director import _synthesize_judge_narratives
         calls = []
         def fake_call(prompt, sp=None, timeout=60):
             calls.append(prompt)
@@ -2021,8 +2028,8 @@ class TestBridgeGithubSync:
     """The bridge must call _mark_github_issue with the right status per path."""
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._mark_github_issue")
     def test_success_syncs_github(
@@ -2051,7 +2058,7 @@ class TestBridgeGithubSync:
         assert kwargs.get("score") is not None
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_failure_syncs_github_only_after_retry(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -2071,7 +2078,7 @@ class TestBridgeGithubSync:
         assert mock_mark.call_args[0][2] == "error"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_run_task_exception_syncs_github_only_after_retry(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -2089,7 +2096,7 @@ class TestBridgeGithubSync:
         assert mock_mark.call_args[0][2] == "error"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_dry_run_does_not_sync_github(self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -2131,7 +2138,7 @@ class TestRetryOnce:
         assert RETRY_LIMIT == 2  # attempt 1 = trial, attempt 2 = final
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_first_failure_schedules_retry_no_github_sync(
         self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
@@ -2148,7 +2155,7 @@ class TestRetryOnce:
         mock_mark.assert_not_called()  # no school-failed on the first failure
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_second_failure_is_final_and_syncs(
         self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
@@ -2171,8 +2178,8 @@ class TestRetryOnce:
         assert mock_mark.call_args[0][2] == "error"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     @patch("issue_bridge._mark_github_issue")
     @patch("issue_bridge.notify_issue_alert")
@@ -2200,7 +2207,7 @@ class TestRetryOnce:
         mock_notify.assert_not_called()  # no alert on success
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     @patch("issue_bridge.notify_issue_alert")
     def test_first_failure_notifies_retry_pending(
@@ -2221,7 +2228,7 @@ class TestRetryOnce:
         assert "gateway hiccup" in str(kwargs.get("error", ""))
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     @patch("issue_bridge.notify_issue_alert")
     def test_final_failure_notifies_school_failed(
@@ -2241,7 +2248,7 @@ class TestRetryOnce:
         assert final_args[1].get("attempt") == 2
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_persisted_counter_accumulates_across_fresh_checkouts(
         self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
@@ -2290,7 +2297,7 @@ class TestRetryOnce:
         assert mock_mark.call_args[0][2] == "error"  # school-failed label path
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     def test_empty_seed_never_accumulates_documents_b12_defect(
         self, mock_mark, mock_task, mock_fetch, tmp_path, monkeypatch, store,
@@ -2320,7 +2327,7 @@ class TestRetryOnce:
         mock_mark.assert_not_called()                        # school-failed never fires
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
+    @patch("src.core.director.run_task")
     @patch("issue_bridge._mark_github_issue")
     @patch("issue_bridge.notify_issue_alert")
     def test_exception_path_notifies_retry_then_school_failed(
@@ -2378,9 +2385,9 @@ class TestCrewDispatchPath:
         repo_reader.clone_repo, not a module attribute of issue_bridge.
         """
         return (
-            patch("repo_reader.cleanup_stale_caches"),
-            patch("repo_reader.clone_repo", return_value=tmp_path / "repo"),
-            patch("repo_reader.build_codebase_context", return_value=""),
+            patch("src.core.repo_reader.cleanup_stale_caches"),
+            patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"),
+            patch("src.core.repo_reader.build_codebase_context", return_value=""),
         )
 
     @staticmethod
@@ -2427,12 +2434,12 @@ class TestCrewDispatchPath:
              patch("repo_reader.build_codebase_context", return_value=""), \
              patch("repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(400)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(400)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", store=store)
         assert results[0]["status"] == "success"
         mock_crew.assert_not_called()
@@ -2443,16 +2450,16 @@ class TestCrewDispatchPath:
         """CREW_ENABLED=garbage → crew off (fail closed), not on."""
         monkeypatch.setenv("CREW_ENABLED", "banana")
         with patch("issue_bridge.fetch_issues", return_value=self._issue(401)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(401)), \
+             patch("src.core.director.run_task", return_value=self._task_ok(401)), \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             bridge_issues("user/test", crew_enabled=None, store=store)
         mock_crew.assert_not_called()
 
@@ -2462,16 +2469,16 @@ class TestCrewDispatchPath:
         """done → report.md content flows through run_task as the deliverable."""
         monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", tmp_path / "crew_runs.json")
         with patch("issue_bridge.fetch_issues", return_value=self._issue(402)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew", return_value=self._crew_done(402, tmp_path)) as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(402)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(402)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'), \
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'), \
              patch("issue_bridge._select_verification", return_value={
                  "passed": True, "ran": 0, "failures": [], "skipped": False,
              }), \
@@ -2497,14 +2504,14 @@ class TestCrewDispatchPath:
 
     def test_spawn_failure_falls_back_direct(self, monkeypatch, tmp_path, store):
         """CrewUnavailableError → same-cycle direct path, reason recorded."""
-        from crew_dispatch import CrewUnavailableError
+        from src.crew.crew_dispatch import CrewUnavailableError
         with patch("issue_bridge.fetch_issues", return_value=self._issue(403)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew",
                    side_effect=CrewUnavailableError("fm-spawn missing")) as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(403)) as mock_task:
+             patch("src.core.director.run_task", return_value=self._task_ok(403)) as mock_task:
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_used"] is False
@@ -2523,16 +2530,16 @@ class TestCrewDispatchPath:
             teardown_ok=True, orca_worktree_id=None,
         )
         with patch("issue_bridge.fetch_issues", return_value=self._issue(404)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew", return_value=timeout), \
-             patch("director.run_task", return_value=self._task_ok(404)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(404)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "retry"
         assert results[0]["crew_fallback_reason"] == "timeout"
@@ -2549,16 +2556,16 @@ class TestCrewDispatchPath:
             teardown_ok=True, orca_worktree_id=None,
         )
         with patch("issue_bridge.fetch_issues", return_value=self._issue(405)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew", return_value=failed), \
-             patch("director.run_task", return_value=self._task_ok(405)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(405)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_fallback_reason"] == "crew_failed"
@@ -2567,14 +2574,14 @@ class TestCrewDispatchPath:
 
     def test_fallback_also_fails_retries_once(self, monkeypatch, tmp_path, store):
         """Crew spawn fails AND direct path fails → retry-once carry (R8)."""
-        from crew_dispatch import CrewUnavailableError
+        from src.crew.crew_dispatch import CrewUnavailableError
         with patch("issue_bridge.fetch_issues", return_value=self._issue(406)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew",
                    side_effect=CrewUnavailableError("gateway down")), \
-             patch("director.run_task", return_value={"status": "error", "error": "model unavailable"}):
+             patch("src.core.director.run_task", return_value={"status": "error", "error": "model unavailable"}):
             # Attempt 1 → retry scheduled, crew reason preserved.
             results = bridge_issues("user/test", crew_enabled=True, store=store)
             assert results[0]["status"] == "retry"
@@ -2606,11 +2613,11 @@ class TestCrewDispatchPath:
         }]))
         monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", runs)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(407)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task") as mock_task:
+             patch("src.core.director.run_task") as mock_task:
             results = bridge_issues(
                 "user/test", crew_enabled=True, store=store,
                 cycle_session_id="loop-20260811-120000",
@@ -2636,12 +2643,12 @@ class TestCrewDispatchPath:
         }]))
         monkeypatch.setattr("issue_bridge.CREW_RUNS_FILE", runs)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(407)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.sweep_stale_runs") as mock_sweep, \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task") as mock_task:
+             patch("src.core.director.run_task") as mock_task:
             results = bridge_issues(
                 "user/test", crew_enabled=True, store=store,
                 cycle_session_id="loop-20260811-120000",
@@ -2656,16 +2663,16 @@ class TestCrewDispatchPath:
         done = self._crew_done(408, tmp_path)
         done2 = self._crew_done(409, tmp_path)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(408) + self._issue(409)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew", side_effect=[done, done2]) as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(408)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(408)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues(
                 "user/test", crew_enabled=True, crew_max_per_cycle=1, store=store,
             )
@@ -2686,16 +2693,16 @@ class TestCrewDispatchPath:
             teardown_ok=True, orca_worktree_id="repo::/tmp/wt",
         )
         with patch("issue_bridge.fetch_issues", return_value=self._issue(410)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew", return_value=no_report), \
-             patch("director.run_task", return_value=self._task_ok(410)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(410)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_fallback_reason"] == "report_missing"
@@ -2774,16 +2781,16 @@ class TestFrozenContractThreading:
 
     def _run(self, monkeypatch, tmp_path, store, repo_path):
         with patch("issue_bridge.fetch_issues", return_value=self._issue(500)), \
-             patch("repo_reader.clone_repo", return_value=repo_path), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=repo_path), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(500)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(500)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             bridge_issues("user/test", store=store)
         mock_crew.assert_not_called()
         mock_task.assert_called_once()
@@ -2843,16 +2850,16 @@ class TestHostedStudentFlag:
         """Common hermetic patches for the direct dispatch path."""
         return (
             patch("issue_bridge.fetch_issues", return_value=TestHostedStudentFlag._issue(430)),
-            patch("repo_reader.clone_repo", return_value=tmp_path / "repo"),
-            patch("repo_reader.build_codebase_context", return_value=""),
-            patch("repo_reader.cleanup_stale_caches"),
+            patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"),
+            patch("src.core.repo_reader.build_codebase_context", return_value=""),
+            patch("src.core.repo_reader.cleanup_stale_caches"),
             patch("issue_bridge.dispatch_crew"),
-            patch("director.run_task", return_value=TestHostedStudentFlag._task_ok(430)),
+            patch("src.core.director.run_task", return_value=TestHostedStudentFlag._task_ok(430)),
             patch("issue_bridge.call_model", return_value=(
                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                 '"gaps": [], "strengths": []}'
             )),
-            patch("executor.call_model", return_value='{"findings": []}'),
+            patch("src.crew.executor.call_model", return_value='{"findings": []}'),
         )
 
     @staticmethod
@@ -2892,16 +2899,16 @@ class TestHostedStudentFlag:
         """Flag absent → run_task called on the direct path, no runner kwarg."""
         monkeypatch.delenv("SCHOOL_CORE_HOSTED_STUDENT", raising=False)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(431)), \
-             patch("repo_reader.clone_clone", return_value=tmp_path / "repo") if False else patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_clone", return_value=tmp_path / "repo") if False else patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(431)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(431)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", store=store)
         assert results[0]["status"] == "success"
         mock_crew.assert_not_called()
@@ -2915,16 +2922,16 @@ class TestHostedStudentFlag:
         monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", "banana")
         monkeypatch.delitem(sys.modules, "smol_cloud_runner", raising=False)
         with patch("issue_bridge.fetch_issues", return_value=self._issue(432)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew") as mock_crew, \
-             patch("director.run_task", return_value=self._task_ok(432)) as mock_task, \
+             patch("src.core.director.run_task", return_value=self._task_ok(432)) as mock_task, \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", store=store)
         assert results[0]["status"] == "success"
         assert "smol_cloud_runner" not in sys.modules
@@ -2953,18 +2960,18 @@ class TestHostedStudentFlag:
         # Spy on the constructor to confirm it is called with the env values
         # without actually making any network call (transport defaults to the
         # real urllib transport, but execute() is never reached in this slice).
-        with patch("smol_cloud_runner.SmolCloudRunner.__init__", return_value=None) as mock_init, \
+        with patch("src.crew.smol_cloud_runner.SmolCloudRunner.__init__", return_value=None) as mock_init, \
              patch("issue_bridge.fetch_issues", return_value=self._issue(433)), \
-             patch("repo_reader.clone_repo", return_value=tmp_path / "repo"), \
-             patch("repo_reader.build_codebase_context", return_value=""), \
-             patch("repo_reader.cleanup_stale_caches"), \
+             patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"), \
+             patch("src.core.repo_reader.build_codebase_context", return_value=""), \
+             patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew"), \
-             patch("director.run_task", return_value=self._task_ok(433)), \
+             patch("src.core.director.run_task", return_value=self._task_ok(433)), \
              patch("issue_bridge.call_model", return_value=(
                  '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
                  '"gaps": [], "strengths": []}'
              )), \
-             patch("executor.call_model", return_value='{"findings": []}'):
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", store=store)
         assert results[0]["status"] == "success"
         mock_init.assert_called_once()
@@ -2997,7 +3004,7 @@ class TestCandidateBoundPublication:
     def candidate_env(self, tmp_path, monkeypatch):
         import subprocess
         from dataclasses import asdict
-        from candidate_manifest import CandidateStore, create_candidate
+        from src.bridge.candidate_manifest import CandidateStore, create_candidate
 
         repo = tmp_path / "target-repo"
         repo.mkdir()
@@ -3040,9 +3047,9 @@ class TestCandidateBoundPublication:
             "issue_bridge.CANDIDATE_BINDING_FILE", tmp_path / "candidate_bindings.json"
         )
         # Pipeline scaffolding — same recipe as the legacy PR failure test.
-        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-        monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
-        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda r: repo)
+        monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda *args: "")
         monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
         monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
         monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
@@ -3053,13 +3060,13 @@ class TestCandidateBoundPublication:
             lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
                            '"gaps": [], "strengths": ["works"]}',
         )
-        monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+        monkeypatch.setattr("src.crew.executor.call_model", lambda *a, **k: '{"findings": []}')
         monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
             "issue_number": 12, "title": "Bound candidate PR", "body": "",
             "domain": "debugging", "difficulty": "easy", "prompt": "fix",
             "category": "bug", "state": "ready-for-agent",
         }])
-        monkeypatch.setattr("director.run_task", lambda *a, **k: {
+        monkeypatch.setattr("src.core.director.run_task", lambda *a, **k: {
             "status": "success", "agent": "foundry-coder-7b",
             "domain": "debugging", "difficulty": "easy",
             "prompt": "fix", "response": "fixed",
@@ -3077,7 +3084,7 @@ class TestCandidateBoundPublication:
         return SimpleNamespace(repo=repo, manifest=manifest, tmp_path=tmp_path)
 
     def _run_bridge(self, candidate_env, publisher, store, monkeypatch):
-        from pr_provider import PrStateStore
+        from src.bridge.pr_provider import PrStateStore
         # Patch the publisher class the bridge factory instantiates, so the
         # candidate spine cannot fall back to a real GitHubCliPublisher even if
         # it resolves the factory through a different import path.
@@ -3086,7 +3093,7 @@ class TestCandidateBoundPublication:
             lambda repo_path: publisher,
         )
         monkeypatch.setattr(
-            "pr_provider.GitHubCliPublisher",
+            "src.bridge.pr_provider.GitHubCliPublisher",
             lambda repo_path: publisher,
         )
         with patch("issue_bridge._mark_github_issue") as mock_mark, patch("issue_bridge._gh_command") as mock_gh:
@@ -3163,7 +3170,7 @@ class TestCandidateBoundPublication:
 
     def test_bound_verifier_evidence_preserves_candidate_identity(self, candidate_env):
         from issue_bridge import _build_trusted_verification_evidence
-        from verifier_vm import VerifierEvidence
+        from src.crew.verifier_vm import VerifierEvidence
 
         manifest = candidate_env.manifest
         verification = VerifierEvidence(
@@ -3189,7 +3196,7 @@ class TestCandidateBoundPublication:
     def test_review_accepted_is_not_a_teacher_approval(self):
         from issue_bridge import _build_trusted_approval_evidence
 
-        from candidate_manifest import CandidateManifest
+        from src.bridge.candidate_manifest import CandidateManifest
 
         manifest = CandidateManifest(
             candidate_id="candidate-1",
@@ -3257,7 +3264,7 @@ class TestCandidateBindingResume:
     @pytest.fixture
     def resume_env(self, tmp_path, monkeypatch):
         import subprocess
-        from candidate_manifest import CandidateStore, create_candidate
+        from src.bridge.candidate_manifest import CandidateStore, create_candidate
 
         repo = tmp_path / "target-repo"
         repo.mkdir()
@@ -3300,9 +3307,9 @@ class TestCandidateBindingResume:
         monkeypatch.delenv("APPROVED_ACTORS", raising=False)
 
         # Pipeline scaffolding (same recipe as TestCandidateBoundPublication).
-        monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-        monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
-        monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+        monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+        monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda r: repo)
+        monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda *args: "")
         monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
         monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
         monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
@@ -3313,7 +3320,7 @@ class TestCandidateBindingResume:
             lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
                            '"gaps": [], "strengths": ["works"]}',
         )
-        monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+        monkeypatch.setattr("src.crew.executor.call_model", lambda *a, **k: '{"findings": []}')
         monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
             "issue_number": 12, "title": "Bound candidate PR", "body": "",
             "domain": "debugging", "difficulty": "easy", "prompt": "fix",
@@ -3322,7 +3329,7 @@ class TestCandidateBindingResume:
         # This cycle carries the manifest but NO trusted VerifierEvidence and
         # NO journal approval, so the gate can only authorize from a stored
         # binding. That is exactly the restart condition under test.
-        monkeypatch.setattr("director.run_task", lambda *a, **k: {
+        monkeypatch.setattr("src.core.director.run_task", lambda *a, **k: {
             "status": "success", "agent": "foundry-coder-7b",
             "domain": "debugging", "difficulty": "easy",
             "prompt": "fix", "response": "fixed",
@@ -3342,7 +3349,7 @@ class TestCandidateBindingResume:
 
     def _run_bridge(self, env, publisher, store, monkeypatch):
         monkeypatch.setattr("issue_bridge.GitHubCliPublisher", lambda repo_path: publisher)
-        monkeypatch.setattr("pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
+        monkeypatch.setattr("src.bridge.pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
         with patch("issue_bridge._mark_github_issue") as mock_mark, \
                 patch("issue_bridge._gh_command") as mock_gh:
             results = bridge_issues("user/test", store=store)
@@ -3445,8 +3452,8 @@ class TestCandidateBindingResume:
         self, resume_env, monkeypatch, store,
     ):
         """With trusted verification + approval, the cycle persists the binding."""
-        from state_journal import StateJournal
-        from teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
+        from src.sensors.state_journal import StateJournal
+        from src.tools.teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
 
         manifest = resume_env.manifest
         bound_verification = SimpleNamespace(
@@ -3485,8 +3492,8 @@ class TestCandidateBindingResume:
         durable binding is what carries the posture forward. This pins that the
         restart path does not depend on a still-live journal approval.
         """
-        from state_journal import StateJournal
-        from teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
+        from src.sensors.state_journal import StateJournal
+        from src.tools.teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
 
         manifest = resume_env.manifest
         journal_path = resume_env.tmp_path / "journal.sqlite3"
@@ -3527,7 +3534,7 @@ def _make_pub_env(tmp_path, monkeypatch, *, enabled):
     """Hermetic bridge environment for the candidate publication production path."""
     import subprocess
     from dataclasses import asdict
-    from candidate_manifest import CandidateStore, create_candidate
+    from src.bridge.candidate_manifest import CandidateStore, create_candidate
 
     repo = tmp_path / "target-repo"
     repo.mkdir()
@@ -3567,9 +3574,9 @@ def _make_pub_env(tmp_path, monkeypatch, *, enabled):
     monkeypatch.delenv("APPROVED_ACTORS", raising=False)
 
     # Pipeline scaffolding (same recipe as TestCandidateBoundPublication).
-    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-    monkeypatch.setattr("repo_reader.clone_repo", lambda r: repo)
-    monkeypatch.setattr("repo_reader.build_codebase_context", lambda *args: "")
+    monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda r: repo)
+    monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda *args: "")
     monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
     monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
     monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
@@ -3580,7 +3587,7 @@ def _make_pub_env(tmp_path, monkeypatch, *, enabled):
         lambda *a, **k: '{"score": 90, "verdict": "GOOD", "reasoning": "ok", '
                        '"gaps": [], "strengths": ["works"]}',
     )
-    monkeypatch.setattr("executor.call_model", lambda *a, **k: '{"findings": []}')
+    monkeypatch.setattr("src.crew.executor.call_model", lambda *a, **k: '{"findings": []}')
     monkeypatch.setattr("issue_bridge.fetch_issues", lambda *a, **k: [{
         "issue_number": 12, "title": "Bound candidate PR", "body": "",
         "domain": "debugging", "difficulty": "easy", "prompt": "fix",
@@ -3588,7 +3595,7 @@ def _make_pub_env(tmp_path, monkeypatch, *, enabled):
     }])
     # The task carries ONLY the manifest: any authorization must come from the
     # seeded binding, so the gate's identity checks are what decide the outcome.
-    monkeypatch.setattr("director.run_task", lambda *a, **k: {
+    monkeypatch.setattr("src.core.director.run_task", lambda *a, **k: {
         "status": "success", "agent": "foundry-coder-7b",
         "domain": "debugging", "difficulty": "easy",
         "prompt": "fix", "response": "fixed",
@@ -3643,10 +3650,10 @@ def _seed_pub_binding(env, *, verification_passed=True, approval_state="approved
 
 
 def _run_pub_bridge(env, publisher, store, monkeypatch):
-    from pr_provider import PrStateStore
+    from src.bridge.pr_provider import PrStateStore
 
     monkeypatch.setattr("issue_bridge.GitHubCliPublisher", lambda repo_path: publisher)
-    monkeypatch.setattr("pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
+    monkeypatch.setattr("src.bridge.pr_provider.GitHubCliPublisher", lambda repo_path: publisher)
     with patch("issue_bridge._mark_github_issue") as mock_mark, \
             patch("issue_bridge._gh_command") as mock_gh:
         results = bridge_issues("user/test", store=store)

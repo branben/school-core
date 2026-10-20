@@ -29,7 +29,7 @@ _CASES_DIR = Path(__file__).resolve().parent / "cases"
 _DEFAULT_SUITE = _CASES_DIR / "suite.yaml"
 
 try:
-    from executor import call_model, COMBO_MAP, ExecutorError
+    from src.crew.executor import call_model, COMBO_MAP, ExecutorError
 except ImportError:
     sys.stderr.write("benchmark: cannot import executor — add school-core to PYTHONPATH\n")
     sys.exit(1)

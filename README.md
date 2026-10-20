@@ -154,18 +154,20 @@ school-core/
 ├── config/
 │   ├── anchors.yaml           # Semantic anchors (TDD, YAGNI, Fagan…)
 │   └── profiles/*/SOUL.md     # Persona definitions
-├── conductor.py               # 🎓 Principal — routes work + review
-├── director.py                # EFC-gated task pipeline + two-judge review
-├── leaf.py                    # 🍃 Student leaves — disposable worktrees
-├── teacher.py                 # 🧑‍🏫 Teacher lifecycle — sleep/wake/review
-├── bookbag.py                 # 🎒 Bookbag state + file-lock protocol
-├── executor.py                # Model routing (ACRouter) + OmniRoute transport
+├── conductor.py               # 🎓 Principal — routes work + review (root shim)
+├── bookbag.py                 # 🎒 Bookbag state + file-lock protocol (root shim)
 ├── src/
 │   ├── entire_review.py       # ✨ Entire review shim (pre-merge)
-│   └── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
+│   ├── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
+│   ├── bridge/                # Issue→PR bridge, candidate manifests/gates
+│   ├── core/                  # director, leaf, scoring, routing, recovery
+│   ├── crew/                  # crew dispatch, executor, Orca, sandboxing
+│   ├── review/                # verify gate, adversarial review, evidence join
+│   ├── sensors/               # activity log/server, journals, scorers
+│   └── tools/                 # teacher, model relay, mail, vendi, graders
 ├── scripts/
 │   └── run_teacher_review_once.py  # One-shot teacher review pass
-├── tests/                     # 2400-test suite (TDD)
+├── tests/                     # 2514-test suite (TDD)
 └── flake.nix                  # Reproducible dev env (Nix)
 ```
 

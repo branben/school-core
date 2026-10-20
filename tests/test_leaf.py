@@ -24,8 +24,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from leaf import StudentLeaf, run_leaf, LeafError, LeafNotBootedError
-from orca_executor import OrcaUnavailableError
+from src.core.leaf import StudentLeaf, run_leaf, LeafError, LeafNotBootedError
+from src.crew.orca_executor import OrcaUnavailableError
 from bookbag import HANDOFF_TIMEOUT
 
 
@@ -35,7 +35,7 @@ from bookbag import HANDOFF_TIMEOUT
 @pytest.fixture
 def mock_mgr():
     """Mock OrcaExecutionManager."""
-    with patch("leaf.OrcaExecutionManager") as mock:
+    with patch("src.core.leaf.OrcaExecutionManager") as mock:
         instance = MagicMock()
         instance.create_worktree.return_value = "/tmp/leaf-worktrees/study-coder-abc123"
         mock.return_value = instance
@@ -50,7 +50,7 @@ def mock_bookbag_signal():
     assert on the class call (``mock_bookbag_signal.assert_called_with``)
     and on the instance (``mock_bookbag_signal.return_value.ready``).
     """
-    with patch("leaf.BookbagSignal") as mock:
+    with patch("src.core.leaf.BookbagSignal") as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield mock
@@ -59,7 +59,7 @@ def mock_bookbag_signal():
 @pytest.fixture
 def mock_director():
     """Mock director.run_task."""
-    with patch("leaf.run_task") as mock:
+    with patch("src.core.leaf.run_task") as mock:
         mock.return_value = {
             "status": "success",
             "domain": "python-coding",
@@ -85,7 +85,7 @@ def mock_director():
 @pytest.fixture
 def mock_wait_for_verdicts():
     """Mock wait_for_verdicts for async handoff tests."""
-    with patch("leaf.wait_for_verdicts") as mock:
+    with patch("src.core.leaf.wait_for_verdicts") as mock:
         mock.return_value = ("PASS", "PASS")
         yield mock
 
@@ -93,7 +93,7 @@ def mock_wait_for_verdicts():
 @pytest.fixture
 def mock_store():
     """Mock ScoreStore."""
-    with patch("leaf.ScoreStore") as mock:
+    with patch("src.core.leaf.ScoreStore") as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield instance
@@ -690,8 +690,7 @@ class TestCLI:
 
     def test_main_leaf(self, monkeypatch, mock_mgr, mock_director, mock_bookbag_signal):
         """python leaf.py --role coder --domain python-coding --task ... should run."""
-        import leaf as leaf_module
-
+        import src.core.leaf as leaf_module
         monkeypatch.setattr("sys.argv", [
             "leaf.py",
             "--role", "coder",
@@ -707,8 +706,7 @@ class TestCLI:
 
     def test_main_missing_args(self, monkeypatch):
         """Missing --role should be rejected by argparse."""
-        import leaf as leaf_module
-
+        import src.core.leaf as leaf_module
         monkeypatch.setattr("sys.argv", ["leaf.py", "--domain", "python-coding"])
 
         with pytest.raises(SystemExit):

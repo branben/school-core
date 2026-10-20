@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from worktree_gc import (
+from src.tools.worktree_gc import (
     ACTION_KEEP,
     ACTION_PRUNE,
     ACTION_REMOVE,
@@ -151,7 +151,7 @@ class TestGatherFacts:
             ("git", "-C", str(wt), "merge-base"): subprocess.CompletedProcess(
                 [], 0, "", ""),
         })
-        from worktree_gc import gather_facts
+        from src.tools.worktree_gc import gather_facts
         facts = gather_facts(
             tmp_path / "repo", WorktreeEntry(path=str(wt)),
             now=_t.time(), live_paths=set(), run=fake)
@@ -167,7 +167,7 @@ class TestGatherFacts:
             ("git", "-C", str(wt), "status"): subprocess.CompletedProcess(
                 [], 128, "", "fatal: not a working tree"),
         })
-        from worktree_gc import gather_facts
+        from src.tools.worktree_gc import gather_facts
         facts = gather_facts(
             tmp_path / "repo", WorktreeEntry(path=str(wt)),
             now=0, live_paths=set(), run=fake)
@@ -185,7 +185,7 @@ class TestGatherFacts:
             ("git", "-C", str(wt), "merge-base"): subprocess.CompletedProcess(
                 [], 0, "", ""),
         })
-        from worktree_gc import gather_facts
+        from src.tools.worktree_gc import gather_facts
         facts = gather_facts(
             tmp_path / "repo", WorktreeEntry(path=str(wt)),
             now=_t.time(), live_paths={str(wt.resolve())}, run=fake)
@@ -201,7 +201,7 @@ class TestGatherFacts:
             ("git", "-C", str(wt), "merge-base"): subprocess.CompletedProcess(
                 [], 0, "", ""),
         })
-        from worktree_gc import gather_facts, decide
+        from src.tools.worktree_gc import gather_facts, decide
         facts = gather_facts(
             tmp_path / "repo", WorktreeEntry(path=str(wt)),
             now=_t.time(), live_paths=None, run=fake)
@@ -215,7 +215,7 @@ class TestGatherFacts:
 
 class TestUnlaunchableBinaries:
     def test_run_never_raises_on_missing_binary(self):
-        from worktree_gc import _run
+        from src.tools.worktree_gc import _run
         r = _run(["/nonexistent/binary-xyz", "arg"])
         assert r.returncode != 0
         assert "unlaunchable" in r.stderr
@@ -224,7 +224,7 @@ class TestUnlaunchableBinaries:
         """Every git probe returning failure → git_ok False → KEEP, no crash."""
         wt = TestGatherFacts()._wt(tmp_path)
         fake = FakeRunner({})  # every lookup misses → returncode 1
-        from worktree_gc import gather_facts
+        from src.tools.worktree_gc import gather_facts
         facts = gather_facts(
             tmp_path / "repo", WorktreeEntry(path=str(wt)),
             now=0, live_paths=set(), run=fake)

@@ -19,11 +19,11 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from candidate_manifest import CandidateStore  # noqa: F401  (import surface parity)
+from src.bridge.candidate_manifest import CandidateStore  # noqa: F401  (import surface parity)
 
 import pytest
 
-from student_vm_runner import (
+from src.crew.student_vm_runner import (
     SmolVmRunner,
     StudentTaskRequest,
     StudentVMBlocked,

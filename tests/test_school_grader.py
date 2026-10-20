@@ -8,18 +8,18 @@ ScoreStore update (N5.2), two-judge label resolution, non-fatal label retry
 import json
 from pathlib import Path
 
-from school_grader import (
+from src.tools.school_grader import (
     GradingJob,
     GradingQueue,
     grade,
     drain,
     _two_judge_accept,
 )
-from resilience import LabelWriteQueue
+from src.core.resilience import LabelWriteQueue
 
 
 def _make_store(tmp_path):
-    from scoring import ScoreStore
+    from src.core.scoring import ScoreStore
 
     return ScoreStore(file_path=str(tmp_path / "scores.json"))
 
@@ -59,12 +59,12 @@ def test_queue_ack_removes_job(tmp_path):
 
 
 def test_drain_retains_failed_job_with_attempt_and_error(tmp_path, monkeypatch):
-    from school_grader import MAX_GRADING_ATTEMPTS
+    from src.tools.school_grader import MAX_GRADING_ATTEMPTS
 
     q = GradingQueue(tmp_path / "q.jsonl")
     job = GradingJob(issue_number=7, crew_id="retry-me")
     q.enqueue(job)
-    monkeypatch.setattr("school_grader.grade", lambda *a, **k: {
+    monkeypatch.setattr("src.tools.school_grader.grade", lambda *a, **k: {
         "key": job.key, "error": "temporary score store outage",
     })
 
@@ -83,12 +83,12 @@ def test_drain_retains_failed_job_with_attempt_and_error(tmp_path, monkeypatch):
 def test_drain_dead_letters_after_bounded_attempts_and_requeue_is_explicit(
     tmp_path, monkeypatch,
 ):
-    from school_grader import MAX_GRADING_ATTEMPTS
+    from src.tools.school_grader import MAX_GRADING_ATTEMPTS
 
     q = GradingQueue(tmp_path / "q.jsonl")
     job = GradingJob(issue_number=8, crew_id="dead-letter")
     q.enqueue(job)
-    monkeypatch.setattr("school_grader.grade", lambda *a, **k: {
+    monkeypatch.setattr("src.tools.school_grader.grade", lambda *a, **k: {
         "key": job.key, "error": "permanent grading error",
     })
 
@@ -113,7 +113,7 @@ def test_drain_dead_letters_after_bounded_attempts_and_requeue_is_explicit(
 
 
 def test_cli_lists_and_requeues_dead_letter(tmp_path, capsys):
-    from school_grader import main
+    from src.tools.school_grader import main
 
     q_path = tmp_path / "q.jsonl"
     q = GradingQueue(q_path)
@@ -140,7 +140,7 @@ def test_drain_processes_failed_job_once_and_continues_other_jobs(tmp_path, monk
         calls.append(job.key)
         return {"key": job.key, "error": "temporary" if job.key == failed.key else None}
 
-    monkeypatch.setattr("school_grader.grade", fake_grade)
+    monkeypatch.setattr("src.tools.school_grader.grade", fake_grade)
     results = drain(q, store=object())
 
     assert len(results) == 2
@@ -238,11 +238,11 @@ def test_cli_drain_runs(tmp_path):
         issue_number=1, crew_id="crew-1", domain="python-coding",
         task_score=88.0, review_packet=_review_packet(True),
     ))
-    from school_grader import main
+    from src.tools.school_grader import main
 
     rc = main(["--queue-file", str(q_path), "--score-store", str(store_path), "--drain"])
     assert rc == 0
-    from scoring import ScoreStore
+    from src.core.scoring import ScoreStore
     st = ScoreStore(file_path=str(store_path))
     import pytest
     assert st.get_score("crew-1", "python-coding") == pytest.approx(88.0 * 0.3)

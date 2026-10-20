@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from orca_executor import OrcaExecutionManager
+from src.crew.orca_executor import OrcaExecutionManager
 
 
 # ── Budget ceilings (documented, not arbitrary) ────────────────────────────

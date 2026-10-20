@@ -7,7 +7,7 @@ specific way the audit could quietly stop protecting anything.
 
 import pytest
 
-from worktree_bloat_guard import (
+from src.tools.worktree_bloat_guard import (
     BloatReport,
     MAX_TERMINALS_PER_WORKTREE,
     audit_residue,
@@ -124,14 +124,13 @@ class TestCliIsAdvisory:
 
     def test_exits_zero_when_bloated(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "worktree_bloat_guard.audit_live",
+            "src.tools.worktree_bloat_guard.audit_live",
             lambda: BloatReport(
                 ok=False, findings=["48 terminals in one worktree (w)"],
                 terminal_count=48, worktree_count=22,
             ),
         )
-        import worktree_bloat_guard as g
-
+        import src.tools.worktree_bloat_guard as g
         assert g.main() == 0, "bloat must not fail the cycle"
         out = capsys.readouterr().out
         assert "::warning::" in out, "breach must surface in the run summary"
@@ -140,11 +139,10 @@ class TestCliIsAdvisory:
     def test_exits_zero_and_warns_when_unknown(self, monkeypatch, capsys):
         """An unreachable daemon must not read as clean."""
         monkeypatch.setattr(
-            "worktree_bloat_guard.audit_live",
+            "src.tools.worktree_bloat_guard.audit_live",
             lambda: BloatReport(ok=None, detail="orca daemon unreachable"),
         )
-        import worktree_bloat_guard as g
-
+        import src.tools.worktree_bloat_guard as g
         assert g.main() == 0
         out = capsys.readouterr().out
         assert "::warning::" in out
@@ -154,11 +152,10 @@ class TestCliIsAdvisory:
 
     def test_exits_zero_and_is_quiet_when_clean(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "worktree_bloat_guard.audit_live",
+            "src.tools.worktree_bloat_guard.audit_live",
             lambda: BloatReport(ok=True, terminal_count=0, worktree_count=12),
         )
-        import worktree_bloat_guard as g
-
+        import src.tools.worktree_bloat_guard as g
         assert g.main() == 0
         out = capsys.readouterr().out
         assert "::warning::" not in out, "a clean audit must not emit warnings"

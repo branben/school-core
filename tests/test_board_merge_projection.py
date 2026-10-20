@@ -2,8 +2,8 @@
 
 import json
 
-from board import build_board_html
-from activity_server import ActivityHandler
+from src.bridge.board import build_board_html
+from src.sensors.activity_server import ActivityHandler
 
 
 def test_board_projection_exposes_candidate_and_merge_fields():

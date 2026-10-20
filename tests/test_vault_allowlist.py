@@ -12,7 +12,7 @@ import pytest
 from scripts.check_vault_allowlist import allowed, load_allowlist
 
 # Re-export for clarity at the call site.
-from context_orchestrator import _vault_allowlist_violation as runtime_guard
+from src.core.context_orchestrator import _vault_allowlist_violation as runtime_guard
 
 # The same patterns declared in config/vault_allowlist.yaml (kept in sync).
 P = ["school/**", "docs/glossary/**", "anchors/*.md",

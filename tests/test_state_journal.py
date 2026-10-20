@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from state_journal import ConflictError, InvalidStateError, StateJournal
+from src.sensors.state_journal import ConflictError, InvalidStateError, StateJournal
 
 
 def test_approval_consumption_is_atomic_and_idempotent(tmp_path):

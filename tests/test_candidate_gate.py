@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateStore, create_candidate
-from candidate_gate import (
+from src.bridge.candidate_manifest import CandidateStore, create_candidate
+from src.bridge.candidate_gate import (
     GateEvidenceError,
     evidence_is_current,
     run_candidate_gate,

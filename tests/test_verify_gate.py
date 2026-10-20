@@ -13,9 +13,9 @@ from unittest import mock
 
 import pytest
 
-import verify_gate
+import src.review.verify_gate as verify_gate
 
-from verify_gate import (
+from src.review.verify_gate import (
     _discover_commands,
     _flake_ref,
     _has_node_modules,
@@ -225,7 +225,7 @@ def test_skips_loudly_when_nix_missing(tmp_path, shim_contract):
     """
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
     contract = shim_contract(tmp_path)
-    with mock.patch("verify_gate._find_nix", return_value=None):
+    with mock.patch("src.review.verify_gate._find_nix", return_value=None):
         res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
     assert res["skipped"] is True
@@ -238,7 +238,7 @@ def test_strict_mode_escalates_missing_nix(tmp_path, monkeypatch, shim_contract)
     monkeypatch.setenv("VERIFY_GATE_STRICT", "1")
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
     contract = shim_contract(tmp_path)
-    with mock.patch("verify_gate._find_nix", return_value=None):
+    with mock.patch("src.review.verify_gate._find_nix", return_value=None):
         res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is False
     assert res["skipped"] is False          # escalated — no longer a soft skip
@@ -303,10 +303,10 @@ def test_scratch_copy_skips_vcs_and_venv_noise(tmp_path, shim_contract):
         sensitive_files_present.append((work / ".env").exists() or (work / ".npmrc").exists())
         return subprocess.CompletedProcess([], 0, _successful_marker_output(1), "")
 
-    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
-         mock.patch("verify_gate._find_nix", return_value="/nix"), \
-         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
-         mock.patch("verify_gate._flake_ref", return_value="."):
+    with mock.patch("src.review.verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("src.review.verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("src.review.verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
+         mock.patch("src.review.verify_gate._flake_ref", return_value="."):
         res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is True
     assert seen_cwds, "verify command should have run in the scratch copy"
@@ -337,10 +337,10 @@ def test_scratch_copy_includes_node_modules_when_preinstalled(tmp_path, shim_con
         seen_cwds.append(str(kwargs.get("cwd", "")))
         return subprocess.CompletedProcess([], 0, _successful_marker_output(2), "")
 
-    with mock.patch("verify_gate.subprocess.run", side_effect=fake_run), \
-         mock.patch("verify_gate._find_nix", return_value="/nix"), \
-         mock.patch("verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
-         mock.patch("verify_gate._flake_ref", return_value="."):
+    with mock.patch("src.review.verify_gate.subprocess.run", side_effect=fake_run), \
+         mock.patch("src.review.verify_gate._find_nix", return_value="/nix"), \
+         mock.patch("src.review.verify_gate.sandbox_exec_path", return_value="/usr/bin/sandbox-exec"), \
+         mock.patch("src.review.verify_gate._flake_ref", return_value="."):
         res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["passed"] is True
     assert seen_cwds, "verify command should have run in the scratch copy"
@@ -353,7 +353,7 @@ def test_default_mode_not_affected_by_env_gap(tmp_path, monkeypatch, shim_contra
     monkeypatch.delenv("VERIFY_GATE_STRICT", raising=False)
     _write_pkg(tmp_path, ".", {"typecheck": "tsc"})
     contract = shim_contract(tmp_path)
-    with mock.patch("verify_gate._find_nix", return_value=None):
+    with mock.patch("src.review.verify_gate._find_nix", return_value=None):
         res = run_verify_gate(tmp_path, trusted_contract=contract)
     assert res["skipped"] is True
     assert "strict_escalated" not in res
@@ -383,7 +383,7 @@ def test_scratch_base_env_overridable_and_portable(tmp_path, monkeypatch):
     """
     import tempfile as _tempfile
 
-    from verify_gate import scratch_base_path
+    from src.review.verify_gate import scratch_base_path
 
     # Default: portable, exists on every platform (Linux runners included)
     default = scratch_base_path()

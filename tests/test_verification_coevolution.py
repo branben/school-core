@@ -11,7 +11,7 @@ Run: python -m pytest tests/test_verification_coevolution.py -v
 
 from unittest.mock import MagicMock
 
-from adversarial_reviewer import (
+from src.review.adversarial_reviewer import (
     AdversarialReviewer,
     CoevolutionReport,
     Finding,

@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from growth_tracker import (
+from src.core.growth_tracker import (
     GrowthTracker,
     calculate_difficulty_weight,
     CapabilityProfile,

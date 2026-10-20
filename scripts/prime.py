@@ -248,7 +248,7 @@ def load_ticket(ticket: str) -> dict:
 def _repo_tree() -> str:
     """Return a compact repo file tree (top 3 levels, git-tracked)."""
     try:
-        from repo_reader import get_file_tree
+        from src.core.repo_reader import get_file_tree
         return get_file_tree(ROOT, max_depth=3)
     except Exception:
         return ""
@@ -262,7 +262,7 @@ def _relevant_files(ticket: dict, max_files: int = 8) -> list:
     list only when nothing matches at all.
     """
     try:
-        from repo_reader import extract_keywords
+        from src.core.repo_reader import extract_keywords
     except Exception:
         return []
     text = f"{ticket.get('title', '')} {ticket.get('body', '')}"

@@ -90,10 +90,10 @@ def test_ce_loop_iteration_on_low_score():
 
 def test_ce_disabled_behavior():
     """Test that CE-disabled execution behaves as before (no ce_phases)."""
-    from director import run_task
+    from src.core.director import run_task
     
-    with patch("director.call_model", return_value="Mocked response"), \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+    with patch("src.core.director.call_model", return_value="Mocked response"), \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         result = run_task(
             prompt="Test task",
             domain="python-coding",
@@ -107,10 +107,10 @@ def test_ce_disabled_behavior():
 
 def test_ce_enabled_phases_in_result():
     """Test that CE-enabled execution includes ce_phases in result."""
-    from director import run_task
+    from src.core.director import run_task
     
     with patch("scripts.ce_runner.run_ce_loop") as mock_ce_loop, \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         mock_ce_loop.return_value = {
             "status": "success",
             "ce_phases": ["brainstorm", "plan", "work", "simplify", "review", "compound"],

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateManifest, CandidateStore, create_candidate
-from candidate_pr_gate import (
+from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, create_candidate
+from src.bridge.candidate_pr_gate import (
     GateDecision,
     TeacherApproval,
     VerificationEvidence,

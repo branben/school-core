@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import director
+import src.core.director as director
 from _helpers import make_passing_review
 from scripts.spec_gate import _check_criterion, _check_dod, check_dod, write_spec
 
@@ -186,10 +186,10 @@ def test_director_dod_gate_passes_with_success(tmp_path: Path):
     store = MagicMock()
     store.get_score.return_value = 100  # exceeds "hard" gate threshold
 
-    with patch("director._load_spec") as mock_load, \
-         patch("director.check_dod") as mock_check, \
-         patch("director.call_model", return_value="Mocked response") as mock_model, \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+    with patch("src.core.director._load_spec") as mock_load, \
+         patch("src.core.director.check_dod") as mock_check, \
+         patch("src.core.director.call_model", return_value="Mocked response") as mock_model, \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         mock_load.return_value = spec_content
         mock_check.return_value = {"passed": True, "failures": [], "spec_path": str(spec_file)}
         out = director.run_task(
@@ -216,10 +216,10 @@ def test_director_dod_gate_fails_on_criterion_miss(tmp_path: Path):
     store = MagicMock()
     store.get_score.return_value = 100  # exceeds "hard" gate threshold
 
-    with patch("director._load_spec") as mock_load, \
-         patch("director.check_dod") as mock_check, \
-         patch("director.call_model", return_value="Mocked response") as mock_model, \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+    with patch("src.core.director._load_spec") as mock_load, \
+         patch("src.core.director.check_dod") as mock_check, \
+         patch("src.core.director.call_model", return_value="Mocked response") as mock_model, \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         mock_load.return_value = spec_content
         mock_check.return_value = {
             "passed": False,
@@ -243,8 +243,8 @@ def test_director_dod_gate_false_no_key_in_result():
     store = MagicMock()
     store.get_score.return_value = 100  # exceeds "hard" gate threshold
 
-    with patch("director.call_model", return_value="Mocked response"), \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+    with patch("src.core.director.call_model", return_value="Mocked response"), \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         out = director.run_task(
             prompt="Simple task",
             domain="python-coding",
@@ -263,9 +263,9 @@ def test_director_forwards_session_id_to_enrich_prompt():
     store = MagicMock()
     store.get_score.return_value = 100
 
-    with patch("director.call_model", return_value="Mocked response"), \
-         patch("director._run_two_judge_review", return_value=make_passing_review()), \
-         patch("director.enrich_prompt", return_value="") as mock_enrich:
+    with patch("src.core.director.call_model", return_value="Mocked response"), \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()), \
+         patch("src.core.director.enrich_prompt", return_value="") as mock_enrich:
         out = director.run_task(
             prompt="Simple task",
             domain="python-coding",
@@ -283,9 +283,9 @@ def test_director_session_id_none_by_default():
     store = MagicMock()
     store.get_score.return_value = 100
 
-    with patch("director.call_model", return_value="Mocked response"), \
-         patch("director._run_two_judge_review", return_value=make_passing_review()), \
-         patch("director.enrich_prompt", return_value="") as mock_enrich:
+    with patch("src.core.director.call_model", return_value="Mocked response"), \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()), \
+         patch("src.core.director.enrich_prompt", return_value="") as mock_enrich:
         out = director.run_task(
             prompt="Simple task",
             domain="python-coding",
@@ -313,8 +313,8 @@ def test_director_provided_student_output_skips_model_call():
         "Implemented the fix in the Orca worktree.\n"
     )
 
-    with patch("director.call_model", return_value="Mocked response") as mock_model, \
-         patch("director._run_two_judge_review", return_value=make_passing_review()) as mock_review:
+    with patch("src.core.director.call_model", return_value="Mocked response") as mock_model, \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()) as mock_review:
         out = director.run_task(
             prompt="Fix the bug",
             domain="python-coding",
@@ -334,8 +334,8 @@ def test_director_provided_student_output_invalid_with_isolated_phases():
     """provided_student_output + isolated_phases is a contract violation."""
     store = MagicMock()
     store.get_score.return_value = 100
-    with patch("director.call_model", return_value="Mocked response"), \
-         patch("director._run_two_judge_review", return_value=make_passing_review()):
+    with patch("src.core.director.call_model", return_value="Mocked response"), \
+         patch("src.core.director._run_two_judge_review", return_value=make_passing_review()):
         try:
             director.run_task(
                 prompt="Task",

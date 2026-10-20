@@ -10,9 +10,9 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from director import run_task, _check_readiness, _get_threshold, _load_escalation_thresholds
-from escalation_log import EscalationLog
-from scoring import ScoreStore
+from src.core.director import run_task, _check_readiness, _get_threshold, _load_escalation_thresholds
+from src.sensors.escalation_log import EscalationLog
+from src.core.scoring import ScoreStore
 
 
 @pytest.fixture
@@ -29,8 +29,8 @@ def tmp_scores(tmp_path):
 
 @pytest.fixture
 def tmp_escalation_log(tmp_path, monkeypatch):
-    log_path = tmp_path / "escalation_log.json"
-    monkeypatch.setattr("escalation_log.LOG_PATH", log_path)
+    log_path = tmp_path / "src.sensors.escalation_log.json"
+    monkeypatch.setattr("src.sensors.escalation_log.LOG_PATH", log_path)
     return str(log_path)
 
 
@@ -53,22 +53,22 @@ def tmp_config(tmp_path, monkeypatch):
 
 class TestCheckReadiness:
     def test_high_confidence(self):
-        with patch("director.call_model", return_value="8"):
+        with patch("src.core.director.call_model", return_value="8"):
             result = _check_readiness("agent-a", "_default", "easy", "some prompt")
             assert result == 8.0
 
     def test_numeric_with_text(self):
-        with patch("director.call_model", return_value="7 out of 10"):
+        with patch("src.core.director.call_model", return_value="7 out of 10"):
             result = _check_readiness("agent-a", "_default", "easy", "some prompt")
             assert result == 7.0
 
     def test_invalid_response(self):
-        with patch("director.call_model", return_value="I don't know"):
+        with patch("src.core.director.call_model", return_value="I don't know"):
             result = _check_readiness("agent-a", "_default", "easy", "some prompt")
             assert result == 0.0
 
     def test_timeout_or_exception(self):
-        with patch("director.call_model", side_effect=Exception("timeout")):
+        with patch("src.core.director.call_model", side_effect=Exception("timeout")):
             result = _check_readiness("agent-a", "_default", "easy", "some prompt")
             assert result == 0.0
 
@@ -76,17 +76,17 @@ class TestCheckReadiness:
 class TestThresholdConfig:
     def test_default_thresholds(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "director.Path",
+            "src.core.director.Path",
             lambda *args, **kwargs: tmp_path if "escalation" in str(args) else Path(*args, **kwargs)
         )
-        monkeypatch.setattr("director._load_escalation_thresholds", lambda: {"easy": 3, "medium": 5, "hard": 7, "diploma": 8})
+        monkeypatch.setattr("src.core.director._load_escalation_thresholds", lambda: {"easy": 3, "medium": 5, "hard": 7, "diploma": 8})
         assert _get_threshold("_default", "easy") == 3.0
         assert _get_threshold("_default", "medium") == 5.0
         assert _get_threshold("_default", "hard") == 7.0
         assert _get_threshold("_default", "diploma") == 8.0
 
     def test_domain_overrides(self, tmp_config, monkeypatch):
-        import director
+        import src.core.director as director
         original_path = director.Path
 
         def mock_path(*args, **kwargs):
@@ -94,12 +94,12 @@ class TestThresholdConfig:
                 return tmp_config
             return original_path(*args, **kwargs)
 
-        monkeypatch.setattr("director.Path", mock_path, raising=False)
+        monkeypatch.setattr("src.core.director.Path", mock_path, raising=False)
         assert _get_threshold("code-review", "hard") == 8.0
         assert _get_threshold("code-review", "diploma") == 9.0
 
     def test_overrides_dont_affect_other_domains(self, tmp_config, monkeypatch):
-        import director
+        import src.core.director as director
         original_path = director.Path
 
         def mock_path(*args, **kwargs):
@@ -107,13 +107,13 @@ class TestThresholdConfig:
                 return tmp_config
             return original_path(*args, **kwargs)
 
-        monkeypatch.setattr("director.Path", mock_path, raising=False)
+        monkeypatch.setattr("src.core.director.Path", mock_path, raising=False)
         assert _get_threshold("python-testing", "hard") == 7.0
 
 
 class TestDispatchHappyPath:
     def test_confidence_above_threshold_dispatched(self, tmp_scores, tmp_escalation_log):
-        with patch("director.call_model", side_effect=["9", "task response"]):
+        with patch("src.core.director.call_model", side_effect=["9", "task response"]):
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
@@ -123,7 +123,7 @@ class TestDispatchHappyPath:
         assert result["status"] == "success"
 
     def test_confidence_equal_to_threshold_dispatched(self, tmp_scores):
-        with patch("director.call_model", side_effect=["7", "task response"]):
+        with patch("src.core.director.call_model", side_effect=["7", "task response"]):
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
@@ -144,7 +144,7 @@ class TestDispatchEscalation:
                 return "8"
             return "task response"
 
-        with patch("director.call_model", side_effect=mock_call_model):
+        with patch("src.core.director.call_model", side_effect=mock_call_model):
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
@@ -165,7 +165,7 @@ class TestDispatchEscalation:
                 return "1"
             return "normal response"
 
-        with patch("director.call_model", side_effect=mock_call_model):
+        with patch("src.core.director.call_model", side_effect=mock_call_model):
             result = run_task(
                 prompt="Write a function",
                 domain="_default",
@@ -186,7 +186,7 @@ class TestDispatchEscalation:
                 return "1"  # would fail if checked
             return "task response"
 
-        with patch("director.call_model", side_effect=mock_call_model):
+        with patch("src.core.director.call_model", side_effect=mock_call_model):
             result = run_task(
                 prompt="Write a function",
                 domain="_default",

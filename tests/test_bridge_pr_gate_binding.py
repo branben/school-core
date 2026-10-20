@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 
 import issue_bridge
-from candidate_manifest import CandidateManifest, CandidateStore, create_candidate
-from state_journal import StateJournal
-from teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
+from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, create_candidate
+from src.sensors.state_journal import StateJournal
+from src.tools.teacher_approval_ingress import TRUSTED_APPROVAL_SCOPE
 
 
 def _make_repo(repo: Path) -> None:

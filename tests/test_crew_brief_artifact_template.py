@@ -37,9 +37,7 @@ round-tripping the brief's own example through the real parser.
 
 import re
 
-import crew_dispatch
-
-
+import src.crew.crew_dispatch as crew_dispatch
 def _brief(tmp_path, monkeypatch) -> str:
     """Render the crew brief and return its text.
 

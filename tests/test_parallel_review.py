@@ -3,8 +3,8 @@
 import threading
 from unittest.mock import patch
 
-import director
-from adversarial_reviewer import ReviewResult, Verdict
+import src.core.director as director
+from src.review.adversarial_reviewer import LensType, ReviewResult, Verdict
 from bookbag import write_bookbag
 
 
@@ -25,9 +25,9 @@ def test_normal_review_can_skip_non_gating_narrative_enrichment():
         task="write docs",
         output="docs",
     )
-    with patch("director.AdversarialReviewer", _PassingReviewer), \
-         patch("director.call_model", side_effect=RuntimeError("no model in test")), \
-         patch("director._synthesize_judge_narratives") as narrative:
+    with patch("src.core.director.AdversarialReviewer", _PassingReviewer), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in test")), \
+         patch("src.core.director._synthesize_judge_narratives") as narrative:
         result = director._run_two_judge_review(
             bead=bead,
             output="docs",
@@ -51,7 +51,9 @@ def test_cto_and_coo_reviews_overlap_and_merge_deterministically():
 
         def review(self, **kwargs):
             lenses = kwargs["lens_types"]
-            role = "cto" if len(lenses) == 2 else "coo"
+            # Both judges receive a two-lens list, so discriminate on lens
+            # content: CTO carries CORRECTNESS, COO does not.
+            role = "cto" if LensType.CORRECTNESS in lenses else "coo"
             roles_seen.append(role)
             barrier.wait()
             return ReviewResult(verdict=Verdict.PASS, findings=[])
@@ -65,9 +67,9 @@ def test_cto_and_coo_reviews_overlap_and_merge_deterministically():
         task="write docs",
         output="docs",
     )
-    with patch("director.AdversarialReviewer", _BarrierReviewer), \
-         patch("director.call_model", side_effect=RuntimeError("no model in test")), \
-         patch("director._synthesize_judge_narratives", return_value=(None, None)):
+    with patch("src.core.director.AdversarialReviewer", _BarrierReviewer), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in test")), \
+         patch("src.core.director._synthesize_judge_narratives", return_value=(None, None)):
         result = director._run_two_judge_review(
             bead=bead,
             output="docs",

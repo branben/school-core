@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from capabilities import (
+from src.core.capabilities import (
     TASK_ROLE_HERMES_TOOLSETS,
     TASK_ROLE_PROFILES,
     capability_for_task_role,
     resolve_capability,
 )
-from role_loader import RoleLoader
+from src.tools.role_loader import RoleLoader
 
 
 ROOT = Path(__file__).resolve().parents[1]

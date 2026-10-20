@@ -182,7 +182,7 @@ class TestGradingQueueCheckpoint:
         assert "not-json" in path.read_text()
 
     def test_jsonl_queue_round_trips_through_sanitizer_and_fresh_checkout(self, tmp_path):
-        from school_grader import GradingJob, GradingQueue
+        from src.tools.school_grader import GradingJob, GradingQueue
 
         checkpoint = tmp_path / "checkpoint" / "data" / "grading_queue.jsonl"
         queue = GradingQueue(checkpoint)
@@ -305,9 +305,9 @@ class TestSanitizeConsolidation:
         fresh_root = fresh_repo / "data" / "sessions" / "consolidation"
         code = (
             "from pathlib import Path; "
-            "import consolidation_writer; "
+            "from src.core import consolidation_writer; "
             f"consolidation_writer.CONSOLIDATION_DIR = Path({str(fresh_root)!r}); "
-            "from context_orchestrator import _archival_context; "
+            "from src.core.context_orchestrator import _archival_context; "
             "print(_archival_context('debugging', 'loop-20260811-120000') or '')"
         )
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)

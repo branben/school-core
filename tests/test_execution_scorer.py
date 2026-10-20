@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from execution_scorer import ExecutionScorer
+from src.sensors.execution_scorer import ExecutionScorer
 
 
 @pytest.fixture

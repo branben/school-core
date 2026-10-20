@@ -18,7 +18,7 @@ import math
 
 import pytest
 
-from vendi import (
+from src.tools.vendi import (
     vendi_score,
     vendi_score_from_similarity,
     pairwise_similarity,
@@ -144,11 +144,10 @@ def test_from_similarity_requires_symmetric():
 def test_no_heavy_dependencies():
     import importlib.util
 
-    spec = importlib.util.find_spec("vendi")
+    spec = importlib.util.find_spec("src.tools.vendi")
     assert spec is not None
-    # vendi lives at repo root; ensure it does not import numpy/scipy/sklearn.
-    import vendi as _v
-
+    # vendi lives in src/tools/; ensure it does not import numpy/scipy/sklearn.
+    import src.tools.vendi as _v
     # Re-parse the module source for forbidden imports.
     import inspect
 

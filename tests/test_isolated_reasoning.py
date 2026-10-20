@@ -24,7 +24,7 @@ import re
 
 import pytest
 
-from isolated_reasoning import (
+from src.core.isolated_reasoning import (
     IsolationResult,
     PhaseResult,
     build_isolated_prompt,
@@ -232,8 +232,7 @@ def test_build_isolated_prompt_includes_context_and_task():
 # --------------------------------------------------------------------------
 def test_no_heavy_dependencies():
     import inspect
-    import isolated_reasoning as _m
-
+    import src.core.isolated_reasoning as _m
     src = inspect.getsource(_m)
     for forbidden in ("numpy", "scipy", "sklearn", "sentence_transformers", "torch"):
         assert f"import {forbidden}" not in src
