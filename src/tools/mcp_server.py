@@ -29,7 +29,7 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 # ---------------------------------------------------------------------------
 # Imports from school-core — each guarded so partial failures are visible
@@ -42,7 +42,7 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from src.core.routing import route_task, RouteResult
+    from src.core.routing import route_task
 except ImportError as e:
     sys.stderr.write(f"[mcp_server] FATAL: cannot import routing — {e}\n")
     sys.exit(1)
@@ -67,7 +67,7 @@ except ImportError:
 
 try:
     from src.sensors.trajectory import capture_trajectory
-except ImportError as e:
+except ImportError:
     capture_trajectory = None  # degraded — no trajectory persistence
 
 try:
@@ -390,7 +390,6 @@ def _handle_school_evaluate(args: dict) -> dict:
         "trajectory": trajectory_path,
     }
 
-    old_score = store.get_score(agent, domain)
     updated = evaluate_and_update(mock_result, task_score, evaluation=evaluation, store=store)
 
     return {

@@ -209,7 +209,6 @@ class TestCloneRepo:
     def test_installs_deps_for_ts_projects(self, mock_run, tmp_path, monkeypatch):
         """For TypeScript projects (package.json present), clone_repo installs
         dependencies so the hermetic verify gate can run without network."""
-        import os
         # Override CACHE_DIR to use tmp_path
         monkeypatch.setattr("src.core.repo_reader.CACHE_DIR", tmp_path / "cache")
         # Create a fake git clone by mocking subprocess.run
@@ -421,7 +420,9 @@ class TestCloneRepoForceFresh:
 
 class TestCleanupStaleCaches:
     def test_cleanup_function_exists(self):
-        # Verify the cleanup function is importable and callable
-        from src.core.repo_reader import cleanup_stale_caches
+        # Verify the cleanup function is importable and callable.
+        # The local import is the assertion: keep it even though a module-level
+        # one exists. Ruff: F811.
+        from src.core.repo_reader import cleanup_stale_caches  # noqa: F811
         # Should not raise with non-existent cache dir
         cleanup_stale_caches(max_age_hours=0)

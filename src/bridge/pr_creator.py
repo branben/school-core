@@ -13,13 +13,10 @@ Usage:
     pr_url = create_pr_for_issue(issue, task_result, repo="owner/repo")
 """
 
-import base64
 import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Optional
 

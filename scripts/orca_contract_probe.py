@@ -84,7 +84,7 @@ def main() -> int:
     repo_path = Path(args.repo_path).resolve()
 
     print(f"Repo path under test: {repo_path}")
-    print(f"orca on PATH: ", end="")
+    print("orca on PATH: ", end="")
     which = shutil.which("orca") or "(NOT FOUND)"
     print(which)
 

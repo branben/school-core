@@ -20,10 +20,8 @@ import os
 import uuid
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict
 
-from bookbag import write_bookbag, read_bookbag, bead_path
-from src.review.adversarial_reviewer import Verdict
 from src.tools.cocoindex_client import cocoindex_available, retrieve_prior_solutions
 
 logger = logging.getLogger(__name__)

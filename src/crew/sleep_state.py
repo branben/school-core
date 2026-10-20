@@ -14,9 +14,13 @@ import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import yaml
+
+# ScoreStore is only ever used in a quoted annotation; importing here keeps runtime import cycles out.
+if TYPE_CHECKING:
+    from src.core.scoring import ScoreStore
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 

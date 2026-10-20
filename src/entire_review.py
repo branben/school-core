@@ -83,7 +83,6 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[EntireF
     findings: list[EntireFinding] = []
 
     # Track current file context for findings without line numbers
-    current_file = ""
 
     for line in content.split("\n"):
         line = line.strip()
@@ -124,13 +123,10 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[EntireF
                     message=message,
                     raw=line,
                 ))
-                if file:
-                    current_file = file
                 break
 
         # Track file headers (Entire may output file sections)
-        if line.startswith("### ") or line.startswith("# "):
-            current_file = line.lstrip("# ").strip()
+        # (file-header tracking removed: the value was never read)
 
     # Deduplicate findings with same file+line+message
     seen = set()

@@ -71,8 +71,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
-from urllib.parse import unquote, urlparse
+from typing import Any, Optional
 
 try:  # stdlib on 3.11+; absent on older interpreters (no write support then).
     import tomllib  # type: ignore

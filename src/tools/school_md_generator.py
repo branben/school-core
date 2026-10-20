@@ -12,11 +12,10 @@ Usage:
 
 import os
 import sys
-import subprocess
 from pathlib import Path
 from typing import Optional
 
-from src.crew.executor import call_model, cloud_available, CLOUD_TIMEOUT
+from src.crew.executor import call_model, cloud_available
 
 # System prompt for repo digestion
 SCHOOL_MD_PROMPT = """You are analyzing a software repository. Produce a school.md file that teaches an AI agent (or human developer) how to work within this codebase.
@@ -101,7 +100,6 @@ def _get_tree(repo_path: Path, max_depth: int = 3) -> str:
                 continue
             if entry.name in ignore:
                 continue
-            rel = entry.relative_to(repo_path)
             if entry.is_dir():
                 lines.append(f"{prefix}├── {entry.name}/")
                 _walk(entry, depth + 1, prefix + "│   ")

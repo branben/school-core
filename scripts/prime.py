@@ -601,7 +601,6 @@ def main(argv: Optional[list] = None) -> int:
     args = ap.parse_args(argv)
 
     if args.no_obsidian:
-        original = _obsidian_context
         globals()["_obsidian_context"] = lambda *a, **k: None
     if args.no_orca:
         globals()["_orca_worktrees"] = lambda: None

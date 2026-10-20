@@ -24,8 +24,7 @@ from __future__ import annotations
 
 import json
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -35,10 +34,8 @@ from src.crew.crew_dispatch import (
     CrewResult,
     CrewUnavailableError,
     dispatch_crew,
-    sweep_stale_runs,
 )
 from src.core.resilience import (
-    verify_worktree_isolated,
     worktree_lease,
     RetryBudget,
 )
@@ -145,7 +142,6 @@ class FleetRegistry:
 
 def _lease_held(lease_file: Path, worktree_id: str) -> bool:
     """True if a worktree lease file records this worktree as held."""
-    import os
 
     lock_path = lease_file.with_suffix(lease_file.suffix + ".lock")
     data_path = lease_file

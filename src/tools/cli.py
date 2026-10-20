@@ -1,9 +1,9 @@
 import shlex
 import sys
-from src.core.routing import route_task, RouteResult
+from src.core.routing import route_task
 from src.core.scoring import ScoreStore, GATES
 from src.core.director import run_task, evaluate_and_update, available_combos, run_staff, staff_list, sleep, wake, _active_sessions
-from src.crew.sleep_state import load_session, read_library_log, SessionNotFoundError
+from src.crew.sleep_state import read_library_log, SessionNotFoundError
 from src.sensors.trajectory import list_trajectories, count_trajectories
 from src.tools.engram_adapter import engram_available, get_stats as engram_stats, search_trajectories as engram_search
 from src.core.context_orchestrator import DEFAULT_VAULT
@@ -93,7 +93,7 @@ def do_route(store: ScoreStore, args: list, history: list):
         return
 
     if route_result.escalation:
-        print(f"  Escalating to Faculty (Owl Alpha via OpenRouter — cost: $0)")
+        print("  Escalating to Faculty (Owl Alpha via OpenRouter — cost: $0)")
         history.append(entry)
         return
 
@@ -158,7 +158,7 @@ def do_run(store: ScoreStore, args: list):
     # Single agent error with trajectory — still show for transparency
     if result["error"] and result.get("trajectory"):
         print(f"  Error from {result['agent']}: {result['error']}")
-        print(f"  (auto-scored as failure)")
+        print("  (auto-scored as failure)")
         print(f"  Trajectory saved: {result['trajectory']}")
         return
 
@@ -256,7 +256,7 @@ def do_engram(args: list):
         for obs_id, title, body in results:
             print(f"    [#{obs_id}] {title[:90]}")
     else:
-        print(f"  Usage: engram [search <query>]")
+        print("  Usage: engram [search <query>]")
 
 
 def do_trajectories(args: list):
@@ -296,7 +296,7 @@ def repl():
     print(f"  Agents loaded: {len(store.list_agents())}")
     print(f"  Data: {store.file_path}")
     if engram_available():
-        print(f"  Engram: connected")
+        print("  Engram: connected")
     vault_ok = _check_vault_index()
     if vault_ok:
         print(f"  Vault: {DEFAULT_VAULT} (indexed)")

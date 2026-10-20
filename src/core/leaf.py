@@ -73,7 +73,6 @@ def _run_student_via_omniroute(leaf: "StudentLeaf", task_prompt: str) -> str:
     """
     from src.core.context_orchestrator import enrich_prompt
     from src.crew.executor import call_model
-    from src.core.scoring import ScoreStore
 
     context_blob = enrich_prompt(
         leaf.domain, task_prompt,

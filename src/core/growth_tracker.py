@@ -1,9 +1,9 @@
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 
 GROWTH_DIR = Path(__file__).parent.parent.parent / "data" / "growth"

@@ -12,11 +12,10 @@ Usage::
     Path("board.html").write_text(html)
 """
 
-import json
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 
 # ── Column-assignment helpers ───────────────────────────────────────────────

@@ -8,19 +8,16 @@ import shlex
 import shutil
 import signal
 import subprocess
-import sys
 import tarfile
 import tempfile
 import threading
 import time
 import uuid
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable, Generator, Protocol
-from unittest.mock import MagicMock
+from typing import Any, Callable, Protocol
 
 from src.bridge.candidate_manifest import CandidateManifest, CandidateManifestError, CandidateStore, ValidationResult, create_candidate
 from src.bridge.candidate_gate import GateEvidence, run_candidate_gate

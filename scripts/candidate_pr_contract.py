@@ -6,6 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from types import SimpleNamespace
+from src.bridge.candidate_manifest import CandidateStore
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DATA = REPO / "data"
@@ -97,7 +100,7 @@ def main():
         approval_id=f"teacher-{candidate_id}",
     )
 
-    from src.bridge.candidate_binding import bind_trusted_evidence, CandidateBindingStore, lookup_binding
+    from src.bridge.candidate_binding import bind_trusted_evidence, CandidateBindingStore
     binding = bind_trusted_evidence(manifest=manifest, verification=verification, approval=approval)
     binding_store = CandidateBindingStore(DATA / "candidate_bindings.json")
     binding_store.put(binding)

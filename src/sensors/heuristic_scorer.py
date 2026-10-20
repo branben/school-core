@@ -6,7 +6,6 @@ Always returns a score (0-100).
 
 import ast
 import re
-from typing import Optional
 
 
 class HeuristicScorer:

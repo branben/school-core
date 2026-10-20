@@ -438,8 +438,6 @@ class TeacherWorktree:
         from src.crew.sleep_state import SESSIONS_DIR, CONSOLIDATION_DIR
 
         pruned = 0
-        session_prefix = f"{self.session_id}.json"
-        cons_prefix = f"{self.session_id}.yaml"
 
         # Session files (sorted by mtime, oldest first)
         session_files = sorted(

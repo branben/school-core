@@ -17,7 +17,6 @@ Usage:
 import argparse
 import json
 import sys
-import threading
 import time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path

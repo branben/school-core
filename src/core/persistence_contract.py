@@ -33,12 +33,10 @@ contract.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
-import tempfile
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # ── Canonical store paths ─────────────────────────────────────────────────────
 
@@ -465,7 +463,6 @@ def seed_stores(data_dir: str | Path) -> list[str]:
 
 
 __all__ = [
-    "AUDIT_IDENTITY_FIELDS",
     "CANDIDATE_BINDINGS_PATH",
     "CHECKPOINT_PATHS",
     "COMPOUND_LEARNING_PATH",

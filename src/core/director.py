@@ -1708,7 +1708,6 @@ def run_staff(
     config_path: str = None,
 ) -> list:
     """Run one or all Staff plugins and return results."""
-    from src.tools.engram_adapter import engram_available
     from src.core.context_orchestrator import DEFAULT_VAULT
     from staff.loader import StaffLoader
     from staff.sandbox import StaffSandbox

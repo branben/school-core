@@ -25,7 +25,6 @@ Usage:
 """
 
 import argparse
-import json
 import random
 import sys
 import time
@@ -34,11 +33,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.core.scoring import ScoreStore, GATES
-from src.core.director import run_task, evaluate_and_update, run_staff
+from src.core.scoring import ScoreStore
+from src.core.director import run_staff
 from src.sensors.activity_log import get_log, ActivityType
 from src.sensors.decision_log import get_decision_log, DecisionType
-from issue_bridge import bridge_issues, load_config as load_github_config
+from issue_bridge import bridge_issues
 
 
 def agent_role(agent: str, max_score: float) -> str:
@@ -187,7 +186,7 @@ class AutonomousScheduler:
         `callback(result)` is called after each round for live updates.
         """
         mode_str = "ISSUE" if self.issue_mode else "CURRICULUM"
-        print(f"🎓 Autonomous School Loop starting")
+        print("🎓 Autonomous School Loop starting")
         print(f"   Agents: {len(self.store.list_agents())}")
         print(f"   Domains: {len(self.store.domains())}")
         print(f"   Interval: {interval}s")
@@ -253,7 +252,7 @@ class AutonomousScheduler:
             print(f"   {i}. {agent}: {score:.1f} ({gate})")
 
         # Print decision correlations
-        print(f"\n🔍 Decision Correlations:")
+        print("\n🔍 Decision Correlations:")
         for dtype in [DecisionType.AGENT_SELECTED.value, DecisionType.ANCHOR_CHOSEN.value]:
             corr = self.decision_log.correlate(agent=None, decision_type=dtype)
             if corr["count"] > 0:

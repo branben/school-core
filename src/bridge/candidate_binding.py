@@ -21,9 +21,13 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.bridge.candidate_manifest import CandidateManifest
+
+# VerificationEvidence / TeacherApproval are only ever used in annotations; importing here keeps runtime import cycles out.
+if TYPE_CHECKING:
+    from src.bridge.candidate_pr_gate import TeacherApproval, VerificationEvidence
 
 
 @dataclasses.dataclass(frozen=True)

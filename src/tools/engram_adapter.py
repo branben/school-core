@@ -2,7 +2,6 @@ import json
 import re
 import subprocess
 import sys
-from pathlib import Path
 from typing import Optional
 
 ENGRAM_BIN = "engram"
@@ -27,7 +26,6 @@ def save_trajectory(trajectory: dict, filepath: str) -> Optional[str]:
 
     domain = trajectory.get("domain", "unknown")
     agent = trajectory.get("agent", "unknown")
-    ts = trajectory.get("timestamp", "")
     score = trajectory.get("task_score")
     score_str = f" score={score}" if score is not None else " (unscored)"
     error_flag = " ERROR" if trajectory.get("error") else ""

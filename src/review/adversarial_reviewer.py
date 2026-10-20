@@ -859,7 +859,6 @@ def _dimensions_from_review(result: "ReviewResult", task: dict) -> dict[str, flo
     dims: dict[str, float] = {}
     severity_penalty = {"CRITICAL": 0.9, "HIGH": 0.6, "MEDIUM": 0.3, "LOW": 0.1}
     # Per-lens-type rollup from the findings we can see.
-    from collections import defaultdict
     lens_trace = getattr(result, "_lens_trace", None)
     if lens_trace:
         for lens_value, fres in lens_trace.items():

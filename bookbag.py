@@ -522,7 +522,11 @@ def wait_for_bookbag(
         required_fields = ["cto_verdict", "coo_verdict"]
 
     deadline = time.monotonic() + timeout
-    signal = BookbagSignal(bead, repo)
+    # NOTE: BookbagSignal's flag-file fast path is constructed but never used;
+    # the loop below still polls the bookbag JSON. Keeping the construction
+    # (rather than deleting it) because the flag-file optimisation was clearly
+    # the intent -- see the follow-up issue. Ruff: F841.
+    signal = BookbagSignal(bead, repo)  # noqa: F841
 
     while time.monotonic() < deadline:
         # Read the bookbag once per poll cycle

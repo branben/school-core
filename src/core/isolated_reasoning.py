@@ -37,9 +37,8 @@ be wired to ``director.call_model`` in production (see director integration).
 from __future__ import annotations
 
 import hashlib
-import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence
 
 from src.tools.vendi import vendi_score

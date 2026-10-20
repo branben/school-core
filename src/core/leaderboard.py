@@ -14,7 +14,6 @@ Usage:
 import json
 import argparse
 import subprocess
-import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -283,7 +282,6 @@ def build_html(scores, history, stats):
             students.append(entry)
 
     def render_agent_card(a):
-        spark = build_sparkline(history.get(a["id"], {}).get("_default", []), width=120, height=24)
         spark_full = build_sparkline(history.get(a["id"], {}).get("_default", []), width=200, height=32)
         seed = SEED_SCORES.get(a["id"], {}).get("_default", 0)
         delta = a["score"] - seed

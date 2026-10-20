@@ -30,13 +30,12 @@ import fcntl
 import json
 import sys
 import threading
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Callable, Optional
 
 from src.core.resilience import (
     grading_dedup_key,
-    grader_score_key,
     bounded_grader_pool_size,
     LabelWriteQueue,
 )

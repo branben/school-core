@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from src.sensors.activity_log import ActivityLog, get_log
+from src.sensors.activity_log import get_log
 from src.tools.repo_default import default_repo
 
 # Shared activity log — used to emit student dispatch stages so a human

@@ -34,9 +34,13 @@ Non-goals
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
 
 from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, ValidationResult
+
+# CandidateBinding is only ever used in annotations (candidate_binding imports us back); importing here keeps runtime import cycles out.
+if TYPE_CHECKING:
+    from src.bridge.candidate_binding import CandidateBinding
 
 
 def trusted_verification_from_binding(binding: "CandidateBinding") -> "VerificationEvidence":

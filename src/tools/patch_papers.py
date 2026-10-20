@@ -6,7 +6,6 @@ Usage:
   python patch_papers.py
 """
 
-import re
 from pathlib import Path
 
 PAPERS = {

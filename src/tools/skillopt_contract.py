@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Any, Optional
+from typing import Optional
 
 
 SCHEMA_VERSION = 1

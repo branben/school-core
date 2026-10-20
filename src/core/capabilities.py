@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from typing import Optional
 
 from src.core.anchor_loader import AnchorRegistry
-from src.crew.executor import DOMAIN_ROLE_MAP, get_role_for_domain
+from src.crew.executor import get_role_for_domain
 from src.tools.role_loader import RoleLoader
 
 

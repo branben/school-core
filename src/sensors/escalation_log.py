@@ -2,7 +2,6 @@ import json
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
 
 
 LOG_PATH = Path(__file__).parent.parent.parent / "data" / "escalation_log.json"

@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import uuid
 from pathlib import Path
 import urllib.request
@@ -391,7 +390,6 @@ def call_model(
     # by the director before call_model is invoked. This function handles only
     # the transport layer.
     if combo.startswith(f"{A2A}/"):
-        agent_target = combo.split("/", 1)[1]
         return _a2a_call(
             task_text=prompt,
             system_prompt=system_prompt,

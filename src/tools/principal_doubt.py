@@ -36,7 +36,7 @@ attached (backward compat — see conductor._principal_dispatch).
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -106,7 +106,10 @@ def load_data():
 
 def generate_html(agents, entries, refresh_seconds=5):
     """Generate standalone HTML with embedded data and auto-refresh."""
-    data = json.dumps({"agents": agents, "entries": entries}, ensure_ascii=False)
+    # NOTE: the docstring promises "all data baked in", but this payload is
+    # never injected into the HTML -- the embed is missing, not the line.
+    # Kept and flagged rather than deleted. Ruff: F841.
+    data = json.dumps({"agents": agents, "entries": entries}, ensure_ascii=False)  # noqa: F841
 
     # Build agent chips HTML
     role_groups = {}
