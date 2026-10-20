@@ -57,6 +57,34 @@ def test_run_batch_retains_pending_entries_when_write_fails(tmp_path):
     assert batch.pending_count == 1
 
 
+def test_run_batch_caps_growth_to_last_run_max(tmp_path, monkeypatch):
+    """Gap-G5: the append-only journal is bounded to LAST_RUN_MAX newest runs."""
+    monkeypatch.setattr("issue_bridge.LAST_RUN_MAX", 3)
+    path = tmp_path / "last_run.json"
+    batch = RunBatch(path)
+
+    for i in range(6):
+        batch.append({"issue": i, "status": "success"})
+
+    runs = json.loads(path.read_text())
+    assert [entry["issue"] for entry in runs] == [3, 4, 5]
+    # Each flush truncated to the newest cap — the oldest entries are gone.
+    assert len(runs) == 3
+
+
+def test_run_batch_cap_disabled_when_zero(tmp_path, monkeypatch):
+    """Gap-G5: LAST_RUN_MAX=0 disables capping (unbounded history)."""
+    monkeypatch.setattr("issue_bridge.LAST_RUN_MAX", 0)
+    path = tmp_path / "last_run.json"
+    batch = RunBatch(path)
+
+    for i in range(6):
+        batch.append({"issue": i, "status": "success"})
+
+    runs = json.loads(path.read_text())
+    assert [entry["issue"] for entry in runs] == [0, 1, 2, 3, 4, 5]
+
+
 def test_bridge_cycle_flushes_all_run_outcomes_once(tmp_path, monkeypatch, store):
     """A multi-issue cycle writes its append-only journal in one replacement."""
     issues = [

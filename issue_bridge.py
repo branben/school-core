@@ -66,7 +66,7 @@ from crew_dispatch import (
     dispatch_crew as dispatch_crew,
     sweep_stale_runs as sweep_stale_runs,
 )
-from bookbag import locked_update_bookbag
+from bookbag import REPO_GLOBAL, locked_update_bookbag
 from pr_creator import create_pr_for_issue
 from candidate_manifest import (
     CandidateManifest,
@@ -824,8 +824,24 @@ def _load_run_entries(path: Path) -> list[dict]:
     return [entry for entry in raw if isinstance(entry, dict)]
 
 
+# Max entries retained in the append-only run journal (last_run.json). The
+# journal is a bounded history for board/learning replay — keeping every run
+# forever makes the file grow without bound (gap-fix G5). ``LAST_RUN_MAX``
+# env overrides; 0 disables capping.
+LAST_RUN_MAX_DEFAULT = 500
+LAST_RUN_MAX = int(os.environ.get("LAST_RUN_MAX", str(LAST_RUN_MAX_DEFAULT)))
+
+
 def _write_run_entries(path: Path, entries: list[dict]) -> None:
-    """Atomically replace a JSON-list run log."""
+    """Atomically replace a JSON-list run log, capped to a bounded history.
+
+    Truncates the NEWEST ``LAST_RUN_MAX`` entries when the journal exceeds
+    the cap. Truncating newest-first keeps the recent-run semantics (the
+    board's ``cut`` lane, shadow-history replay) aligned with what the loop
+    will do next, while still releasing the oldest, long-settled entries.
+    """
+    if LAST_RUN_MAX > 0 and len(entries) > LAST_RUN_MAX:
+        entries = entries[-LAST_RUN_MAX:]
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(entries, indent=2))
@@ -1257,6 +1273,125 @@ def _hosted_student_enabled_from_env() -> bool:
     if not raw:
         return HOSTED_STUDENT_ENABLED_DEFAULT
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _async_teachers_enabled_from_env() -> bool:
+    """Parse ISSUE_ASYNC_TEACHERS with lenient truthiness (1/true/yes/on → on).
+
+    Anything else is OFF (the historical synchronous inline two-judge review
+    path). When ON, student dispatch runs with ``skip_review=True`` and the
+    bridge waits (bounded) for teacher verdicts from the concurrent
+    TeacherWorktree cron loop — the same protocol conductor uses (Gap-G4).
+    """
+    raw = os.environ.get("ISSUE_ASYNC_TEACHERS", "")
+    if not raw:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _merge_async_teacher_verdicts(
+    task_result: dict,
+    issue_num: Optional[int] = None,
+    repo: str = REPO_GLOBAL,
+    timeout: float = 30.0,
+) -> Optional[int]:
+    """Merge async teacher verdicts from the bookbag into a skip_review result.
+
+    Used by the ISSUE_ASYNC_TEACHERS path (Gap-G4). The student was dispatched
+    with ``skip_review=True``; a persistent CTO/COO teacher loop reviews the
+    bookbag concurrently. This merges whatever verdicts have landed:
+
+    - Polls ``read_bookbag`` until both verdicts are present or ``timeout``
+      elapses (mirrors conductor waiting inside the student's Orca terminal).
+    - Recomputes the exercise-level acceptance from the two verdicts through
+      the same contract as ``director._run_two_judge_review``
+      (PASS + PASS @ >= 50 with no CRITICAL finding).
+    - Writes the merged ``review`` back into ``task_result`` and returns the
+      number of verdicts observed (0, 1, or 2).
+
+    Never raises. On timeout/teacher absence it leaves the verdicts empty so
+    the issue stays retryable (matching the async pass-through semantics the
+    bridge already tolerates for legacy/async fixtures).
+
+    Returns the number of teacher verdicts merged (0..2), or None when the task
+    result was not a skip_review candidate (no bead).
+    """
+    bead = task_result.get("bead")
+    if not bead:
+        return None
+    from bookbag import read_bookbag, locked_update_bookbag
+
+    deadline = time.monotonic() + float(timeout)
+    merged = 0
+    while time.monotonic() < deadline:
+        bag = read_bookbag(bead, repo)
+        cto_v = (bag or {}).get("cto_verdict", "")
+        coo_v = (bag or {}).get("coo_verdict", "")
+        if cto_v and coo_v:
+            merged = 2
+            break
+        if cto_v or coo_v:
+            merged = max(merged, 1)
+        time.sleep(1.0)
+
+    bag = read_bookbag(bead, repo) or {}
+    cto_v = bag.get("cto_verdict", "")
+    coo_v = bag.get("coo_verdict", "")
+    if merged:
+        findings = (bag.get("cto_findings", []) or []) + (bag.get("coo_findings", []) or [])
+        entire_findings = bag.get("entire_findings") or []
+        if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
+            findings = findings + entire_findings
+        has_critical = any(
+            str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
+        )
+        try:
+            cto_score = float(bag.get("cto_score", 0) or 0)
+            coo_score = float(bag.get("coo_score", 0) or 0)
+        except (TypeError, ValueError):
+            cto_score = coo_score = 0.0
+        accepted = bool(
+            cto_v == "PASS" and coo_v == "PASS"
+            and cto_score >= 50 and coo_score >= 50
+            and not has_critical
+        )
+        # Persist the derived `accepted` flag so later consumers (readers of
+        # the bookbag, the conductor's _validate_verdict) see the same verdict.
+        try:
+            locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
+        except Exception:
+            pass
+        task_result["review"] = {
+            "cto_verdict": cto_v,
+            "coo_verdict": coo_v,
+            "cto_score": cto_score,
+            "coo_score": coo_score,
+            "findings": findings,
+            "accepted": accepted,
+        }
+        # The bridge's combined-score block reads adversarial_review["score"].
+        # Feed it the teachers' combined score so a sync review is not
+        # stacked on top of the concurrent one (Gap-G4: this is the review).
+        task_result["adversarial_review"] = {
+            "verdict": "PASS" if accepted else "FAIL",
+            "score": (cto_score + coo_score) / 2.0,
+            "findings": findings,
+            "lens_used": "async-teachers",
+            "confidence": 1.0,
+            "gaps": [],
+            "suggestions": [],
+        }
+        task_result["task_score"] = (
+            max(60, (cto_score + coo_score) / 2.0)
+            if accepted
+            else min(40, (cto_score + coo_score) / 2.0)
+        )
+        if issue_num is not None:
+            sys.stderr.write(
+                f"[issue_bridge] #{issue_num}: async teacher verdicts merged "
+                f"(cto={cto_v}, coo={coo_v}, accepted={accepted})\n"
+            )
+    return merged
 
 
 def _quarantine_corrupt_registry(crew_runs_file) -> None:
@@ -1748,6 +1883,7 @@ def bridge_issues(
     crew_enabled: Optional[bool] = None,
     crew_max_per_cycle: Optional[int] = None,
     cycle_session_id: Optional[str] = None,
+    async_teachers: Optional[bool] = None,
 ) -> list[dict]:
     """Fetch actionable issues and dispatch each as a Director task.
 
@@ -1762,6 +1898,9 @@ def bridge_issues(
     `crew_max_per_cycle` caps crew dispatches per cycle (default 1).
     `cycle_session_id` overrides the auto-generated loop-* id (tests use a
     fixed id so crew_ids and session threading are deterministic).
+    `async_teachers` is an explicit knob; None reads ISSUE_ASYNC_TEACHERS from
+    the environment. When ON the student runs with skip_review=True and the
+    bridge merges teacher verdicts from the concurrent teacher loop (Gap-G4).
     """
     from director import run_task, evaluate_and_update
 
@@ -1773,6 +1912,12 @@ def bridge_issues(
     )
     crew_max_per_cycle = (
         CREW_MAX_PER_CYCLE_DEFAULT if crew_max_per_cycle is None else int(crew_max_per_cycle)
+    )
+    # Gap-G4: read the async-teacher opt-in once per cycle so a cycle is
+    # internally consistent (all issues either wait for teacher verdicts or
+    # use the inline synchronous review — never a mix).
+    async_teachers = (
+        _async_teachers_enabled_from_env() if async_teachers is None else bool(async_teachers)
     )
     # SCH-32a: fail-closed operator gate for hosted student execution. Read
     # once per cycle so a cycle is internally consistent. When OFF (the
@@ -2111,6 +2256,7 @@ def bridge_issues(
                         preverified_verification=crew_premerge_verification,
                         pipeline_metrics=metrics,
                         trusted_contract=trusted_contract,
+                        skip_review=async_teachers,
                     )
                 elif crew_result is not None and crew_result.status == "resolved":
                     # The crew determined the work was already satisfied. This is
@@ -2135,6 +2281,7 @@ def bridge_issues(
                         repo_path=repo_path,
                         pipeline_metrics=metrics,
                         trusted_contract=trusted_contract,
+                        skip_review=async_teachers,
                     )
         except Exception as e:
             sys.stderr.write(f"[issue_bridge] Task failed for #{num}: {e}\n")
@@ -2245,6 +2392,17 @@ def bridge_issues(
 
         if task_result["status"] == "success":
             canonical_packet = ReviewPacket.from_dict(task_result.get("review_packet"))
+            # Gap-G4: when the cycle runs with ISSUE_ASYNC_TEACHERS=1 the
+            # student was dispatched with skip_review=True. Merge whatever
+            # verdicts the concurrent teacher loop has written to the bookbag
+            # (bounded wait). If no verdicts landed yet, the empty review
+            # passes through below and the issue stays retryable — exactly the
+            # slice-tracking contract for async fixtures.
+            if async_teachers and canonical_packet is None:
+                _merge_async_teacher_verdicts(
+                    task_result, issue_num=num, repo=repo,
+                    timeout=float(os.environ.get("ISSUE_ASYNC_TEACHERS_TIMEOUT", "30")),
+                )
             # Option-B integration seam: durably record this finished job on the
 
             # ── Two-judge acceptance gate ──
@@ -2506,7 +2664,14 @@ def bridge_issues(
 
             # Reuse the director's canonical CTO+COO result when available;
             # legacy task results retain the bridge's old review fallback.
-            if canonical_packet is not None and canonical_packet.is_authoritative:
+            if task_result.get("adversarial_review", {}).get("lens_used") == "async-teachers":
+                # Gap-G4: teacher verdicts were already merged for this
+                # skip_review issue — do not stack a synchronous review on top
+                # of the concurrent one.
+                metrics.record_call("adversarial_review_reused")
+                with metrics.stage("review"):
+                    adversarial_review = task_result["adversarial_review"]
+            elif canonical_packet is not None and canonical_packet.is_authoritative:
                 metrics.record_call("adversarial_review_reused")
                 with metrics.stage("review"):
                     adversarial_review = canonical_packet.adversarial_summary()
