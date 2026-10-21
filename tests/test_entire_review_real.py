@@ -25,6 +25,12 @@ def _init_git_repo(repo_path: Path) -> None:
 
 
 @pytest.mark.skipif(not _get_entire_path(), reason="entire CLI not installed")
+# A real review takes ~200s (measured 185-208s) and the consolidating judge can
+# run to its own 20m cap, while the subprocess cap is 900s. The project default
+# (pytest.ini timeout=60) kills this test mid-review, so it needs a budget above
+# the subprocess cap. CI never reaches it: `entire` is not installed there, so the
+# skipif above fires and the test skips.
+@pytest.mark.timeout(1200)
 def test_run_entire_review_real_invocation(tmp_path):
     """Real invocation of entire review against a git worktree with changes."""
     _init_git_repo(tmp_path)

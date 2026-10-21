@@ -1453,7 +1453,7 @@ def dispatch_crew(
                 worktree_path = worktree_id.split("::", 1)[1]
                 artifact_identity = {
                     **artifact_identity,
-                    "changed_files": _get_changed_files(worktree_path, "main"),
+                    "changed_files": _get_changed_files(worktree_path, "main") or [],
                 }
             except Exception:
                 # The authoritative sensors have already run; missing optional

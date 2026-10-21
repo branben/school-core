@@ -25,7 +25,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 
 class EntireFinding(NamedTuple):
@@ -56,8 +56,14 @@ def _get_entire_path() -> str | None:
     return None
 
 
-def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[str]:
-    """Get list of changed files for targeted review."""
+def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[str] | None:
+    """Get list of changed files for targeted review.
+
+    Returns None when the diff could NOT be computed (not a git repo, missing
+    base ref, git failure). That is distinct from a genuine empty diff ([]):
+    an empty diff means "nothing to review", while None means "we do not know".
+    A caller must never report the second as the first.
+    """
     try:
         result = subprocess.run(
             ["git", "diff", "--name-only", f"{base_branch}...HEAD"],
@@ -66,9 +72,11 @@ def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[st
             text=True,
             timeout=10,
         )
-        return [f for f in result.stdout.strip().split("\n") if f]
     except Exception:
-        return []
+        return None
+    if result.returncode != 0:
+        return None
+    return [f for f in result.stdout.strip().split("\n") if f]
 
 
 def _parse_entire_output(content: str, changed_files: list[str]) -> list[EntireFinding]:
@@ -140,6 +148,92 @@ def _parse_entire_output(content: str, changed_files: list[str]) -> list[EntireF
     return unique
 
 
+# ── Review profile bootstrap ────────────────────────────────────────────────
+#
+# `entire review` needs two things a fresh clone does not have:
+#   1. a review profile (reviewers + judge), and
+#   2. the reviewer agent's hooks.
+# Both live in `.entire/settings.local.json` / `.claude/settings.json`, and
+# `.entire/.gitignore` excludes `settings.local.json` — so the profile is never
+# committed and every clone starts without one. Without this bootstrap
+# `entire review` exits 1 ("no agents with review runner adapters and hooks
+# installed"), which the caller cannot distinguish from a clean diff.
+_REVIEW_AGENT = "claude-code"
+_REVIEW_TASK = (
+    "Review this change for correctness, regressions, API design, missing "
+    "tests, maintainability, and user-facing behavior changes. Return only "
+    "real, actionable defects with concrete evidence and an exact code pointer."
+)
+# Measured 2026-10-21 on a 1-file change: a full review takes ~201s, and the
+# consolidating judge alone defaults to a 20m cap. The previous hard-coded 120s
+# killed the review before it finished. Override with ENTIRE_REVIEW_TIMEOUT.
+_DEFAULT_REVIEW_TIMEOUT_S = 900
+
+# Markers meaning the review ran but produced no usable verdict. Any of these
+# with zero parsed findings is an ERROR, never a pass.
+_REVIEW_ERROR_MARKERS = (
+    "no agents with review runner adapters",
+    "hooks are not installed",
+    "API Error:",
+    "timed out",
+    "Failed:",
+)
+
+
+def _review_timeout_s() -> int:
+    raw = os.getenv("ENTIRE_REVIEW_TIMEOUT", "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return _DEFAULT_REVIEW_TIMEOUT_S
+
+
+def _ensure_review_profile(worktree: Path, entire_path: str) -> Optional[str]:
+    """Idempotently make `entire review --profile general` runnable in `worktree`.
+
+    Creates the profile non-interactively (into the gitignored
+    `settings.local.json`, so a repo's shared `settings.json` is never touched)
+    and installs the reviewer agent's hooks — but only when the CLI reports
+    them missing, because `entire agent add` rewrites `.claude/settings.json`
+    and would clobber a checkout that already carries one. Returns an error
+    string on failure, else None.
+    """
+    cfg = subprocess.run(
+        [entire_path, "review", "--configure",
+         "--set-agents", _REVIEW_AGENT,
+         "--set-judge", _REVIEW_AGENT,
+         "--set-task", _REVIEW_TASK,
+         "--local"],
+        cwd=str(worktree), capture_output=True, text=True, timeout=120,
+    )
+    if cfg.returncode != 0:
+        return f"entire review --configure failed: {(cfg.stderr or cfg.stdout).strip()[:300]}"
+
+    listing = subprocess.run(
+        [entire_path, "review", "--agents"],
+        cwd=str(worktree), capture_output=True, text=True, timeout=120,
+    )
+    # Anchor to the agent name: a bare substring would also match a DIFFERENT
+    # agent that happens to have hooks installed, and we would then skip
+    # installing ours.
+    if f"{_REVIEW_AGENT}: hooks installed" in (listing.stdout or ""):
+        return None
+    add = subprocess.run(
+        [entire_path, "agent", "add", _REVIEW_AGENT],
+        cwd=str(worktree), capture_output=True, text=True, timeout=120,
+    )
+    if add.returncode != 0:
+        return f"entire agent add {_REVIEW_AGENT} failed: {(add.stderr or add.stdout).strip()[:300]}"
+    return None
+
+
+def _review_error_marker(output: str) -> Optional[str]:
+    """Return the first error marker present in the review output, if any."""
+    for marker in _REVIEW_ERROR_MARKERS:
+        if marker in output:
+            return marker
+    return None
+
+
 def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
     """Run pre-merge review using `entire review`.
 
@@ -177,6 +271,21 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
         }
 
     changed_files = _get_changed_files(worktree_path, base_branch)
+    if changed_files is None:
+        # The diff could not be computed (not a repo, missing base ref, git
+        # failure). This is NOT an empty diff — reporting it as a pass would
+        # launder "we never looked" into "we looked and found nothing".
+        error = f"could not compute git diff vs {base_branch!r}"
+        output_file.write_text(f"Pre-merge review ERROR — {error}\n")
+        return {
+            "status": "error",
+            "findings": [],
+            "skipped": False,
+            "error": error,
+            "entire_replacement": "entire-review",
+            "review_workspace_path": str(output_file),
+            "timestamp": timestamp,
+        }
     if not changed_files:
         output_file.write_text("No git diff found — nothing to review.\n")
         return {
@@ -189,25 +298,41 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
             "timestamp": timestamp,
         }
 
+    # A fresh clone ships neither the review profile nor the agent hooks, so
+    # `entire review` would exit 1 before reviewing anything. Bootstrap both —
+    # a setup failure is an ERROR, never a silent pass.
+    setup_error = _ensure_review_profile(worktree, entire_path)
+    if setup_error:
+        output_file.write_text(f"Pre-merge review ERROR — {setup_error}\n")
+        return {
+            "status": "error",
+            "findings": [],
+            "skipped": False,
+            "error": setup_error,
+            "entire_replacement": "entire-review",
+            "review_workspace_path": str(output_file),
+            "timestamp": timestamp,
+        }
+
     # Run entire review.
     #
     # `--profile general` is required: the CLI is interactive by default and
-    # (on first run) opens a guided-setup wizard that depends on a
-    # pre-existing `.entire/settings.json` profile. Selecting the `general`
-    # profile explicitly keeps the sensor non-interactive in worktree shells.
-    # `--format` is NOT passed — this CLI version (0.11.x) rejects it as an
-    # unknown flag and would abort the review before producing output.
+    # (on first run) opens a guided-setup wizard. The profile itself is created
+    # by _ensure_review_profile above. `--format` is NOT passed — this CLI
+    # version (0.11.x) rejects it as an unknown flag and would abort the review
+    # before producing output.
+    timeout_s = _review_timeout_s()
     try:
         result = subprocess.run(
             [entire_path, "review", "--profile", "general", "--base", base_branch],
             cwd=worktree_path,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout_s,
         )
         review_output = result.stdout + result.stderr
     except subprocess.TimeoutExpired:
-        review_output = "Entire review timed out (120s)"
+        review_output = f"Entire review timed out ({timeout_s}s)"
         result = None
     except Exception as e:
         review_output = f"Entire review failed: {e}"
@@ -223,6 +348,27 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
     findings_file = workspace / "entire_findings.json"
     import json as _json
     findings_file.write_text(_json.dumps([f._asdict() for f in findings], indent=2))
+
+    # FAIL-CLOSED. Three defects previously all reported "pass":
+    #   * a missing profile/hooks made `entire review` exit 1;
+    #   * the 120s cap killed a review that legitimately takes ~200s;
+    #   * an unreachable reviewer API produced zero findings.
+    # A review that did not reach a verdict must never look like a clean diff.
+    exit_code = result.returncode if result is not None else None
+    marker = _review_error_marker(review_output)
+    if result is None or exit_code != 0 or (not findings and marker):
+        error = f"entire review produced no verdict (exit={exit_code})"
+        if marker:
+            error += f"; {marker}"
+        return {
+            "status": "error",
+            "findings": [f._asdict() for f in findings],
+            "skipped": False,
+            "error": error,
+            "entire_replacement": "entire-review",
+            "review_workspace_path": str(output_file),
+            "timestamp": timestamp,
+        }
 
     # Build summary
     severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
