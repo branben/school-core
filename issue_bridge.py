@@ -2686,33 +2686,6 @@ def bridge_issues(
                         if entire_review else None,
                     )
 
-            # CRITICAL entire finding → veto the review, matching
-            # conductor._persist_acceptance (the async path): a CRITICAL sensor
-            # finding rejects acceptance even when both judges PASS. Mirror the
-            # verify-failure injection below so the sensor is a real gate, not a
-            # sticky note. HIGH alone stays a warning unless ENTIRE_HIGH_STRICT=1.
-            _entire_critical = [
-                f for f in ((entire_review or {}).get("findings") or [])
-                if str((f or {}).get("severity", "")).upper() == "CRITICAL"
-            ]
-            if not _entire_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
-                _entire_critical = [
-                    f for f in ((entire_review or {}).get("findings") or [])
-                    if str((f or {}).get("severity", "")).upper() == "HIGH"
-                ]
-            if _entire_critical:
-                for f in _entire_critical:
-                    adversarial_review.setdefault("findings", []).append({
-                        "section": "pre-merge-sensor",
-                        "issue_class": "entire_finding",
-                        "severity": "CRITICAL",
-                        "citation": f"{f.get('file')}:{f.get('line')}",
-                        "description": (f.get("message") or "")[:500],
-                        "suggestion": "Fix the issue the pre-merge sensor flagged.",
-                    })
-                adversarial_review["verdict"] = "FAIL"
-                adversarial_review["score"] = 0.0
-
             # Merge verify-gate failures into the review as CRITICAL findings.
             # This is the enforcement of campus.md #3: the compiler runs before
             # the critic speaks; a broken build cannot earn a PASS.
@@ -3490,38 +3463,7 @@ if __name__ == "__main__":
     parser.add_argument("--force-agent", help="Skip readiness checks; use a specific agent directly")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
     parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
-    # onboard — generate ICM L0-L4 context + envit + project_verify for --repo.
-    # Delegates to `onboard.main()`; every flag below is a passthrough.
-    parser.add_argument("--onboard", action="store_true",
-                        help="Generate L0-L4 context, envit entries, and project_verify.yaml "
-                             "for --repo, then exit (repo-agnostic onboarding)")
-    parser.add_argument("--write", action="store_true",
-                        help="with --onboard: write generated files (default: report only)")
-    parser.add_argument("--out", help="with --onboard: directory for L0/L1/project_verify")
-    parser.add_argument("--no-clone", action="store_true",
-                        help="with --onboard: do not clone; --repo must be a local checkout")
-    parser.add_argument("--offline", action="store_true",
-                        help="with --onboard: never call gh; use the checkout's own evidence")
-    parser.add_argument("--require-evidence", action="store_true",
-                        help="with --onboard: fail unless real repo facts were read")
     args = parser.parse_args()
-
-    if args.onboard:
-        if not args.repo:
-            parser.error("--onboard requires --repo <owner/repo>")
-        import onboard
-        onboard_argv = ["--repo", args.repo]
-        if args.write:
-            onboard_argv.append("--write")
-        if args.out:
-            onboard_argv += ["--out", args.out]
-        if args.no_clone:
-            onboard_argv.append("--no-clone")
-        if args.offline:
-            onboard_argv.append("--offline")
-        if args.require_evidence:
-            onboard_argv.append("--require-evidence")
-        sys.exit(onboard.main(onboard_argv))
 
     labels = args.labels.split(",") if args.labels else None
     if args.once:

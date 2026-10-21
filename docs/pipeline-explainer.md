@@ -229,46 +229,17 @@ support, so she grades those on the written procedure alone.
 
 ## Stage 7 — Pre-merge sensor: Entire review
 
-**What it does.** `src/entire_review.py` runs `entire review --profile general`
-as a pre-merge sensor before the two-judge review. Findings surface on the
-board and in notifications, and a **CRITICAL** finding vetoes acceptance
-(`conductor._persist_acceptance`). The sensor never overrides the *judges'*
-verdicts — it adds a mechanical backstop on top of them.
-
-**Code:**
-
-```python
-# conductor._persist_acceptance — the acceptance gate
-entire_findings = bag.get("entire_findings") or []
-if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
-    findings = findings + entire_findings
-has_critical = any(
-    str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
-)
-# Escape hatch: escalate HIGH to a veto when ENTIRE_HIGH_STRICT=1
-if not has_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
-    has_critical = any(
-        str(f.get("severity", "")).upper() == "HIGH" for f in entire_findings
-    )
-accepted = cto_v == "PASS" and coo_v == "PASS" and \
-    cto_score >= 50 and coo_score >= 50 and not has_critical
-```
-
-**`ENTIRE_HIGH_STRICT` (escape hatch).** By default a **HIGH** entire finding
-is a warning only (accepted stays True); `ENTIRE_HIGH_STRICT=1` escalates HIGH
-to a full veto, matching CRITICAL. It is opt-in and read once per acceptance
-computation. The sensor's own `status` is `"skipped"` (CLI missing) or
-`"error"` (crash) — in both cases findings do **not** veto, so a broken sensor
-can never block the pipeline.
+**What it does.** `src/entire_review.py` runs `entire review` as a
+**non-blocking** sensor before merge — findings surface on the board and in
+notifications, but don't block.
 
 **Pedagogy.** This is the hallway peer-check. A friendly senior student glances
-at your work before you submit and can flag a serious bug — a *critical* one
-holds the paper. Lesser notes get taped to it; that's the teacher's call.
+at your work before you submit — their notes get taped to your paper, but they
+can't fail you; that's the teacher's job.
 
-**What's missing.** The sensor is best-effort: when the CLI is absent or crashes
-the gate silently degrades to the two judges alone. Analogy: the peer-checker
-doesn't show up, so only the teachers grade — the safety net is gone and
-nothing announces it.
+**What's missing.** It's intentionally non-blocking. Analogy: the peer-checker
+spots a serious bug but the school policy says only the teachers can hold the
+paper — so the bug still gets submitted with a sticky note on it.
 
 ---
 

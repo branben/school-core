@@ -152,7 +152,7 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
     - findings: list of finding dicts (real bugs only)
     - skipped: True if entire CLI not available
     - error: str or None
-    - entire_replacement: "entire-review"  # marker for the pre-Entire sensor
+    - qodo_replacement: "entire-review"  # historical marker, kept for compat
     - review_workspace_path: str (path to captured output)
     - timestamp: ISO datetime
     """
@@ -171,7 +171,7 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
             "findings": [],
             "skipped": True,
             "error": "entire CLI not found on PATH",
-            "entire_replacement": "entire-review",
+            "qodo_replacement": "entire-review",
             "review_workspace_path": str(output_file),
             "timestamp": timestamp,
         }
@@ -184,22 +184,15 @@ def run_entire_review(worktree_path: str, base_branch: str = "main") -> dict:
             "findings": [],
             "skipped": False,
             "error": None,
-            "entire_replacement": "entire-review",
+            "qodo_replacement": "entire-review",
             "review_workspace_path": str(output_file),
             "timestamp": timestamp,
         }
 
-    # Run entire review.
-    #
-    # `--profile general` is required: the CLI is interactive by default and
-    # (on first run) opens a guided-setup wizard that depends on a
-    # pre-existing `.entire/settings.json` profile. Selecting the `general`
-    # profile explicitly keeps the sensor non-interactive in worktree shells.
-    # `--format` is NOT passed — this CLI version (0.11.x) rejects it as an
-    # unknown flag and would abort the review before producing output.
+    # Run entire review
     try:
         result = subprocess.run(
-            [entire_path, "review", "--profile", "general", "--base", base_branch],
+            ["entire", "review", "--base", base_branch, "--format", "text"],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -259,7 +252,7 @@ git checkpoints for intent-aware analysis. No API key required.
         "findings": [f._asdict() for f in findings],
         "skipped": False,
         "error": None,
-        "entire_replacement": "entire-review",
+        "qodo_replacement": "entire-review",
         "review_workspace_path": str(output_file),
         "timestamp": timestamp,
     }
@@ -271,7 +264,7 @@ if __name__ == "__main__":
     base = sys.argv[2] if len(sys.argv) > 2 else "main"
     result = run_entire_review(worktree, base)
     print(f"Status: {result['status']}")
-    print(f"Entire replacement: {result['entire_replacement']}")
+    print(f"Qodo replacement: {result['qodo_replacement']}")
     if result["error"]:
         print(f"Error: {result['error']}")
     if result["findings"]:

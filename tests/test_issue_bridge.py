@@ -983,11 +983,10 @@ class TestVerifyGateMerge:
 
 
 class TestEntireSensor:
-    """The sync path must run `entire review` as a pre-merge sensor.
+    """The sync path must run `entire review` as a non-blocking sensor.
 
-    Findings are surfaced (result + last_run); a CRITICAL finding vetoes the
-    review, matching the conductor's `_persist_acceptance` gate. HIGH alone is a
-    warning unless `ENTIRE_HIGH_STRICT=1`.
+    Findings are surfaced (result + last_run) but never override the verdict —
+    the adversarial LLM review is the semantic gate.
     """
 
     ISSUE = [{
@@ -1026,7 +1025,7 @@ class TestEntireSensor:
         self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
         mock_task, mock_fetch, tmp_path, monkeypatch, store,
     ):
-        """Sensor findings ride on the result + last_run; CRITICAL vetoes."""
+        """Sensor findings ride on the result + last_run, without a FAIL override."""
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
             '"gaps": [], "strengths": []}'
@@ -1037,7 +1036,7 @@ class TestEntireSensor:
         }
         mock_sensor.return_value = {
             "status": "fail",
-            "findings": [{"file": "x.py", "line": 3, "severity": "CRITICAL",
+            "findings": [{"file": "x.py", "line": 3, "severity": "HIGH",
                            "message": "unused var"}],
         }
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -1049,9 +1048,8 @@ class TestEntireSensor:
         # Surfaced on the result…
         assert results[0]["entire_review"]["status"] == "fail"
         assert len(results[0]["entire_review"]["findings"]) == 1
-        # …and a CRITICAL entire finding DOES cause rejection, matching the
-        # conductor's _persist_acceptance gate (tests/test_entire_gate.py).
-        assert results[0]["adversarial_review"]["verdict"] == "FAIL"
+        # …but NOT a verdict override — the LLM review stays the semantic gate.
+        assert results[0]["adversarial_review"]["verdict"] != "FAIL"
         # Durable record carries a compact summary.
         runs = json.loads((tmp_path / "last_run.json").read_text())
         assert runs[-1]["entire"] == {"status": "fail", "findings": 1}

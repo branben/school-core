@@ -93,7 +93,7 @@ reframed for LLM agents that need to grow through measured practice.
 | **Beads (`bd`)** | Task tracking | Durable issue tracker backed by Dolt. Issues persist across sessions. Syncs via git refs. |
 | **Engram** | Memory | Trajectory capture + consolidation. Layer 2 (episodic) → Layer 3 (archival). |
 | **AgentMail** | Communication bus | Inbound `/approve /reject /fix` for human-in-the-loop rubber-stamp. |
-| **Entire** | Pre-merge review | Intent-aware code review using git checkpoints. CRITICAL findings veto acceptance (`conductor._persist_acceptance`); `ENTIRE_HIGH_STRICT=1` escalates HIGH to a veto. |
+| **Entire** | Pre-merge review | Intent-aware code review using git checkpoints. Replaces Qodo (which is discontinued). |
 | **Serena** | Symbol awareness | LSP-based file/symbol resolution. Layer 1 context. |
 
 ### Why Orca?
@@ -121,13 +121,15 @@ backend; FirstMate spawns ephemeral crewmate subprocesses with role labels.
 The real gates are **GATES(scoring) + readiness-confidence + two-judge review** —
 the Faculty/Senior/Junior/Trainee role tiers are cosmetic log labels only.
 
-### Why Entire?
+### Why Entire Instead of Qodo?
 
-**Entire** (`entire review`) is the pre-merge sensor — intent-aware code review
+Qodo Command CLI (`@qodo/command`) is **discontinued** as of v0.36.0. The
+only Qodo path left is their GitHub App (`qodo-code-review[bot]`) which
+comments on PRs — useless for pre-merge review in ephemeral student worktrees.
+
+**Entire** (`entire review`) is the replacement — intent-aware code review
 that reads git checkpoints to understand what the developer *meant* to do,
 then audits the diff for mechanical + semantic issues. No API key needed.
-The CLI is interactive by default, so the shim pins the `general` profile
-(`--profile general`) to stay non-interactive in worktree shells.
 
 ---
 
@@ -222,7 +224,7 @@ real risk.
 | Layer 2 — Engram trajectories | ✅ Wired | `engram_adapter.search_trajectories` for episodic context. Corpus also checkpointed to git (`data/trajectories`, capped at newest 60 by `sanitize_data.py --trim-trajectories`) so Layer 2 survives fresh checkouts (U2) |
 | Layer 3 — archival consolidation | ⚠️ Partial | Gate fires: the bridge threads a per-cycle `loop-*` session_id into `enrich_prompt` so `_archival_context` is consulted (U1, 2026-08-11). Write-side hook — the sync loop writing consolidations under `loop-*` ids (sleep/wake uses `ses_*`) — is the pending half |
 | Verification scoring | ✅ Wired | `verify_task_output` in `issue_bridge.py` — execution correctness via `agy/gemini-3.5-flash-high` |
-| Pre-merge review | ✅ Wired | `entire review --profile general` via `src/entire_review.py`. Runs as a sensor in the bridge sync path AND the async conductor path; `_get_entire_path` falls back to `~/.local/bin/entire` for worktree shells (R12) |
+| Pre-merge review | ✅ Wired | `entire review` via `src/entire_review.py` (renamed from `qodo_pre_merge.py`, R13). Runs as a non-blocking sensor in the bridge sync path AND the async conductor path; `_get_entire_path` falls back to `~/.local/bin/entire` for worktree shells (R12) |
 | AgentMail bus (2-judge) | ⚠️ Partial | Two-judge via AgentMail + rubber-stamp poller; sync mode inline, async Phase 2 future |
 | Bookbag-as-contract | ⚠️ Partial | `~/.hermes/bookbag/<bead>.json`; verify on disk |
 | Verification-co-evolution loop | ✅ Wired | `adversarial_reviewer.py` + `director._run_two_judge_review`. 15 unit tests |

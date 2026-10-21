@@ -648,23 +648,6 @@ def _run_issue_async(
             entire_findings = []
         # ──────────────────────────────────────────────────────────────────────
 
-        # Persist the sensor result to the bookbag BEFORE the acceptance gate
-        # reads it. `_persist_acceptance` derives the CRITICAL veto from
-        # bag["entire_findings"] (conductor.py:233-243), but this async path
-        # never wrote it — the findings only reached notify_verdict — so a
-        # CRITICAL entire finding could not veto acceptance. Write them here,
-        # repo-namespaced to match read_bookbag/_persist_acceptance.
-        try:
-            locked_update_bookbag(
-                leaf.bead,
-                repo=target_repo or "__global__",
-                lock_timeout=10.0,
-                entire_findings=entire_findings,
-                entire_status=entire_status,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"  ⚠ Entire review result persist failed: {e}")
-
         cto_v, coo_v = wait_for_verdicts(leaf.bead, repo=target_repo or "__global__", timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead, target_repo or "__global__") or {}
         accepted = _persist_acceptance(leaf.bead, cto_v, coo_v, repo=target_repo or "__global__")
