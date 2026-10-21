@@ -67,9 +67,34 @@ CODE_SUFFIXES = (".py", ".sh", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".js", 
 
 
 def git(*args: str) -> str:
-    return subprocess.run(
+    """Run git and return stdout.
+
+    Fails LOUDLY on a non-zero exit. Swallowing a git failure here is what
+    let an unresolvable --head ref look like an empty diff, which turned
+    this gate into a permanent PASS (see resolve_ref).
+    """
+    proc = subprocess.run(
         ["git", *args], capture_output=True, text=True, check=False
-    ).stdout
+    )
+    if proc.returncode != 0:
+        raise SystemExit(
+            "review_gate: git " + " ".join(args)
+            + f" failed (exit {proc.returncode}): {proc.stderr.strip()}"
+        )
+    return proc.stdout
+
+
+def resolve_ref(ref: str) -> str:
+    """Verify `ref` names a real commit and return its sha.
+
+    A gate that cannot resolve its own refs must FAIL, not pass: an
+    unresolvable ref and a genuinely empty PR both yield an empty diff, and
+    only one of those is a legitimate pass.
+    """
+    sha = git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").strip()
+    if not sha:
+        raise SystemExit(f"review_gate: cannot resolve ref {ref!r}")
+    return sha
 
 
 def changed_files(base: str, head: str) -> list[str]:
@@ -102,9 +127,22 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
+    # Fail closed before diffing: an unresolvable ref is a gate bug, not an
+    # empty PR, and must never be reported as a clean pass.
+    resolve_ref(args.base)
+    resolve_ref(args.head)
+
     files = changed_files(args.base, args.head)
     added = added_lines(args.base, args.head)
     failures: list[dict] = []
+
+    if not files:
+        failures.append({
+            "check": "empty-diff",
+            "file": f"{args.base}...{args.head}",
+            "detail": ("no changed files resolved between base and head; "
+                       "the gate cannot pass on an empty diff"),
+        })
 
     # 1. secrets
     for path, line in added:

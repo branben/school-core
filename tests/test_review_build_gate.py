@@ -153,7 +153,14 @@ def test_build_verify_no_repo_path_is_loudly_skipped(monkeypatch, tmp_path):
 
 
 def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
-    """The review gate must not depend on the process working directory."""
+    """The review gate must not depend on the process working directory.
+
+    Pins to the REPO ROOT (the directory that actually contains flake.nix),
+    not to director.py's own package directory. director.py lives at
+    src/core/director.py, so its package dir is src/core — which has no
+    flake.nix. Asserting the package dir was the pre-reorg value and broke
+    when director.py moved under src/.
+    """
     captured = {}
 
     def fake_gate(**kwargs):
@@ -163,7 +170,14 @@ def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
     result = _review_with_build_gate(monkeypatch, tmp_path, None, gate=fake_gate)
 
     assert result["accepted"] is True
-    assert captured["flake_path"] == Path(director.__file__).resolve().parent
+    flake_dir = captured["flake_path"]
+    # The contract: it resolves to the repo root, which owns flake.nix.
+    assert (flake_dir / "flake.nix").exists(), (
+        f"flake_path {flake_dir} does not contain flake.nix — "
+        f"the verify gate would silently skip its flake check"
+    )
+    # And it must NOT be the module's own package directory (cwd-dependence).
+    assert flake_dir != Path(director.__file__).resolve().parent
 
 
 def test_build_verify_gate_error_is_strict_veto(monkeypatch, tmp_path):
