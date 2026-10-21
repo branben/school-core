@@ -152,3 +152,44 @@ def test_python_trailing_whitespace_still_fails(tmp_path):
          "--base", "HEAD~1", "--head", "HEAD"],
         cwd=r, capture_output=True, text=True).returncode
     assert code == 1, "trailing whitespace in python must still fail"
+
+
+def _gate_args(r: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(sys.executable), str(Path(review_gate.__file__)), *args],
+        cwd=r, capture_output=True, text=True)
+
+
+def test_unresolvable_head_ref_fails(tmp_path):
+    """The #117 bug: `--head origin/<sha>` is not a ref name, so `git diff`
+    failed on stderr, the error was discarded, and the gate reported 0
+    changed files -- a permanent PASS. An unresolvable ref must FAIL."""
+    r = _repo(tmp_path)
+    _commit(r, "docs/a.md", "hello\n")
+    out = _gate_args(r, "--base", "HEAD~1", "--head", "origin/deadbeef")
+    assert out.returncode == 1, out.stdout + out.stderr
+
+
+def test_unresolvable_base_ref_fails(tmp_path):
+    r = _repo(tmp_path)
+    _commit(r, "docs/a.md", "hello\n")
+    out = _gate_args(r, "--base", "origin/deadbeef", "--head", "HEAD")
+    assert out.returncode == 1, out.stdout + out.stderr
+
+
+def test_empty_diff_fails(tmp_path):
+    """A PR that changes nothing must not pass a review gate."""
+    r = _repo(tmp_path)
+    out = _gate_args(r, "--base", "HEAD", "--head", "HEAD")
+    assert out.returncode == 1
+    assert "empty-diff" in out.stdout
+
+
+def test_empty_diff_reported_in_json(tmp_path):
+    r = _repo(tmp_path)
+    out = _gate_args(r, "--base", "HEAD", "--head", "HEAD", "--json")
+    import json as _json
+    data = _json.loads(out.stdout)
+    assert data["pass"] is False
+    assert data["changedFiles"] == 0
+    assert any(f["check"] == "empty-diff" for f in data["failures"])

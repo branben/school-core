@@ -249,15 +249,21 @@ jobs:
 
       - name: Mechanical review gate
         run: |
+          # --head is HEAD: the commit actions/checkout checked out for this
+          # PR. The previous value, "origin/<head sha>", is not a ref name,
+          # so `git diff` failed on stderr, the error was discarded, and the
+          # gate reported 0 changed files -- a permanent PASS on every PR
+          # since #117. review_gate.py now fails closed if a ref is
+          # unresolvable, so this must name a ref that exists.
           python scripts/review_gate.py \
             --base "origin/${{ github.base_ref }}" \
-            --head "origin/${{ github.event.pull_request.head.sha }}"
+            --head "HEAD"
 
       - name: Gate report (always shown, even on failure)
         if: always()
         run: python scripts/review_gate.py \
           --base "origin/${{ github.base_ref }}" \
-          --head "origin/${{ github.event.pull_request.head.sha }}" \
+          --head "HEAD" \
           --json || true
 
   notify:
@@ -290,7 +296,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from school_mail import notify_build_failure
+          from src.tools.school_mail import notify_build_failure
 
           failed = []
           if os.environ.get("TEST_RESULT") == "failure":
