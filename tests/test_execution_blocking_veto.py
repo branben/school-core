@@ -15,10 +15,10 @@ from unittest.mock import patch
 
 import pytest
 
-from adversarial_reviewer import ReviewResult, Verdict
+from src.review.adversarial_reviewer import ReviewResult, Verdict
 from bookbag import write_bookbag
-from director import _is_missing_context_failure, _run_two_judge_review
-from orca_executor import CodeExtractor, ExecutionResult
+from src.core.director import _is_missing_context_failure, _run_two_judge_review
+from src.crew.orca_executor import CodeExtractor, ExecutionResult
 
 _REPO = "branben/sound-royale-ny"
 
@@ -51,15 +51,15 @@ def _review(monkeypatch, tmp_path, output, bead, orca):
     write_bookbag(bead, student="coder", domain="python-testing",
                   difficulty="medium", task="implement a function",
                   output=output, repo=_REPO)
-    monkeypatch.setattr("director._resolve_repo_path",
+    monkeypatch.setattr("src.core.director._resolve_repo_path",
                         lambda repo, explicit_path=None: tmp_path)
-    monkeypatch.setattr("director.run_verify_gate",
+    monkeypatch.setattr("src.core.director.run_verify_gate",
                         lambda repo_path, project_verify=None, **kw: {
                             "passed": True, "failures": [], "ran": 1})
     with (
-        patch("director.AdversarialReviewer", _PassReviewer),
-        patch("director.OrcaExecutionManager", orca),
-        patch("director.call_model", side_effect=RuntimeError("no model")),
+        patch("src.core.director.AdversarialReviewer", _PassReviewer),
+        patch("src.core.director.OrcaExecutionManager", orca),
+        patch("src.core.director.call_model", side_effect=RuntimeError("no model")),
     ):
         return _run_two_judge_review(
             bead=bead, output=output,

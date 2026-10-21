@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from compound_learning import CompoundLearningStore
+from src.core.compound_learning import CompoundLearningStore
 
 
 def _evidence():

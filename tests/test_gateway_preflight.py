@@ -30,7 +30,7 @@ import urllib.error
 
 import pytest
 
-from gateway_preflight import (
+from src.tools.gateway_preflight import (
     GatewayDown,
     check_gateway,
     check_gateway_with_warmup,
@@ -41,7 +41,7 @@ from gateway_preflight import (
 class TestCheckGateway:
     def test_returns_true_when_gateway_answers(self, monkeypatch):
         monkeypatch.setattr(
-            "gateway_preflight._probe", lambda url, timeout: (200, "ok")
+            "src.tools.gateway_preflight._probe", lambda url, timeout: (200, "ok")
         )
         ok, detail = check_gateway()
         assert ok is True
@@ -51,7 +51,7 @@ class TestCheckGateway:
         def _refused(url, timeout):
             raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
 
-        monkeypatch.setattr("gateway_preflight._probe", _refused)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _refused)
         ok, detail = check_gateway()
         assert ok is False
         assert "refused" in detail.lower()
@@ -65,7 +65,7 @@ class TestCheckGateway:
         not be reported as healthy.
         """
         monkeypatch.setattr(
-            "gateway_preflight._probe", lambda url, timeout: (403, "Forbidden")
+            "src.tools.gateway_preflight._probe", lambda url, timeout: (403, "Forbidden")
         )
         ok, detail = check_gateway()
         assert ok is False
@@ -73,7 +73,7 @@ class TestCheckGateway:
 
     def test_server_error_is_down(self, monkeypatch):
         monkeypatch.setattr(
-            "gateway_preflight._probe", lambda url, timeout: (503, "unavailable")
+            "src.tools.gateway_preflight._probe", lambda url, timeout: (503, "unavailable")
         )
         ok, detail = check_gateway()
         assert ok is False
@@ -89,7 +89,7 @@ class TestCheckGateway:
             seen["timeout"] = timeout
             raise TimeoutError("timed out")
 
-        monkeypatch.setattr("gateway_preflight._probe", _record)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _record)
         ok, _ = check_gateway(timeout=5)
         assert ok is False
         assert seen["timeout"] == 5, "probe must honour the short preflight timeout"
@@ -98,7 +98,7 @@ class TestCheckGateway:
 class TestRequireGateway:
     def test_raises_gateway_down_when_unreachable(self, monkeypatch):
         monkeypatch.setattr(
-            "gateway_preflight.check_gateway",
+            "src.tools.gateway_preflight.check_gateway",
             lambda **kw: (False, "Connection refused"),
         )
         with pytest.raises(GatewayDown) as exc:
@@ -110,7 +110,7 @@ class TestRequireGateway:
 
     def test_passes_through_when_healthy(self, monkeypatch):
         monkeypatch.setattr(
-            "gateway_preflight.check_gateway", lambda **kw: (True, "HTTP 200")
+            "src.tools.gateway_preflight.check_gateway", lambda **kw: (True, "HTTP 200")
         )
         require_gateway()  # must not raise
 
@@ -136,7 +136,7 @@ class TestWarmupRetry:
                 raise TimeoutError("timed out")
             return 200, "ok"
 
-        monkeypatch.setattr("gateway_preflight._probe", _cold_then_warm)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _cold_then_warm)
         slept = []
         ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
 
@@ -162,7 +162,7 @@ class TestWarmupRetry:
                 ConnectionRefusedError(61, "Connection refused")
             )
 
-        monkeypatch.setattr("gateway_preflight._probe", _refused)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _refused)
         slept = []
         ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
 
@@ -179,7 +179,7 @@ class TestWarmupRetry:
             calls.append(timeout)
             return 200, "ok"
 
-        monkeypatch.setattr("gateway_preflight._probe", _healthy)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _healthy)
         slept = []
         ok, detail = check_gateway_with_warmup(sleep_fn=slept.append)
 
@@ -200,12 +200,12 @@ class TestWarmupRetry:
             calls.append(timeout)
             raise TimeoutError("timed out")
 
-        monkeypatch.setattr("gateway_preflight._probe", _always_timeout)
+        monkeypatch.setattr("src.tools.gateway_preflight._probe", _always_timeout)
 
         def _boom(_seconds):  # real time.sleep would make the suite slow
             raise AssertionError("sleep_fn was not injected")
 
-        monkeypatch.setattr("gateway_preflight.time.sleep", _boom)
+        monkeypatch.setattr("src.tools.gateway_preflight.time.sleep", _boom)
 
         slept = []
         ok, detail = check_gateway_with_warmup(

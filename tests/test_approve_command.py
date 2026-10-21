@@ -2,9 +2,9 @@
 
 import pytest
 
-from approve_command import ApprovalCommandError, execute_approve
-from exact_sha_verifier import VerificationResult
-from state_journal import StateJournal
+from src.tools.approve_command import ApprovalCommandError, execute_approve
+from src.review.exact_sha_verifier import VerificationResult
+from src.sensors.state_journal import StateJournal
 
 
 class FakeCoordinator:

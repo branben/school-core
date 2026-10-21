@@ -33,7 +33,7 @@ from unittest.mock import patch
 
 import pytest
 
-from adversarial_reviewer import AdversarialReviewer, LensType, Verdict
+from src.review.adversarial_reviewer import AdversarialReviewer, LensType, Verdict
 
 
 def _reviewer(raw_output: str) -> AdversarialReviewer:

@@ -19,8 +19,8 @@ The real blockers for N-parallel students are CONFIG/INFRA, not code bugs:
 """
 from pathlib import Path
 
-from crew_dispatch import CREW_RUNS_FILE as _CRF, CrewResult
-from school_scheduler import DispatchOffice
+from src.crew.crew_dispatch import CREW_RUNS_FILE as _CRF, CrewResult
+from src.tools.school_scheduler import DispatchOffice
 
 
 def _make_result(i):
@@ -54,7 +54,7 @@ def _fake_dispatch_factory(monkeypatch, crew_runs_file):
         seq.append(issue_number)
         return _make_result(issue_number)
 
-    monkeypatch.setattr("school_scheduler.dispatch_crew", fake)
+    monkeypatch.setattr("src.tools.school_scheduler.dispatch_crew", fake)
     return seq
 
 

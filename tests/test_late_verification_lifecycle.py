@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import issue_bridge
 from issue_bridge import bridge_issues
 from review_packet import ReviewPacket
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 @pytest.fixture(autouse=True)
@@ -85,8 +85,8 @@ class TestLateVerificationLifecycleGuard:
     """Bridge must skip grading, scoring, and publication after reject."""
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_late_verify_failure_skips_pr_creation(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -121,8 +121,8 @@ class TestLateVerificationLifecycleGuard:
         assert "late verification failure" in results[0]["error"]
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_late_verify_failure_records_zero_score(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -145,7 +145,7 @@ class TestLateVerificationLifecycleGuard:
         def track_eval(task_result, score, store=None):
             eval_calls.append(score)
             return {"old_score": 0, "new_score": score, "gate_crossed": False}
-        monkeypatch.setattr("director.evaluate_and_update", track_eval)
+        monkeypatch.setattr("src.core.director.evaluate_and_update", track_eval)
 
         results = bridge_issues("user/test", store=store)
 
@@ -154,8 +154,8 @@ class TestLateVerificationLifecycleGuard:
         assert eval_calls[0] == 0.0, f"Score must be 0 after late verify failure, got {eval_calls[0]}"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_accepted_packet_proceeds_normally(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -191,8 +191,8 @@ class TestLateVerificationLifecycleGuard:
         assert results[0]["status"] == "success"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_no_canonical_packet_verify_fail_blocks_publication(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -235,8 +235,8 @@ class TestLateVerificationLifecycleGuard:
         assert "verify failure" in results[0]["error"]
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_no_canonical_packet_verify_pass_proceeds_normally(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -289,8 +289,8 @@ class TestGradingEnqueueAfterVerification:
     """
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_verify_failure_does_not_enqueue_grading(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -315,7 +315,7 @@ class TestGradingEnqueueAfterVerification:
             if original_enqueue:
                 return original_enqueue(job)
             return True
-        monkeypatch.setattr("school_grader.GradingQueue.enqueue", track_enqueue)
+        monkeypatch.setattr("src.tools.school_grader.GradingQueue.enqueue", track_enqueue)
 
         results = bridge_issues("user/test", store=store)
 
@@ -324,8 +324,8 @@ class TestGradingEnqueueAfterVerification:
         assert results[0]["status"] == "error"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("director.run_task")
-    @patch("executor.call_model")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
     def test_verify_pass_enqueues_grading(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
@@ -349,7 +349,7 @@ class TestGradingEnqueueAfterVerification:
         def track_enqueue(self, job):
             enqueue_calls.append(job)
             return True
-        monkeypatch.setattr("school_grader.GradingQueue.enqueue", track_enqueue)
+        monkeypatch.setattr("src.tools.school_grader.GradingQueue.enqueue", track_enqueue)
 
         results = bridge_issues("user/test", store=store)
 

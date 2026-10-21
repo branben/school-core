@@ -279,7 +279,7 @@ def execute_plan(
         }
     """
     if run_leaf_fn is None:
-        from leaf import run_leaf
+        from src.core.leaf import run_leaf
         run_leaf_fn = run_leaf
 
     sub_task_results: List[dict] = []

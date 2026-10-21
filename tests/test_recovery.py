@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI = REPO_ROOT / "recovery.py"
+CLI = REPO_ROOT / "src" / "core" / "recovery.py"
 
 ALLOWED_STATUSES = {"ok", "missing", "blocked", "not_configured", "unknown"}
 

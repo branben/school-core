@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from context_orchestrator import (
+from src.core.context_orchestrator import (
     _archival_context,
     _cocoindex_context,
     _engram_context,
@@ -33,10 +33,10 @@ def tmp_vault(tmp_path):
 @pytest.fixture
 def tmp_consolidation_dir(tmp_path, monkeypatch):
     """Redirect consolidation_writer's dir to temp and set up test files."""
-    from consolidation_writer import CONSOLIDATION_DIR as CDIR
+    from src.core.consolidation_writer import CONSOLIDATION_DIR as CDIR
 
     consolidation_dir = tmp_path / "consolidation"
-    monkeypatch.setattr("consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.core.consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
     return consolidation_dir
 
 
@@ -128,8 +128,8 @@ class TestEnrichPrompt:
         self, tmp_vault, tmp_consolidation_dir, sample_consolidation_yaml
     ):
         """enrich_prompt includes Layer 3 when session_id is provided."""
-        with patch("context_orchestrator._cocoindex_context", return_value=None):
-            with patch("context_orchestrator._engram_context", return_value=None):
+        with patch("src.core.context_orchestrator._cocoindex_context", return_value=None):
+            with patch("src.core.context_orchestrator._engram_context", return_value=None):
                 result = enrich_prompt(
                     domain="python-testing",
                     prompt="Write tests for user service",
@@ -142,7 +142,7 @@ class TestEnrichPrompt:
         self, tmp_vault, tmp_consolidation_dir
     ):
         """enrich_prompt works when no Layer 3 consolidation exists."""
-        with patch("context_orchestrator._cocoindex_context", return_value="**CocoIndex result**"):
+        with patch("src.core.context_orchestrator._cocoindex_context", return_value="**CocoIndex result**"):
             result = enrich_prompt(
                 domain="python-testing",
                 prompt="Write tests",
@@ -156,8 +156,8 @@ class TestEnrichPrompt:
 
     def test_no_session_id_skips_layer3(self, tmp_vault):
         """Without session_id, Layer 3 is skipped entirely."""
-        with patch("context_orchestrator._cocoindex_context", return_value=None):
-            with patch("context_orchestrator._engram_context", return_value=None):
+        with patch("src.core.context_orchestrator._cocoindex_context", return_value=None):
+            with patch("src.core.context_orchestrator._engram_context", return_value=None):
                 result = enrich_prompt(
                     domain="python-testing",
                     prompt="Write tests",
@@ -168,7 +168,7 @@ class TestEnrichPrompt:
     def test_cocodown_graceful(self, tmp_vault, tmp_consolidation_dir, sample_consolidation_yaml):
         """CocoIndex down: archival context still works."""
         with patch(
-            "context_orchestrator._cocoindex_context",
+            "src.core.context_orchestrator._cocoindex_context",
             side_effect=FileNotFoundError("ccc not found"),
         ):
             result = enrich_prompt(
@@ -181,7 +181,7 @@ class TestEnrichPrompt:
 
     def test_engram_down_graceful(self, tmp_vault, tmp_consolidation_dir, sample_consolidation_yaml):
         """Engram down: archival context still works."""
-        with patch("context_orchestrator._engram_context", side_effect=Exception("engram down")):
+        with patch("src.core.context_orchestrator._engram_context", side_effect=Exception("engram down")):
             result = enrich_prompt(
                 domain="python-testing",
                 prompt="Write tests",
@@ -192,9 +192,9 @@ class TestEnrichPrompt:
 
     def test_all_sources_down_returns_empty(self, tmp_vault, tmp_consolidation_dir):
         """All non-blocking: if all sources fail, returns empty string."""
-        with patch("context_orchestrator._cocoindex_context", side_effect=Exception("fail")):
-            with patch("context_orchestrator._engram_context", side_effect=Exception("fail")):
-                with patch("context_orchestrator._archival_context", side_effect=Exception("fail")):
+        with patch("src.core.context_orchestrator._cocoindex_context", side_effect=Exception("fail")):
+            with patch("src.core.context_orchestrator._engram_context", side_effect=Exception("fail")):
+                with patch("src.core.context_orchestrator._archival_context", side_effect=Exception("fail")):
                     result = enrich_prompt(
                         domain="python-testing",
                         prompt="Write tests",
@@ -206,15 +206,15 @@ class TestEnrichPrompt:
     def test_non_blocking_never_crashes(self, tmp_vault):
         """Non-blocking: enrich_prompt never raises, even with everything broken."""
         with patch(
-            "context_orchestrator._cocoindex_context",
+            "src.core.context_orchestrator._cocoindex_context",
             side_effect=RuntimeError("broken"),
         ):
             with patch(
-                "context_orchestrator._engram_context",
+                "src.core.context_orchestrator._engram_context",
                 side_effect=RuntimeError("broken"),
             ):
                 with patch(
-                    "context_orchestrator._archival_context",
+                    "src.core.context_orchestrator._archival_context",
                     side_effect=RuntimeError("broken"),
                 ):
                     result = enrich_prompt(
@@ -373,15 +373,15 @@ class TestEnrichPromptThreeLayerIntegration:
     def test_all_three_layers_combined(self, tmp_path):
         """All three layers contribute to a single combined context blob."""
         with patch(
-            "context_orchestrator._cocoindex_context",
+            "src.core.context_orchestrator._cocoindex_context",
             return_value=self.COCO_CONTEXT,
         ):
             with patch(
-                "context_orchestrator._serena_context",
+                "src.core.context_orchestrator._serena_context",
                 return_value=self.SERENA_CONTEXT,
             ):
                 with patch(
-                    "context_orchestrator._engram_context",
+                    "src.core.context_orchestrator._engram_context",
                     return_value=self.ENGRAM_CONTEXT,
                 ):
                     result = enrich_prompt(
@@ -408,15 +408,15 @@ class TestEnrichPromptThreeLayerIntegration:
     def test_partial_layer_failure_others_survive(self, tmp_path):
         """When one layer returns None, the other two still appear."""
         with patch(
-            "context_orchestrator._cocoindex_context",
+            "src.core.context_orchestrator._cocoindex_context",
             return_value=self.COCO_CONTEXT,
         ):
             with patch(
-                "context_orchestrator._serena_context",
+                "src.core.context_orchestrator._serena_context",
                 return_value=None,  # Serena unavailable
             ):
                 with patch(
-                    "context_orchestrator._engram_context",
+                    "src.core.context_orchestrator._engram_context",
                     return_value=self.ENGRAM_CONTEXT,
                 ):
                     result = enrich_prompt(
@@ -433,15 +433,15 @@ class TestEnrichPromptThreeLayerIntegration:
     def test_layer_exception_non_blocking(self, tmp_path):
         """An exception in one layer doesn't block the others."""
         with patch(
-            "context_orchestrator._cocoindex_context",
+            "src.core.context_orchestrator._cocoindex_context",
             return_value=self.COCO_CONTEXT,
         ):
             with patch(
-                "context_orchestrator._serena_context",
+                "src.core.context_orchestrator._serena_context",
                 side_effect=RuntimeError("Serena crashed"),
             ):
                 with patch(
-                    "context_orchestrator._engram_context",
+                    "src.core.context_orchestrator._engram_context",
                     return_value=self.ENGRAM_CONTEXT,
                 ):
                     result = enrich_prompt(
@@ -456,9 +456,9 @@ class TestEnrichPromptThreeLayerIntegration:
 
     def test_all_layers_empty_returns_empty(self, tmp_path):
         """When all three layers return None, enrich_prompt returns ''."""
-        with patch("context_orchestrator._cocoindex_context", return_value=None):
-            with patch("context_orchestrator._serena_context", return_value=None):
-                with patch("context_orchestrator._engram_context", return_value=None):
+        with patch("src.core.context_orchestrator._cocoindex_context", return_value=None):
+            with patch("src.core.context_orchestrator._serena_context", return_value=None):
+                with patch("src.core.context_orchestrator._engram_context", return_value=None):
                     result = enrich_prompt(
                         domain="python-testing",
                         prompt="Fix ScoreStore",
@@ -472,10 +472,10 @@ class TestEnrichPromptThreeLayerIntegration:
         repo = tmp_path / "fake-repo"
         repo.mkdir()
 
-        with patch("context_orchestrator._cocoindex_context", return_value=None):
-            with patch("context_orchestrator._engram_context", return_value=None):
+        with patch("src.core.context_orchestrator._cocoindex_context", return_value=None):
+            with patch("src.core.context_orchestrator._engram_context", return_value=None):
                 with patch(
-                    "context_orchestrator._serena_context"
+                    "src.core.context_orchestrator._serena_context"
                 ) as mock_serena:
                     mock_serena.return_value = self.SERENA_CONTEXT
                     enrich_prompt(
@@ -495,14 +495,14 @@ class TestEnrichPromptThreeLayerIntegration:
         'python-coding' triggers Serena only (not CocoIndex, not Engram).
         """
         with patch(
-            "context_orchestrator._cocoindex_context"
+            "src.core.context_orchestrator._cocoindex_context"
         ) as mock_coco:
             with patch(
-                "context_orchestrator._serena_context",
+                "src.core.context_orchestrator._serena_context",
                 return_value=self.SERENA_CONTEXT,
             ):
                 with patch(
-                    "context_orchestrator._engram_context"
+                    "src.core.context_orchestrator._engram_context"
                 ) as mock_engram:
                     result = enrich_prompt(
                         domain="python-coding",
@@ -522,7 +522,7 @@ class TestEnrichPromptThreeLayerIntegration:
 class TestEngramContext:
     def test_no_trajectories_returns_none(self):
         """File-based _engram_context returns None when no trajectory files exist."""
-        with patch("trajectory.list_trajectories", return_value=[]):
+        with patch("src.sensors.trajectory.list_trajectories", return_value=[]):
             ctx = _engram_context("python-testing", "any prompt", 3)
         assert ctx is None
 
@@ -536,7 +536,7 @@ class TestEngramContext:
                 "response": "Fixed the run_task function",
             },
         ]
-        with patch("trajectory.list_trajectories", return_value=mock_trajs):
+        with patch("src.sensors.trajectory.list_trajectories", return_value=mock_trajs):
             ctx = _engram_context("python-testing", "Fix run_task", 3)
         assert ctx is not None
         assert "Past similar trajectories" in ctx
@@ -552,7 +552,7 @@ _HAS_TRAJECTORIES = _REAL_TRAJ_DIR.exists()
 @pytest.fixture
 def real_traj_dir(monkeypatch):
     """Restore TRAJECTORY_DIR to the real path (conftest redirects it to tmp)."""
-    import trajectory as traj_mod
+    import src.sensors.trajectory as traj_mod
     monkeypatch.setattr(traj_mod, "TRAJECTORY_DIR", _REAL_TRAJ_DIR)
 
 
@@ -655,7 +655,7 @@ class TestLiveVaultIntegration:
                      "snippet": "Review checklist..."},
                 ]
 
-        import context_orchestrator as co
+        import src.core.context_orchestrator as co
         import types
         fake_mod = types.ModuleType("fake_obsidian_client")
         fake_mod.ObsidianClient = lambda **kw: FakeClient()
@@ -675,7 +675,7 @@ class TestLiveVaultIntegration:
             def simple_search(self, query, top_k=3):
                 return []
 
-        import context_orchestrator as co
+        import src.core.context_orchestrator as co
         import types
         fake_mod = types.ModuleType("fake_obsidian_client_empty")
         fake_mod.ObsidianClient = lambda **kw: FakeClient()
@@ -691,7 +691,7 @@ class TestLiveVaultIntegration:
             def simple_search(self, query, top_k=3):
                 return [{"filename": "Welcome.md", "snippet": "KnowledgeCore bootstrap."}]
 
-        import context_orchestrator as co
+        import src.core.context_orchestrator as co
         import types
         fake_mod = types.ModuleType("fake_obsidian_client_enrich")
         fake_mod.ObsidianClient = lambda **kw: FakeClient()

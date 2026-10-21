@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 def _is_git_broker_wrapper(entry: str) -> bool:
@@ -90,20 +90,19 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     them (and the cached singletons) at tmp_path so local test runs never
     pollute the live dashboard data.
     """
-    import activity_log
+    import src.sensors.activity_log as activity_log
     import bookbag
-    import decision_log
-    import escalation_log
-    import scoring
-    import sleep_state
-    import trajectory
-
+    import src.sensors.decision_log as decision_log
+    import src.sensors.escalation_log as escalation_log
+    import src.core.scoring as scoring
+    import src.crew.sleep_state as sleep_state
+    import src.sensors.trajectory as trajectory
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "activity_log.json")
-    monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "decision_log.json")
-    monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "escalation_log.json")
+    monkeypatch.setattr(activity_log, "ACTIVITY_LOG_PATH", data_dir / "src.sensors.activity_log.json")
+    monkeypatch.setattr(decision_log, "DECISION_LOG_PATH", data_dir / "src.sensors.decision_log.json")
+    monkeypatch.setattr(escalation_log, "LOG_PATH", data_dir / "src.sensors.escalation_log.json")
     monkeypatch.setattr(sleep_state, "SCORES_PATH", data_dir / "scores.json")
 
     # Redirect trajectory and bookbag writes to temp so tests that
@@ -121,7 +120,7 @@ def isolate_data_dirs(tmp_path, monkeypatch):
     # Isolate crew_runs.json so tests that exercise dispatch_crew /
     # issue_bridge paths never pollute the real data/crew_runs.json.
     # Tests that need a specific path still pass it explicitly via monkeypatch.
-    import crew_dispatch
+    import src.crew.crew_dispatch as crew_dispatch
     import issue_bridge
 
     # Bridge tests must never use pr_creator's independent `gh` subprocess
@@ -177,7 +176,7 @@ def verify_lens_module_loads():
     import should work. This fixture acts as a smoke test.
     """
     from lenses import get_lens_prompt
-    from adversarial_reviewer import LensType
+    from src.review.adversarial_reviewer import LensType
 
     assert get_lens_prompt(LensType.CORRECTNESS)
     assert get_lens_prompt(LensType.SECURITY)

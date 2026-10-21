@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import executor
-from router_experience import RouterExperience, combo_candidates_from
+import src.crew.executor as executor
+from src.core.router_experience import RouterExperience, combo_candidates_from
 
 
 def test_cold_start_honours_combo_map(monkeypatch, tmp_path):

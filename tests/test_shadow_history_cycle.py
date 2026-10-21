@@ -41,9 +41,9 @@ def test_bridge_loads_shadow_history_once_per_cycle(monkeypatch, tmp_path, store
     monkeypatch.setattr(issue_bridge, "PROCESSED_FILE", tmp_path / "processed.json")
     monkeypatch.setattr(issue_bridge, "RETRY_FILE", tmp_path / "retry.json")
     monkeypatch.setattr(issue_bridge, "fetch_issues", lambda repo, labels: issues)
-    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-    monkeypatch.setattr("repo_reader.clone_repo", lambda repo: tmp_path)
-    monkeypatch.setattr("repo_reader.build_codebase_context", lambda path, text: "")
+    monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda repo: tmp_path)
+    monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda path, text: "")
     monkeypatch.setattr(issue_bridge, "_run_verify_gate", lambda *args, **kwargs: None)
     monkeypatch.setattr(issue_bridge, "_run_entire_sensor", lambda *args: None)
     monkeypatch.setattr(issue_bridge, "_run_adversarial_review", lambda *args, **kwargs: {
@@ -55,10 +55,10 @@ def test_bridge_loads_shadow_history_once_per_cycle(monkeypatch, tmp_path, store
     monkeypatch.setattr(issue_bridge, "_mark_github_issue", lambda *args, **kwargs: None)
     monkeypatch.setattr(issue_bridge, "notify_issue_alert", lambda *args, **kwargs: True)
     monkeypatch.setattr(store, "list_agents", lambda: ["coder"])
-    monkeypatch.setattr("director.evaluate_and_update", lambda task, score, store: {
+    monkeypatch.setattr("src.core.director.evaluate_and_update", lambda task, score, store: {
         "old_score": 80, "new_score": score, "gate_crossed": False,
     })
-    monkeypatch.setattr("director.run_task", lambda **kwargs: {
+    monkeypatch.setattr("src.core.director.run_task", lambda **kwargs: {
         "status": "success",
         "agent": "coder",
         "domain": "debugging",

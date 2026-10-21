@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from activity_log import ActivityLog, get_log  # noqa: E402
+from src.sensors.activity_log import ActivityLog, get_log  # noqa: E402
 
 
 def main() -> int:

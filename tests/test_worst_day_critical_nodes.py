@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 # ── N5.1: registry corruption must fail CLOSED, not empty ────────────────────

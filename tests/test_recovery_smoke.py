@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI = REPO_ROOT / "recovery.py"
+CLI = REPO_ROOT / "src" / "core" / "recovery.py"
 
 _SCRUBBED_KEYS = (
     "REQUIRED_KEY", "OPTIONAL_KEY",
@@ -137,7 +137,7 @@ def test_smoke_end_to_end_against_target_repo(tmp_path, target_repo):
     assert by_cmd["whitespace-check"]["exit"] == 0
 
     # Durable state journal is inspectable after process exit.
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
     ops = StateJournal(evidence / "state.sqlite3").operations()
     assert len(ops) == 1
     assert ops[0].kind == "recovery-smoke"
@@ -194,7 +194,7 @@ def test_smoke_fails_closed_when_verification_fails(tmp_path, target_repo):
     gate = json.loads((evidence / "gate-evidence.json").read_text())
     assert gate["disposition"] == "failed"
     # Failure is durably journaled; candidate identity still persisted.
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
     ops = StateJournal(evidence / "state.sqlite3").operations()
     assert ops[0].status == "failed"
     assert [e["kind"] for e in ops[0].events] == ["gate", "failed"]

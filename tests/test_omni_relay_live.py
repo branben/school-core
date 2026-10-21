@@ -12,8 +12,8 @@ import os
 
 import pytest
 
-from model_relay import ModelRelayBlocked, RelayPolicy, TaskScopedModelRelay
-from omni_relay import OmniRouteTransport, TransportError, from_env
+from src.tools.model_relay import ModelRelayBlocked, RelayPolicy, TaskScopedModelRelay
+from src.tools.omni_relay import OmniRouteTransport, TransportError, from_env
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("OMNIROUTE_API_KEY"),

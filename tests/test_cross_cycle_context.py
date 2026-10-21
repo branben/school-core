@@ -1,16 +1,16 @@
 import json
 
-from context_orchestrator import enrich_prompt
-from consolidation_writer import write_consolidation
-from trajectory import capture_trajectory
+from src.core.context_orchestrator import enrich_prompt
+from src.core.consolidation_writer import write_consolidation
+from src.sensors.trajectory import capture_trajectory
 
 
 def test_new_cycle_receives_layer2_and_layer3_context(tmp_path, monkeypatch):
     """A fresh session can use the previous cycle's trajectory and archive."""
     trajectory_dir = tmp_path / "trajectories"
     consolidation_dir = tmp_path / "consolidation"
-    monkeypatch.setattr("trajectory.TRAJECTORY_DIR", trajectory_dir)
-    monkeypatch.setattr("consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.sensors.trajectory.TRAJECTORY_DIR", trajectory_dir)
+    monkeypatch.setattr("src.core.consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
 
     capture_trajectory(
         domain="python-testing",
@@ -51,8 +51,8 @@ def test_new_cycle_receives_layer2_and_layer3_context(tmp_path, monkeypatch):
         ],
     )
 
-    monkeypatch.setattr("context_orchestrator._cocoindex_context", lambda *args: None)
-    monkeypatch.setattr("context_orchestrator._serena_context", lambda *args: None)
+    monkeypatch.setattr("src.core.context_orchestrator._cocoindex_context", lambda *args: None)
+    monkeypatch.setattr("src.core.context_orchestrator._serena_context", lambda *args: None)
     context = enrich_prompt(
         domain="python-testing",
         prompt="Continue parser test work",

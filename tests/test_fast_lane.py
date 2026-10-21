@@ -1,6 +1,6 @@
 """Tests for the solo-dev fast lane policy."""
 
-from fast_lane import REQUIRED_CHECKS, decide_fast_lane, summarize_lane_metrics
+from src.crew.fast_lane import REQUIRED_CHECKS, decide_fast_lane, summarize_lane_metrics
 
 
 def _task(**overrides):

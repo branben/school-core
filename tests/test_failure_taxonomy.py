@@ -1,6 +1,6 @@
 """Tests for the normalized school-loop outcome contract."""
 
-from failure_taxonomy import FAILURE_EDGES, FAILURE_MODES, NEXT_ACTIONS, normalize_outcome
+from src.core.failure_taxonomy import FAILURE_EDGES, FAILURE_MODES, NEXT_ACTIONS, normalize_outcome
 
 
 def test_clean_accepted_run_is_completed_and_closes():

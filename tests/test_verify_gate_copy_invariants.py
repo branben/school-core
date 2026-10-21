@@ -31,9 +31,7 @@ from pathlib import Path
 
 import pytest
 
-import verify_gate
-
-
+import src.review.verify_gate as verify_gate
 # --- 1. announcement must match the copy -------------------------------------
 
 def test_announced_dirs_all_exist_after_copy(tmp_path):

@@ -34,7 +34,7 @@ def _load(module_name: str, path: Path):
 
 
 def test_find_worktree_by_prefix_matches_canonical_and_reboot_suffixes():
-    from orca_executor import OrcaExecutionManager
+    from src.crew.orca_executor import OrcaExecutionManager
 
     mgr = OrcaExecutionManager.__new__(OrcaExecutionManager)
 

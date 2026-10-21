@@ -1,8 +1,8 @@
 """Tests for cost-aware routing (U2)."""
 
 import pytest
-from routing import route_task, _best_cost_aware
-from scoring import ScoreStore, COST_TIERS
+from src.core.routing import route_task, _best_cost_aware
+from src.core.scoring import ScoreStore, COST_TIERS
 
 
 def _make_store():

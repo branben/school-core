@@ -66,7 +66,7 @@ TASK_RESULT = {"response": "print('ok')", "agent": "coder"}
 def _review_that_crashes():
     """Force _run_adversarial_review down its except path."""
     return patch(
-        "adversarial_reviewer.AdversarialReviewer.review",
+        "src.review.adversarial_reviewer.AdversarialReviewer.review",
         side_effect=RuntimeError("model unreachable"),
     )
 
@@ -129,7 +129,7 @@ class TestSuccessfulReviewUnaffected:
         fake = type("R", (), {"to_dict": lambda self: {
             "verdict": "PASS", "score": 88.0, "findings": [],
         }})()
-        with patch("adversarial_reviewer.AdversarialReviewer.review", return_value=fake):
+        with patch("src.review.adversarial_reviewer.AdversarialReviewer.review", return_value=fake):
             review = issue_bridge._run_adversarial_review(TASK_RESULT, ISSUE, "")
         assert review["verdict"] == "PASS"
         assert review["score"] == 88.0
@@ -141,7 +141,7 @@ class TestSuccessfulReviewUnaffected:
         fake = type("R", (), {"to_dict": lambda self: {
             "verdict": "FAIL", "score": 20.0, "findings": [{"severity": "HIGH"}],
         }})()
-        with patch("adversarial_reviewer.AdversarialReviewer.review", return_value=fake):
+        with patch("src.review.adversarial_reviewer.AdversarialReviewer.review", return_value=fake):
             review = issue_bridge._run_adversarial_review(TASK_RESULT, ISSUE, "")
         assert review["verdict"] == "FAIL"
         assert review["score"] == 20.0

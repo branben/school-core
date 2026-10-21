@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from sleep_state import (
+from src.crew.sleep_state import (
     SleepState,
     ConsolidationArtifact,
     SessionNotFoundError,
@@ -20,7 +20,7 @@ from sleep_state import (
     load_consolidation,
     read_library_log,
 )
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -30,9 +30,9 @@ def tmp_sessions_dir(tmp_path, monkeypatch):
     """Redirect all session paths to a temp directory."""
     sessions_dir = tmp_path / "sessions"
     consolidation_dir = sessions_dir / "consolidation"
-    monkeypatch.setattr("sleep_state.SESSIONS_DIR", sessions_dir)
-    monkeypatch.setattr("sleep_state.CONSOLIDATION_DIR", consolidation_dir)
-    monkeypatch.setattr("sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
+    monkeypatch.setattr("src.crew.sleep_state.SESSIONS_DIR", sessions_dir)
+    monkeypatch.setattr("src.crew.sleep_state.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.crew.sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
     return sessions_dir
 
 

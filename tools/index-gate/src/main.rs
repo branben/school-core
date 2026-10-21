@@ -212,7 +212,7 @@ fn verify_claim(claim: &str, root: &Path, receipts: &[Receipt]) -> Verdict {
     for r in receipts {
         // Exact match, or a match on a whole trailing path SEGMENT. A bare
         // ends_with() is too loose: it let "tests/test_verify_gate.py" back a
-        // claim about "verify_gate.py", which is a different file.
+        // claim about "src/review/verify_gate.py", which is a different file.
         let covered = r.files.iter().any(|f| {
             f == &needle
                 || f.strip_prefix(&needle).is_some_and(|rest| rest.starts_with('/'))
@@ -398,9 +398,9 @@ fn cmd_selftest(root: &Path) -> ExitCode {
         tool: "ripwire".into(),
         root: root.display().to_string(),
         ts: now(),
-        files: vec!["verify_gate.py".into()],
+        files: vec!["src/review/verify_gate.py".into()],
     };
-    let v = verify_claim("verify_gate.py:10", root, std::slice::from_ref(&r));
+    let v = verify_claim("src/review/verify_gate.py:10", root, std::slice::from_ref(&r));
     if v.status == "OK" {
         println!("  ok   fresh receipt backs its file");
     } else {
@@ -411,7 +411,7 @@ fn cmd_selftest(root: &Path) -> ExitCode {
     // 3. A STALE receipt must NOT count as support -- this is the regression that
     //    would make the gate pass forever on a receipt nobody refreshed.
     r.ts = now().saturating_sub(FRESHNESS_SECS + 60);
-    let v = verify_claim("verify_gate.py:10", root, std::slice::from_ref(&r));
+    let v = verify_claim("src/review/verify_gate.py:10", root, std::slice::from_ref(&r));
     if v.status == "STALE" {
         println!("  ok   stale receipt is rejected");
     } else {
@@ -428,10 +428,10 @@ fn cmd_selftest(root: &Path) -> ExitCode {
         tool: "ripwire".into(),
         root: root.display().to_string(),
         ts,
-        files: vec!["verify_gate.py".into()],
+        files: vec!["src/review/verify_gate.py".into()],
     };
     let over = verify_claim(
-        &format!("verify_gate.py:{}", line_count(root, "verify_gate.py").unwrap_or(1) + 500),
+        &format!("src/review/verify_gate.py:{}", line_count(root, "src/review/verify_gate.py").unwrap_or(1) + 500),
         root,
         &[mk(now())],
     );
@@ -443,7 +443,7 @@ fn cmd_selftest(root: &Path) -> ExitCode {
     }
 
     // 5. A real in-range line must still pass -- guards 4 must not have broken 2.
-    let inr = verify_claim("verify_gate.py:1", root, &[mk(now())]);
+    let inr = verify_claim("src/review/verify_gate.py:1", root, &[mk(now())]);
     if inr.status == "OK" {
         println!("  ok   in-range line still accepted");
     } else {
@@ -462,7 +462,7 @@ fn cmd_selftest(root: &Path) -> ExitCode {
     }
 
     // 7. An unknown tool must not be able to mint a receipt.
-    let code = cmd_receipt("not-an-indexer", root, &["verify_gate.py".to_string()]);
+    let code = cmd_receipt("not-an-indexer", root, &["src/review/verify_gate.py".to_string()]);
     if code == ExitCode::from(2) {
         println!("  ok   unknown indexer refused");
     } else {
@@ -543,7 +543,7 @@ fn main() -> ExitCode {
             let tool = arg("tool").unwrap_or_default();
             // Positionals are every argument that is not the subcommand and not
             // a --flag/--flag value. Filtering on '/' dropped bare filenames,
-            // which is how "verify_gate.py" silently went unrecorded.
+            // which is how "src/review/verify_gate.py" silently went unrecorded.
             let mut skip = false;
             let files: Vec<String> = args
                 .iter()

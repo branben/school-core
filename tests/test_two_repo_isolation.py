@@ -21,19 +21,19 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from candidate_manifest import CandidateManifest, CandidateStore, create_candidate
-from candidate_gate import run_candidate_gate, evidence_is_current, GateEvidenceError
-from candidate_pr_gate import (
+from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, create_candidate
+from src.bridge.candidate_gate import run_candidate_gate, evidence_is_current, GateEvidenceError
+from src.bridge.candidate_pr_gate import (
     GateDecision,
     TeacherApproval,
     VerificationEvidence,
     gate_candidate_publication,
     GateDenied,
 )
-from candidate_pr import publish_candidate_pr, CandidatePublicationError
-from candidate_binding import bind_trusted_evidence, CandidateBinding
+from src.bridge.candidate_pr import publish_candidate_pr, CandidatePublicationError
+from src.bridge.candidate_binding import bind_trusted_evidence, CandidateBinding
 from bookbag import write_bookbag, read_bookbag, REPO_GLOBAL
-from verify_gate import run_verify_gate
+from src.review.verify_gate import run_verify_gate
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -297,8 +297,8 @@ class TestCrossRepoReview:
 
     def test_two_judge_review_persists_to_correct_namespace(self, repo_a: Path, repo_b: Path) -> None:
         """Two-judge review for repo A persists to repo A's namespace, not repo B's."""
-        from director import _run_two_judge_review
-        from adversarial_reviewer import ReviewResult, Verdict
+        from src.core.director import _run_two_judge_review
+        from src.review.adversarial_reviewer import ReviewResult, Verdict
 
         bead = "bead-two-judge-cross-repo"
         repo_a_slug = "octocat/Hello-World"
@@ -322,8 +322,8 @@ class TestCrossRepoReview:
             def review(self, **kwargs):
                 return ReviewResult(verdict=Verdict.PASS, findings=[])
 
-        with patch("director.AdversarialReviewer", _FakeReviewer), \
-             patch("director.call_model", side_effect=RuntimeError("no model in tests")):
+        with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+             patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")):
             result = _run_two_judge_review(
                 bead=bead,
                 output="here is the doc",
@@ -438,7 +438,7 @@ class TestConfigDrivenIsolation:
 
     def test_second_repo_configured(self) -> None:
         """config/github.yaml has a second repo in target_repos."""
-        from github_fetcher import load_config
+        from src.tools.github_fetcher import load_config
         cfg = load_config()
         target_repos = cfg.get("target_repos", [])
         assert len(target_repos) >= 1
@@ -447,7 +447,7 @@ class TestConfigDrivenIsolation:
 
     def test_second_repo_has_own_checkout(self) -> None:
         """The second repo has its own checkout path."""
-        from github_fetcher import load_config
+        from src.tools.github_fetcher import load_config
         cfg = load_config()
         target_repos = cfg.get("target_repos", [])
         for entry in target_repos:
@@ -460,7 +460,7 @@ class TestConfigDrivenIsolation:
 
     def test_second_repo_has_own_pr_destination(self) -> None:
         """The second repo has its own PR destination."""
-        from github_fetcher import load_config
+        from src.tools.github_fetcher import load_config
         cfg = load_config()
         target_repos = cfg.get("target_repos", [])
         for entry in target_repos:
@@ -473,7 +473,7 @@ class TestConfigDrivenIsolation:
 
     def test_second_repo_has_verification_policy(self) -> None:
         """The second repo has its own verification policy."""
-        from github_fetcher import load_config
+        from src.tools.github_fetcher import load_config
         cfg = load_config()
         target_repos = cfg.get("target_repos", [])
         for entry in target_repos:

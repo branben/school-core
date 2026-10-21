@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from activity_server import ActivityHandler
+from src.sensors.activity_server import ActivityHandler
 
 TRAJECTORIES_DIR = Path(__file__).parent.parent / "data" / "trajectories"
 

@@ -14,17 +14,17 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from candidate_manifest import CandidateStore
+from src.bridge.candidate_manifest import CandidateStore
 
 import pytest
 
-from student_vm_runner import (
+from src.crew.student_vm_runner import (
     SmolVmRunner,
     StudentTaskRequest,
     StudentVMBlocked,
     dispatch_student_task,
 )
-from verifier_vm import (
+from src.crew.verifier_vm import (
     SmolVmVerifier,
     TrustedCheckManifest,
     VerifiedStudentFlow,
@@ -183,7 +183,7 @@ def test_flow_refuses_trusted_manifest_base_sha_mismatch(task_repo, tmp_path):
 def test_flow_rejects_evidence_for_a_different_candidate(task_repo, tmp_path):
     """Even if the verifier misbehaves and returns evidence bound elsewhere,
     the flow must refuse it — the join is fail-closed."""
-    from verifier_vm import VerifierEvidence
+    from src.crew.verifier_vm import VerifierEvidence
 
     class LyingVerifier:
         def verify(self, **kwargs):

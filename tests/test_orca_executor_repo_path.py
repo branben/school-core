@@ -20,8 +20,8 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import orca_executor  # noqa: E402
-from orca_executor import OrcaExecutionManager  # noqa: E402
+import src.crew.orca_executor as orca_executor
+from src.crew.orca_executor import OrcaExecutionManager  # noqa: E402
 
 
 def _git_toplevel() -> str:

@@ -341,7 +341,7 @@ class TestGenerateCurriculum:
 # ── generate_all ────────────────────────────────────────────────────────────────
 
 class TestGenerateAll:
-    @patch("trajectory.count_trajectories")
+    @patch("src.sensors.trajectory.count_trajectories")
     @patch("curricula.generator.trajectories_for_training")
     def test_generates_multiple_domains(self, mock_traj_fn, mock_count):
         # Simulate 3 domains with trajectories
@@ -359,7 +359,7 @@ class TestGenerateAll:
         assert "code-implementation" in results
         assert "python-coding" in results
 
-    @patch("trajectory.count_trajectories")
+    @patch("src.sensors.trajectory.count_trajectories")
     @patch("curricula.generator.trajectories_for_training")
     def test_skipped_domains_not_included(self, mock_traj_fn, mock_count):
         mock_count.return_value = {"_default": 10}

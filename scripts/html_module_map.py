@@ -235,13 +235,8 @@ def render(root: Path, symbol: str | None) -> str:
     local_names = repo_module_names(root)
 
     hit_box_names: set[str] = set()
-    symbol_rows: list[str] = []
     if symbol:
         hits = find_symbol(root, symbol)
-        symbol_rows = [
-            "<tr><td class='fn'>{0}</td><td>{1}</td></tr>".format(esc(rel), esc(box))
-            for rel, box in hits
-        ]
         hit_box_names = {box for _, box in hits}
 
     # --- module layout boxes -------------------------------------------------

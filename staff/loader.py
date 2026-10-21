@@ -11,13 +11,7 @@ from typing import Optional
 from staff.plugin import PluginTrust
 
 
-@dataclass
-class ScoreRecommendation:
-    agent: str
-    domain: str
-    suggested_delta: float
-    reason: str
-    source_plugin: str
+from src.core.scoring import ScoreRecommendation
 
 
 @dataclass

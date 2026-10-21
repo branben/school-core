@@ -19,27 +19,30 @@
 verify:
   # ── Python checks (only run when .py files are in the diff) ──────────────
   - name: core-python-compile
-    cmd: python3 -m compileall -q *.py
+    # src/ holds the moved packages; `-l .` also compiles the remaining
+    # root-level modules (bookbag, conductor, issue_bridge, review_packet)
+    # without recursing into the rest of the tree.
+    cmd: python3 -m compileall -q src/ && python3 -m compileall -q -l .
     cwd: .
     languages: [python]
 
   - name: core-python-import
-    cmd: python3 -c "import student_vm_runner, verifier_vm, model_relay, candidate_pr"
+    cmd: python3 -c "import src.crew.student_vm_runner, src.crew.verifier_vm, src.tools.model_relay, src.bridge.candidate_pr"
     cwd: .
     languages: [python]
 
   - name: student-vm-runner-typecheck
-    cmd: mypy --strict --follow-imports=silent student_vm_runner.py model_relay.py verifier_vm.py
+    cmd: mypy --strict --follow-imports=silent src/crew/student_vm_runner.py src/tools/model_relay.py src/crew/verifier_vm.py
     cwd: .
     languages: [python]
 
   - name: pr-provider-typecheck
-    cmd: mypy --strict --follow-imports=silent pr_provider.py candidate_pr.py
+    cmd: mypy --strict --follow-imports=silent src/bridge/pr_provider.py src/bridge/candidate_pr.py
     cwd: .
     languages: [python]
 
   - name: smol-cloud-runner-import
-    cmd: python3 -c "import smol_cloud_runner"
+    cmd: python3 -c "import src.crew.smol_cloud_runner"
     cwd: .
     languages: [python]
 

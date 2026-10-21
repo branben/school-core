@@ -3,9 +3,9 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import director
+import src.core.director as director
 import issue_bridge
-from adversarial_reviewer import ReviewResult, Verdict
+from src.review.adversarial_reviewer import ReviewResult, Verdict
 from bookbag import write_bookbag
 from review_packet import ReviewPacket
 
@@ -58,8 +58,8 @@ def test_director_emits_packet_alongside_legacy_review_fields():
         task="write docs",
         output="docs",
     )
-    with patch("director.AdversarialReviewer", _FakeReviewer), \
-         patch("director.call_model", side_effect=RuntimeError("no model in test")):
+    with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in test")):
         result = director._run_two_judge_review(
             bead=bead,
             output="docs",
@@ -110,9 +110,9 @@ def test_bridge_reuses_packet_instead_of_duplicate_gate_or_review(
         "domain": "code-implementation",
         "difficulty": "easy",
     }])
-    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-    monkeypatch.setattr("repo_reader.clone_repo", lambda repo: tmp_path)
-    monkeypatch.setattr("repo_reader.build_codebase_context", lambda path, text: "")
+    monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda repo: tmp_path)
+    monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda path, text: "")
     verify = MagicMock(return_value={"passed": True, "ran": 1, "failures": []})
     duplicate_review = MagicMock(return_value={"verdict": "FAIL", "score": 0, "findings": []})
     monkeypatch.setattr(issue_bridge, "_run_verify_gate", verify)
@@ -130,7 +130,7 @@ def test_bridge_reuses_packet_instead_of_duplicate_gate_or_review(
         "coo_score": 88, "combined_score": 89, "findings": [], "accepted": True,
         "build_verification": json.dumps({"passed": True, "ran": 1, "failures": []}),
     }
-    monkeypatch.setattr("director.run_task", lambda **kwargs: {
+    monkeypatch.setattr("src.core.director.run_task", lambda **kwargs: {
         "status": "success", "agent": "coder", "domain": "code-implementation",
         "difficulty": "easy", "response": "done", "task_score": 89,
         "review": review, "review_packet": _packet().to_dict(),

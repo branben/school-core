@@ -8,9 +8,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-import agentmail_client
-
-
+import src.tools.agentmail_client as agentmail_client
 class _Response:
     def __init__(self, payload: bytes = b"{}") -> None:
         self.payload = payload
@@ -39,9 +37,9 @@ def _http_error(code: int, retry_after: str | None = None) -> HTTPError:
 
 
 class TestReqRetryPolicy:
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_429_honors_retry_after_then_succeeds(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -53,9 +51,9 @@ class TestReqRetryPolicy:
         assert mock_urlopen.call_count == 2
         mock_sleep.assert_called_once_with(3)
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_large_retry_after_is_capped(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -66,9 +64,9 @@ class TestReqRetryPolicy:
         assert result == {"ok": True}
         mock_sleep.assert_called_once_with(60)
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_5xx_uses_capped_exponential_backoff(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -84,9 +82,9 @@ class TestReqRetryPolicy:
         assert mock_urlopen.call_count == 3
         assert mock_sleep.call_args_list == [call(5), call(10)]
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_non_retryable_4xx_fails_without_retry(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -99,9 +97,9 @@ class TestReqRetryPolicy:
         assert mock_urlopen.call_count == 1
         mock_sleep.assert_not_called()
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_final_transient_failure_stops_at_attempt_budget(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -114,9 +112,9 @@ class TestReqRetryPolicy:
         assert mock_urlopen.call_count == 3
         assert mock_sleep.call_args_list == [call(5), call(10)]
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer secret"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_url_error_is_retried_then_raised(
         self, mock_urlopen, mock_sleep, mock_headers
     ):
@@ -129,9 +127,9 @@ class TestReqRetryPolicy:
         assert mock_urlopen.call_count == 2
         assert mock_sleep.call_args_list == [call(5)]
 
-    @patch("agentmail_client._headers", return_value={"Authorization": "Bearer very-secret-token"})
-    @patch("agentmail_client.time.sleep")
-    @patch("agentmail_client.urllib.request.urlopen")
+    @patch("src.tools.agentmail_client._headers", return_value={"Authorization": "Bearer very-secret-token"})
+    @patch("src.tools.agentmail_client.time.sleep")
+    @patch("src.tools.agentmail_client.urllib.request.urlopen")
     def test_retry_log_does_not_include_authorization_value(
         self, mock_urlopen, mock_sleep, mock_headers, caplog
     ):

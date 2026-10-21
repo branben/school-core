@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import threading
 
-from crew_admission import decide_admission
+from src.crew.crew_admission import decide_admission
 
 
 def _simulate_fixed_caller_admission(configured_cap, runner_slots, n_issues):

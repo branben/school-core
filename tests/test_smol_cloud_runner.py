@@ -14,14 +14,14 @@ import traceback
 
 import pytest
 
-from smol_cloud_runner import (
+from src.crew.smol_cloud_runner import (
     SmolCloudResponse,
     SmolCloudRunner,
     _CloudApiStatusError,
     _sanitize_error_body,
 )
-from student_vm_runner import StudentTaskRequest, StudentVMBlocked
-from verifier_vm import (
+from src.crew.student_vm_runner import StudentTaskRequest, StudentVMBlocked
+from src.crew.verifier_vm import (
     TrustedCheckManifest,
     VerifierEvidence,
 )

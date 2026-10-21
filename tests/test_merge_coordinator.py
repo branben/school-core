@@ -2,9 +2,9 @@
 
 import pytest
 
-from exact_sha_verifier import CheckRun, HumanApproval, PullRequestSnapshot, RequiredPolicy, VerificationResult
-from merge_coordinator import CoordinatorError, MergeCoordinator
-from state_journal import ConflictError, StateJournal
+from src.review.exact_sha_verifier import CheckRun, HumanApproval, PullRequestSnapshot, RequiredPolicy, VerificationResult
+from src.tools.merge_coordinator import CoordinatorError, MergeCoordinator
+from src.sensors.state_journal import ConflictError, StateJournal
 
 
 class FakeEligibility:

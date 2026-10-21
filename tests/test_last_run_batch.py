@@ -114,10 +114,10 @@ def test_bridge_cycle_flushes_all_run_outcomes_once(tmp_path, monkeypatch, store
 
     with (
         patch("issue_bridge.fetch_issues", return_value=issues),
-        patch("repo_reader.cleanup_stale_caches"),
-        patch("repo_reader.clone_repo", return_value=tmp_path / "repo"),
-        patch("repo_reader.build_codebase_context", return_value=""),
-        patch("director.run_task", return_value={"status": "error", "error": "temporary"}),
+        patch("src.core.repo_reader.cleanup_stale_caches"),
+        patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "repo"),
+        patch("src.core.repo_reader.build_codebase_context", return_value=""),
+        patch("src.core.director.run_task", return_value={"status": "error", "error": "temporary"}),
         patch("issue_bridge.notify_issue_alert"),
         patch("issue_bridge.os.replace", wraps=os.replace) as replace,
     ):

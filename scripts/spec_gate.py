@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +80,6 @@ def _check_criterion(criterion: dict, result: dict) -> Tuple[bool, str]:
     Returns (passed: bool, reason: str).
     """
     cid = criterion.get("id", "unknown")
-    desc = criterion.get("description", "")
-    required = bool(criterion.get("required", True))
 
     # Built-in criterion IDs with their checks.
     if cid == "tests-pass":

@@ -2,11 +2,9 @@
 
 import json
 
-import director
+import src.core.director as director
 import issue_bridge
-import repo_reader
-
-
+import src.core.repo_reader as repo_reader
 def test_issue_bridge_persists_joined_pilot_evidence(
     tmp_path, monkeypatch, store
 ):

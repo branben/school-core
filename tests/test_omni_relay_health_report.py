@@ -22,14 +22,14 @@ import os
 
 import pytest
 
-from omni_relay import TransportError, _report_model_failure
-from omni_relay import _classify_upstream_failure
+from src.tools.omni_relay import TransportError, _report_model_failure
+from src.tools.omni_relay import _classify_upstream_failure
 
 
 def _ledger(tmp_path, monkeypatch):
     path = tmp_path / "model-probe.json"
     monkeypatch.setattr(
-        "omni_relay._FLEET_LEDGER_PATH", str(path), raising=True
+        "src.tools.omni_relay._FLEET_LEDGER_PATH", str(path), raising=True
     )
     return path
 
@@ -116,7 +116,7 @@ class TestLedgerReporting:
     def test_ledger_failure_never_raises(self, tmp_path, monkeypatch):
         # Observability must not convert a good inference into a failed one.
         monkeypatch.setattr(
-            "omni_relay._FLEET_LEDGER_PATH",
+            "src.tools.omni_relay._FLEET_LEDGER_PATH",
             "/nonexistent-dir-xyz/cannot-write.json",
             raising=True,
         )
@@ -159,7 +159,7 @@ class TestTransportIntegration:
             io.BytesIO(body),
         )
 
-        from omni_relay import OmniRouteTransport
+        from src.tools.omni_relay import OmniRouteTransport
         t = OmniRouteTransport(
             model="openrouter/ling:free", api_key="sk-test-key-for-tests")
 
@@ -189,7 +189,7 @@ class TestTransportIntegration:
             io.BytesIO(body),
         )
 
-        from omni_relay import OmniRouteTransport
+        from src.tools.omni_relay import OmniRouteTransport
         t = OmniRouteTransport(model="openrouter/ling:free")
 
         def _raise(*a, **k):

@@ -8,9 +8,9 @@ from http.server import HTTPServer
 
 import pytest
 
-import activity_server
-import beads_workspace
-from activity_server import ActivityHandler
+import src.sensors.activity_server as activity_server
+import src.bridge.beads_workspace as beads_workspace
+from src.sensors.activity_server import ActivityHandler
 
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)

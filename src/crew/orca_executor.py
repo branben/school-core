@@ -1,0 +1,1269 @@
+"""
+orca_executor.py — Execute student code and manage worktrees in Orca.
+
+Three main capabilities:
+
+1. **Code execution**: Uses Orca CLI to create disposable terminal sessions
+   for running student code extracted from LLM responses. Exit codes are
+   captured inline via `echo "XEXITCODE:$?"` marker.
+
+2. **Hermes agent execution**: Runs Hermes AI agent inside an Orca terminal
+   with multi-turn mode (`hermes chat -q --yolo --quiet --max-turns N`).
+   The turn count is difficulty-aware (easy=1, medium=3, hard=5) so complex
+   tasks get enough iterations to produce actual code, not just reconnaissance.
+   Output is captured via file redirect + sentinel polling.
+
+3. **Worktree lifecycle**: Creates proper Orca child worktrees (visible in
+   Orca's UI sidebar) for per-round student isolation. Each worktree gets
+   a structured StudentBrief + output files for audit trail.
+
+Safety:
+  - Code runs in an Orca terminal (same user, disposable session)
+  - Hard timeout on all execution (default 30s for code, 120s for Hermes)
+  - Temp files scoped by bead, cleaned up after execution
+  - Terminal closed after each task (no state leakage)
+
+Usage:
+    from src.crew.orca_executor import OrcaExecutionManager, CodeExtractor, StudentBrief
+
+    manager = OrcaExecutionManager()
+    code = CodeExtractor.extract("```python\nprint('hi')\n```")
+    result = manager.execute(code=code, bead="task-abc")
+
+    path = manager.create_worktree("study-coder-r1")
+    manager.write_student_brief(path, StudentBrief(...))
+
+    response = manager.run_hermes(worktree_path=path, bead="task-abc", task="Write a palindrome function")
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+from src.sensors.activity_log import get_log
+from src.tools.repo_default import default_repo
+
+# Shared activity log — used to emit student dispatch stages so a human
+# can watch async runs on the live dashboard (activity_server.py).
+_log = get_log()
+# ── Exceptions ────────────────────────────────────────────────────────────────
+
+
+class OrcaUnavailableError(Exception):
+    """Raised when Orca runtime is not available or cannot be started.
+
+    This is a hard failure — the pipeline cannot execute student code
+    without an Orca terminal. Callers should abort the task and report
+    the error rather than silently falling back to prose-only review.
+    """
+    pass
+
+
+# ── Data Structures ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class StudentBrief:
+    """Structured student brief per faculty-orchestrator contract.
+
+    Written into a student's worktree before dispatch so the student has
+    a clear task description, guardrails, expected output format, and
+    completion signal. Mirrors the contract from student-contract.md.
+    """
+
+    bead: str
+    role: str
+    domain: str
+    task: str
+    difficulty: str = "easy"
+    guardrails: list[str] = None
+    expected_output_format: str = "prose_answer"
+    verification: str = "none"
+    completion_signal: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "bead": self.bead,
+            "role": self.role,
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "task": self.task,
+            "guardrails": self.guardrails or [
+                "Work within this worktree only",
+                "No destructive operations",
+                "No git push or external API calls",
+            ],
+            "expected_output_format": self.expected_output_format,
+            "verification": self.verification,
+            "completion_signal": self.completion_signal or f".hermes/outputs/{self.bead}.json",
+        }
+
+
+@dataclass
+class ExecutionResult:
+    """Result of executing student code in an Orca terminal."""
+
+    stdout: str
+    stderr: str
+    exit_code: Optional[int]
+    timed_out: bool
+    duration_ms: int
+    error: Optional[str] = None
+    # True when the code could not be executed at all (syntax error or no
+    # executable entry point). The director escalates this to Severity.CRITICAL
+    # so a broken submission is auto-vetoed instead of accepting with score 100.
+    not_executable: bool = False
+    not_executable_reason: Optional[str] = None
+
+    @property
+    def passed(self) -> bool:
+        """Code executed successfully with no errors."""
+        return self.exit_code == 0 and not self.timed_out and self.error is None
+
+
+# ── Code Extraction ───────────────────────────────────────────────────────────
+
+
+_REDACTION_PLACEHOLDER_RE = re.compile(r"^[A-Z][A-Z0-9_]*_REDACTED$")
+
+
+def _bound_names(tree: ast.AST) -> set:
+    """Names the code itself defines (assignments, defs, imports, args)."""
+    bound: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            bound.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+    return bound
+
+
+class CodeExtractor:
+    """Extract runnable code from LLM responses.
+
+    LLMs often wrap code in ``` fences with optional language tags.
+    This class strips those fences and returns clean, runnable code.
+    """
+
+    @staticmethod
+    def extract(response: str, language: Optional[str] = None) -> str:
+        """Extract runnable code from an LLM response.
+
+        When ``language`` is given, only fences tagged with that language (or
+        untagged fences) are eligible. A fence explicitly tagged with a
+        DIFFERENT language (e.g. ```bash while python was requested) is never
+        returned: handing foreign-language text to the executor makes it fail
+        to parse and emits a spurious CRITICAL "not_executable" finding for a
+        submission that simply contained no code in the target language.
+        """
+        code = CodeExtractor._strip_fences(response, language)
+        if code:
+            return code
+
+        if language:
+            # A language-specific fence was requested but is absent. Accept an
+            # untagged fence; refuse a fence tagged with another language.
+            return CodeExtractor._strip_untagged_fences(response) or ""
+
+        code = CodeExtractor._strip_fences(response, None)
+        if code:
+            return code
+
+        return response.strip()
+
+    @staticmethod
+    def _strip_untagged_fences(text: str) -> Optional[str]:
+        """Strip fences carrying NO language tag (`` ```\\n...\\n``` ``).
+
+        Unlike :meth:`_strip_fences` with ``language=None``, this never matches
+        a fence that declares a language — ``\\s*`` cannot consume a word, so
+        ```python / ```bash are excluded.
+        """
+        pattern = r"```[ \t]*\n(.*?)\n```"
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return None
+
+    @staticmethod
+    def detect_language(repo_path: Optional[Path] = None) -> Optional[str]:
+        """Detect a repo's programming language from project config files.
+
+        Checks for well-known config files in the repo root and returns
+        a language identifier compatible with Orca execution (python,
+        typescript, javascript, go, rust, etc.). Returns None when no
+        config is found or ``repo_path`` is not provided.
+
+        The caller is responsible for knowing the repo path — this method
+        is purely a file-system probe, not a network or git-remote call.
+        """
+        if repo_path is None:
+            return None
+        rp = Path(repo_path).resolve()
+        if not rp.is_dir():
+            return None
+
+        # Ordered by specificity: more specific markers checked first.
+        markers: list[tuple[list[str], str]] = [
+            (["Cargo.toml"], "rust"),
+            (["go.mod"], "go"),
+            (["Gemfile"], "ruby"),
+            (["composer.json"], "php"),
+            (["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"], "python"),
+        ]
+        for files, lang in markers:
+            if any((rp / f).exists() for f in files):
+                return lang
+
+        # JavaScript/TypeScript: check package.json + additional markers.
+        pkg = rp / "package.json"
+        if pkg.exists():
+            try:
+                data = json.loads(pkg.read_text())
+                all_deps = {}
+                all_deps.update(data.get("dependencies", {}))
+                all_deps.update(data.get("devDependencies", {}))
+                has_typescript = any(
+                    "typescript" in k.lower() for k in all_deps
+                ) or (rp / "tsconfig.json").exists()
+                return "typescript" if has_typescript else "javascript"
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        return None
+
+    @staticmethod
+    def language_for_domain(
+        domain: str,
+        repo_path: Optional[Path] = None,
+    ) -> Optional[str]:
+        """Map a task domain to the expected code language.
+
+        When ``repo_path`` is provided, ``code-implementation`` uses the
+        repo's detected language instead of the hardcoded ``"python"``
+        default. This enables cross-repo dispatch: a TypeScript project
+        gets ``"typescript"`` while a Python project keeps ``"python"``.
+
+        Other domains (``python-testing``, ``terminal``, etc.) always
+        return their fixed mapping regardless of the repo.
+        """
+        # Domain-specific mappings always win.
+        domain_lang = {
+            "python-coding": "python",
+            "python-testing": "python",
+            "terminal": "bash",
+            "git-operations": "bash",
+        }
+        lang = domain_lang.get(domain)
+        if lang is not None:
+            return lang
+
+        # For code-implementation, detect from repo when available.
+        if domain == "code-implementation":
+            detected = CodeExtractor.detect_language(repo_path)
+            if detected is not None:
+                return detected
+            return "python"  # fallback when no repo context
+
+        return None
+
+    @staticmethod
+    def _strip_fences(text: str, language: Optional[str] = None) -> Optional[str]:
+        """Strip markdown ``` fences from text."""
+        if language:
+            pattern = rf"```{language}\n(.*?)\n```"
+        else:
+            pattern = r"```(?:\w+)?\n(.*?)\n```"
+
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return None
+
+    @staticmethod
+    def check_executable(code: str) -> Optional[str]:
+        """Check whether Python code is syntactically valid and has an
+        executable entry point.
+
+        Returns ``None`` when the code appears runnable (it compiles and
+        contains at least one top-level statement that *does* something —
+        a call, an assignment, an ``if`` block, etc.).
+
+        Returns a human-readable error string when the code is not
+        executable:
+
+        * **SyntaxError** — the code cannot be parsed at all.
+        * **No executable entry point** — the code compiles but consists
+          solely of ``def``/``class``/``import``/docstring statements with
+          no top-level invocation. Running ``python3 solution.py`` would
+          exit 0 while doing nothing, so the submission is a no-op.
+        """
+        if not code or not code.strip():
+            return None  # caller handles empty extraction separately
+
+        # 1. Syntax check — catch syntax errors before wasting an Orca terminal.
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            return f"SyntaxError: {e.msg} (line {e.lineno})"
+
+        # 1b. Unresolved sanitizer placeholder (e.g. ``[IP_REDACTED]``). Such
+        #     code parses (``s[[IP_REDACTED]-1]`` is a subscript) but raises
+        #     NameError the moment it runs, so the syntax gate alone is blind.
+        #     Only bare names are matched (string literals are unaffected),
+        #     and a name the code defines itself is never flagged.
+        bound = None
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Load)
+                and _REDACTION_PLACEHOLDER_RE.match(node.id)
+            ):
+                if bound is None:
+                    bound = _bound_names(tree)
+                if node.id in bound:
+                    continue
+                return (
+                    f"Unresolved placeholder: name '{node.id}' is a redaction "
+                    "marker, not defined code (NameError at runtime)"
+                )
+
+        # 2. Executable-statement check — a module that only contains
+        #    def/class/import/docstring produces no output when run.
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                continue  # module docstring or bare string literal
+            return None  # found a top-level executable statement
+
+        return (
+            "Not executable: code compiles but contains only definitions "
+            "(no top-level invocation — nothing runs when executed)"
+        )
+
+
+# ── Orca Execution Manager ────────────────────────────────────────────────────
+
+def _resolve_repo_path() -> Path:
+    """Resolve the real git repo root, not the file's directory.
+
+    When this module is imported from INSIDE a child worktree (e.g. a
+    teacher/student worktree spawned by Orca), Path(__file__).parent resolves
+    to that worktree, which Orca has NOT registered -> `orca worktree create
+    --repo <worktree>` fails with repo_not_found. `git rev-parse --show-toplevel`
+    walks up to the actual school-core checkout (which IS registered), so
+    teacher boot works no matter which worktree cwd the automation runs from.
+    """
+    here = Path(__file__).parent.expanduser().resolve()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(here), capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip()).resolve()
+    except Exception:
+        pass
+    return here
+
+
+# Module-level so it resolves the true repo root regardless of which worktree
+# (main / teacher / student) imports this module.
+REPO_PATH = _resolve_repo_path()
+
+
+class OrcaExecutionManager:
+    """Manages disposable Orca terminal sessions for code execution.
+
+    Creates terminals directly in the current Orca project context
+    (no worktree creation), executes code extracted from LLM responses,
+    and returns structured results with stdout, stderr, and exit codes.
+
+    REPO_PATH is a module-level constant (resolved via _resolve_repo_path so it
+    points at the true git root even when imported from a child worktree). This
+    class alias keeps ``self.REPO_PATH`` / ``mgr.REPO_PATH`` working for callers
+    and the live-Orca test suite, which access it as an instance attribute.
+    """
+    REPO_PATH = REPO_PATH  # alias module constant -> class attribute
+
+    # Temp space is repo-agnostic: derived from the self-configured default repo
+    # slug so a clone of sound-royale-ny writes under /tmp/<slug>-exec. Override
+    # with AGENT_SCHOOL_TEMP_DIR if you need an explicit location.
+    TEMP_BASE = Path(
+        os.environ.get("AGENT_SCHOOL_TEMP_DIR")
+        or f"/tmp/{default_repo().replace('/', '__')}-exec"
+    )
+
+    EXECUTABLE_DOMAINS = frozenset({
+        "python-coding",
+        "python-testing",
+        "code-implementation",
+        "git-operations",
+        "terminal",
+    })
+
+    DEFAULT_TIMEOUT_MS = 30000
+    HERMES_TIMEOUT_MS = 120000  # 2 min per turn for Hermes calls
+    # Per-turn timeout budget: each turn may involve an LLM API call (30-60s).
+    # Total timeout = max_turns * HERMES_TIMEOUT_PER_TURN_MS, so a 5-turn
+    # medium task gets 5 * 120s = 600s instead of the old flat 120s that
+    # killed multi-turn students mid-generation.
+    HERMES_TIMEOUT_PER_TURN_MS = 90000   # 90 s; 8 diploma turns = 720 s < crew cap
+    _TURNS = {"easy": 1, "medium": 3, "hard": 5, "diploma": 8}  # matches docstring line ~1002
+    POLL_INTERVAL = 0.5  # seconds between output checks
+
+    # Shell prompt pattern: user@hostname path %
+    SHELL_PROMPT_RE = re.compile(r".+@.+\s+\S*\s*[%$#]\s*$")
+    EXIT_CODE_RE = re.compile(r"^XEXITCODE:(\d+)$")
+
+    def __init__(self):
+        """Initialize Orca connection.
+
+        Verifies Orca runtime is running and ready. Does NOT create
+        a worktree — terminals are created in the current project context.
+
+        Raises OrcaUnavailableError if Orca is not running.
+        """
+        self._ensure_orca_ready()
+
+    # ── School-core project path for worktree creation ───────────────────────
+    # REPO_PATH is now a module-level constant (see _resolve_repo_path above),
+    # so it resolves the true git root even when imported from a child worktree.
+
+    # ── Orca CLI helpers ──────────────────────────────────────────────────────
+
+    def _run_orca(self, args: list[str], timeout: int = 15) -> dict:
+        """Run an Orca CLI command with --json and parse the output.
+
+        Returns the payload with the outer 'result' key unwrapped.
+
+        Raises OrcaUnavailableError on any failure.
+        """
+        cmd = ["orca"] + args + ["--json"]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise OrcaUnavailableError(
+                f"Orca CLI timed out ({timeout}s): {' '.join(args)}"
+            )
+        except FileNotFoundError:
+            raise OrcaUnavailableError("Orca CLI not found (is Orca installed?)")
+
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or str(proc.returncode))[:300]
+            raise OrcaUnavailableError(
+                f"Orca command failed (exit={proc.returncode}): {detail}"
+            )
+
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError as e:
+            raise OrcaUnavailableError(
+                f"Orca JSON parse error: {e}\nRaw output: {proc.stdout[:200]}"
+            )
+
+        if isinstance(data, dict) and data.get("error"):
+            raise OrcaUnavailableError(f"Orca error: {data['error']}")
+
+        if isinstance(data, dict) and "result" in data:
+            return data["result"]
+
+        return data
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def _ensure_orca_ready(self) -> None:
+        """Verify Orca runtime is running and ready."""
+        result = self._run_orca(["status"])
+        runtime = result.get("runtime", {})
+        runtime_state = runtime.get("state", "unknown")
+        if runtime_state != "ready":
+            raise OrcaUnavailableError(
+                f"Orca runtime not ready (state={runtime_state}). "
+                f"Run 'orca open' first."
+            )
+
+    # ── Worktree lifecycle ────────────────────────────────────────────────────
+
+    def _register_repo(self, repo_path: Path) -> Optional[str]:
+        """Ensure a repo path is known to Orca; return its repo id.
+
+        Orca requires a repo to be registered (``orca repo add --path``)
+        before ``worktree create --repo <path>`` will accept it. A fresh
+        cross-repo clone is not registered, so this is mandatory for
+        cross-repo dispatch. Idempotent: if already listed, reuse the id.
+
+        Args:
+            repo_path: Absolute path to the local clone.
+
+        Returns:
+            The Orca repo id, or None if registration failed.
+        """
+        try:
+            listed = self._run_orca(["repo", "list"], timeout=15)
+        except OrcaUnavailableError:
+            return None
+        repos = listed.get("repos", listed.get("repositories", []))
+        for r in repos if isinstance(repos, list) else []:
+            if isinstance(r, dict) and Path(str(r.get("path", ""))).resolve() == Path(repo_path).resolve():
+                return r.get("id")
+        # Not registered — add it.
+        try:
+            added = self._run_orca(["repo", "add", "--path", str(repo_path)], timeout=30)
+        except OrcaUnavailableError:
+            return None
+        if isinstance(added, dict):
+            return added.get("id") or added.get("repo", {}).get("id")
+        return None
+
+    def create_worktree_persistent(
+        self, name: str, repo_path: Optional[Path] = None
+    ) -> str:
+        """Rediscover-or-create a PERSISTENT worktree (principal / cto / coo).
+
+        Lifecycle invariant (docs/school-core-architecture.md → Lifecycle):
+        the 3 persistent roles are created ONCE and reused. Re-booting an
+        existing role must REUSE its worktree (by prefix), never mint a new
+        suffixed clone (``cto-2``, ``cto-lens-2`` …) — that suffix spray is
+        the source of zombie-worktree pressure.
+
+        Returns the path of the existing (rediscovered) or newly created
+        worktree.
+        """
+        existing = self._find_worktree_by_prefix(name, repo_path=repo_path)
+        if existing:
+            return existing
+        # PRUNE stale admin entries before creating. If a prior serve
+        # closed/removed the worktree dir but its `<repo>/.git/worktrees/<name>`
+        # admin entry lingered, Orca's `worktree create --name <name>` sees the
+        # still-registered name and auto-suffixes to `<name>-2` (the
+        # teacher-cto-2 spray on re-serve). `git worktree prune` drops admin
+        # entries whose worktree dir no longer exists, so the next create
+        # reuses the canonical name. Suffix spray is the source of
+        # zombie-worktree pressure — prune first.
+        try:
+            self._run_orca(["worktree", "prune"], timeout=15)
+        except Exception:
+            pass
+        return self.create_worktree(name, repo_path=repo_path)
+
+    def _find_worktree_by_prefix(
+        self, prefix: str, repo_path: Optional[Path] = None
+    ) -> Optional[str]:
+        """Return an existing worktree for a persistent role.
+
+        When ``repo_path`` is supplied, the worktree must belong to that
+        registered Orca repository. A same-named worktree in another repo is
+        not a valid rediscovery candidate; returning it was the source of the
+        teacher target-binding bug.
+
+        Tolerant match: the canonical name is ``teacher-<role>``
+        (``teacher-cto``), and reboot suffixes like ``teacher-cto-4`` or
+        ``teacher-cto-lens-2`` are also matched (so rediscovery reuses the
+        existing worktree instead of minting a new suffixed clone — the
+        zombie-spray source). Unrelated names (``teacher-cto-backup``,
+        ``protonic``) are deliberately NOT matched.
+        """
+        target_repo_id: Optional[str] = None
+        if repo_path is not None:
+            try:
+                repo_listing = self._run_orca(["repo", "list"], timeout=15)
+                repos = repo_listing.get(
+                    "repos", repo_listing.get("repositories", [])
+                )
+                for repo in repos if isinstance(repos, list) else []:
+                    if (
+                        isinstance(repo, dict)
+                        and Path(str(repo.get("path", ""))).resolve()
+                        == Path(repo_path).resolve()
+                    ):
+                        target_repo_id = str(repo.get("id") or "") or None
+                        break
+            except Exception:
+                return None
+
+        try:
+            listing = self._run_orca(["worktree", "list"], timeout=15)
+        except Exception:
+            return None
+        wts = listing.get("worktrees", listing.get("items", []))
+        if isinstance(listing.get("result"), list):
+            wts = listing["result"]
+        for wt in wts:
+            for key in ("displayName", "name", "path"):
+                val = wt.get(key) or ""
+                base = val.rsplit("/", 1)[-1] if key == "path" else val
+                if not base:
+                    continue
+                # Token match: exact prefix (canonical name), basename == role,
+                # starts with "role-", or contains "-role-" (handles cto-lens-2
+                # / teacher-cto / teacher-cto-4).
+                # Strict match on the canonical worktree name:
+                #   - exact prefix (teacher-cto), or
+                #   - prefix followed by "-<reboot-suffix>" where the suffix is
+                #     digits (teacher-cto-4) or "lens" (teacher-cto-lens-2).
+                # This deliberately EXCLUDES unrelated names like
+                # teacher-cto-backup or protonic, which the loose
+                # "role token" match would have falsely matched.
+                if base == prefix:
+                    matched = True
+                else:
+                    remainder = base[len(prefix):]
+                    if remainder.startswith("-"):
+                        tail = remainder[1:]
+                        matched = tail.isdigit() or tail.startswith("lens")
+                    else:
+                        matched = False
+                if matched:
+                    if repo_path is not None:
+                        wt_repo_id = str(
+                            wt.get("repoId")
+                            or wt.get("projectHostSetupId")
+                            or ""
+                        ) or None
+                        # A target-scoped lookup fails closed when Orca cannot
+                        # prove the repository binding. It is safer to create
+                        # or report a missing teacher than to reuse the wrong
+                        # repo's persistent worktree.
+                        if not target_repo_id or wt_repo_id != target_repo_id:
+                            continue
+                    p = wt.get("path") or ""
+                    wt_id = wt.get("id", "")
+                    if "::" in wt_id:
+                        p = wt_id.split("::", 1)[1]
+                    return p or base
+        return None
+
+    def create_worktree(self, name: str, repo_path: Optional[Path] = None) -> str:
+        """Create a child worktree for a student round.
+
+        Uses the native one-call ``orca worktree create --name <name> --repo
+        <path>`` contract (verified against the live Orca runtime: the worktree
+        is created as a fresh checkout under ``~/orca/workspaces/…`` and the
+        returned ``id`` is ``"<uuid>::<path>"``). These worktrees appear in
+        Orca's UI sidebar.
+
+        Each student round gets its own worktree for:
+        - Isolation: task files, briefs, and outputs scoped per round
+        - Visibility: appears in Orca's UI sidebar
+        - Audit trail: each round's state preserved on disk
+
+        IMPORTANT: the created worktree lives at Orca's checkout path, NOT
+        inside ``REPO_PATH``. Always use the returned ``path`` for any file
+        operations inside the worktree.
+
+        Cross-repo dispatch: pass ``repo_path`` (the cloned target repo, e.g.
+        from ``repo_reader.clone_repo(owner/repo, force_fresh=True)``) to scope
+        the worktree to the target repo. When omitted, falls back to
+        ``REPO_PATH`` (single-repo / school-core mode).
+
+        Args:
+            name: Worktree name (e.g., "study-coder-r1").
+            repo_path: Optional target repo path for ``--repo``. Defaults to
+                ``REPO_PATH``.
+
+        Returns:
+            Absolute path to the created worktree.
+
+        Raises:
+            OrcaUnavailableError: If worktree cannot be created.
+        """
+        target = repo_path or REPO_PATH
+        # Always ensure the target repo is registered with Orca before
+        # worktree create. For cross-repo dispatch (explicit repo_path that
+        # differs from REPO_PATH) this is mandatory; for the school-core
+        # default case (repo_path is None → target == REPO_PATH) it is ALSO
+        # required, because a fresh Orca instance has not pre-registered
+        # school-core and `worktree create --repo <path>` would return
+        # repo_not_found. _register_repo is idempotent (reuses the existing
+        # id if already listed), so calling it unconditionally is safe and
+        # removes the silent "already registered" assumption that broke
+        # teacher boot on a clean Orca runtime.
+        registered = self._register_repo(Path(target))
+        if registered is None:
+            # Registration failure means Orca is down or repo add failed.
+            # Surface a clear error rather than failing opaquely at
+            # worktree create with a repo_not_found.
+            raise OrcaUnavailableError(
+                f"Failed to register target repo with Orca: {target}"
+            )
+        result = self._run_orca([
+            "worktree", "create",
+            "--name", name,
+            "--repo", str(target),
+        ], timeout=45)  # 45s — worktree create includes git checkout + hooks
+
+        # Response format: {"worktree": {"id": "<uuid>::<path>", ...}}
+        wt_info = result.get("worktree", result)
+        wt_id = wt_info.get("id", "")
+        if "::" in wt_id:
+            path = wt_id.split("::", 1)[1]
+        else:
+            path = result.get("path", wt_info.get("path", ""))
+
+        if not path:
+            raise OrcaUnavailableError(
+                f"Failed to create worktree '{name}': {json.dumps(result)[:300]}"
+            )
+        return path
+
+    def close_worktree(self, path: str) -> bool:
+        """Remove a worktree by path via the native Orca CLI.
+
+        Uses ``orca worktree rm --worktree path:<path> --force`` — the single,
+        verified disposal contract (the git/rm-rmtree fallback was removed:
+        Orca owns worktree lifecycle, and the CLI dispose is reliable).
+
+        Args:
+            path: Absolute path to the worktree.
+
+        Returns:
+            ``True`` if the worktree was removed (or was already gone),
+            ``False`` if the CLI call failed and the path still exists.
+
+        Idempotent:
+            Returns ``True`` immediately if the path does not exist.
+        """
+        p = Path(path)
+        if not p.exists():
+            return True  # Already gone — idempotent
+
+        try:
+            self._run_orca([
+                "worktree", "rm",
+                "--worktree", f"path:{path}",
+                "--force",
+            ], timeout=15)
+        except Exception:
+            # A single failure may mean Orca was momentarily busy; retry once.
+            try:
+                self._run_orca([
+                    "worktree", "rm",
+                    "--worktree", f"path:{path}",
+                    "--force",
+                ], timeout=15)
+            except Exception:
+                return False
+
+        return not p.exists()
+
+    def cleanup_worktrees_by_prefix(self, prefix: str = "study-") -> int:
+        """Remove all worktrees whose path (or name) starts with a given prefix.
+
+        Checks both the worktree name AND the last path component because
+        Orca's list API may return empty names for some worktree types.
+
+        Args:
+            prefix: Name/path-component prefix to match (default: "study-").
+
+        Returns:
+            Number of worktrees removed.
+        """
+        try:
+            result = self._run_orca(["worktree", "list"], timeout=15)
+            wts = result.get("worktrees", [])
+        except Exception:
+            return 0
+
+        removed = 0
+        for wt in wts:
+            name = wt.get("name", "") or ""
+            path = wt.get("path", "") or ""
+            dirname = Path(path).name if path else ""
+            # Check both name field and path basename (Orca may not populate name)
+            if name.startswith(prefix) or dirname.startswith(prefix):
+                if self.close_worktree(path):
+                    removed += 1
+        return removed
+
+    # ── Student briefs (written to worktrees) ───────────────────────────────
+
+    def write_student_brief(self, worktree_path: str, brief: StudentBrief) -> Path:
+        """Write a structured student brief to the worktree.
+
+        Per the student-contract skill, every student must receive:
+        - task
+        - guardrails
+        - expected output format
+        - verification command
+        - completion signal
+
+        The brief is written to `.hermes/briefs/{bead}.json` in the worktree.
+
+        Args:
+            worktree_path: Path to the student's worktree.
+            brief: Structured StudentBrief dataclass.
+
+        Returns:
+            Path to the written brief file.
+        """
+        brief_dir = Path(worktree_path) / ".hermes" / "briefs"
+        brief_dir.mkdir(parents=True, exist_ok=True)
+        brief_path = brief_dir / f"{brief.bead}.json"
+        brief_path.write_text(json.dumps(brief.to_dict(), indent=2))
+        return brief_path
+
+    def write_student_output(self, worktree_path: str, bead: str, data: dict) -> Path:
+        """Write student output and results to the worktree.
+
+        Writes to `.hermes/outputs/{bead}.json` so the worktree contains
+        a complete audit trail of what was done.
+
+        Args:
+            worktree_path: Path to the student's worktree.
+            bead: Unique identifier for this task.
+            data: Dict of output data (response, scores, review, etc.).
+
+        Returns:
+            Path to the written output file.
+        """
+        out_dir = Path(worktree_path) / ".hermes" / "outputs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{bead}.json"
+        out_path.write_text(json.dumps(data, indent=2))
+        return out_path
+
+    # ── Terminal lifecycle ────────────────────────────────────────────────────
+
+    def create_terminal(self, title: str = "exec") -> str:
+        """Create a terminal in the current project context and return its handle.
+
+        No --worktree flag is passed, so Orca associates the terminal with
+        the current project's worktree (visible in Orca's UI sidebar).
+
+        Args:
+            title: Terminal title shown in Orca's UI.
+
+        Returns:
+            Terminal handle string for subsequent commands.
+
+        Raises:
+            OrcaUnavailableError: If terminal cannot be created.
+        """
+        result = self._run_orca([
+            "terminal", "create",
+            "--title", title,
+        ], timeout=15)
+
+        terminal = result.get("terminal", result)
+        handle = terminal.get("handle", "")
+        if not handle:
+            raise OrcaUnavailableError(
+                f"Failed to get terminal handle: {json.dumps(result)[:200]}"
+            )
+        return handle
+
+    def close_terminal(self, handle: str) -> None:
+        """Close a terminal session. Best-effort."""
+        try:
+            self._run_orca(["terminal", "close", "--terminal", handle], timeout=10)
+        except Exception:
+            pass
+
+    # ── Code execution ────────────────────────────────────────────────────────
+
+    def _write_code(self, code: str, bead: str) -> Path:
+        """Write extracted code to tempspace at /tmp/school-exec/<bead>/solution.py."""
+        task_dir = self.TEMP_BASE / bead
+        task_dir.mkdir(parents=True, exist_ok=True)
+        file_path = task_dir / "solution.py"
+        file_path.write_text(code, encoding="utf-8")
+        return file_path
+
+    # ── Terminal output parsing ───────────────────────────────────────────────
+
+    @staticmethod
+    def _is_shell_prompt(line: str) -> bool:
+        """Check if a terminal line is a shell prompt (e.g., 'user@host dir %')."""
+        return bool(OrcaExecutionManager.SHELL_PROMPT_RE.match(line.strip()))
+
+    @staticmethod
+    def _parse_exit_code(lines: list[str]) -> tuple[Optional[int], list[str]]:
+        """Extract exit code marker from the last output line.
+
+        Returns (exit_code, remaining_lines) with the marker line removed.
+        If no marker found, returns (None, lines).
+        """
+        if not lines:
+            return None, lines
+
+        last = lines[-1].strip()
+        match = OrcaExecutionManager.EXIT_CODE_RE.match(last)
+        if match:
+            return int(match.group(1)), lines[:-1]
+        return None, lines
+
+    @staticmethod
+    def _clean_tail_lines(lines: list[str]) -> list[str]:
+        """Remove shell prompts and empty lines from raw tail output."""
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if OrcaExecutionManager._is_shell_prompt(stripped):
+                continue
+            cleaned.append(stripped)
+        return cleaned
+
+    def execute(
+        self,
+        code: str,
+        bead: str,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    ) -> ExecutionResult:
+        """Execute code in an Orca terminal and capture results.
+
+        Pipeline:
+            1. Write code to tempspace at /tmp/school-exec/<bead>/solution.py
+            2. Create Orca terminal (in current project context)
+            3. Send `cd <dir> && python3 file ; echo "XEXITCODE:$?"`
+            4. Poll for XEXITCODE marker every 0.5s (up to timeout_ms)
+            5. Read final output, parse exit code from marker
+            6. Split stdout/stderr, close terminal, return result
+
+        The exit code is captured inline via the XEXITCODE marker because
+        Orca's --for exit clears the terminal buffer. Polling lets us
+        detect completion early for fast code and timeouts for infinite loops.
+
+        Args:
+            code: Clean, runnable code string (use CodeExtractor first).
+            bead: Unique task identifier for tempspace scoping.
+            timeout_ms: Maximum execution time in milliseconds.
+
+        Returns:
+            ExecutionResult with stdout, stderr, exit_code, and timing.
+        """
+        start = time.monotonic()
+
+        # Pre-check: catch syntax errors and no-op submissions before
+        # spinning up an Orca terminal. A SyntaxError or a module that
+        # only contains def/class/import (no top-level invocation) will
+        # either fail to parse or exit 0 with zero output. Flagging these
+        # here lets the director escalate to Severity.CRITICAL — a veto —
+        # instead of accepting a broken submission with score 100.
+        reason = CodeExtractor.check_executable(code)
+        if reason is not None:
+            return ExecutionResult(
+                stdout="",
+                stderr=reason,
+                exit_code=1,
+                timed_out=False,
+                duration_ms=int((time.monotonic() - start) * 1000),
+                not_executable=True,
+                not_executable_reason=reason,
+            )
+
+        file_path = self._write_code(code, bead)
+        handle = self.create_terminal(title=f"exec-{bead[:8]}")
+
+        timed_out = False
+
+        try:
+            # ---- Baseline read ----
+            baseline = self._read_terminal_tail(handle)
+            baseline_cursor = baseline.get("latestCursor", "0")
+
+            # ---- Send execute command with exit-code echo ----
+            exec_cmd = (
+                f"cd {file_path.parent} && python3 {file_path.name} ; "
+                f'echo "XEXITCODE:$?"'
+            )
+            self._run_orca([
+                "terminal", "send",
+                "--terminal", handle,
+                "--text", exec_cmd,
+                "--enter",
+            ], timeout=10)
+
+            # ---- Poll for completion (XEXITCODE marker) ----
+            deadline = start + (timeout_ms / 1000)
+            while time.monotonic() < deadline:
+                time.sleep(self.POLL_INTERVAL)
+
+                # Read and check for XEXITCODE marker in cleaned output
+                poll_result = self._read_terminal_tail(handle, cursor=baseline_cursor)
+                poll_tail = poll_result.get("tail", [])
+                cleaned = self._clean_tail_lines(poll_tail)
+                if cleaned and self.EXIT_CODE_RE.match(cleaned[-1].strip()):
+                    break
+            else:
+                # Polling loop exhausted — code didn't finish in time
+                timed_out = True
+
+            # ---- Read final output ----
+            result = self._read_terminal_tail(handle, cursor=baseline_cursor)
+            tail_lines = result.get("tail", [])
+
+            # ---- Clean and parse ----
+            cleaned = self._clean_tail_lines(tail_lines)
+            exit_code, output_lines = self._parse_exit_code(cleaned)
+
+            # Fallback: no marker found
+            if exit_code is None:
+                exit_code = 0 if not timed_out else None
+
+            # ---- Split into stdout/stderr ----
+            raw_text = "\n".join(output_lines)
+            stdout, stderr = self._split_output(raw_text, exit_code)
+
+            duration_ms = int((time.monotonic() - start) * 1000)
+
+            return ExecutionResult(
+                stdout=stdout.strip(),
+                stderr=stderr.strip(),
+                exit_code=exit_code,
+                timed_out=timed_out,
+                duration_ms=duration_ms,
+            )
+
+        finally:
+            self.close_terminal(handle)
+
+    def _read_terminal_tail(self, handle: str, cursor: Optional[str] = None) -> dict:
+        """Read the tail of an Orca terminal's output.
+
+        Orca's read API returns lines in the 'tail' field (not 'lines').
+        Items are plain strings. Response structure (after _run_orca
+        unwraps 'result'): {"terminal": {"tail": [...], "nextCursor": "N", ...}}
+
+        Returns empty tail on any error (never raises).
+        """
+        args = ["terminal", "read", "--terminal", handle, "--limit", "500"]
+        if cursor is not None:
+            args.extend(["--cursor", cursor])
+
+        try:
+            result = self._run_orca(args, timeout=10)
+            terminal_info = result.get("terminal", result)
+            return terminal_info
+        except Exception:
+            return {"tail": [], "nextCursor": "0", "latestCursor": "0"}
+
+    @staticmethod
+    def _split_output(raw: str, exit_code: Optional[int]) -> tuple[str, str]:
+        """Split terminal output into stdout and stderr heuristically.
+
+        Lines containing Python error keywords are classified as stderr.
+        Everything else is stdout. When exit_code is 0, all output is stdout.
+        """
+        error_keywords = [
+            "Traceback", "Error:", "Exception:", "SyntaxError",
+            "NameError", "TypeError", "ValueError", "KeyError",
+            "IndexError", "AttributeError", "ImportError",
+            "ModuleNotFoundError", "ZeroDivisionError",
+            "FileNotFoundError", "RuntimeError", "AssertionError",
+            "IndentationError", "StopIteration", "OverflowError",
+        ]
+
+        if exit_code == 0:
+            return raw, ""
+
+        stdout_lines = []
+        stderr_lines = []
+        for line in raw.splitlines():
+            if any(kw in line for kw in error_keywords):
+                stderr_lines.append(line)
+            else:
+                stdout_lines.append(line)
+        return "\n".join(stdout_lines), "\n".join(stderr_lines)
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+
+    # ── Hermes agent execution ───────────────────────────────────────────────
+
+    def run_hermes(
+        self,
+        worktree_path: str,
+        bead: str,
+        task: str,
+        timeout_ms: Optional[int] = None,
+        handle: Optional[str] = None,
+        role: str = "student",
+        difficulty: str = "easy",
+        toolsets: Optional[str] = None,
+    ) -> str:
+        """Run Hermes agent inside the worktree's Orca terminal and capture output.
+
+        Pipeline (skill-compliant — no nested-quote ``terminal send`` mangling):
+            1. Write task to ``.hermes/briefs/{bead}-hermes-task.txt``
+            2. Write a launcher ``bash`` script (``run-hermes.sh``) that runs
+               ``hermes chat -q "$(cat task.txt)" …`` into ``response.txt`` and
+               touches a ``DONE`` sentinel.
+            3. Launch that script via ``orca terminal create --command`` (or send
+               to an existing ``handle``). The script is referenced by PATH — no
+               inline quotes that Orca would mangle.
+            4. Poll the ``DONE`` sentinel file (up to timeout_ms) — stable, unlike
+               scraping the terminal buffer for an XEXITCODE marker.
+            5. Read ``response.txt`` from disk.
+            6. Close terminal (unless ``handle`` was provided — caller owns lifecycle).
+
+        Args:
+            worktree_path: Path to the leaf worktree.
+            bead: Unique task identifier.
+            task: The full task prompt (system prompt + task).
+            timeout_ms: Max wait time in milliseconds. If None (default),
+                        scales with difficulty: max_turns * HERMES_TIMEOUT_PER_TURN_MS
+                        (e.g. medium=5 turns → 600s, hard=8 turns → 960s).
+            handle: Optional existing terminal handle. If provided, the terminal
+                    is reused instead of creating a new one, and the caller is
+                    responsible for closing it.
+            role: The student role (used for profile resolution).
+            difficulty: Task difficulty — controls --max-turns:
+                        easy=1, medium=3, hard=5, diploma=8.
+                        Medium/hard tasks need multiple turns to write code
+                        (not just reconnaissance).
+
+        Returns:
+            The captured Hermes response text.
+
+        Raises:
+            OrcaUnavailableError: If Orca is down or Hermes fails.
+        """
+        wp = Path(worktree_path)
+        outputs_dir = wp / ".hermes" / "outputs"
+        briefs_dir = wp / ".hermes" / "briefs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        briefs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write task to a file (read by the launcher via $(cat …))
+        task_file = briefs_dir / f"{bead}-hermes-task.txt"
+        task_file.write_text(task, encoding="utf-8")
+
+        response_file = outputs_dir / "response.txt"
+        done_file = outputs_dir / f"{bead}-hermes-done"
+        launcher = briefs_dir / f"{bead}-run-hermes.sh"
+        # Remove stale artifacts if present
+        for f in (response_file, done_file, launcher):
+            if f.exists():
+                f.unlink()
+
+        # Launcher script: run hermes, capture output, touch DONE sentinel.
+        # The $(cat task_file) keeps the multi-line task out of the terminal
+        # command line, avoiding the quote-mangling trap entirely.
+        # Difficulty-aware turn cap: medium tasks need multiple iterations
+        # to write code (not just reconnaissance)
+        max_turns = self._TURNS.get(difficulty, 1)
+        # Scale total timeout: each turn needs ~per-turn budget for LLM API calls.
+        # Without this, a 5-turn medium task gets killed at 120s before turn 2.
+        if timeout_ms is None:
+            timeout_ms = max_turns * self.HERMES_TIMEOUT_PER_TURN_MS
+        toolset_flag = f"-t {toolsets} " if toolsets else ""
+        launcher.write_text(
+            "#!/usr/bin/env bash\n"
+            f'cd {shlex.quote(str(wp))}\n'
+            f'hermes chat -q "$(cat {shlex.quote(str(task_file))})"'
+            f' --yolo --quiet --max-turns {max_turns} '
+            f"{toolset_flag}"
+            f'> {shlex.quote(str(response_file))} 2>&1\n'
+            f'touch {shlex.quote(str(done_file))}\n',
+            encoding="utf-8",
+        )
+        launcher.chmod(0o755)
+
+        start = time.monotonic()
+        own_terminal = handle is None
+        # NOTE: do NOT pre-create a terminal here. When own_terminal, we create
+        # the Hermes terminal directly via `terminal create --command` below and
+        # capture its handle — creating one first (then a second via
+        # --command) would orphan the first and leave the Hermes terminal open.
+
+        try:
+            launch_cmd = f"bash {shlex.quote(str(launcher))}"
+            _log.student_stage(bead, role, "hermes_thinking",
+                                repo=str(wp))
+            if own_terminal:
+                # `terminal create --command` spawns the Hermes terminal AND runs
+                # the launcher on startup. Capture its handle so finally closes
+                # the *actual* Hermes terminal (not a throwaway one).
+                result = self._run_orca([
+                    "terminal", "create",
+                    "--worktree", f"path:{wp}",
+                    "--title", f"hermes-{bead[:8]}",
+                    "--command", launch_cmd,
+                ], timeout=15)
+                terminal = result.get("terminal", result)
+                handle = terminal.get("handle", handle)
+            else:
+                self._run_orca([
+                    "terminal", "send",
+                    "--terminal", handle,
+                    "--text", launch_cmd,
+                    "--enter",
+                ], timeout=10)
+
+            # ---- Poll the DONE sentinel (stable) instead of terminal scraping ----
+            deadline = start + (timeout_ms / 1000)
+            while time.monotonic() < deadline:
+                if done_file.exists():
+                    break
+                time.sleep(self.POLL_INTERVAL)
+            else:
+                # Timed out before DONE touched
+                if response_file.exists():
+                    response = response_file.read_text(encoding="utf-8").strip()
+                    if response:
+                        # Partial response is better than nothing
+                        return response
+                raise OrcaUnavailableError(
+                    f"Hermes timed out after {timeout_ms}ms for bead={bead}"
+                )
+
+            response = response_file.read_text(encoding="utf-8").strip() \
+                if response_file.exists() else ""
+
+            if not response:
+                _log.student_stage(bead, role, "error",
+                                detail="Hermes produced no output")
+                raise OrcaUnavailableError(
+                    f"Hermes produced no output for bead={bead}"
+                )
+
+            _log.student_stage(bead, role, "done")
+            return response
+
+        finally:
+            if own_terminal and handle:
+                self.close_terminal(handle)
+            # Clean up transient artifacts (response file kept for audit trail)
+            for f in (task_file, launcher, done_file):
+                if f.exists():
+                    f.unlink()
+
+    def cleanup_tempspace(self, bead: str) -> None:
+        """Remove tempspace files for a completed task."""
+        task_dir = self.TEMP_BASE / bead
+        if task_dir.exists():
+            shutil.rmtree(task_dir, ignore_errors=True)
+
+    def supports_domain(self, domain: str) -> bool:
+        """Check whether this domain produces executable code."""
+        return domain in self.EXECUTABLE_DOMAINS
+
+
+

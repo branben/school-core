@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from route_registry import audit_routes, resolve_route
+from src.core.route_registry import audit_routes, resolve_route
 
 
 def _skills(tmp_path):

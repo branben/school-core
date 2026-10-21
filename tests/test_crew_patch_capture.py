@@ -59,9 +59,7 @@ from pathlib import Path
 
 import pytest
 
-import crew_dispatch
-
-
+import src.crew.crew_dispatch as crew_dispatch
 def _worktree(tmp_path: Path, *, with_change: bool = True) -> Path:
     """A real git repo with a committed base and (optionally) a crew commit."""
     wt = tmp_path / "wt"

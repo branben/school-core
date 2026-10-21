@@ -9,7 +9,7 @@ from typing import Optional
 
 from staff.plugin import StaffPlugin, StaffContext, StaffResult, PluginTrust
 from staff.sandbox import StaffSandbox, SandboxError
-from scoring import ScoreRecommendation
+from src.core.scoring import ScoreRecommendation
 
 
 class ScoreAuditorPlugin(StaffPlugin):

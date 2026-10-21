@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from anchor_loader import Anchor, AnchorRegistry
-from scoring import GATES, ScoreStore
+from src.core.anchor_loader import Anchor, AnchorRegistry
+from src.core.scoring import GATES, ScoreStore
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_has_bracket_notation(self, registry, store):
         """compose_prompt output includes bracket notation for all anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="code-review",
@@ -155,7 +155,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_enriches_with_activation_patterns(self, registry, store):
         """compose_prompt output includes activation patterns from registry."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="code-review",
@@ -173,7 +173,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_role_anchors_present(self, registry, store):
         """compose_prompt includes role-based anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="debugging",
@@ -190,7 +190,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_difficulty_anchors(self, registry, store):
         """compose_prompt includes difficulty-based anchors."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="debugging",
@@ -207,7 +207,7 @@ class TestBackwardCompatibility:
 
     def test_compose_prompt_domain_extra_context(self, registry, store):
         """compose_prompt preserves domain extra_context."""
-        from prompt_composer import compose_prompt
+        from src.tools.prompt_composer import compose_prompt
 
         result = compose_prompt(
             domain="python-testing",
@@ -293,7 +293,7 @@ class TestCurriculaYamlConsumer:
         return ScoreStore(file_path=str(scores_file))
 
     def test_loader_parses_index_and_gates(self, tmp_path, monkeypatch):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         monkeypatch.setattr(prompt_composer, "_CURRICULA_DIR", self._write_curricula(tmp_path))
         monkeypatch.setattr(prompt_composer, "_yaml_curricula", None)
         loaded = prompt_composer._load_curricula_yaml()
@@ -304,7 +304,7 @@ class TestCurriculaYamlConsumer:
         assert gates[1]["description"] == "Mocking and isolation"
 
     def test_loader_missing_index_is_empty(self, tmp_path, monkeypatch):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         empty = tmp_path / "curricula"
         empty.mkdir()
         monkeypatch.setattr(prompt_composer, "_CURRICULA_DIR", empty)
@@ -312,14 +312,14 @@ class TestCurriculaYamlConsumer:
         assert prompt_composer._load_curricula_yaml() == {}
 
     def test_flag_off_returns_none(self, tmp_path, monkeypatch, store_bands):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         monkeypatch.delenv("CURRICULUM_YAML", raising=False)
         assert prompt_composer._curriculum_gate_data(
             "pre_diploma", "python-testing", 30.0
         ) is None
 
     def test_flag_on_selects_band_by_score(self, tmp_path, monkeypatch, store_bands):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         monkeypatch.setattr(prompt_composer, "_CURRICULA_DIR", self._write_curricula(tmp_path))
         monkeypatch.setattr(prompt_composer, "_yaml_curricula", None)
         monkeypatch.setenv("CURRICULUM_YAML", "1")
@@ -333,7 +333,7 @@ class TestCurriculaYamlConsumer:
     def test_compose_prompt_uses_gate_band_when_flag_on(
         self, tmp_path, monkeypatch, store_bands, registry,
     ):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         monkeypatch.setattr(prompt_composer, "_CURRICULA_DIR", self._write_curricula(tmp_path))
         monkeypatch.setattr(prompt_composer, "_yaml_curricula", None)
         monkeypatch.setenv("CURRICULUM_YAML", "1")
@@ -354,7 +354,7 @@ class TestCurriculaYamlConsumer:
     def test_compose_prompt_backward_compat_flag_off(
         self, tmp_path, monkeypatch, store_bands, registry,
     ):
-        import prompt_composer
+        import src.tools.prompt_composer as prompt_composer
         monkeypatch.setattr(prompt_composer, "_CURRICULA_DIR", self._write_curricula(tmp_path))
         monkeypatch.setattr(prompt_composer, "_yaml_curricula", None)
         monkeypatch.delenv("CURRICULUM_YAML", raising=False)

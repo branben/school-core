@@ -8,10 +8,10 @@ class TestRetryBudgetGate:
     """The retry-budget-exhausted branch must not eat the backlog."""
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("director.run_task")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.director.run_task")
     def test_retry_budget_silent_failure_keeps_issue_eligible(
         self, mock_task, mock_build, mock_clone, mock_cleanup,
         mock_fetch, tmp_path, monkeypatch, store,
@@ -39,10 +39,10 @@ class TestRetryBudgetGate:
         assert not issue_bridge.is_processed(num), "Silent failure should NOT mark issue processed"
 
     @patch("issue_bridge.fetch_issues")
-    @patch("repo_reader.cleanup_stale_caches")
-    @patch("repo_reader.clone_repo")
-    @patch("repo_reader.build_codebase_context")
-    @patch("director.run_task")
+    @patch("src.core.repo_reader.cleanup_stale_caches")
+    @patch("src.core.repo_reader.clone_repo")
+    @patch("src.core.repo_reader.build_codebase_context")
+    @patch("src.core.director.run_task")
     def test_retry_budget_done_marks_processed(
         self, mock_task, mock_build, mock_clone, mock_cleanup,
         mock_fetch, tmp_path, monkeypatch, store,
