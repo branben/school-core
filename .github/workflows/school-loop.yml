@@ -146,7 +146,7 @@ jobs:
           # Best-effort: this job is isolated and cannot block board publishing.
           python - <<'PY'
           import os
-          from school_mail import notify_pipeline_alert
+          from src.tools.school_mail import notify_pipeline_alert
 
           # Read the status output from the gate's check step (set before the Fail gate step exits 1)
           status = os.environ.get("GATE_STATUS", "offline")
@@ -196,7 +196,7 @@ jobs:
       # skill defaults to "auto" (free pool), which routes into expired
       # openrouter connections / 403 free-tier walls — every fallback then
       # burns the full timeout and dies (#339 retry loop, Aug 24 → Sep 23).
-      # executor.py reads this and passes it as params.metadata.model.
+      # src/crew/executor.py reads this and passes it as params.metadata.model.
       A2A_FALLBACK_MODEL: gemini/gemini-3-flash-preview
       SCHOOL_REVIEW_SERIAL: "1"
       # Model API key for the spawned agent — Hermes needs this to make LLM calls.
@@ -282,7 +282,7 @@ jobs:
       # accurate suppression/journal state instead of main's stale copies. The
       # JSONL grading queue is restored when present; on the first cycle, touch
       # creates it only if absent so a pre-existing runner queue is never erased.
-      # sanitize_data.py runs after this step on the seeded files.
+      # scripts/sanitize_data.py runs after this step on the seeded files.
       - name: Seed retry/board state from board-publish
         run: |
           git fetch origin board-publish
@@ -362,7 +362,7 @@ jobs:
       # days. A red run that ALSO silently skipped the only step that does work
       # is the worst of both signals.
       #
-      # orca_precondition.py probes the operation that actually matters
+      # src/crew/orca_precondition.py probes the operation that actually matters
       # (`orca repo add`), repairs the runtime once, and classifies the result:
       # exit 0 = READY, exit 1 = BLOCKED_ENV with an explicit
       # `::error::BLOCKED_ENV ...` annotation. continue-on-error keeps the job
@@ -371,7 +371,7 @@ jobs:
       - name: Register checkout with Orca (BLOCKED_ENV-aware)
         id: orca_precondition
         continue-on-error: true
-        run: .venv/bin/python orca_precondition.py "$PWD"
+        run: .venv/bin/python src/crew/orca_precondition.py "$PWD"
 
       # FirstMate crew preflight: diagnose a broken crew setup (missing
       # persistent clone, Orca daemon down, FM_HOME backend drift, hermes
@@ -402,7 +402,7 @@ jobs:
       - name: Gateway preflight (OmniRoute + A2A liveness)
         env:
           OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
-        run: .venv/bin/python gateway_preflight.py
+        run: .venv/bin/python src/tools/gateway_preflight.py
 
       - name: Worktree/terminal residue audit (advisory)
         # ADVISORY (always exits 0) — deliberately unlike the gateway preflight
@@ -415,13 +415,13 @@ jobs:
         # terminals — 48 stacked inside ONE worktree — and 11 suffix-sprayed
         # teacher clones (teacher-cto-...-2 through -6). None were flagged
         # `orphaned`, so nothing in Orca would ever reap them; the pile only
-        # grows. Root cause was teacher.py's own docstring demonstrating
+        # grows. Root cause was src/tools/teacher.py's own docstring demonstrating
         # create_worktree() (auto-suffixes) instead of
         # create_worktree_persistent() (rediscovers by prefix).
         #
         # A ::warning:: surfaces the breach in the run summary so it is caught by
         # a check instead of noticed by a human hours later.
-        run: .venv/bin/python worktree_bloat_guard.py
+        run: .venv/bin/python src/tools/worktree_bloat_guard.py
 
       - name: FirstMate crew preflight (fm_doctor)
         env:
@@ -459,7 +459,7 @@ jobs:
           echo "toolchain preflight OK — nix at $NIX_BIN, verifyShell=$SHELL_NAME"
 
       - name: Populate issue cache from GitHub
-        run: .venv/bin/python populate_board_cache.py
+        run: .venv/bin/python src/tools/populate_board_cache.py
 
       - name: Run bridge loop (executes issues)
         # Never skipped on an Orca precondition failure: the bridge is the only
@@ -492,7 +492,7 @@ jobs:
         # cycle here would trade a reporting problem for a work stoppage.
         if: always()
         run: |
-          .venv/bin/python crew_ledger_reconcile.py
+          .venv/bin/python src/crew/crew_ledger_reconcile.py
 
       - name: Sanitize + commit board state (durable, PII-free)
         # Runs even when the job is CANCELLED or FAILED. Without this condition
@@ -503,7 +503,7 @@ jobs:
         # time — issue #342 ran ~16 minutes of real crew work — then the job was
         # cancelled and data/crew_runs.json kept NO record of it (newest entries
         # are Aug-13 fixtures). dispatch_crew had written a durable `running`
-        # record at crew_dispatch.py:847; it died with the runner's workspace.
+        # record at src/crew/crew_dispatch.py (line ref stale post-reorg); it died with the runner's workspace.
         #
         # Same durability class as 83deae8 (success path checkpointed only after
         # the loop), one layer out: that loss was in Python, this one is in the
@@ -624,7 +624,7 @@ jobs:
         run: git fetch origin board-publish && git reset --hard origin/board-publish
 
       - name: Populate issue cache from GitHub
-        run: python populate_board_cache.py
+        run: python src/tools/populate_board_cache.py
 
       - name: Publish board to ht-ml.app
         # Regenerate board.html from the just-generated local data/, re-share,
