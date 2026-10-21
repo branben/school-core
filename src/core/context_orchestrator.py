@@ -87,7 +87,7 @@ def _probe_context_source(metrics, source: str, probe):
         )
 
 
-_REPO_ROOT = Path(__file__).resolve().parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # Default vault = repo root, where `ccc init` creates the .cocoindex_code/
 # search index. ccc scopes results by cwd, so vault MUST be the directory
 # containing .cocoindex_code/.  Override via AGENT_SCHOOL_VAULT env var.

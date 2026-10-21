@@ -21,7 +21,7 @@ except Exception:
 # gate_steps that were never read at runtime. When CURRICULUM_YAML=1 this
 # module lazily loads them and prefer domain gate guidance over the static
 # bucket (backward-compatible: flag off → byte-identical behavior).
-_CURRICULA_DIR = Path(__file__).resolve().parent / "curricula"
+_CURRICULA_DIR = Path(__file__).resolve().parent.parent.parent / "curricula"
 _yaml_curricula: Optional[dict] = None
 
 

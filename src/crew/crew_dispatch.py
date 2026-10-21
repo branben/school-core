@@ -30,7 +30,7 @@ from typing import Callable, Iterator, Optional, Sequence
 from dotenv import load_dotenv
 
 # Load .env file from project root
-ENV_FILE = Path(__file__).parent / ".env"
+ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
@@ -884,7 +884,7 @@ def _omniroute_api_key() -> str:
     if key:
         return key
     key = _read_dotenv_value(
-        Path(__file__).resolve().parent / ".env", "OMNIROUTE_API_KEY"
+        Path(__file__).resolve().parent.parent.parent / ".env", "OMNIROUTE_API_KEY"
     )
     if key:
         return key
@@ -1189,7 +1189,7 @@ def _run_premerge_sensors(
         # and candidate-edited manifests cannot weaken supervisor checks.
         verification = run_verify_gate(
             worktree_path,
-            flake_path=Path(__file__).resolve().parent,
+            flake_path=Path(__file__).resolve().parent.parent.parent,
             trusted_contract=trusted_contract,
         )
     except Exception as exc:  # pragma: no cover - defensive runtime boundary

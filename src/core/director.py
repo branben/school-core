@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env file from project root
-ENV_FILE = Path(__file__).parent / ".env"
+ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
@@ -665,7 +665,7 @@ def _run_two_judge_review(
                 vg = run_verify_gate(
                     repo_path=repo_path,
                     project_verify=None,
-                    flake_path=Path(__file__).resolve().parent,
+                    flake_path=Path(__file__).resolve().parent.parent.parent,
                     diff_text=task.get("response", "") if isinstance(task, dict) else "",
                     trusted_contract=_frozen,
                 )
@@ -1860,7 +1860,8 @@ def _resolve_repo_path(
     try:
         from src.tools.repo_default import default_repo
         if repo == default_repo():
-            return Path(__file__).resolve().parent
+            # src/core/director.py -> checkout root is three levels up.
+            return Path(__file__).resolve().parent.parent.parent
     except Exception:
         pass
 

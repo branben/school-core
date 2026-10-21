@@ -19,7 +19,10 @@
 verify:
   # ── Python checks (only run when .py files are in the diff) ──────────────
   - name: core-python-compile
-    cmd: python3 -m compileall -q src/
+    # src/ holds the moved packages; `-l .` also compiles the remaining
+    # root-level modules (a2a_bridge, bookbag, conductor, issue_bridge,
+    # onboard, review_packet) without recursing into the rest of the tree.
+    cmd: python3 -m compileall -q src/ && python3 -m compileall -q -l .
     cwd: .
     languages: [python]
 

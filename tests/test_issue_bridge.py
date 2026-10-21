@@ -586,9 +586,19 @@ class TestAdversarialReviewStep:
 
     @patch("issue_bridge.fetch_issues")
     @patch("src.core.director.run_task")
-    @pytest.mark.timeout(10)
+    @pytest.mark.timeout(60)
     def test_adversarial_review_failure_falls_back(self, mock_task, mock_fetch, tmp_path, monkeypatch, store):
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        # Hermetic + fast: AdversarialReviewer._run_lens wraps every model call in
+        # _call_with_transport_retry, which reads LENS_TRANSPORT_RETRIES /
+        # LENS_TRANSPORT_BACKOFF_S from the environment and sleeps via the
+        # adversarial_reviewer module's ``time.sleep`` between attempts (default
+        # 2 retries x 5s/10s backoff = 15s+ per lens). Disable retries and no-op
+        # the sleep so the failure path is exercised instantly.
+        monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")
+        monkeypatch.setenv("LENS_TRANSPORT_BACKOFF_S", "0")
+        import src.review.adversarial_reviewer as _adv_mod
+        monkeypatch.setattr(_adv_mod.time, "sleep", lambda *_a, **_k: None)
         mock_fetch.return_value = [
             {"issue_number": 51, "title": "Fallback test", "body": "",
              "domain": "debugging", "difficulty": "easy",
@@ -599,12 +609,13 @@ class TestAdversarialReviewStep:
             "domain": "debugging", "difficulty": "easy",
             "prompt": "fix", "response": "```python\nfixed\n```",
         }
-        # Patch the executor.call_model used by _run_adversarial_review to simulate failure.
-        # NOTE: This test is not hermetic — if the patch fails (e.g. due to import
-        # caching), it makes a live HTTP call to the LLM backend and hangs on a
-        # socket read. The @pytest.mark.timeout(10) above ensures it fails fast
-        # instead of hanging the suite. Pre-existing issue, not caused by CFA lens.
-        with patch("src.crew.executor.call_model", side_effect=RuntimeError("model unavailable")):
+        # Patch the executor.call_model used by _run_adversarial_review to simulate
+        # failure. _run_adversarial_review lazy-imports
+        # ``from src.crew.executor import call_model`` at call time, so patching the
+        # module attribute is picked up; issue_bridge.call_model (the judge path) is
+        # also forced to raise so no live HTTP call can escape this test.
+        with patch("src.crew.executor.call_model", side_effect=RuntimeError("model unavailable")), \
+             patch("issue_bridge.call_model", side_effect=RuntimeError("model unavailable")):
             results = bridge_issues("user/test", store=store)
         assert len(results) == 1
         assert results[0]["status"] == "success"
