@@ -479,3 +479,117 @@ def test_async_issue_path_persists_route_after_context_enrichment(tmp_path):
     persist_route.assert_called_once_with(leaf.bead, target_repo, task_shape)
     assert leaf.signal_ready.called
     assert leaf.dispose.called
+
+
+def test_async_entire_persist_lock_timeout_refuses_acceptance(tmp_path):
+    """A silent lock timeout while persisting Entire findings must not accept.
+
+    ``locked_update_bookbag`` returns ``None`` — it does NOT raise — when the
+    per-bead lock cannot be acquired (bookbag.py:435-436). The call site wraps
+    it in ``try/except Exception``, which cannot see a ``None`` return, so the
+    Entire findings never reach the bookbag. ``_persist_acceptance`` derives
+    the CRITICAL veto from ``bag["entire_findings"]`` (conductor.py:230-232),
+    so with the findings missing it sees no veto and can accept the run —
+    silently dropping a CRITICAL finding.
+
+    The writer below discriminates on the field name so ONLY the veto-evidence
+    write fails: a blanket ``return_value=None`` would also make
+    ``_persist_acceptance``'s own write fail (conductor.py:248-252), which
+    fails closed for the wrong reason and would pass this test before the fix.
+    """
+    args = SimpleNamespace(
+        task="Fix the issue",
+        domain="code-implementation",
+        difficulty="medium",
+        handoff_timeout=1,
+    )
+    teachers = {
+        "cto": SimpleNamespace(worktree_name="teacher-cto"),
+        "coo": SimpleNamespace(worktree_name="teacher-coo"),
+    }
+    leaf = MagicMock()
+    leaf.bead = "coder-code-implementation-lockt"
+    leaf.worktree_path = str(tmp_path / "student")
+    leaf.run_via_hermes.return_value = {
+        "status": "success",
+        "agent": "coder",
+        "domain": "code-implementation",
+        "response": "fixed",
+    }
+    route = {
+        "chosen_skill": "rank2_ce_workflow",
+        "primary_workflow": "rank2_ce_workflow",
+        "overlays": [],
+        "discarded_overlays": [],
+        "curiosity_required": False,
+        "human_gate_required": False,
+        "logged": True,
+    }
+    # The bookbag as it exists AFTER the failed write: no entire_findings,
+    # so the acceptance gate cannot see the veto.
+    bag = {
+        "cto_score": 80,
+        "coo_score": 80,
+        "cto_findings": [],
+        "coo_findings": [],
+        "findings": [],
+    }
+    target_repo = "branben/school-core"
+    task_shape = conductor._issue_task_shape({"title": args.task})
+    writes = []
+
+    def flaky_writer(bead, repo, **fields):
+        writes.append((bead, repo, fields))
+        if "entire_findings" in fields:
+            return None  # lock timeout on the veto-evidence write
+        return fields
+
+    with (
+        patch.object(conductor, "load_principal_soul", return_value="Principal"),
+        patch.object(conductor, "_boot_teachers", return_value=teachers),
+        patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "target"),
+        patch("src.core.repo_reader.build_codebase_context", return_value="Repository context"),
+        patch.object(conductor, "StudentLeaf", return_value=leaf),
+        patch.object(conductor, "_persist_issue_route", return_value=route),
+        patch.object(
+            conductor,
+            "run_entire_review",
+            return_value={
+                "status": "fail",
+                "findings": [
+                    {
+                        "severity": "CRITICAL",
+                        "issue_class": "entire_finding",
+                        "description": "hardcoded secret in output",
+                    }
+                ],
+            },
+        ),
+        patch.object(conductor, "wait_for_verdicts", return_value=("PASS", "PASS")),
+        patch.object(conductor, "read_bookbag", return_value=bag),
+        patch.object(conductor, "_validate_verdict"),
+        patch.object(conductor, "_compute_task_score", return_value=80),
+        patch.object(conductor, "evaluate_and_update", return_value={"old_score": 70, "new_score": 80}),
+        patch.object(conductor, "notify_verdict") as notify,
+        patch.object(conductor, "locked_update_bookbag", side_effect=flaky_writer),
+        patch.object(conductor, "_shutdown_teachers"),
+    ):
+        conductor._run_issue_async(
+            args,
+            MagicMock(),
+            "coder",
+            target_repo=target_repo,
+            task_shape=task_shape,
+        )
+
+    notify.assert_called_once()
+    # notify_verdict(bead, accepted, cto_v, coo_v, ...) — the run must be refused.
+    assert notify.call_args.args[1] is False, (
+        "run was accepted even though the Entire CRITICAL finding could not be persisted"
+    )
+    # The refusal must be durable, not just in-memory: the accepted= write must
+    # have been re-issued with False so the bookbag agrees with the decision.
+    accepted_writes = [f for _, _, f in writes if "accepted" in f]
+    assert accepted_writes, "no accepted= write was attempted"
+    assert accepted_writes[-1]["accepted"] is False
+
