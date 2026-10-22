@@ -2834,6 +2834,110 @@ def bridge_issues(
                 processed[num] = OUTCOME_REJECT
                 continue
 
+            # Pre-merge sensor lifecycle guard: the entire-CRITICAL veto above
+            # (2703-2717) injects a CRITICAL finding and sets
+            # adversarial_review['verdict']='FAIL', but nothing downstream reads
+            # it — create_pr_for_issue has no verdict check at all, so the PR was
+            # still opened (measured 2026-10-22: `entire review FAIL` logged,
+            # then `PR created`). Mirror the verify-failure guards above: block
+            # grading, scoring, and publication.
+            #
+            # Scope is DELIBERATELY narrow — `issue_class == "entire_finding"`,
+            # the veto's own marker — NOT "any CRITICAL finding":
+            #   * Judge findings (cto/coo) also land in adversarial_review
+            #     ["findings"] via adversarial_summary() (review_packet.py:223).
+            #     A judge CRITICAL that is not in BLOCKING_CLASSES leaves
+            #     `accepted` True (director.py:786-793), so gating on all
+            #     CRITICALs silently widened the gate and broke
+            #     tests/test_issue_bridge.py::test_success_clears_retry_state
+            #     (its `no_artifact` CRITICAL, adversarial_reviewer.py:425).
+            #   * The verify-gate injection at 2743 is NOT a second hole: the
+            #     no-packet guard at 2766 already reads verify_result and blocks.
+            #   * `verdict == "FAIL"` is not a reliable gate either —
+            #     _run_adversarial_review's fail-closed fallback returns
+            #     verdict="PASS" + review_failed=True by design (@1206), because
+            #     a crashed checker is not a rejection.
+            _ar_critical = [
+                f for f in ((adversarial_review or {}).get("findings") or [])
+                if (f or {}).get("issue_class") == "entire_finding"
+                and str((f or {}).get("severity", "")).upper() == "CRITICAL"
+            ]
+            if _ar_critical:
+                # The entire-CRITICAL veto (2703) rewrites each finding with a
+                # `citation` key; judge findings carry `file`/`line`. Read both.
+                def _cite(f: dict) -> str:
+                    return str(
+                        f.get("citation")
+                        or f"{f.get('file', '?')}:{f.get('line', '?')}"
+                    )
+                _ar_cites = ", ".join(_cite(f) for f in _ar_critical[:3])
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: CRITICAL pre-merge finding(s) — "
+                    f"skipping grading, scoring, and publication ({_ar_cites})\n"
+                )
+                _reject_reason = (
+                    f"critical pre-merge finding(s): {_ar_cites}"
+                )
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                evaluate_and_update(task_result, 0.0, store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    # Surface the veto evidence on the rejection record too, so the
+                    # review data is still visible when the PR is blocked (the
+                    # success path publishes these three keys).
+                    "adversarial_review": adversarial_review,
+                    "verify_skipped": verify_skipped,
+                    "entire_review": entire_review,
+                    **rejection_outcome,
+                })
+                try:
+                    run_batch.append(
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": 0,
+                            "rejection": _reject_reason,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
+                            # Carry the same compact sensor summary the success
+                            # record publishes, so last_run.json shows the veto.
+                            "entire": entire_summary,
+                            **rejection_outcome,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                mark_processed(num, OUTCOME_REJECT)
+                processed[num] = OUTCOME_REJECT
+                continue
+
             # Verify output correctness with codebase context
             metrics.record_call("output_verification")
             with metrics.stage("output_verification"):

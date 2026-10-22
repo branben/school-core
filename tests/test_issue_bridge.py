@@ -1045,7 +1045,12 @@ class TestEntireSensor:
         mock_task.return_value = self._task_ok()
 
         results = bridge_issues("user/test", store=store)
-        assert results[0]["status"] == "success"
+        # A CRITICAL entire finding is an automatic veto, matching
+        # conductor._persist_acceptance (conductor.py:211-213: "a CRITICAL
+        # finding is an automatic veto"). The issue is REJECTED, not succeeded —
+        # this assertion used to pin the bug (status=="success") while the
+        # comment below correctly stated the veto. Fixed 2026-10-22.
+        assert results[0]["status"] == "error"
         # Surfaced on the result…
         assert results[0]["entire_review"]["status"] == "fail"
         assert len(results[0]["entire_review"]["findings"]) == 1
