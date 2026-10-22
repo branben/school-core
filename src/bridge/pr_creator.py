@@ -482,6 +482,48 @@ def create_pr_for_issue(
         sys.stderr.write(f"[pr_creator] No response text for issue #{num}\n")
         return None
 
+    # Fail-closed publication guard. This function is the PR-creation boundary
+    # and already holds the full evidence chain, so a rejected review must not
+    # produce a PR URL *here* either. The bridge gates the default sync path at
+    # issue_bridge.py:2427 (`_review.get("accepted") is False` → continue), and
+    # `review_evidence` is that same dict (issue_bridge.py:3020), so this guard
+    # is defence-in-depth: it makes the boundary self-defending for any DIRECT
+    # caller — `create_prs_for_results` (currently dead), the module CLI
+    # (pr_creator.py:720), or a future worker.
+    #
+    # Scope matches the bridge guard exactly — CRITICAL only. HIGH stays a
+    # warning unless ENTIRE_HIGH_STRICT=1 (issue_bridge.py:2698); gating on HIGH
+    # here would widen the gate beyond the contract the existing tests encode.
+    #
+    # Returns None (the function's existing "no PR" value, pr_creator.py:447)
+    # rather than raising, so callers that already handle None keep working.
+    _rejected = False
+    _why = ""
+    if review_evidence and review_evidence.get("accepted") is False:
+        _rejected = True
+        _why = "review rejected (accepted=False)"
+    else:
+        _e_findings = (entire_review or {}).get("findings") or []
+        if isinstance(_e_findings, list):
+            for _f in _e_findings:
+                if (
+                    isinstance(_f, dict)
+                    and str(_f.get("severity", "")).upper() == "CRITICAL"
+                ):
+                    # The bridge's entire veto rewrites findings with a
+                    # `citation` key; raw sensor findings carry file/line.
+                    _cite = _f.get("citation") or "{}:{}".format(
+                        _f.get("file", "?"), _f.get("line", "?")
+                    )
+                    _rejected = True
+                    _why = "critical entire finding: {}".format(_cite)
+                    break
+    if _rejected:
+        sys.stderr.write(
+            f"[pr_creator] #{num}: refusing to open a PR — {_why}\n"
+        )
+        return None
+
     if dry_run:
         print(f"[pr_creator] DRY RUN: Would create branch '{branch}' from repo '{repo}'")
         print(f"[pr_creator] DRY RUN: Would write {len(response_text)} chars of output")
