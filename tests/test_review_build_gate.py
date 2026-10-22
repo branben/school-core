@@ -153,7 +153,23 @@ def test_build_verify_no_repo_path_is_loudly_skipped(monkeypatch, tmp_path):
 
 
 def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
-    """The review gate must not depend on the process working directory."""
+    """The review gate must not depend on the process working directory.
+
+    The flake that provides #verifyShell lives at the checkout ROOT — ``flake.nix``
+    sits beside this repo, not beside ``director.py``. The pinned path must
+    therefore be the root, not ``director.py``'s own directory.
+
+    Regression for the reorg: this assertion used to expect
+    ``Path(director.__file__).resolve().parent`` (``src/core``). That was true
+    before ``a2afda4`` re-anchored the flake to the checkout root. Deriving the
+    expected value from ``__file__`` again is what let the test rot — assert the
+    artifact (``flake.nix``) instead, so the test cannot go stale when the
+    module moves.
+
+    Why it matters: ``verify_gate.py:388`` SKIPS the gate when no ``flake.nix``
+    resolves at ``flake_path``, and ``VERIFY_GATE_STRICT`` turns that skip into
+    a CRITICAL veto — so a stale path fails loudly rather than passing silently.
+    """
     captured = {}
 
     def fake_gate(**kwargs):
@@ -163,7 +179,9 @@ def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
     result = _review_with_build_gate(monkeypatch, tmp_path, None, gate=fake_gate)
 
     assert result["accepted"] is True
-    assert captured["flake_path"] == Path(director.__file__).resolve().parent
+    flake_dir = Path(director.__file__).resolve().parent.parent.parent
+    assert (flake_dir / "flake.nix").exists(), "flake.nix must sit at the checkout root"
+    assert captured["flake_path"] == flake_dir
 
 
 def test_build_verify_gate_error_is_strict_veto(monkeypatch, tmp_path):

@@ -767,7 +767,9 @@ class TestVerifyGateMerge:
         Path.cwd() being the checkout root, so a workflow `working-directory:`
         would point the gate at a flake-less dir → nix develop fails with a
         non-127 error → every issue becomes a fake CRITICAL failure. The flake
-        that provides #verifyShell lives next to issue_bridge.py.
+        that provides #verifyShell lives at the checkout ROOT (``flake.nix``
+        sits beside ``issue_bridge.py`` only because the bridge itself is at the
+        root — that is a coincidence of layout, not the invariant).
         """
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -780,7 +782,15 @@ class TestVerifyGateMerge:
         }) as mock_gate:
             result = _run_verify_gate(repo, {"issue_number": 1, "title": "t"})
         mock_gate.assert_called_once()
-        assert mock_gate.call_args.kwargs["flake_path"] == Path(issue_bridge.__file__).resolve().parent
+        # Assert the ARTIFACT, not a path derived from this module's own
+        # __file__. Production uses `Path(issue_bridge.__file__).resolve().parent`
+        # (issue_bridge.py:1056) — the same expression as this assertion — so if
+        # the bridge ever moves into src/, both move together and this test keeps
+        # passing while the gate points at a flake-less dir. Asserting the flake
+        # itself is what makes the coupling visible.
+        repo_root = Path(issue_bridge.__file__).resolve().parent
+        assert (repo_root / "flake.nix").exists(), "flake.nix must sit at the checkout root"
+        assert mock_gate.call_args.kwargs["flake_path"] == repo_root
         # The repo's own project_verify.yaml (when present) must still win as the
         # command manifest — flake pinning must not disturb the priority shadowing.
         assert mock_gate.call_args[0][1] == repo / "project_verify.yaml"
