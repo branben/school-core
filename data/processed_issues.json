@@ -14,7 +14,6 @@
   "57": "PASS",
   "60": "PASS",
   "65": "REJECT",
-  "68": "REJECT",
   "121": "PASS",
   "122": "REJECT",
   "123": "REJECT",
@@ -25,7 +24,9 @@
   "128": "REJECT",
   "129": "REJECT",
   "139": "REJECT",
+  "339": "REJECT",
   "340": "REJECT",
+  "341": "REJECT",
   "342": "PASS",
   "400": "PASS",
   "401": "PASS",
@@ -35,5 +36,7 @@
   "405": "PASS",
   "408": "PASS",
   "409": "PASS",
-  "410": "PASS"
+  "410": "PASS",
+  "415": "REJECT",
+  "419": "REJECT"
 }

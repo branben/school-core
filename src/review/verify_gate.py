@@ -176,6 +176,13 @@ _VERIFY_COPY_IGNORE = shutil.ignore_patterns(
     # repo content; copying them would either duplicate large trees or trip
     # the symlink-escape guard and fail EVERY verification on this repo.
     ".envit",
+    # .agents/skills/<name> and .claude/* are likewise repo-tracked out-of-tree
+    # symlinks into ~/.agents/skills (global agent skills). Copied verbatim
+    # they pull outside content into scratch and trip the escape guard, which
+    # failed EVERY verification on sound-royale-ny (and would on school-core).
+    # Agent skills are not needed by verification commands, so skip them.
+    ".agents",
+    ".claude",
 )
 
 

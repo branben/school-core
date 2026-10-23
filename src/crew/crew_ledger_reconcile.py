@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -64,8 +65,31 @@ _FM_HOME = Path(
 STATE_DIR = Path(os.environ.get("FM_STATE", str(_FM_HOME / "state"))).expanduser()
 
 # The consumer: the bridge's durable registry.
+
+
+def _main_repo_root(cwd: Optional[Path] = None) -> Path:
+    """The MAIN checkout root, not the current linked worktree.
+
+    Kept identical to ``crew_dispatch._main_repo_root``: the audit and the writer
+    must never disagree about where the ledger lives. Each module has its own
+    copy because they are imported independently; if you change one, change both.
+    """
+    base = Path(cwd).resolve() if cwd else Path(__file__).parent.parent.parent
+    try:
+        common = subprocess.check_output(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=str(base), text=True, timeout=10,
+        ).strip()
+    except Exception:
+        return base
+    p = Path(common)
+    if not p.is_absolute():
+        p = base / p
+    return p.resolve().parent
+
+
 CREW_RUNS_FILE = Path(
-    os.environ.get("CREW_RUNS_FILE", str(Path(__file__).parent.parent.parent / "data/crew_runs.json"))
+    os.environ.get("CREW_RUNS_FILE", str(_main_repo_root() / "data/crew_runs.json"))
 ).expanduser()
 
 TERMINAL_VERBS = ("done", "failed")
