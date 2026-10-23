@@ -1100,6 +1100,54 @@ class TestEntireSensor:
         runs = json.loads((tmp_path / "last_run.json").read_text())
         assert runs[-1]["entire"] is None
 
+    @patch("issue_bridge.fetch_issues")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    @patch("issue_bridge._run_entire_sensor")
+    def test_bridge_records_when_entire_persist_silently_fails(
+        self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
+        mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """A lock timeout on the entire-findings write must be RECORDED, not silent.
+
+        `locked_update_bookbag` returns None WITHOUT raising when the per-bead
+        lock cannot be acquired (bookbag.py:435-436), so the `except Exception`
+        around the call cannot see it. That write is declared "for acceptance
+        gating": a later retry of this issue reads bag["entire_findings"] through
+        _merge_async_teacher_verdicts (issue_bridge.py:1342-1344) and folds them
+        into the findings the acceptance gate at :2426 consults. A silent drop
+        therefore leaves the veto evidence missing from the durable record.
+
+        HIGH (not CRITICAL) is used so the run still SUCCEEDS and reaches the
+        write site at issue_bridge.py:3102 — a CRITICAL finding vetoes before it.
+        """
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "failures": [], "ran": 0, "skipped": False,
+        }
+        mock_sensor.return_value = {
+            "status": "fail",
+            "findings": [{"file": "y.py", "line": 9, "severity": "HIGH",
+                          "message": "suspicious construct"}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        with patch("issue_bridge.locked_update_bookbag", return_value=None):
+            results = bridge_issues("user/test", store=store)
+
+        # The run still succeeds (HIGH does not veto) …
+        assert results[0]["status"] == "success"
+        # … but the incomplete record must be visible, not silent.
+        assert results[0]["entire_persisted"] is False
+
 
 # ── U1: session_id threading ───────────────────────────────────────────────
 

@@ -1357,10 +1357,16 @@ def _merge_async_teacher_verdicts(
         )
         # Persist the derived `accepted` flag so later consumers (readers of
         # the bookbag, the conductor's _validate_verdict) see the same verdict.
+        # `locked_update_bookbag` returns None WITHOUT raising on a lock timeout
+        # (bookbag.py:435-436), so `except Exception` cannot see it — capture
+        # the return and warn, or the bookbag keeps a stale `accepted` that
+        # conductor.py:1513 later reads to score the run.
         try:
-            locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
-        except Exception:
-            pass
+            _written = locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
+            if _written is None:
+                print(f"  ⚠ Could not persist accepted={accepted} for {bead} (lock timeout)")
+        except Exception as e:  # noqa: BLE001
+            print(f"  ⚠ Could not persist accepted={accepted} for {bead}: {e}")
         task_result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
@@ -3096,17 +3102,31 @@ def bridge_issues(
                 },
                 outcome=outcome,
             )
-            # Entire gate: persist findings to bookbag for acceptance gating
+            # Entire gate: persist findings to bookbag for acceptance gating.
+            # `locked_update_bookbag` returns None WITHOUT raising when the
+            # per-bead lock cannot be acquired (bookbag.py:435-436), so the
+            # `except Exception` below cannot see it — a silent drop. This
+            # write is the durable veto evidence: a later retry of this issue
+            # reads bag["entire_findings"] through _merge_async_teacher_verdicts
+            # (issue_bridge.py:1342-1344) and folds it into the findings the
+            # acceptance gate at :2426 consults. Record the failure so the
+            # incomplete record is visible rather than silently incomplete.
+            entire_persisted = True
             if entire_review and entire_review.get("findings"):
                 try:
-                    locked_update_bookbag(
+                    _written = locked_update_bookbag(
                         str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                         repo,
                         entire_findings=entire_review.get("findings"),
                         entire_status=entire_review.get("status"),
                     )
-                except Exception:
-                    pass  # non-fatal; gate is best-effort
+                    entire_persisted = _written is not None
+                except Exception as e:  # noqa: BLE001
+                    print(f"  ⚠ Entire gate persist failed: {e}")
+                    entire_persisted = False
+                if not entire_persisted:
+                    print("  ⚠ Entire findings NOT persisted — the bookbag record "
+                          "is incomplete; a retry of this issue would not see the veto")
             compound_observation = _record_compound_observation(
                 bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                 trigger="bead_completed",
@@ -3128,6 +3148,7 @@ def bridge_issues(
                 "review_packet": task_result.get("review_packet"),
                 "verify_skipped": verify_skipped,
                 "entire_review": entire_review,
+                "entire_persisted": entire_persisted,
                 "crew_id": crew_result.crew_id if crew_result else None,
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
