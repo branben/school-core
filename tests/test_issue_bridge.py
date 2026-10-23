@@ -995,9 +995,9 @@ class TestVerifyGateMerge:
 class TestEntireSensor:
     """The sync path must run `entire review` as a pre-merge sensor.
 
-    Findings are surfaced (result + last_run); a CRITICAL finding vetoes the
-    review, matching the conductor's `_persist_acceptance` gate. HIGH alone is a
-    warning unless `ENTIRE_HIGH_STRICT=1`.
+    Findings are surfaced (result + last_run); a CRITICAL or HIGH finding
+    vetoes the review, matching the conductor's `_persist_acceptance` gate.
+    MEDIUM/LOW stay advisory.
     """
 
     ISSUE = [{

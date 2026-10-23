@@ -178,11 +178,17 @@ class TestEntireCriticalVetoLifecycle:
     @patch("src.core.director.run_task")
     @patch("src.crew.executor.call_model")
     @patch("issue_bridge.call_model")
-    def test_entire_high_alone_does_not_block_publication(
+    def test_entire_high_blocks_publication(
         self, mock_ib_call, mock_exec_call, mock_task, mock_fetch,
         tmp_path, monkeypatch, store,
     ):
-        """HIGH alone stays advisory unless ENTIRE_HIGH_STRICT=1 (no over-blocking)."""
+        """A HIGH entire finding blocks publication.
+
+        A finding the reviewer chose to emit is a veto (CRITICAL or HIGH).
+        HIGH used to stay advisory unless ENTIRE_HIGH_STRICT=1, which left the
+        sensor inert on real output because the parser defaulted unlabelled
+        findings to HIGH.
+        """
         mock_ib_call.return_value = '{"score": 90, "verdict": "GOOD", "reasoning": "ok", "gaps": [], "strengths": ["works"]}'
         mock_exec_call.return_value = '{"findings": []}'
         mock_fetch.return_value = [_issue(32)]
@@ -200,5 +206,5 @@ class TestEntireCriticalVetoLifecycle:
 
         results = bridge_issues("user/test", store=store)
 
-        assert len(pr_calls) == 1, "HIGH alone must not block publication"
-        assert results[0]["status"] == "success"
+        assert len(pr_calls) == 0, "HIGH must block publication"
+        assert results[0]["status"] == "error"

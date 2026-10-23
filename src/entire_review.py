@@ -80,6 +80,73 @@ def _get_changed_files(worktree_path: str, base_branch: str = "main") -> list[st
     return [f for f in result.stdout.strip().split("\n") if f]
 
 
+def _escape_stray_quotes(block: str) -> str:
+    """Escape unescaped quotes inside JSON string values.
+
+    Measured 2026-10-22 from live run ``real-77844``: the reviewer emits
+
+        "failure_scenario": "The `feature_func` only contains a `pass" statement."
+
+    A bare ``"`` inside a string value closes it early, so ``json.loads``
+    rejects the WHOLE block and ``_parse_json_findings`` silently drops the
+    finding — the review then reports PASS with zero findings, which is the
+    exact defect ``tests/test_entire_review.py::test_real_json_findings_review_
+    is_not_pass`` exists to prevent.
+
+    A quote is a real delimiter only when the next non-space character is one
+    of ``,`` ``}`` ``]`` ``:`` or end-of-input; anything else is a stray quote
+    inside a value and gets escaped. Already-escaped sequences are passed
+    through untouched, so well-formed blocks are unchanged.
+    """
+    out: list[str] = []
+    in_string = False
+    i = 0
+    n = len(block)
+    while i < n:
+        ch = block[i]
+        if ch == "\\" and in_string and i + 1 < n:
+            out.append(ch)
+            out.append(block[i + 1])
+            i += 2
+            continue
+        if ch == '"':
+            if not in_string:
+                in_string = True
+                out.append(ch)
+            else:
+                j = i + 1
+                while j < n and block[j] in " \t\r\n":
+                    j += 1
+                if j >= n or block[j] in ",}]:+":
+                    in_string = False
+                    out.append(ch)
+                else:
+                    out.append('\\"')
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _load_json_block(block: str):
+    """Parse a fenced block, tolerating the reviewer's malformed JSON.
+
+    Strict parse first; on failure, retry after escaping stray quotes. Returns
+    ``None`` only when the block is not parseable even after repair — the
+    caller then drops it, which is the correct outcome for a block that is not
+    a findings array at all.
+    """
+    try:
+        return json.loads(block)
+    except (ValueError, TypeError):
+        pass
+    try:
+        return json.loads(_escape_stray_quotes(block))
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_json_findings(content: str) -> list[tuple[str, int | None, str, str]]:
     """Findings from a fenced ```json array — the format real runs emit.
 
@@ -88,12 +155,16 @@ def _parse_json_findings(content: str) -> list[tuple[str, int | None, str, str]]
     with NO severity field. The review task asks only for "real, actionable
     defects", so a finding the reviewer chose to emit is blocking until a human
     says otherwise; an explicit `severity` field overrides that default.
+
+    The block is parsed with :func:`_load_json_block`, which repairs the
+    unescaped-quote malformation the reviewer actually emits (see
+    :func:`_escape_stray_quotes`). Without that repair every real block was
+    dropped and the review reported PASS.
     """
     out: list[tuple[str, int | None, str, str]] = []
     for block in re.findall(r"```(?:json)?\s*(.*?)```", content, re.DOTALL):
-        try:
-            data = json.loads(block)
-        except (ValueError, TypeError):
+        data = _load_json_block(block)
+        if data is None:
             continue
         if isinstance(data, dict):
             data = data.get("findings") or [data]
@@ -115,7 +186,13 @@ def _parse_json_findings(content: str) -> list[tuple[str, int | None, str, str]]
                 continue
             severity = str(item.get("severity") or "").strip().upper()
             if severity not in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
-                severity = "HIGH"
+                # No severity field → the reviewer chose to emit this finding,
+                # and the task asked only for "real, actionable defects".
+                # Blocking (CRITICAL) until a human says otherwise; an explicit
+                # severity field overrides this default. This is the label the
+                # docstring promises and the gate at issue_bridge.py:2700 gates
+                # on — the previous HIGH default made the sensor inert.
+                severity = "CRITICAL"
             out.append((file, line_no, severity, message))
     return out
 

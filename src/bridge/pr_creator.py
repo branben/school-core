@@ -491,9 +491,9 @@ def create_pr_for_issue(
     # caller — `create_prs_for_results` (currently dead), the module CLI
     # (pr_creator.py:720), or a future worker.
     #
-    # Scope matches the bridge guard exactly — CRITICAL only. HIGH stays a
-    # warning unless ENTIRE_HIGH_STRICT=1 (issue_bridge.py:2698); gating on HIGH
-    # here would widen the gate beyond the contract the existing tests encode.
+    # Scope matches the bridge guard exactly — CRITICAL and HIGH both refuse
+    # (issue_bridge.py:2698, conductor._persist_acceptance). MEDIUM/LOW stay
+    # advisory.
     #
     # Returns None (the function's existing "no PR" value, pr_creator.py:447)
     # rather than raising, so callers that already handle None keep working.
@@ -508,7 +508,7 @@ def create_pr_for_issue(
             for _f in _e_findings:
                 if (
                     isinstance(_f, dict)
-                    and str(_f.get("severity", "")).upper() == "CRITICAL"
+                    and str(_f.get("severity", "")).upper() in ("CRITICAL", "HIGH")
                 ):
                     # The bridge's entire veto rewrites findings with a
                     # `citation` key; raw sensor findings carry file/line.

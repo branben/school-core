@@ -2692,20 +2692,15 @@ def bridge_issues(
                         if entire_review else None,
                     )
 
-            # CRITICAL entire finding → veto the review, matching
-            # conductor._persist_acceptance (the async path): a CRITICAL sensor
+            # An entire finding the reviewer chose to emit → veto the review,
+            # matching conductor._persist_acceptance (the async path): a sensor
             # finding rejects acceptance even when both judges PASS. Mirror the
             # verify-failure injection below so the sensor is a real gate, not a
-            # sticky note. HIGH alone stays a warning unless ENTIRE_HIGH_STRICT=1.
+            # sticky note. CRITICAL and HIGH both veto; MEDIUM/LOW stay advisory.
             _entire_critical = [
                 f for f in ((entire_review or {}).get("findings") or [])
-                if str((f or {}).get("severity", "")).upper() == "CRITICAL"
+                if str((f or {}).get("severity", "")).upper() in ("CRITICAL", "HIGH")
             ]
-            if not _entire_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
-                _entire_critical = [
-                    f for f in ((entire_review or {}).get("findings") or [])
-                    if str((f or {}).get("severity", "")).upper() == "HIGH"
-                ]
             if _entire_critical:
                 for f in _entire_critical:
                     adversarial_review.setdefault("findings", []).append({

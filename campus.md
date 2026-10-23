@@ -93,7 +93,7 @@ reframed for LLM agents that need to grow through measured practice.
 | **Beads (`bd`)** | Task tracking | Durable issue tracker backed by Dolt. Issues persist across sessions. Syncs via git refs. |
 | **Engram** | Memory | Trajectory capture + consolidation. Layer 2 (episodic) → Layer 3 (archival). |
 | **AgentMail** | Communication bus | Inbound `/approve /reject /fix` for human-in-the-loop rubber-stamp. |
-| **Entire** | Pre-merge review | Intent-aware code review using git checkpoints. CRITICAL findings veto acceptance (`conductor._persist_acceptance`); `ENTIRE_HIGH_STRICT=1` escalates HIGH to a veto. |
+| **Entire** | Pre-merge review | Intent-aware code review using git checkpoints. CRITICAL and HIGH findings veto acceptance (`conductor._persist_acceptance`); MEDIUM/LOW stay advisory. |
 | **Serena** | Symbol awareness | LSP-based file/symbol resolution. Layer 1 context. |
 
 ### Why Orca?

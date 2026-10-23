@@ -13,19 +13,20 @@ guard makes the boundary self-defending for any *direct* caller:
 ``create_prs_for_results`` (currently dead), the module CLI
 (``pr_creator.py:720``), or a future worker.
 
-Scope matches the bridge guard exactly — CRITICAL only. HIGH stays a warning
-unless ``ENTIRE_HIGH_STRICT=1`` (``issue_bridge.py:2698``); gating on HIGH here
-would widen the gate beyond the contract the existing tests encode.
+Scope matches the bridge guard exactly — CRITICAL and HIGH both refuse
+(``issue_bridge.py:2698``, ``conductor._persist_acceptance``). MEDIUM/LOW stay
+advisory.
 
 Test roles, stated honestly:
 
 * ``test_accepted_false_refuses_to_publish`` and
   ``test_critical_entire_finding_refuses_to_publish`` are **RED → GREEN**: new
   behaviour. They fail before the guard and pass after.
-* ``test_high_entire_finding_does_not_block`` and ``test_accepted_true_still_publishes``
-  are **regression guards** — they pass before AND after. Their teeth are proven
-  by neutralizing the guard (widening it to CRITICAL+HIGH) and watching them go
-  red, then restoring. A green run alone would prove nothing about them.
+* ``test_high_entire_finding_refuses_to_publish`` is **RED → GREEN** too: it
+  asserted the old advisory contract and now asserts the veto.
+* ``test_medium_entire_finding_still_publishes`` and
+  ``test_accepted_true_still_publishes`` are **regression guards** — they pass
+  before AND after, proving the widened gate did not swallow clean reviews.
 """
 
 from unittest.mock import patch
@@ -99,8 +100,28 @@ class TestPublicationGuard:
 
     @patch("src.bridge.pr_creator._gh_api")
     @patch("src.bridge.pr_creator._gh")
-    def test_high_entire_finding_does_not_block(self, mock_gh, mock_api):
-        """Regression guard: HIGH alone is a warning, not a veto."""
+    def test_high_entire_finding_refuses_to_publish(self, mock_gh, mock_api):
+        """RED → GREEN. A HIGH entire-sensor finding is an automatic veto."""
+        url = create_pr_for_issue(
+            _issue(),
+            _task(),
+            "user/test",
+            entire_review={
+                "status": "fail",
+                "findings": [
+                    {"severity": "HIGH", "file": "a.py", "line": 1, "message": "meh"}
+                ],
+            },
+            dry_run=True,
+        )
+        assert url is None
+        mock_gh.assert_not_called()
+        mock_api.assert_not_called()
+
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
+    def test_medium_entire_finding_still_publishes(self, mock_gh, mock_api):
+        """Regression guard: MEDIUM alone is advisory, not a veto."""
         url = create_pr_for_issue(
             _issue(),
             _task(),
@@ -108,7 +129,7 @@ class TestPublicationGuard:
             entire_review={
                 "status": "warn",
                 "findings": [
-                    {"severity": "HIGH", "file": "a.py", "line": 1, "message": "meh"}
+                    {"severity": "MEDIUM", "file": "a.py", "line": 1, "message": "meh"}
                 ],
             },
             dry_run=True,

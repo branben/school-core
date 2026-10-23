@@ -243,21 +243,17 @@ entire_findings = bag.get("entire_findings") or []
 if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
     findings = findings + entire_findings
 has_critical = any(
-    str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
+    str(f.get("severity", "")).upper() in ("CRITICAL", "HIGH") for f in findings
 )
-# Escape hatch: escalate HIGH to a veto when ENTIRE_HIGH_STRICT=1
-if not has_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
-    has_critical = any(
-        str(f.get("severity", "")).upper() == "HIGH" for f in entire_findings
-    )
 accepted = cto_v == "PASS" and coo_v == "PASS" and \
     cto_score >= 50 and coo_score >= 50 and not has_critical
 ```
 
-**`ENTIRE_HIGH_STRICT` (escape hatch).** By default a **HIGH** entire finding
-is a warning only (accepted stays True); `ENTIRE_HIGH_STRICT=1` escalates HIGH
-to a full veto, matching CRITICAL. It is opt-in and read once per acceptance
-computation. The sensor's own `status` is `"skipped"` (CLI missing) or
+**What vetoes.** A **CRITICAL** or **HIGH** entire finding vetoes acceptance
+(`accepted` becomes False). **MEDIUM** and **LOW** stay advisory. This matches
+the sensor's contract: the review task asks only for "real, actionable
+defects", so a finding the reviewer chose to emit is blocking until a human
+says otherwise. The sensor's own `status` is `"skipped"` (CLI missing) or
 `"error"` (crash) — in both cases findings do **not** veto, so a broken sensor
 can never block the pipeline.
 
