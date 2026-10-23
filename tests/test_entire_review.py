@@ -91,13 +91,14 @@ def test_run_entire_review_skips_empty_diff(tmp_path):
 # reviewer API (zero findings). These pin the contract: such runs are ERROR.
 
 
-def _drive_review(monkeypatch, tmp_path, review_output, returncode=0, raise_exc=None):
+def _drive_review(monkeypatch, tmp_path, review_output, returncode=0, raise_exc=None,
+                  changed_files=("src/app.py",)):
     """Run run_entire_review with the CLI present, a non-empty diff, and a
     stubbed `entire review` subprocess. Returns (result, review_cmd)."""
     monkeypatch.setattr("src.entire_review._get_entire_path",
                         lambda: "/usr/local/bin/entire")
     monkeypatch.setattr("src.entire_review._get_changed_files",
-                        lambda *a, **k: ["src/app.py"])
+                        lambda *a, **k: list(changed_files))
     monkeypatch.setattr("src.entire_review._ensure_review_profile",
                         lambda *a, **k: None)
     seen = {}
@@ -149,15 +150,33 @@ def test_zero_findings_with_agent_error_is_error(monkeypatch, tmp_path):
     assert res["findings"] == []
 
 
-def test_clean_review_with_no_findings_still_passes(monkeypatch, tmp_path):
-    """A real run with no defects and no error marker is a genuine PASS."""
+def test_real_clean_review_with_verdict_still_passes(monkeypatch, tmp_path):
+    """A real run that reached a verdict of `approve with nits` and found no
+    defect is a genuine PASS. Fixture is verbatim from a live run, not invented."""
+    res, _ = _drive_review(
+        monkeypatch, tmp_path, REAL_APPROVE_WITH_NITS, returncode=0,
+        changed_files=["feature.py"],
+    )
+    assert res["status"] == "pass"
+    assert res["error"] is None
+    assert res["findings"] == []
+
+
+def test_no_verdict_and_no_findings_is_error_not_pass(monkeypatch, tmp_path):
+    """A run that produced NEITHER a verdict NOR findings reached no conclusion.
+
+    `entire review` exits 0 in this case, so exit code alone cannot separate
+    "reviewed, nothing found" from "never reviewed". The verdict line is the
+    reviewer's own statement that it looked — without it, this is ERROR.
+    """
     res, _ = _drive_review(
         monkeypatch, tmp_path,
         "Running review with claude-code...\nNo issues found.\n",
         returncode=0,
     )
-    assert res["status"] == "pass"
-    assert res["error"] is None
+    assert res["status"] == "error"
+    assert res["findings"] == []
+    assert "no verdict" in res["error"].lower()
 
 
 def test_review_timeout_is_configurable(monkeypatch):
@@ -300,4 +319,151 @@ def test_hooks_check_is_anchored_to_the_agent_name(monkeypatch, tmp_path):
     monkeypatch.setattr("subprocess.run", fake_run)
     assert _ensure_review_profile(tmp_path, "/usr/local/bin/entire") is None
     assert calls, "agent add must run for OUR agent even when another has hooks"
+
+
+# ── The reviewer's model must be pinned, and a dead model must not read as pass ──
+#
+# Measured 2026-10-21: `entire review` exits 0 and prints "1 succeeded" even
+# when the reviewer agent could not run at all. The only signal is the agent's
+# own line, so both halves matter — pin a reachable model, and treat the
+# failure line as an ERROR if it ever appears again.
+
+
+# Verbatim from a real run against this machine (review handle 20261021T231516).
+REAL_MODEL_FAILURE_OUTPUT = (
+    "Reviewing feature vs main: 1 commit, 1 file changed, 2 uncommitted\n"
+    "Running review with claude-code...\n"
+    "# claude-code review\n"
+    "\n"
+    "There's an issue with the selected model "
+    "(nvidia/nvidia/nemotron-3-super-120b-a12b). It may not exist or you may "
+    "not have access to it. Run --model to pick a different model.\n"
+    "1 agent(s) done — 1 succeeded, 0 failed, 0 cancelled\n"
+    "\n"
+    "Review complete.\n"
+)
+
+
+def test_real_model_failure_is_error_not_pass(monkeypatch, tmp_path):
+    """A verbatim real failure must be ERROR even though it exits 0 and claims
+    '1 succeeded' — previously this read as a clean PASS."""
+    res, _ = _drive_review(
+        monkeypatch, tmp_path, REAL_MODEL_FAILURE_OUTPUT, returncode=0,
+    )
+    assert res["status"] == "error"
+    assert res["findings"] == []
+    assert "selected model" in res["error"]
+
+
+def test_ensure_review_profile_pins_a_model(monkeypatch, tmp_path):
+    """`--set-model agent=model` must be passed, or the reviewer falls back to
+    its own config (here: an upstream that times out)."""
+    from src.entire_review import _DEFAULT_REVIEW_MODEL, _ensure_review_profile
+
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        if "--configure" in cmd:
+            seen["cmd"] = cmd
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        if "--agents" in cmd:
+            return mock.Mock(returncode=0,
+                             stdout="claude-code: hooks installed", stderr="")
+        raise AssertionError(f"unexpected call: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.delenv("ENTIRE_REVIEW_MODEL", raising=False)
+    assert _ensure_review_profile(tmp_path, "/usr/local/bin/entire") is None
+    assert f"claude-code={_DEFAULT_REVIEW_MODEL}" in seen["cmd"]
+
+
+def test_review_model_is_env_overridable(monkeypatch):
+    from src.entire_review import _DEFAULT_REVIEW_MODEL, _review_model
+    monkeypatch.delenv("ENTIRE_REVIEW_MODEL", raising=False)
+    assert _review_model() == _DEFAULT_REVIEW_MODEL
+    monkeypatch.setenv("ENTIRE_REVIEW_MODEL", "auto/fast")
+    assert _review_model() == "auto/fast"
+    monkeypatch.setenv("ENTIRE_REVIEW_MODEL", "   ")
+    assert _review_model() == _DEFAULT_REVIEW_MODEL
+
+
+# ── The parser must read the format the reviewer ACTUALLY emits ──────────────
+#
+# Measured 2026-10-21 from two live `entire review` runs (model auto/best-coding,
+# cost $0.34 each). The reviewer's final report is NOT `Critical: file.py:42 — msg`
+# — the only format `_parse_entire_output` ever understood:
+#
+#   run A (handle er-reg-58284, 18:59): a verdict line only, no findings.
+#   run B (handle real-77844, 19:20): a fenced ```json array of findings — and
+#                                     that review HAD found a defect.
+#
+# Because neither matched, every real review parsed to ZERO findings. Run B is
+# the proof: a defect the reviewer surfaced was reported to the caller as a
+# clean PASS. These fixtures are verbatim, not invented.
+
+# Verbatim final report, live run 2026-10-21T18:59 (handle er-reg-58284).
+REAL_APPROVE_WITH_NITS = (
+    "approve with nits: The new file `feature.py` contains a placeholder "
+    "function with a `TODO` comment, indicating incomplete work. This is not a "
+    "bug, but a notice for future implementation."
+)
+
+# Verbatim final report, live run 2026-10-21T19:20 (handle real-77844).
+REAL_JSON_FINDINGS = (
+    "```json\n"
+    "[\n"
+    "  {\n"
+    '    "file": "/private/tmp/real-77844/test_run_entire_review_real_in0/feature.py",\n'
+    '    "line": 1,\n'
+    '    "summary": "Incomplete feature implementation, function is a placeholder.",\n'
+    '    "failure_scenario": "The `feature_func` only contains a `pass" statement."\n'
+    "  }\n"
+    "]\n"
+    "```"
+)
+
+
+def test_parse_real_json_array_findings():
+    """A real review's JSON-array report must yield findings, not []."""
+    findings = _parse_entire_output(REAL_JSON_FINDINGS, ["feature.py"])
+    assert len(findings) == 1
+    assert findings[0].file.endswith("feature.py")
+    assert findings[0].line == 1
+    assert "placeholder" in findings[0].message
+
+
+def test_parse_real_json_findings_filtered_to_changed_files():
+    """A JSON finding outside the diff is still filtered out."""
+    findings = _parse_entire_output(REAL_JSON_FINDINGS, ["other.py"])
+    assert findings == []
+
+
+def test_extract_verdict_from_real_output():
+    from src.entire_review import _extract_verdict
+    assert _extract_verdict(REAL_APPROVE_WITH_NITS) == "approve with nits"
+    assert _extract_verdict("request changes: the guard is inverted") == "request changes"
+    assert _extract_verdict("approve: looks good") == "approve"
+    assert _extract_verdict("no verdict line in here") is None
+
+
+def test_real_json_findings_review_is_not_pass(monkeypatch, tmp_path):
+    """The live run that FOUND a defect must not be reported as PASS."""
+    res, _ = _drive_review(
+        monkeypatch, tmp_path, REAL_JSON_FINDINGS, returncode=0,
+        changed_files=["feature.py"],
+    )
+    assert res["status"] == "fail"
+    assert len(res["findings"]) == 1
+    assert res["findings"][0]["file"].endswith("feature.py")
+
+
+def test_request_changes_verdict_fails_even_with_no_findings(monkeypatch, tmp_path):
+    """The reviewer's own verdict outranks the parsed findings."""
+    res, _ = _drive_review(
+        monkeypatch, tmp_path,
+        "request changes: the retry loop can spin forever",
+        returncode=0, changed_files=["feature.py"],
+    )
+    assert res["status"] == "fail"
+    assert res["error"] is None
 
