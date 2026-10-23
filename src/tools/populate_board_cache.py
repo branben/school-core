@@ -9,7 +9,12 @@ Stdlib only: json, subprocess, pathlib, os, sys.
 
 Usage::
 
-    python populate_board_cache.py [repo]
+    python -m src.tools.populate_board_cache [repo]
+
+Run as a MODULE from the repo root. Running it by path
+(``python src/tools/populate_board_cache.py``) puts ``src/tools/`` on
+``sys.path[0]`` instead of the repo root, so the ``src.*`` import below
+raises ModuleNotFoundError and the cache is silently never written.
 
 If *repo* is omitted it is read from the ``SCHOOL_REPO`` environment variable.
 If neither is provided, :func:`repo_default.default_repo` resolves it — which

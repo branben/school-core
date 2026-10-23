@@ -1,5 +1,6 @@
 """Structural checks for the GitHub Actions school-loop workflow."""
 
+import re
 from pathlib import Path
 
 import yaml
@@ -294,3 +295,74 @@ def test_u8_crew_registry_is_checkpointed():
     command = step["run"]
     assert "data/crew_runs.json" in command  # sanitizer input
     assert "data/crew_runs.json" in command.split("git add -f", 1)[1]  # staged
+
+
+# --- reorg invariant: a script invoked BY PATH cannot use `src.*` imports ---
+
+_PATH_INVOCATION = re.compile(
+    r"(?:^|[\s;&|(])(?:\.venv/bin/|venv/bin/)?"
+    r"(?:python3?|python[\d.]+)\s+((?:src|scripts|tools)/[\w./-]+\.py)"
+)
+_DOTTED_SRC_IMPORT = re.compile(r"^(?:from|import)\s+src[.\s]", re.M)
+
+
+def _all_run_scripts() -> dict[str, set[str]]:
+    """Map every workflow file to the .py paths its `run:` steps invoke by path."""
+    found: dict[str, set[str]] = {}
+    for wf in sorted((Path(__file__).parents[1] / ".github" / "workflows").glob("*.y*ml")):
+        doc = yaml.safe_load(wf.read_text(encoding="utf-8")) or {}
+        commands = [
+            step["run"]
+            for job in doc.get("jobs", {}).values()
+            for step in job.get("steps", [])
+            if isinstance(step.get("run"), str)
+        ]
+        paths = {m.group(1) for c in commands for m in _PATH_INVOCATION.finditer(c)}
+        if paths:
+            found[wf.name] = paths
+    return found
+
+
+def test_scripts_invoked_by_path_do_not_use_dotted_src_imports():
+    """A script run by path gets its OWN dir on sys.path[0], not the repo root.
+
+    `python src/tools/populate_board_cache.py` puts `src/tools/` on sys.path[0],
+    so its module-level `from src.tools.repo_default import default_repo` raised
+    ModuleNotFoundError and the board cache was never written — while the step
+    still exited non-zero for a reason unrelated to the board. Run such scripts
+    as `python -m src.tools.<name>` from the repo root, or keep them stdlib-only.
+    """
+    root = Path(__file__).parents[1]
+    offenders = []
+    for wf_name, paths in _all_run_scripts().items():
+        for rel in sorted(paths):
+            src = root / rel
+            if not src.is_file():
+                continue
+            if _DOTTED_SRC_IMPORT.search(src.read_text(encoding="utf-8")):
+                offenders.append(f"{wf_name} runs `{rel}` by path")
+    assert not offenders, (
+        "scripts invoked by path that carry a dotted `src.*` import "
+        f"(run them with `-m` instead): {offenders}"
+    )
+
+
+def test_board_cache_step_uses_module_invocation():
+    """Regression guard for the exact 2026-10-23 break.
+
+    `populate_board_cache` moved to src/tools/ in the reorg; its by-path
+    invocation silently stopped populating data/issues_cache.json.
+    """
+    workflow = _workflow()
+    runs = [
+        step["run"]
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if isinstance(step.get("run"), str)
+    ]
+    assert any("-m src.tools.populate_board_cache" in r for r in runs), (
+        "no step runs populate_board_cache as a module"
+    )
+    assert not any(
+        re.search(r"python[\d.]*\s+src/tools/populate_board_cache\.py", r) for r in runs
+    ), "a step still invokes populate_board_cache.py by path"

@@ -459,7 +459,11 @@ jobs:
           echo "toolchain preflight OK — nix at $NIX_BIN, verifyShell=$SHELL_NAME"
 
       - name: Populate issue cache from GitHub
-        run: .venv/bin/python src/tools/populate_board_cache.py
+        # `-m` from the repo root, NOT `python src/tools/populate_board_cache.py`:
+        # a script run by path gets its OWN directory on sys.path[0] (src/tools/),
+        # not the repo root, so its module-level `from src.tools.repo_default ...`
+        # raised ModuleNotFoundError and the board cache was never populated.
+        run: .venv/bin/python -m src.tools.populate_board_cache
 
       - name: Run bridge loop (executes issues)
         # Never skipped on an Orca precondition failure: the bridge is the only
@@ -624,7 +628,7 @@ jobs:
         run: git fetch origin board-publish && git reset --hard origin/board-publish
 
       - name: Populate issue cache from GitHub
-        run: python src/tools/populate_board_cache.py
+        run: python -m src.tools.populate_board_cache
 
       - name: Publish board to ht-ml.app
         # Regenerate board.html from the just-generated local data/, re-share,

@@ -40,8 +40,8 @@ def spawn_process(worktree_id="repo::/tmp/crew-worktree"):
     return subprocess.CompletedProcess(
         ["fm-spawn"],
         0,
-        f"spawned fm-loop-20260811-120000-42 harness=hermes kind=ship "
-        f"window=terminal worktree=/tmp/crew-worktree\n",
+        "spawned fm-loop-20260811-120000-42 harness=hermes kind=ship "
+        "window=terminal worktree=/tmp/crew-worktree\n",
         "",
     )
 
@@ -390,6 +390,55 @@ def test_capability_bundle_reaches_firstmate_launch_contract(monkeypatch, tmp_pa
     assert payload["task_role"] == "coder"
     assert payload["hermes_toolsets"] == list(capability.hermes_toolsets)
     assert "school-project" not in json.dumps(payload)
+
+
+def test_capability_env_reaches_the_pane_harness(monkeypatch, tmp_path):
+    """FM_AGENT_* must ride the --harness string, not only the process env.
+
+    fm-spawn.sh hands the launch command to the Orca pane as literal typed text
+    (fm-spawn.sh:2644) and prefixes LAUNCH with only FM_STATUS_FILE /
+    FM_REPORT_FILE (fm-spawn.sh:2581). FM_AGENT_* is absent from that list and
+    appears nowhere in firstmate's bin/, so the wrapper saw an EMPTY
+    FM_AGENT_PROFILE and ran `hermes -p ""` — exit 2, "'' is not a valid
+    profile name", recorded as `failed: hermes-exit-2-no-output`
+    (crew fm-loop-20261023-131805-419, observed 2026-10-23).
+
+    The sibling test above asserts the `env=` dict, which is exactly the
+    boundary that does NOT reach the pane — so it was green while the crew
+    failed. This test asserts the harness, which is what the pane receives.
+    """
+    configure_paths(monkeypatch, tmp_path)
+    capability = resolve_capability(
+        "python-testing", 30, task_role="coder", difficulty="medium"
+    )
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0].endswith("fm-spawn.sh"):
+            return spawn_process()
+        return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
+
+    monkeypatch.setattr(crew_dispatch, "_run", fake_run)
+    (tmp_path / "school-project").mkdir()
+    dispatch_crew(
+        issue_number=43,
+        task_text="Use the selected coder capability",
+        project_dir=tmp_path / "school-project",
+        cycle_session_id="loop-20260812-120000",
+        capability=capability,
+        timeout=1,
+        poll_interval=0,
+    )
+
+    args = calls[0][0]
+    harness = args[args.index("--harness") + 1]
+    assert "export FM_AGENT_PROFILE=student-coder" in harness
+    assert f"FM_AGENT_TASK_ROLE={capability.task_role}" in harness
+    assert f"FM_AGENT_TOOLSETS={','.join(capability.hermes_toolsets)}" in harness
+    assert f"FM_AGENT_ALLOWED_TOOLS={','.join(capability.allowed_tools)}" in harness
+    # the wrapper's own profile-validation block must now see a real value
+    assert "FM_AGENT_PROFILE=''" not in harness
 
 
 def test_empty_capability_tool_policy_fails_closed(monkeypatch, tmp_path):
