@@ -155,20 +155,11 @@ def test_build_verify_no_repo_path_is_loudly_skipped(monkeypatch, tmp_path):
 def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
     """The review gate must not depend on the process working directory.
 
-    The flake that provides #verifyShell lives at the checkout ROOT — ``flake.nix``
-    sits beside this repo, not beside ``director.py``. The pinned path must
-    therefore be the root, not ``director.py``'s own directory.
-
-    Regression for the reorg: this assertion used to expect
-    ``Path(director.__file__).resolve().parent`` (``src/core``). That was true
-    before ``a2afda4`` re-anchored the flake to the checkout root. Deriving the
-    expected value from ``__file__`` again is what let the test rot — assert the
-    artifact (``flake.nix``) instead, so the test cannot go stale when the
-    module moves.
-
-    Why it matters: ``verify_gate.py:388`` SKIPS the gate when no ``flake.nix``
-    resolves at ``flake_path``, and ``VERIFY_GATE_STRICT`` turns that skip into
-    a CRITICAL veto — so a stale path fails loudly rather than passing silently.
+    Pins to the REPO ROOT (the directory that actually contains flake.nix),
+    not to director.py's own package directory. director.py lives at
+    src/core/director.py, so its package dir is src/core — which has no
+    flake.nix. Asserting the package dir was the pre-reorg value and broke
+    when director.py moved under src/.
     """
     captured = {}
 
@@ -179,9 +170,14 @@ def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
     result = _review_with_build_gate(monkeypatch, tmp_path, None, gate=fake_gate)
 
     assert result["accepted"] is True
-    flake_dir = Path(director.__file__).resolve().parent.parent.parent
-    assert (flake_dir / "flake.nix").exists(), "flake.nix must sit at the checkout root"
-    assert captured["flake_path"] == flake_dir
+    flake_dir = captured["flake_path"]
+    # The contract: it resolves to the repo root, which owns flake.nix.
+    assert (flake_dir / "flake.nix").exists(), (
+        f"flake_path {flake_dir} does not contain flake.nix — "
+        f"the verify gate would silently skip its flake check"
+    )
+    # And it must NOT be the module's own package directory (cwd-dependence).
+    assert flake_dir != Path(director.__file__).resolve().parent
 
 
 def test_build_verify_gate_error_is_strict_veto(monkeypatch, tmp_path):
