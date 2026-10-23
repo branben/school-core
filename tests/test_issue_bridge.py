@@ -1120,8 +1120,11 @@ class TestEntireSensor:
         into the findings the acceptance gate at :2426 consults. A silent drop
         therefore leaves the veto evidence missing from the durable record.
 
-        HIGH (not CRITICAL) is used so the run still SUCCEEDS and reaches the
-        write site at issue_bridge.py:3102 — a CRITICAL finding vetoes before it.
+        MEDIUM (not CRITICAL/HIGH) is used so the run still SUCCEEDS and
+        reaches the entire-findings write site — a CRITICAL or HIGH finding
+        vetoes before it. 9babf68 made HIGH veto unconditionally, retiring the
+        ENTIRE_HIGH_STRICT opt-in; campus.md:96 and conductor.py:234 both treat
+        CRITICAL and HIGH as blocking, so HIGH can no longer reach this site.
         """
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
@@ -1133,7 +1136,7 @@ class TestEntireSensor:
         }
         mock_sensor.return_value = {
             "status": "fail",
-            "findings": [{"file": "y.py", "line": 9, "severity": "HIGH",
+            "findings": [{"file": "y.py", "line": 9, "severity": "MEDIUM",
                           "message": "suspicious construct"}],
         }
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
