@@ -44,6 +44,48 @@ adversarial review as CRITICAL findings (see `config/anchors.yaml` →
 Example `project_verify.yaml` (with the Orca per-subproject-motivation):
 see `verify_gate.example.yaml` at the repo root.
 
+### 5. Onboarding a new target repo
+
+Point school-core at a new repo and it generates the four artifacts that repo
+needs — derived from evidence in the repo itself, never from a template with
+placeholders left in:
+
+```sh
+python issue_bridge.py --onboard --repo owner/repo --write
+# or the standalone module
+python -m onboard --repo owner/repo --write --json
+```
+
+| Artifact | ICM layer | What it holds |
+|---|---|---|
+| `CLAUDE.md` | L0 | identity, what the repo is, key paths, build/test table, architecture one-liner, conventions |
+| `CONTEXT.md` | L1 | task-routing table (task shape → workflow → verifies → owned failure edge) |
+| `.envit/AGENTS.md` | L2 | inventory of the pinned dependency context |
+| `envit.json` + `envit.lock.json` | L3 | the declaration + the frozen commit per dependency |
+| `project_verify.yaml` | — | the commands `verify_gate` will run inside the hermetic shell |
+
+Evidence sources, in order of trust: the checkout itself (lockfile over the
+declared `packageManager` field over a default), the repo's own README
+(prose summary + `## Tech Stack` table verbatim), its manifests
+(`package.json`/`Cargo.toml`/`pyproject.toml`/`go.mod`), and `gh` for
+language/default-branch metadata. Every generated block is wrapped in an
+`<!-- BEGIN ONBOARD-GENERATED ... -->` fence, so re-running replaces it and
+never clobbers hand-written content above it.
+
+**Repo-agnostic by construction:** the slug is an argument, not a constant. Do
+NOT hard-wire `SCHOOL_REPO` for a new target — that is what `--onboard` is for.
+
+`--no-clone` requires `--repo` to be a local checkout; `--offline` never calls
+`gh`; `--require-evidence` fails closed unless real repo facts were read. The
+default is report-only — `--write` is what mutates anything.
+
+The generated envit declaration must pass the repo's own reproducibility gate:
+
+```sh
+python scripts/verify_context_lock.py --dest /tmp/onb-dest \
+  --manifest <target>/envit.json --lock <target>/envit.lock.json
+```
+
 ## Tier B — optional (context enrichment)
 
 These are *designed* but not required for the verify-gate. Skip unless you want

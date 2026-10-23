@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import re
@@ -231,13 +230,8 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str, repo: str = "__global
     if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
         findings = findings + entire_findings
     has_critical = any(
-        str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
+        str(f.get("severity", "")).upper() in ("CRITICAL", "HIGH") for f in findings
     )
-    # HIGH findings veto only when ENTIRE_HIGH_STRICT=1
-    if not has_critical and os.getenv("ENTIRE_HIGH_STRICT") == "1":
-        has_critical = any(
-            str(f.get("severity", "")).upper() == "HIGH" for f in entire_findings
-        )
     accepted = (
         cto_v == "PASS"
         and coo_v == "PASS"
@@ -648,9 +642,50 @@ def _run_issue_async(
             entire_findings = []
         # ──────────────────────────────────────────────────────────────────────
 
+        # Persist the sensor result to the bookbag BEFORE the acceptance gate
+        # reads it. `_persist_acceptance` derives the CRITICAL veto from
+        # bag["entire_findings"] (conductor.py:233-243), but this async path
+        # never wrote it — the findings only reached notify_verdict — so a
+        # CRITICAL entire finding could not veto acceptance. Write them here,
+        # repo-namespaced to match read_bookbag/_persist_acceptance.
+        try:
+            written = locked_update_bookbag(
+                leaf.bead,
+                repo=target_repo or "__global__",
+                lock_timeout=10.0,
+                entire_findings=entire_findings,
+                entire_status=entire_status,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"  ⚠ Entire review result persist failed: {e}")
+            written = None
+
+        # Fail closed on a SILENT write failure. `locked_update_bookbag` returns
+        # None — it does NOT raise — when the per-bead lock cannot be acquired
+        # (bookbag.py:435-436), so the except above cannot see it. If the Entire
+        # findings never reach the bookbag, `_persist_acceptance` derives no
+        # CRITICAL veto from bag["entire_findings"] (conductor.py:230-240) and
+        # can accept the run — silently dropping a CRITICAL finding. Refuse
+        # instead, and re-persist `accepted=False` so the bookbag agrees with the
+        # decision rather than recording a stale True.
+        entire_persisted = written is not None
+
         cto_v, coo_v = wait_for_verdicts(leaf.bead, repo=target_repo or "__global__", timeout=args.handoff_timeout)
         bag = read_bookbag(leaf.bead, target_repo or "__global__") or {}
         accepted = _persist_acceptance(leaf.bead, cto_v, coo_v, repo=target_repo or "__global__")
+        if not entire_persisted:
+            print("  ⚠ Entire findings NOT persisted (lock timeout) — refusing "
+                  "acceptance: the gate could not see the veto evidence")
+            accepted = False
+            try:
+                locked_update_bookbag(
+                    leaf.bead,
+                    repo=target_repo or "__global__",
+                    lock_timeout=10.0,
+                    accepted=False,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"  ⚠ Refusal could not be persisted: {e}")
         _validate_verdict(leaf.bead, repo=target_repo or "__global__")
         result["review"] = {
             "cto_verdict": cto_v,

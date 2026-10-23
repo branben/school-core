@@ -1357,10 +1357,16 @@ def _merge_async_teacher_verdicts(
         )
         # Persist the derived `accepted` flag so later consumers (readers of
         # the bookbag, the conductor's _validate_verdict) see the same verdict.
+        # `locked_update_bookbag` returns None WITHOUT raising on a lock timeout
+        # (bookbag.py:435-436), so `except Exception` cannot see it — capture
+        # the return and warn, or the bookbag keeps a stale `accepted` that
+        # conductor.py:1513 later reads to score the run.
         try:
-            locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
-        except Exception:
-            pass
+            _written = locked_update_bookbag(bead, repo, lock_timeout=10.0, accepted=accepted)
+            if _written is None:
+                print(f"  ⚠ Could not persist accepted={accepted} for {bead} (lock timeout)")
+        except Exception as e:  # noqa: BLE001
+            print(f"  ⚠ Could not persist accepted={accepted} for {bead}: {e}")
         task_result["review"] = {
             "cto_verdict": cto_v,
             "coo_verdict": coo_v,
@@ -2686,6 +2692,28 @@ def bridge_issues(
                         if entire_review else None,
                     )
 
+            # An entire finding the reviewer chose to emit → veto the review,
+            # matching conductor._persist_acceptance (the async path): a sensor
+            # finding rejects acceptance even when both judges PASS. Mirror the
+            # verify-failure injection below so the sensor is a real gate, not a
+            # sticky note. CRITICAL and HIGH both veto; MEDIUM/LOW stay advisory.
+            _entire_critical = [
+                f for f in ((entire_review or {}).get("findings") or [])
+                if str((f or {}).get("severity", "")).upper() in ("CRITICAL", "HIGH")
+            ]
+            if _entire_critical:
+                for f in _entire_critical:
+                    adversarial_review.setdefault("findings", []).append({
+                        "section": "pre-merge-sensor",
+                        "issue_class": "entire_finding",
+                        "severity": "CRITICAL",
+                        "citation": f"{f.get('file')}:{f.get('line')}",
+                        "description": (f.get("message") or "")[:500],
+                        "suggestion": "Fix the issue the pre-merge sensor flagged.",
+                    })
+                adversarial_review["verdict"] = "FAIL"
+                adversarial_review["score"] = 0.0
+
             # Merge verify-gate failures into the review as CRITICAL findings.
             # This is the enforcement of campus.md #3: the compiler runs before
             # the critic speaks; a broken build cannot earn a PASS.
@@ -2790,6 +2818,110 @@ def bridge_issues(
                             "trajectory": task_result.get("trajectory"),
                             "capability": task_result.get("capability"),
                             "teacher_evidence": task_result.get("teacher_evidence"),
+                            **rejection_outcome,
+                        },
+                    )
+                except Exception as e_rec:
+                    sys.stderr.write(f"[issue_bridge] Failed to record run for #{num}: {e_rec}\n")
+                _mark_github_issue(repo, num, "error")
+                try:
+                    notify_issue_alert(num, issue["title"], "school-failed",
+                                       error=_reject_reason,
+                                       repo=repo, retry_limit=RETRY_LIMIT)
+                except Exception as e_notify:
+                    sys.stderr.write(f"[issue_bridge] Alert failed for #{num}: {e_notify}\n")
+                retries.pop(num, None)
+                mark_processed(num, OUTCOME_REJECT)
+                processed[num] = OUTCOME_REJECT
+                continue
+
+            # Pre-merge sensor lifecycle guard: the entire-CRITICAL veto above
+            # (2703-2717) injects a CRITICAL finding and sets
+            # adversarial_review['verdict']='FAIL', but nothing downstream reads
+            # it — create_pr_for_issue has no verdict check at all, so the PR was
+            # still opened (measured 2026-10-22: `entire review FAIL` logged,
+            # then `PR created`). Mirror the verify-failure guards above: block
+            # grading, scoring, and publication.
+            #
+            # Scope is DELIBERATELY narrow — `issue_class == "entire_finding"`,
+            # the veto's own marker — NOT "any CRITICAL finding":
+            #   * Judge findings (cto/coo) also land in adversarial_review
+            #     ["findings"] via adversarial_summary() (review_packet.py:223).
+            #     A judge CRITICAL that is not in BLOCKING_CLASSES leaves
+            #     `accepted` True (director.py:786-793), so gating on all
+            #     CRITICALs silently widened the gate and broke
+            #     tests/test_issue_bridge.py::test_success_clears_retry_state
+            #     (its `no_artifact` CRITICAL, adversarial_reviewer.py:425).
+            #   * The verify-gate injection at 2743 is NOT a second hole: the
+            #     no-packet guard at 2766 already reads verify_result and blocks.
+            #   * `verdict == "FAIL"` is not a reliable gate either —
+            #     _run_adversarial_review's fail-closed fallback returns
+            #     verdict="PASS" + review_failed=True by design (@1206), because
+            #     a crashed checker is not a rejection.
+            _ar_critical = [
+                f for f in ((adversarial_review or {}).get("findings") or [])
+                if (f or {}).get("issue_class") == "entire_finding"
+                and str((f or {}).get("severity", "")).upper() == "CRITICAL"
+            ]
+            if _ar_critical:
+                # The entire-CRITICAL veto (2703) rewrites each finding with a
+                # `citation` key; judge findings carry `file`/`line`. Read both.
+                def _cite(f: dict) -> str:
+                    return str(
+                        f.get("citation")
+                        or f"{f.get('file', '?')}:{f.get('line', '?')}"
+                    )
+                _ar_cites = ", ".join(_cite(f) for f in _ar_critical[:3])
+                sys.stderr.write(
+                    f"[issue_bridge] #{num}: CRITICAL pre-merge finding(s) — "
+                    f"skipping grading, scoring, and publication ({_ar_cites})\n"
+                )
+                _reject_reason = (
+                    f"critical pre-merge finding(s): {_ar_cites}"
+                )
+                rejection_outcome = _outcome_fields(
+                    status="error",
+                    task_result=task_result,
+                    error=_reject_reason,
+                    review=_review,
+                    fallback_reason=crew_fallback_reason,
+                )
+                evaluate_and_update(task_result, 0.0, store=store)
+                results.append({
+                    "issue_number": num,
+                    "title": issue["title"],
+                    "domain": issue["domain"],
+                    "difficulty": issue["difficulty"],
+                    "status": "error",
+                    "error": _reject_reason,
+                    "capability": task_result.get("capability"),
+                    "teacher_evidence": task_result.get("teacher_evidence"),
+                    "crew_id": crew_result.crew_id if crew_result else None,
+                    "crew_used": crew_used,
+                    "crew_fallback_reason": crew_fallback_reason,
+                    "teardown_ok": crew_result.teardown_ok if crew_result else None,
+                    # Surface the veto evidence on the rejection record too, so the
+                    # review data is still visible when the PR is blocked (the
+                    # success path publishes these three keys).
+                    "adversarial_review": adversarial_review,
+                    "verify_skipped": verify_skipped,
+                    "entire_review": entire_review,
+                    **rejection_outcome,
+                })
+                try:
+                    run_batch.append(
+                        {
+                            "issue": num,
+                            "status": "school-failed",
+                            "agent": task_result.get("agent"),
+                            "score": 0,
+                            "rejection": _reject_reason,
+                            "trajectory": task_result.get("trajectory"),
+                            "capability": task_result.get("capability"),
+                            "teacher_evidence": task_result.get("teacher_evidence"),
+                            # Carry the same compact sensor summary the success
+                            # record publishes, so last_run.json shows the veto.
+                            "entire": entire_summary,
                             **rejection_outcome,
                         },
                     )
@@ -2965,17 +3097,31 @@ def bridge_issues(
                 },
                 outcome=outcome,
             )
-            # Entire gate: persist findings to bookbag for acceptance gating
+            # Entire gate: persist findings to bookbag for acceptance gating.
+            # `locked_update_bookbag` returns None WITHOUT raising when the
+            # per-bead lock cannot be acquired (bookbag.py:435-436), so the
+            # `except Exception` below cannot see it — a silent drop. This
+            # write is the durable veto evidence: a later retry of this issue
+            # reads bag["entire_findings"] through _merge_async_teacher_verdicts
+            # (issue_bridge.py:1342-1344) and folds it into the findings the
+            # acceptance gate at :2426 consults. Record the failure so the
+            # incomplete record is visible rather than silently incomplete.
+            entire_persisted = True
             if entire_review and entire_review.get("findings"):
                 try:
-                    locked_update_bookbag(
+                    _written = locked_update_bookbag(
                         str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                         repo,
                         entire_findings=entire_review.get("findings"),
                         entire_status=entire_review.get("status"),
                     )
-                except Exception:
-                    pass  # non-fatal; gate is best-effort
+                    entire_persisted = _written is not None
+                except Exception as e:  # noqa: BLE001
+                    print(f"  ⚠ Entire gate persist failed: {e}")
+                    entire_persisted = False
+                if not entire_persisted:
+                    print("  ⚠ Entire findings NOT persisted — the bookbag record "
+                          "is incomplete; a retry of this issue would not see the veto")
             compound_observation = _record_compound_observation(
                 bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                 trigger="bead_completed",
@@ -2997,6 +3143,7 @@ def bridge_issues(
                 "review_packet": task_result.get("review_packet"),
                 "verify_skipped": verify_skipped,
                 "entire_review": entire_review,
+                "entire_persisted": entire_persisted,
                 "crew_id": crew_result.crew_id if crew_result else None,
                 "crew_used": crew_used,
                 "crew_fallback_reason": crew_fallback_reason,
@@ -3463,7 +3610,38 @@ if __name__ == "__main__":
     parser.add_argument("--force-agent", help="Skip readiness checks; use a specific agent directly")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be bridged without executing")
     parser.add_argument("--once", action="store_true", help="Run one poll cycle then exit")
+    # onboard — generate ICM L0-L4 context + envit + project_verify for --repo.
+    # Delegates to `onboard.main()`; every flag below is a passthrough.
+    parser.add_argument("--onboard", action="store_true",
+                        help="Generate L0-L4 context, envit entries, and project_verify.yaml "
+                             "for --repo, then exit (repo-agnostic onboarding)")
+    parser.add_argument("--write", action="store_true",
+                        help="with --onboard: write generated files (default: report only)")
+    parser.add_argument("--out", help="with --onboard: directory for L0/L1/project_verify")
+    parser.add_argument("--no-clone", action="store_true",
+                        help="with --onboard: do not clone; --repo must be a local checkout")
+    parser.add_argument("--offline", action="store_true",
+                        help="with --onboard: never call gh; use the checkout's own evidence")
+    parser.add_argument("--require-evidence", action="store_true",
+                        help="with --onboard: fail unless real repo facts were read")
     args = parser.parse_args()
+
+    if args.onboard:
+        if not args.repo:
+            parser.error("--onboard requires --repo <owner/repo>")
+        import onboard
+        onboard_argv = ["--repo", args.repo]
+        if args.write:
+            onboard_argv.append("--write")
+        if args.out:
+            onboard_argv += ["--out", args.out]
+        if args.no_clone:
+            onboard_argv.append("--no-clone")
+        if args.offline:
+            onboard_argv.append("--offline")
+        if args.require_evidence:
+            onboard_argv.append("--require-evidence")
+        sys.exit(onboard.main(onboard_argv))
 
     labels = args.labels.split(",") if args.labels else None
     if args.once:

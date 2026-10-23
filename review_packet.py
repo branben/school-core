@@ -149,9 +149,16 @@ class ReviewPacket:
     def _sensor(value: Optional[dict]) -> Optional[dict]:
         if not isinstance(value, dict):
             return None
+        # Callers pass the finding count as either an int (the bridge's
+        # `entire_summary`, pre-converted with len()) or the raw findings list
+        # (the sensor's own return shape). Normalize both — `int([...])` raises
+        # TypeError, which would drop the whole packet on a list-shaped input.
+        raw_findings = value.get("findings", 0) or 0
+        if isinstance(raw_findings, (list, tuple, set)):
+            raw_findings = len(raw_findings)
         return {
             "status": _text(value.get("status", ""), 32),
-            "findings": max(0, int(value.get("findings", 0) or 0)),
+            "findings": max(0, int(raw_findings)),
         }
 
     @classmethod
