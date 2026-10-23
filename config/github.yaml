@@ -19,6 +19,11 @@ poll_interval_seconds: 300        # How often to poll for new issues (seconds)
 # so a non-empty list is a union; still prefer empty unless you want to narrow.
 labels: []
 
+# Admission allowlist for issue authors. EMPTY = fail-closed: fetch_issues
+# returns [] and intake is disabled (github_fetcher.py:202). "OWNER" admits the
+# repo owner's issues; add "MEMBER"/"COLLABORATOR" to widen.
+allowed_author_associations: ["OWNER"]
+
 # Override difficulty based on label presence
 difficulty_overrides:
   p0: hard

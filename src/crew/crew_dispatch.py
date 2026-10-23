@@ -57,8 +57,35 @@ FM_HOME = Path(os.environ.get("FM_HOME", str(Path.home() / ".hermes" / "school-c
 FM_SPAWN = Path(os.environ.get("FM_SPAWN", str(Path.home() / ".local/share/firstmate/bin/fm-spawn.sh"))).expanduser()
 STATE_DIR = Path(os.environ.get("FM_STATE", str(FM_HOME / "state"))).expanduser()
 DATA_DIR = Path(os.environ.get("FM_DATA", str(FM_HOME / "data"))).expanduser()
+
+
+def _main_repo_root(cwd: Optional[Path] = None) -> Path:
+    """The MAIN checkout root, not the current linked worktree.
+
+    ``CREW_RUNS_FILE`` is git-tracked (``persistence_contract.CHECKPOINT_PATHS``,
+    the ``.gitignore`` whitelist, ``school-loop.yml`` ``git add -f``), so it must
+    stay in-repo — but a linked worktree has its own ``data/`` directory. Anchoring
+    to ``git rev-parse --git-common-dir`` makes every worktree write the SAME
+    ledger instead of stranding its own copy (measured: 5 copies on disk; a
+    2026-10-12 ``done`` crew for issue 415 is in none of them). Falls back to the
+    module's repo root when git is unavailable (CI sandbox, extracted copy).
+    """
+    base = Path(cwd).resolve() if cwd else Path(__file__).parent.parent.parent
+    try:
+        common = subprocess.check_output(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=str(base), text=True, timeout=10,
+        ).strip()
+    except Exception:
+        return base
+    p = Path(common)
+    if not p.is_absolute():
+        p = base / p
+    return p.resolve().parent
+
+
 CREW_RUNS_FILE = Path(
-    os.environ.get("CREW_RUNS_FILE", str(Path(__file__).parent.parent.parent / "data/crew_runs.json"))
+    os.environ.get("CREW_RUNS_FILE", str(_main_repo_root() / "data/crew_runs.json"))
 ).expanduser()
 DEFAULT_TIMEOUT = float(os.environ.get("CREW_TIMEOUT_SECONDS", "900"))
 # Startup deadline for a crew that has produced NO recognised status verb yet.
@@ -999,7 +1026,7 @@ def _spawn(
     env["FM_STATUS_FILE"] = str(_status_path(crew_id))
     env["FM_REPORT_FILE"] = str(_task_dir(crew_id) / "report.md")
     payload = _capability_payload(capability)
-    if payload is not None:
+    if payload is not None and capability is not None:
         env.update({
             "FM_AGENT_CAPABILITY_VERSION": str(payload["schema_version"]),
             "FM_AGENT_TASK_ROLE": capability.task_role,
@@ -1008,6 +1035,31 @@ def _spawn(
             "FM_AGENT_ALLOWED_TOOLS": ",".join(capability.allowed_tools),
             "FM_AGENT_TOOLSETS": ",".join(capability.hermes_toolsets),
         })
+        # --- Capability propagation to the PANE, not just the process env ------
+        # The block above sets these in the `env=` dict, which reaches
+        # fm-spawn.sh's PROCESS environment — but NOT the crew's pane.
+        # fm-spawn.sh types the launch command into the pane as literal text
+        # (fm-spawn.sh:2644) and prefixes LAUNCH with only FM_STATUS_FILE /
+        # FM_REPORT_FILE (fm-spawn.sh:2581); FM_AGENT_* is absent from that list
+        # and appears nowhere in firstmate's bin/. So the wrapper saw an EMPTY
+        # FM_AGENT_PROFILE and ran `hermes -p ""` — exit 2, "'' is not a valid
+        # profile name", recorded as `failed: hermes-exit-2-no-output`
+        # (crew fm-loop-20261023-131805-419, 2026-10-23). The wrapper also fell
+        # back to its broad DEFAULT_TOOLSETS, silently bypassing the capability
+        # allowlist — a policy bypass that produces no error.
+        #
+        # Export them in the harness prefix, exactly as FM_STATUS_FILE above.
+        # The durable fix belongs upstream in firstmate (forward FM_AGENT_* into
+        # LAUNCH); this keeps the local dispatch working until that lands.
+        harness = (
+            f"export FM_AGENT_PROFILE={shlex.quote(capability.profile)} "
+            f"FM_AGENT_TASK_ROLE={shlex.quote(capability.task_role)} "
+            f"FM_AGENT_TOOLSETS={shlex.quote(','.join(capability.hermes_toolsets))} "
+            f"FM_AGENT_ALLOWED_TOOLS={shlex.quote(','.join(capability.allowed_tools))} "
+            f"FM_AGENT_SKILL_ANCHORS={shlex.quote(','.join(capability.skills))} "
+            f"FM_AGENT_CAPABILITY_VERSION={shlex.quote(str(payload['schema_version']))} "
+            f"{harness}"
+        )
     return _run([
         str(FM_SPAWN), crew_id, str(project_dir),
         "--mode", "local-only", "--yolo", "on", "--backend", "orca",
