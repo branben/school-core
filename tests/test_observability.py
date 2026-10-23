@@ -1,4 +1,4 @@
-from director import _attach_teacher_evidence, _resolve_capability_metadata
+from src.core.director import _attach_teacher_evidence, _resolve_capability_metadata
 from issue_bridge import _observability_fields
 
 
@@ -39,11 +39,11 @@ def test_run_record_fields_preserve_bounded_learning_evidence():
 
 
 def test_dod_rejection_overrides_raw_teacher_acceptance(monkeypatch, tmp_path):
-    trajectory = tmp_path / "trajectory.json"
+    trajectory = tmp_path / "src.sensors.trajectory.json"
     trajectory.write_text("{}")
     seen = []
     monkeypatch.setattr(
-        "director._record_acrouter_outcome",
+        "src.core.director._record_acrouter_outcome",
         lambda agent, success, quality: seen.append((agent, success, quality)),
     )
     result = {
@@ -67,7 +67,7 @@ def test_dod_rejection_overrides_raw_teacher_acceptance(monkeypatch, tmp_path):
 
 
 def test_teacher_evidence_redacts_tokens_and_home_paths():
-    from teacher_feedback import build_teacher_evidence
+    from src.tools.teacher_feedback import build_teacher_evidence
 
     evidence = build_teacher_evidence(
         "coder",
@@ -108,9 +108,9 @@ def test_bridge_success_run_record_contains_capability_and_teacher_evidence(
         "domain": "python-testing",
         "difficulty": "easy",
     }])
-    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-    monkeypatch.setattr("repo_reader.clone_repo", lambda repo: tmp_path)
-    monkeypatch.setattr("repo_reader.build_codebase_context", lambda path, text: "")
+    monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda repo: tmp_path)
+    monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda path, text: "")
     monkeypatch.setattr("issue_bridge._run_verify_gate", lambda *args, **kwargs: None)
     monkeypatch.setattr("issue_bridge._run_entire_sensor", lambda *args: None)
     monkeypatch.setattr("issue_bridge._run_adversarial_review", lambda **kwargs: {
@@ -135,13 +135,13 @@ def test_bridge_success_run_record_contains_capability_and_teacher_evidence(
         "teacher_evidence": evidence,
         "review": {"accepted": True, "cto_verdict": "PASS", "coo_verdict": "PASS"},
     }
-    trajectory = tmp_path / "trajectory.json"
+    trajectory = tmp_path / "src.sensors.trajectory.json"
     trajectory.write_text("{}")
     task_result["trajectory"] = str(trajectory)
     task_result.pop("teacher_evidence")
-    monkeypatch.setattr("director.run_task", lambda **kwargs: dict(task_result))
-    monkeypatch.setattr("director._record_acrouter_outcome", lambda *args, **kwargs: None)
-    monkeypatch.setattr("director.get_log", lambda: MagicMock())
+    monkeypatch.setattr("src.core.director.run_task", lambda **kwargs: dict(task_result))
+    monkeypatch.setattr("src.core.director._record_acrouter_outcome", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.core.director.get_log", lambda: MagicMock())
 
     store = MagicMock()
     store.get_score.return_value = 0.0

@@ -46,9 +46,7 @@ import re
 
 import pytest
 
-import crew_dispatch
-
-
+import src.crew.crew_dispatch as crew_dispatch
 class TestUnresolvableCommitIsNotAsserted:
     def test_artifact_identity_records_reachability(self):
         """A recorded artifact identity must say whether its commit resolves.

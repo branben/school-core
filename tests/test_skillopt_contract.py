@@ -1,6 +1,6 @@
 """Tests for the bounded SkillOpt experiment contract."""
 
-from skillopt_contract import ExperimentConfig, build_contract, evaluate_results
+from src.tools.skillopt_contract import ExperimentConfig, build_contract, evaluate_results
 
 
 FIXED_ROUTE = {

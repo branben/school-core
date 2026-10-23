@@ -41,7 +41,7 @@ from pathlib import Path
 # Make the shared client importable whether run from repo root or scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agentmail_client import (
+from src.tools.agentmail_client import (
     configure_logging,
     req,
 )

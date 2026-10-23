@@ -21,7 +21,7 @@ from typing import Optional
 
 import yaml
 
-from trajectory import TRAJECTORY_DIR, trajectories_for_training
+from src.sensors.trajectory import TRAJECTORY_DIR, trajectories_for_training
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,7 @@ def generate_all(
     Returns dict of ``{domain: result}`` where result is YAML string
     (dry_run) or filename (applied).
     """
-    from trajectory import count_trajectories
+    from src.sensors.trajectory import count_trajectories
     all_counts = count_trajectories()
 
     results = {}

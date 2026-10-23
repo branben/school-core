@@ -14,14 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateStore, create_candidate
-from candidate_pr import (
+from src.bridge.candidate_manifest import CandidateStore, create_candidate
+from src.bridge.candidate_pr import (
     CandidatePublicationError,
     ProviderWriteError,
     PublicationResult,
     publish_candidate_pr,
 )
-from pr_provider import (
+from src.bridge.pr_provider import (
     GitHubCliPublisher,
     PrPublicationPending,
     PrStateStore,

@@ -6,7 +6,7 @@ Run: python -m pytest tests/lenses/test_security.py -v
 
 import pytest
 
-from adversarial_reviewer import LensType
+from src.review.adversarial_reviewer import LensType
 
 
 class TestSecurityLensPrompt:

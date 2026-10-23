@@ -41,7 +41,7 @@ def probe():
 
 
 def test_retirement_markers_match(probe):
-    from omni_relay import _RETIREMENT_MARKERS
+    from src.tools.omni_relay import _RETIREMENT_MARKERS
 
     assert set(_RETIREMENT_MARKERS) == set(probe.RETIREMENT_MARKERS), (
         "retirement markers drifted between omni_relay.py and "
@@ -51,7 +51,7 @@ def test_retirement_markers_match(probe):
 
 
 def test_transient_markers_match(probe):
-    from omni_relay import _TRANSIENT_MARKERS
+    from src.tools.omni_relay import _TRANSIENT_MARKERS
 
     assert set(_TRANSIENT_MARKERS) == set(probe.TRANSIENT_MARKERS), (
         "transient markers drifted -- a rate limit could be recorded as a "
@@ -61,7 +61,7 @@ def test_transient_markers_match(probe):
 
 def test_both_classify_real_logged_errors_identically(probe):
     """Verbatim strings from OmniRoute `call_logs`, not invented phrasings."""
-    from omni_relay import _classify_upstream_failure
+    from src.tools.omni_relay import _classify_upstream_failure
 
     real_errors = [
         "[404]: This model is unavailable for free. The paid version is "

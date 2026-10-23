@@ -18,11 +18,11 @@ from unittest.mock import patch
 
 import pytest
 
-import director
-from director import _run_two_judge_review
-from adversarial_reviewer import ReviewResult, Verdict
+import src.core.director as director
+from src.core.director import _run_two_judge_review
+from src.review.adversarial_reviewer import ReviewResult, Verdict
 from bookbag import write_bookbag
-from orca_executor import CodeExtractor, ExecutionResult
+from src.crew.orca_executor import CodeExtractor, ExecutionResult
 
 
 # ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -97,19 +97,19 @@ def _run_review(monkeypatch, tmp_path, output, bead):
         repo=_REPO,
     )
     monkeypatch.setattr(
-        "director._resolve_repo_path",
+        "src.core.director._resolve_repo_path",
         lambda repo, explicit_path=None: tmp_path,
     )
     monkeypatch.setattr(
-        "director.run_verify_gate",
+        "src.core.director.run_verify_gate",
         lambda repo_path, project_verify=None, **kwargs: {
             "passed": True, "failures": [], "ran": 1,
         },
     )
     with (
-        patch("director.AdversarialReviewer", _FakeReviewer),
-        patch("director.OrcaExecutionManager", _FakeOrcaWithCheck),
-        patch("director.call_model", side_effect=RuntimeError("no model in tests")),
+        patch("src.core.director.AdversarialReviewer", _FakeReviewer),
+        patch("src.core.director.OrcaExecutionManager", _FakeOrcaWithCheck),
+        patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")),
     ):
         return _run_two_judge_review(
             bead=bead,
@@ -302,19 +302,19 @@ class TestVetoNonExecutable:
             repo=_REPO,
         )
         monkeypatch.setattr(
-            "director._resolve_repo_path",
+            "src.core.director._resolve_repo_path",
             lambda repo, explicit_path=None: tmp_path,
         )
         monkeypatch.setattr(
-            "director.run_verify_gate",
+            "src.core.director.run_verify_gate",
             lambda repo_path, project_verify=None, **kwargs: {
                 "passed": True, "failures": [], "ran": 1,
             },
         )
         with (
-            patch("director.AdversarialReviewer", _FakeReviewer),
-            patch("director.OrcaExecutionManager", _FakeOrcaRuntimeError),
-            patch("director.call_model", side_effect=RuntimeError("no model in tests")),
+            patch("src.core.director.AdversarialReviewer", _FakeReviewer),
+            patch("src.core.director.OrcaExecutionManager", _FakeOrcaRuntimeError),
+            patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")),
         ):
             result = _run_two_judge_review(
                 bead="bead-runtime",

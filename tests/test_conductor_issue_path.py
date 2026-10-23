@@ -52,7 +52,7 @@ def test_persist_issue_route_blocks_signal_when_writer_fails():
 
 
 def test_prepare_issue_context_fails_closed_on_clone_failure():
-    with patch("repo_reader.clone_repo", side_effect=RuntimeError("network down")):
+    with patch("src.core.repo_reader.clone_repo", side_effect=RuntimeError("network down")):
         with pytest.raises(RuntimeError, match="could not clone target repo"):
             conductor._prepare_issue_context("branben/school-core", "Fix a bug")
 
@@ -91,8 +91,8 @@ def test_record_issue_dispatch_failure_without_bead_writes_last_run_and_alerts(t
 
 def test_prepare_issue_context_keeps_clone_when_reader_fails(tmp_path):
     with (
-        patch("repo_reader.clone_repo", return_value=tmp_path),
-        patch("repo_reader.build_codebase_context", side_effect=RuntimeError("reader down")),
+        patch("src.core.repo_reader.clone_repo", return_value=tmp_path),
+        patch("src.core.repo_reader.build_codebase_context", side_effect=RuntimeError("reader down")),
     ):
         target_path, context = conductor._prepare_issue_context("branben/school-core", "Fix a bug")
 
@@ -377,8 +377,8 @@ def test_async_issue_failure_persists_terminal_status_and_alerts(tmp_path):
     with (
         patch.object(conductor, "load_principal_soul", return_value="Principal"),
         patch.object(conductor, "_boot_teachers", return_value=teachers),
-        patch("repo_reader.clone_repo", return_value=tmp_path / "target"),
-        patch("repo_reader.build_codebase_context", return_value="Repository context"),
+        patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "target"),
+        patch("src.core.repo_reader.build_codebase_context", return_value="Repository context"),
         patch.object(conductor, "StudentLeaf", return_value=leaf),
         patch.object(conductor, "locked_update_bookbag", side_effect=record_write),
         patch.object(conductor, "notify_issue_alert") as notify,
@@ -452,8 +452,8 @@ def test_async_issue_path_persists_route_after_context_enrichment(tmp_path):
     with (
         patch.object(conductor, "load_principal_soul", return_value="Principal"),
         patch.object(conductor, "_boot_teachers", return_value=teachers),
-        patch("repo_reader.clone_repo", return_value=tmp_path / "target"),
-        patch("repo_reader.build_codebase_context", return_value="Repository context"),
+        patch("src.core.repo_reader.clone_repo", return_value=tmp_path / "target"),
+        patch("src.core.repo_reader.build_codebase_context", return_value="Repository context"),
         patch.object(conductor, "StudentLeaf", return_value=leaf),
         patch.object(conductor, "_persist_issue_route", return_value=route) as persist_route,
         patch.object(conductor, "run_entire_review", return_value={"status": "skipped", "findings": []}),

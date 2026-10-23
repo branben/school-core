@@ -9,8 +9,8 @@ for a given routing context (role/domain) instead of a static COMBO_MAP.
 import json
 from pathlib import Path
 
-from executor import COMBO_MAP  # to derive candidate set
-from router_experience import RouterExperience, combo_candidates_from
+from src.crew.executor import COMBO_MAP  # to derive candidate set
+from src.core.router_experience import RouterExperience, combo_candidates_from
 
 
 def _candidates():

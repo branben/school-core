@@ -24,10 +24,10 @@ import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from teacher import TeacherWorktree, TeacherError, TEACHER_LENSES, DEFAULT_SESSION_ID
-from adversarial_reviewer import LensType, Verdict, ReviewResult, Finding, Severity
-from orca_executor import OrcaUnavailableError
-import sleep_state  # Direct module import for patching SESSIONS_DIR / CONSOLIDATION_DIR
+from src.tools.teacher import TeacherWorktree, TeacherError, TEACHER_LENSES, DEFAULT_SESSION_ID
+from src.review.adversarial_reviewer import LensType, Verdict, ReviewResult, Finding, Severity
+from src.crew.orca_executor import OrcaUnavailableError
+import src.crew.sleep_state as sleep_state
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ import sleep_state  # Direct module import for patching SESSIONS_DIR / CONSOLIDA
 @pytest.fixture
 def mock_mgr():
     """Mock OrcaExecutionManager."""
-    with patch("teacher.OrcaExecutionManager") as mock:
+    with patch("src.tools.teacher.OrcaExecutionManager") as mock:
         instance = MagicMock()
         instance.create_worktree.return_value = "/tmp/worktrees/teacher-cto"
         instance.create_worktree_persistent.return_value = "/tmp/worktrees/teacher-cto"
@@ -48,8 +48,8 @@ def mock_mgr():
 @pytest.fixture
 def mock_sleep_state():
     """Mock sleep_state.execute_sleep and execute_wake."""
-    with patch("teacher.execute_sleep") as mock_sleep, \
-         patch("teacher.execute_wake") as mock_wake:
+    with patch("src.tools.teacher.execute_sleep") as mock_sleep, \
+         patch("src.tools.teacher.execute_wake") as mock_wake:
         mock_sleep.return_value = {
             "state": MagicMock(tasks_completed=0),
             "consolidation": MagicMock(tasks_completed=0, domains_visited=[]),
@@ -70,9 +70,9 @@ def mock_bookbags():
     By default, returns no bookbags and update returns a successful result.
     Individual tests can override by accessing the mock directly.
     """
-    with patch("teacher.list_bookbags") as mock_list, \
-         patch("teacher.read_bookbag") as mock_read, \
-         patch("teacher.locked_update_bookbag") as mock_update:
+    with patch("src.tools.teacher.list_bookbags") as mock_list, \
+         patch("src.tools.teacher.read_bookbag") as mock_read, \
+         patch("src.tools.teacher.locked_update_bookbag") as mock_update:
 
         mock_list.return_value = []
         mock_read.return_value = None
@@ -103,7 +103,7 @@ def mock_reviewer(monkeypatch):
         def review(self, **kwargs):
             return self.review_result
 
-    monkeypatch.setattr("teacher.AdversarialReviewer", MockReviewer)
+    monkeypatch.setattr("src.tools.teacher.AdversarialReviewer", MockReviewer)
     return result
 
 
@@ -616,8 +616,7 @@ class TestCLI:
 
     def test_main_cto_once(self, monkeypatch):
         """python teacher.py --role cto --once should boot and review once."""
-        import teacher as teacher_module
-
+        import src.tools.teacher as teacher_module
         boot_called = False
         review_called = False
 
@@ -642,8 +641,7 @@ class TestCLI:
 
     def test_main_invalid_role(self, monkeypatch):
         """Invalid --role should be rejected by argparse."""
-        import teacher as teacher_module
-
+        import src.tools.teacher as teacher_module
         monkeypatch.setattr("sys.argv", ["teacher.py", "--role", "invalid"])
 
         with pytest.raises(SystemExit):
@@ -687,7 +685,7 @@ class TestDiagnoseLoop:
         """Booted CTO teacher writing diagnoses under tmp_path."""
         mgr = MagicMock()
         mgr.create_worktree_persistent.return_value = str(tmp_path / "wt")
-        with patch("teacher.OrcaExecutionManager", return_value=mgr):
+        with patch("src.tools.teacher.OrcaExecutionManager", return_value=mgr):
             t = TeacherWorktree("cto", repo="__global__", diagnose_on_fail=True)
             t.worktree_path = str(tmp_path / "wt")
             t._booted = True
@@ -766,7 +764,7 @@ class TestDiagnoseLoop:
 
         mgr = MagicMock()
         mgr.create_worktree_persistent.return_value = str(tmp_path / "wt")
-        with patch("teacher.OrcaExecutionManager", return_value=mgr):
+        with patch("src.tools.teacher.OrcaExecutionManager", return_value=mgr):
             t = TeacherWorktree("cto", repo="__global__", diagnose_on_fail=False)
             t.worktree_path = str(tmp_path / "wt")
             t._booted = True

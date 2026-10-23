@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pr_creator import _slugify, branch_name, create_pr_for_issue
+from src.bridge.pr_creator import _slugify, branch_name, create_pr_for_issue
 
 
 # ── Slugify ────────────────────────────────────────────────────────────────
@@ -63,8 +63,8 @@ class TestBranchName:
 # separately, rather than the old single `_gh_command` seam.
 
 class TestCreatePR:
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_dry_run_returns_fake_url(self, mock_gh, mock_api):
         issue = {"issue_number": 1, "title": "Test", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "print('hello')", "agent": "foundry-coder-7b"}
@@ -73,8 +73,8 @@ class TestCreatePR:
         mock_gh.assert_not_called()
         mock_api.assert_not_called()
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_empty_response_returns_none(self, mock_gh, mock_api):
         issue = {"issue_number": 1, "title": "Test", "domain": "debugging", "difficulty": "easy"}
         task_result = {"response": "", "agent": "test"}
@@ -83,8 +83,8 @@ class TestCreatePR:
         mock_gh.assert_not_called()
         mock_api.assert_not_called()
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_branch_creation_failure_returns_none(self, mock_gh, mock_api):
         # base branch + base sha resolve fine, then the ref POST fails.
         mock_gh.side_effect = [
@@ -97,8 +97,8 @@ class TestCreatePR:
         url = create_pr_for_issue(issue, task_result, "user/test")
         assert url is None
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_successful_pr_creation(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),          # repo view
@@ -120,8 +120,8 @@ class TestCreatePR:
         url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
         assert url == "https://github.com/user/test/pull/42"
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_pr_creation_uses_correct_args(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),          # repo view
@@ -151,8 +151,8 @@ class TestCreatePR:
         assert "--label" in pr_args
         assert "school-automated" in pr_args[pr_args.index("--label") + 1]
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_handles_repo_view_failure(self, mock_gh, mock_api):
         # Every gh call fails; _resolve_base_branch falls back, and the
         # subsequent API work cannot proceed, so no PR URL is returned.
@@ -176,8 +176,8 @@ class TestCreatePRGuards:
     POST (index 3) hand back the SAME sha the base already holds.
     """
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_empty_change_is_rejected(self, mock_gh, mock_api, tmp_path):
         base_sha = "sameblob000"
         mock_gh.side_effect = [
@@ -209,8 +209,8 @@ class TestCreatePRGuards:
         ]
         assert not called_paths, "a no-op commit was created"
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_real_change_still_commits(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),
@@ -235,8 +235,8 @@ class TestCreatePRGuards:
         url = create_pr_for_issue(issue, task_result, "user/test", work_dir=str(tmp_path))
         assert url == "https://github.com/user/test/pull/9"
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_unreadable_base_tree_fails_open(self, mock_gh, mock_api, tmp_path):
         mock_gh.side_effect = [
             json.dumps({"defaultBranch": "main"}),
@@ -273,8 +273,8 @@ class TestCreatePRCrewPatch:
     the PR was built from).
     """
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_crew_patch_is_committed_as_blob(self, mock_gh, mock_api, tmp_path):
         # Write a real .patch file (binary-safe: git diff --binary is ASCII).
         patch = tmp_path / "changes.patch"
@@ -322,8 +322,8 @@ class TestCreatePRCrewPatch:
         assert patch_entry["sha"] == "patchblob222"
         assert patch_entry["mode"] == "100644"
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_no_patch_when_not_crew_or_missing(self, mock_gh, mock_api, tmp_path):
         # crew_used but patch_path is None (e.g. capture returned None).
         mock_gh.side_effect = [
@@ -356,8 +356,8 @@ class TestCreatePRCrewPatch:
         paths = {e["path"] for e in tree_post.args[2]["tree"]}
         assert not any(p.endswith("changes.patch") for p in paths)
 
-    @patch("pr_creator._gh_api")
-    @patch("pr_creator._gh")
+    @patch("src.bridge.pr_creator._gh_api")
+    @patch("src.bridge.pr_creator._gh")
     def test_patch_blob_failure_aborts(self, mock_gh, mock_api, tmp_path):
         # The patch file exists, but the blob POST for it returns None
         # (infra fault). The whole PR must abort rather than ship without the

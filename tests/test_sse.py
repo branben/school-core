@@ -10,7 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from activity_server import ActivityHandler
+from src.sensors.activity_server import ActivityHandler
 
 
 @pytest.fixture(scope="module")

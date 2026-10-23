@@ -40,8 +40,8 @@ class SessionManagerPlugin(StaffPlugin):
         }
 
     def run(self, sandbox: StaffSandbox, context: StaffContext) -> StaffResult:
-        from director import _active_sessions, sleep, SLEEP_TIMEOUT_MINUTES
-        from sleep_state import read_library_log
+        from src.core.director import _active_sessions, sleep, SLEEP_TIMEOUT_MINUTES
+        from src.crew.sleep_state import read_library_log
 
         timeout = self._timeout_minutes or SLEEP_TIMEOUT_MINUTES
         now = datetime.now(timezone.utc)

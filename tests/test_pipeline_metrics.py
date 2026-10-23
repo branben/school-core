@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import issue_bridge
-from pipeline_metrics import PipelineMetrics
+from src.tools.pipeline_metrics import PipelineMetrics
 
 
 def test_pipeline_metrics_snapshot_is_bounded_and_redacted():
@@ -64,9 +64,9 @@ def test_bridge_persists_one_issue_characterization_packet(monkeypatch, tmp_path
         "domain": "debugging",
         "difficulty": "easy",
     }])
-    monkeypatch.setattr("repo_reader.cleanup_stale_caches", lambda: None)
-    monkeypatch.setattr("repo_reader.clone_repo", lambda repo: tmp_path)
-    monkeypatch.setattr("repo_reader.build_codebase_context", lambda path, text: "repo context")
+    monkeypatch.setattr("src.core.repo_reader.cleanup_stale_caches", lambda: None)
+    monkeypatch.setattr("src.core.repo_reader.clone_repo", lambda repo: tmp_path)
+    monkeypatch.setattr("src.core.repo_reader.build_codebase_context", lambda path, text: "repo context")
     monkeypatch.setattr(issue_bridge, "_run_verify_gate", MagicMock(return_value=None))
     monkeypatch.setattr(issue_bridge, "_run_entire_sensor", MagicMock(return_value=None))
     monkeypatch.setattr(issue_bridge, "_run_adversarial_review", MagicMock(return_value={
@@ -78,7 +78,7 @@ def test_bridge_persists_one_issue_characterization_packet(monkeypatch, tmp_path
     monkeypatch.setattr(issue_bridge, "_mark_github_issue", lambda *args, **kwargs: None)
     monkeypatch.setattr(issue_bridge, "_build_school_comment", lambda *args, **kwargs: "ok")
     monkeypatch.setattr(issue_bridge, "notify_issue_alert", lambda *args, **kwargs: True)
-    monkeypatch.setattr("director.run_task", lambda **kwargs: {
+    monkeypatch.setattr("src.core.director.run_task", lambda **kwargs: {
         "status": "success",
         "agent": "coder",
         "domain": "debugging",

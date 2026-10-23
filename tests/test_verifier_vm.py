@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from student_vm_runner import StudentVMBlocked
-from verifier_vm import (
+from src.crew.student_vm_runner import StudentVMBlocked
+from src.crew.verifier_vm import (
     TrustedCheckManifest,
     VerifierEvidence,
     SmolVmVerifier,

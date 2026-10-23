@@ -16,14 +16,14 @@ Two defects this file pins down:
 import subprocess
 from pathlib import Path
 
-from candidate_binding import (
+from src.bridge.candidate_binding import (
     CandidateBindingStore,
     bind_trusted_evidence,
     lookup_binding,
 )
-from candidate_manifest import CandidateManifest, CandidateStore, create_candidate
-from candidate_pr_gate import gate_candidate_publication
-from teacher_approval_ingress import (
+from src.bridge.candidate_manifest import CandidateManifest, CandidateStore, create_candidate
+from src.bridge.candidate_pr_gate import gate_candidate_publication
+from src.tools.teacher_approval_ingress import (
     TRUSTED_APPROVAL_SCOPE,
     trusted_approval_from_journal,
 )
@@ -130,7 +130,7 @@ def test_resumed_binding_still_gates_the_same_candidate(tmp_path: Path) -> None:
 
     resumed = CandidateBindingStore(tmp_path / "bindings.json").get("cand-resume")
     assert resumed is not None
-    from candidate_binding import (
+    from src.bridge.candidate_binding import (
         teacher_approval_from_binding,
         trusted_verification_from_binding,
     )
@@ -153,7 +153,7 @@ def test_resumed_binding_still_gates_the_same_candidate(tmp_path: Path) -> None:
 
 def test_authenticated_journal_approval_authorizes_exact_candidate(tmp_path: Path) -> None:
     """A real persisted, actor-scoped approval authorizes its own candidate."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)
@@ -180,7 +180,7 @@ def test_authenticated_journal_approval_authorizes_exact_candidate(tmp_path: Pat
 
 def test_approval_for_another_candidate_is_not_authorization(tmp_path: Path) -> None:
     """Wrong candidate => no approval evidence at all, gate refuses."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo_a = tmp_path / "repo-a"
     repo_b = tmp_path / "repo-b"
@@ -208,7 +208,7 @@ def test_approval_for_another_candidate_is_not_authorization(tmp_path: Path) -> 
 
 def test_non_allowlisted_actor_is_not_authorization(tmp_path: Path) -> None:
     """A persisted approval from an unknown actor yields no authorization."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)
@@ -233,7 +233,7 @@ def test_non_allowlisted_actor_is_not_authorization(tmp_path: Path) -> None:
 
 def test_wrong_scope_is_not_authorization(tmp_path: Path) -> None:
     """An approval scoped to merge is not an approval to open a PR."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)
@@ -258,7 +258,7 @@ def test_wrong_scope_is_not_authorization(tmp_path: Path) -> None:
 
 def test_revoked_approval_is_not_authorization(tmp_path: Path) -> None:
     """Only an unconsumed, in-scope approval authorizes publication."""
-    from state_journal import ConflictError, StateJournal
+    from src.sensors.state_journal import ConflictError, StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)
@@ -290,7 +290,7 @@ def test_revoked_approval_is_not_authorization(tmp_path: Path) -> None:
 
 def test_automated_review_is_never_an_approval(tmp_path: Path) -> None:
     """review.accepted=True must not produce teacher authorization."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)
@@ -308,7 +308,7 @@ def test_automated_review_is_never_an_approval(tmp_path: Path) -> None:
 
 def test_approval_survives_restart_for_same_candidate(tmp_path: Path) -> None:
     """Reopening the journal on disk still yields the same authorization."""
-    from state_journal import StateJournal
+    from src.sensors.state_journal import StateJournal
 
     repo = tmp_path / "repo"
     _make_repo(repo)

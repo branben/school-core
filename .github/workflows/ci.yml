@@ -40,26 +40,30 @@ jobs:
         run: python -m compileall -q -x "school-output" .
 
       - name: Lint (ruff, F-class)
-        # Real-bug static analysis on the core pipeline modules plus any
-        # Python changed in this PR. The repo grew without a linter for years;
-        # the F (pyflakes) rules catch undefined names / unused imports and
-        # unassigned variables without imposing a formatting style. Scoping to
-        # core + changed files keeps the gate green while it bites on
-        # regressions. (2026-10-14 audit: no lint config existed; F821 in
+        # Real-bug static analysis over the canonical source tree. The F
+        # (pyflakes) rules catch undefined names / unused imports and
+        # unassigned variables without imposing a formatting style.
+        #
+        # Scope is the source tree, NOT the PR diff. The previous diff-scoped
+        # gate ("core modules + any changed .py") assumed a changed file is a
+        # file someone just wrote. A mechanical reorg (bead 1nzr) rewrote
+        # intra-repo imports across the repo, so ~280 files were "changed"
+        # while only their import lines moved -- pulling in files that were
+        # never lint-clean and turning the gate red for a change that added no
+        # defects. A stable scope is both stronger (every PR now lints all of
+        # src/ and scripts/, not just 4 core modules) and immune to that.
+        #
+        # (2026-10-14 audit: no lint config existed; F821 in
         # director.py/issue_bridge.py hid real NameErrors behind untested
-        # paths.)
+        # paths. 2026-10-20: scope made stable; the backlog this exposed in the
+        # newly-covered tree was cleaned rather than excluded.)
         run: |
           pip install ruff
-          CORE="issue_bridge.py director.py conductor.py repo_reader.py"
-          CHANGED=""
-          # git fetch origin <sha> records the commit in FETCH_HEAD, not as
-          # origin/<sha>, so diff against FETCH_HEAD (surrogate escaping: the
-          # base sha is a hex string, never a path character).
-          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
-            git fetch --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            CHANGED=$(git diff --name-only FETCH_HEAD HEAD -- '*.py' | tr '\n' ' ')
-          fi
-          ruff check $CORE $CHANGED
+          CORE="issue_bridge.py conductor.py onboard.py review_packet.py bookbag.py a2a_bridge.py"
+          ruff check $CORE src/ scripts/
+          # Tests: real-bug rules only. Unused imports and f-strings in tests
+          # are legitimate fixture noise and were never clean.
+          ruff check --select F821,F811,F822 tests/
 
       - name: Vault allowlist (privacy guard)
         # The repo knowledge vault must contain only curated, non-personal
@@ -245,15 +249,21 @@ jobs:
 
       - name: Mechanical review gate
         run: |
+          # --head is HEAD: the commit actions/checkout checked out for this
+          # PR. The previous value, "origin/<head sha>", is not a ref name,
+          # so `git diff` failed on stderr, the error was discarded, and the
+          # gate reported 0 changed files -- a permanent PASS on every PR
+          # since #117. review_gate.py now fails closed if a ref is
+          # unresolvable, so this must name a ref that exists.
           python scripts/review_gate.py \
             --base "origin/${{ github.base_ref }}" \
-            --head "origin/${{ github.event.pull_request.head.sha }}"
+            --head "HEAD"
 
       - name: Gate report (always shown, even on failure)
         if: always()
         run: python scripts/review_gate.py \
           --base "origin/${{ github.base_ref }}" \
-          --head "origin/${{ github.event.pull_request.head.sha }}" \
+          --head "HEAD" \
           --json || true
 
   notify:
@@ -286,7 +296,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from school_mail import notify_build_failure
+          from src.tools.school_mail import notify_build_failure
 
           failed = []
           if os.environ.get("TEST_RESULT") == "failure":

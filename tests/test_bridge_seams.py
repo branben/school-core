@@ -1,6 +1,6 @@
 """Focused coverage for pure issue-bridge orchestration seams."""
 
-from bridge_seams import (
+from src.bridge.bridge_seams import (
     build_shadow_routing_packet,
     observability_fields,
     strict_gate_failure,

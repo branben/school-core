@@ -177,7 +177,7 @@ def test_board_json_matches_real_export_contract(tmp_path):
     last_run.write_text(json.dumps([{"issue": 3, "status": "retry", "agent": "coder"}]))
     cache = tmp_path / "issues_cache.json"
     cache.write_text(json.dumps([{"issue_number": 3, "title": "Triage #03"}]))
-    out = tmp_path / "board.json"
+    out = tmp_path / "src.bridge.board.json"
     rc = main(["--out", str(out), "--last-run", str(last_run), "--issues-cache", str(cache)])
     assert rc == 0
     data = json.loads(out.read_text())

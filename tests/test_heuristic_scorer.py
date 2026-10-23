@@ -5,7 +5,7 @@ Run: python -m pytest tests/test_heuristic_scorer.py -v
 
 import pytest
 
-from heuristic_scorer import HeuristicScorer
+from src.sensors.heuristic_scorer import HeuristicScorer
 
 
 @pytest.fixture

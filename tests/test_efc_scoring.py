@@ -1,10 +1,8 @@
 """Tests for EFC Scoring (U1) — EFCScorer, cost tiers, and compliance helpers."""
 
 import pytest
-from scoring import EFCScorer, EFCScore, COST_TIERS, COST_PENALTY_BY_DIFFICULTY, SEED_AGENTS
-import leaderboard
-
-
+from src.core.scoring import EFCScorer, EFCScore, COST_TIERS, COST_PENALTY_BY_DIFFICULTY, SEED_AGENTS
+import src.core.leaderboard as leaderboard
 class TestComboPricing:
     def test_codestral_has_its_own_score_and_cost_entry(self):
         combo = "mistral/codestral-latest"

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from resilience import (
+from src.core.resilience import (
     sanitize_input_text,
     safe_float,
     grading_dedup_key,
@@ -56,8 +56,7 @@ def test_spawn_seam_is_list_args_no_shell():
     contract that prevents injection. (End-to-end dispatch_crew is not run here
     to avoid the real fm-spawn poll loop; the shell-safety guarantee is entirely
     at this seam.)"""
-    import crew_dispatch
-
+    import src.crew.crew_dispatch as crew_dispatch
     captured = {}
 
     def fake_run(args, **kwargs):
@@ -116,7 +115,7 @@ def test_bookbag_write_is_atomic_no_partial_json(tmp_path, monkeypatch):
 # ── N3.1: budget-aware admission reserves cap*timeout ───────────────────────
 
 def test_admission_reserves_cap_times_timeout():
-    from crew_admission import decide_admission
+    from src.crew.crew_admission import decide_admission
 
     # cap=2, 1700s remaining, timeout 900s → needs 2*900+30=1830s → denied.
     d = decide_admission(
@@ -145,7 +144,7 @@ def test_sweep_uses_monotonic_when_present(tmp_path):
     """sweep_stale_runs must prefer started_monotonic so wall-clock skew can't
     reclaim a live crew. Build a record with a fresh monotonic start; even if
     the wall clock says 'old', monotonic age is small → NOT swept."""
-    import crew_dispatch
+    import src.crew.crew_dispatch as crew_dispatch
     from pathlib import Path as _P
 
     reg = tmp_path / "crew_runs.json"
@@ -194,7 +193,7 @@ def test_director_force_agent_denied_falls_back():
     must deny an escalated forced role and allow the capability's own profile.
     We assert the helper that backs the inline check, since run_task's full path
     requires the model/context machinery."""
-    from resilience import force_agent_allowed
+    from src.core.resilience import force_agent_allowed
 
     # allowed: equals capability profile (or its lora twin)
     assert force_agent_allowed("python-coder", "python-coder") is True

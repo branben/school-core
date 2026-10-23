@@ -16,9 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import director
-
-
+import src.core.director as director
 # Stub call_model: respond to the ISOLATED context content so that students
 # with decoupled contexts diverge, and students with identical context collapse
 # — exactly the Diversity Collapse mechanism reflected through dispatch.

@@ -10,14 +10,14 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-import scoring
-from scoring import (
+import src.core.scoring as scoring
+from src.core.scoring import (
     GroundedScoreCalculator,
     GroundedScore,
     ScoreStore,
 )
-from execution_scorer import ExecutionScorer
-from heuristic_scorer import HeuristicScorer
+from src.sensors.execution_scorer import ExecutionScorer
+from src.sensors.heuristic_scorer import HeuristicScorer
 
 
 # ── GroundedScore Dataclass ──────────────────────────────────────────────────

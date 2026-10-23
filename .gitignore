@@ -114,3 +114,7 @@ newenv.tmp
 
 # third-party clones — never commit
 /repos/
+
+# Runtime state written next to moved modules under src/ (post-reorg debris);
+# canonical runtime state lives in the root data/ directory.
+src/**/data/

@@ -11,9 +11,9 @@ from http.server import HTTPServer
 
 import pytest
 
-import activity_server
-from activity_log import ActivityLog
-from activity_server import ActivityHandler
+import src.sensors.activity_server as activity_server
+from src.sensors.activity_log import ActivityLog
+from src.sensors.activity_server import ActivityHandler
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +62,7 @@ class TestBoardApi:
     def test_get_timeline_exposes_structured_deviation_fields(
         self, server_url, tmp_path, monkeypatch
     ):
-        log_path = tmp_path / "activity_log.json"
+        log_path = tmp_path / "src.sensors.activity_log.json"
         log = ActivityLog(log_path)
         log.start_task("legacy-agent", "python-testing", "easy")
         log.record_deviation(

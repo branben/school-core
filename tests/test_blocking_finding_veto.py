@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from director import _run_two_judge_review, Severity, BLOCKING_CLASSES
+from src.core.director import _run_two_judge_review, Severity, BLOCKING_CLASSES
 
 
 def _make_judge_result(verdict: str, score: float, findings=None):
@@ -54,9 +54,9 @@ def _mock_judges(mock_cls, cto_verdict="PASS", cto_score=90, coo_verdict="PASS",
 class TestBlockingClassesVeto:
     """Test that BLOCKING_CLASSES veto works correctly."""
 
-    @patch("director.CodeExtractor")
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.CodeExtractor")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_runtime_failure_blocks_acceptance(self, mock_orca_cls, mock_reviewer_cls, mock_ce_cls):
         """runtime_failure (HIGH severity) must block acceptance."""
         mock_ce_cls.language_for_domain.return_value = "python"
@@ -81,9 +81,9 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is False
         assert result["has_blocking_finding"] is True
 
-    @patch("director.CodeExtractor")
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.CodeExtractor")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_not_executable_blocks_acceptance(self, mock_orca_cls, mock_reviewer_cls, mock_ce_cls):
         """not_executable (CRITICAL severity) must block acceptance."""
         mock_ce_cls.language_for_domain.return_value = "python"
@@ -109,9 +109,9 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is False
         assert result["has_blocking_finding"] is True
 
-    @patch("director.CodeExtractor")
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.CodeExtractor")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_timeout_blocks_acceptance(self, mock_orca_cls, mock_reviewer_cls, mock_ce_cls):
         """timeout (HIGH severity) must block acceptance."""
         mock_ce_cls.language_for_domain.return_value = "python"
@@ -136,8 +136,8 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is False
         assert result["has_blocking_finding"] is True
 
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_execution_passed_does_not_block(self, mock_orca_cls, mock_reviewer_cls):
         """execution_passed (LOW severity) must NOT block acceptance."""
         mock_orca = MagicMock()
@@ -160,8 +160,8 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is True
         assert result["has_blocking_finding"] is False
 
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_no_code_found_does_not_block(self, mock_orca_cls, mock_reviewer_cls):
         """no_code_found (LOW severity) must NOT block acceptance."""
         mock_orca = MagicMock()
@@ -184,8 +184,8 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is True
         assert result["has_blocking_finding"] is False
 
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_sandbox_error_does_not_block(self, mock_orca_cls, mock_reviewer_cls):
         """sandbox_error (LOW severity) must NOT block acceptance."""
         mock_orca = MagicMock()
@@ -202,8 +202,8 @@ class TestBlockingClassesVeto:
         assert result["accepted"] is True
         assert result["has_blocking_finding"] is False
 
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_language_not_supported_does_not_block(self, mock_orca_cls, mock_reviewer_cls):
         """language_not_supported (LOW severity) must NOT block acceptance."""
         mock_orca = MagicMock()
@@ -230,9 +230,9 @@ class TestBlockingClassesVeto:
 class TestCombinedScore:
     """Test that combined_score includes execution findings."""
 
-    @patch("director.CodeExtractor")
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.CodeExtractor")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_combined_score_includes_execution_passed(self, mock_orca_cls, mock_reviewer_cls, mock_ce_cls):
         """combined_score = (cto + coo + execution) / 3 when execution passed."""
         mock_ce_cls.language_for_domain.return_value = "python"
@@ -257,9 +257,9 @@ class TestCombinedScore:
         # (90 + 80 + 100) / 3 = 90.0
         assert result["combined_score"] == 90.0
 
-    @patch("director.CodeExtractor")
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.CodeExtractor")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_combined_score_includes_execution_failed(self, mock_orca_cls, mock_reviewer_cls, mock_ce_cls):
         """combined_score = (cto + coo + 0) / 3 when execution failed."""
         mock_ce_cls.language_for_domain.return_value = "python"
@@ -284,8 +284,8 @@ class TestCombinedScore:
         # (90 + 80 + 0) / 3 = 56.67
         assert result["combined_score"] == pytest.approx(56.67, abs=0.1)
 
-    @patch("director.AdversarialReviewer")
-    @patch("director.OrcaExecutionManager")
+    @patch("src.core.director.AdversarialReviewer")
+    @patch("src.core.director.OrcaExecutionManager")
     def test_combined_score_execution_not_run(self, mock_orca_cls, mock_reviewer_cls):
         """combined_score = (cto + coo + 50) / 3 when execution not run."""
         mock_orca = MagicMock()

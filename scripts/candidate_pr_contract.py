@@ -6,6 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from types import SimpleNamespace
+from src.bridge.candidate_manifest import CandidateStore
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DATA = REPO / "data"
@@ -60,7 +63,7 @@ def init_repo(root):
 
 
 def make_manifest(store, repo_path):
-    from candidate_manifest import create_candidate
+    from src.bridge.candidate_manifest import create_candidate
     return create_candidate(
         store=store,
         repo_path=repo_path,
@@ -97,12 +100,12 @@ def main():
         approval_id=f"teacher-{candidate_id}",
     )
 
-    from candidate_binding import bind_trusted_evidence, CandidateBindingStore, lookup_binding
+    from src.bridge.candidate_binding import bind_trusted_evidence, CandidateBindingStore
     binding = bind_trusted_evidence(manifest=manifest, verification=verification, approval=approval)
     binding_store = CandidateBindingStore(DATA / "candidate_bindings.json")
     binding_store.put(binding)
 
-    from candidate_pr_gate import (
+    from src.bridge.candidate_pr_gate import (
         gate_candidate_publication,
         trusted_verification_from_binding,
         teacher_approval_from_binding,
@@ -119,7 +122,7 @@ def main():
         print(f"gate refused: {decision.reason}", file=sys.stderr)
         raise SystemExit(3)
 
-    from pr_provider import PrStateStore, publish_candidate_pr_idempotent
+    from src.bridge.pr_provider import PrStateStore, publish_candidate_pr_idempotent
     journal = PrStateStore(DATA / "pr_publications.json")
 
     class FakePublisher:

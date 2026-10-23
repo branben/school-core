@@ -6,11 +6,11 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from candidate_manifest import CandidateStore
+from src.bridge.candidate_manifest import CandidateStore
 
 import pytest
 
-from student_vm_runner import (
+from src.crew.student_vm_runner import (
     StudentTaskRequest,
     StudentVMBlocked,
     SmolVmRunner,
@@ -83,7 +83,7 @@ def test_real_smolvm_candidate_archive_round_trip(task_repo, tmp_path, monkeypat
         smolvm="smolvm", pack_path=pack, pack_sha256=pack_digest,
         quarantine_path=tmp_path / "quarantine.jsonl",
     )
-    from student_vm_runner import materialize_and_verify_student_result
+    from src.crew.student_vm_runner import materialize_and_verify_student_result
 
     def trusted_check(path, **_kwargs):
         source = Path(path) / "vm-result.txt"
@@ -193,7 +193,7 @@ def test_vm_task_uses_named_guest_minimal_host_env_and_deletes(task_repo, tmp_pa
 
 
 def test_bounded_process_keeps_stdout_and_stderr_separate_with_independent_limits():
-    from student_vm_runner import _bounded_process
+    from src.crew.student_vm_runner import _bounded_process
 
     result = _bounded_process(
         ["python3", "-c", "import os; os.write(1, b'archive'); os.write(2, b'log')"],
@@ -210,7 +210,7 @@ def test_bounded_process_keeps_stdout_and_stderr_separate_with_independent_limit
 
 
 def test_bounded_process_kills_child_when_stdout_exceeds_cap():
-    from student_vm_runner import _bounded_process
+    from src.crew.student_vm_runner import _bounded_process
 
     result = _bounded_process(
         ["python3", "-c", "import os; os.write(1, b'x' * 1000000)"],
@@ -227,7 +227,7 @@ def test_bounded_process_kills_child_when_stdout_exceeds_cap():
 
 
 def test_bounded_process_kills_child_when_stderr_exceeds_cap():
-    from student_vm_runner import _bounded_process
+    from src.crew.student_vm_runner import _bounded_process
 
     result = _bounded_process(
         ["python3", "-c", "import os; os.write(2, b'x' * 1000000)"],
@@ -274,7 +274,7 @@ def test_bundle_contains_only_selected_git_archive_and_task_metadata(task_repo, 
 
 
 def test_guest_script_redirects_command_stdout_away_from_the_archive_stream():
-    from student_vm_runner import _guest_collection_script
+    from src.crew.student_vm_runner import _guest_collection_script
 
     script = _guest_collection_script(("student-agent", "--task-file", "/workspace/task.json"))
     command_lines = [line for line in script.splitlines() if "student-agent" in line]
@@ -333,7 +333,7 @@ def test_oversized_repository_archive_is_stream_limited_before_guest_creation(
             pytest.fail("git archive must not buffer an unbounded result via subprocess.run")
         return original_run(args, *positional, **kwargs)
 
-    monkeypatch.setattr("student_vm_runner.subprocess.run", reject_buffered_archive)
+    monkeypatch.setattr("src.crew.student_vm_runner.subprocess.run", reject_buffered_archive)
     runner = SmolVmRunner(
         smolvm="/tools/smolvm", pack_path=pack, pack_sha256=pack_digest,
         process_runner=lambda args, **kwargs: calls.append(list(args)),
@@ -561,7 +561,7 @@ def test_delete_failure_is_persisted_as_private_cleanup_quarantine(task_repo, tm
 
 
 def test_guest_archive_paths_are_checked():
-    from student_vm_runner import _validate_archive
+    from src.crew.student_vm_runner import _validate_archive
 
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w") as tar:
@@ -725,8 +725,8 @@ def test_no_host_execution_fallback_on_vm_failure(task_repo, tmp_path, monkeypat
         host_commands.append(list(args))
         return real_popen(args, *pos, **kwargs)
 
-    monkeypatch.setattr("student_vm_runner.subprocess.run", spy_run)
-    monkeypatch.setattr("student_vm_runner.subprocess.Popen", spy_popen)
+    monkeypatch.setattr("src.crew.student_vm_runner.subprocess.run", spy_run)
+    monkeypatch.setattr("src.crew.student_vm_runner.subprocess.Popen", spy_popen)
 
     guest_calls = []
 

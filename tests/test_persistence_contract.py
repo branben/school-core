@@ -31,7 +31,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from persistence_contract import (
+from src.core.persistence_contract import (
     CANDIDATE_BINDINGS_PATH,
     CHECKPOINT_PATHS,
     COMPOUND_LEARNING_PATH,
@@ -72,7 +72,7 @@ def _sha(seed: str = "a") -> str:
 
 def _make_manifest(tmp_path: Path, *, candidate_id: str, repo: Path):
     """Create a real CandidateManifest from a real Git repo."""
-    from candidate_manifest import CandidateStore, create_candidate
+    from src.bridge.candidate_manifest import CandidateStore, create_candidate
     return create_candidate(
         store=CandidateStore(tmp_path / f"candidates-{candidate_id}.json"),
         repo_path=repo,
@@ -107,7 +107,7 @@ class TestCompoundLearningLifecycle:
         data_dir.mkdir(exist_ok=True)
 
         # Producer: write a compound observation
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         record = store.observe(
             bead_id="bead-test-1",
@@ -140,7 +140,7 @@ class TestCompoundLearningLifecycle:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
 
         # Full lifecycle
@@ -178,7 +178,7 @@ class TestCompoundLearningLifecycle:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         store.observe(bead_id="bead-1", trigger="bead_completed", evidence={})
 
@@ -195,7 +195,7 @@ class TestCompoundLearningLifecycle:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         record = store.observe(
             bead_id="bead-audit-123",
@@ -222,7 +222,7 @@ class TestCompoundLearningLifecycle:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         store.observe(
             bead_id="bead-cred",
@@ -253,7 +253,7 @@ class TestTeacherApprovalSurvives:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from state_journal import StateJournal
+        from src.sensors.state_journal import StateJournal
         journal = StateJournal(data_dir / STATE_JOURNAL_PATH)
         journal.issue_approval(
             approval_id="approval-1",
@@ -278,7 +278,7 @@ class TestTeacherApprovalSurvives:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from state_journal import StateJournal
+        from src.sensors.state_journal import StateJournal
         journal = StateJournal(data_dir / STATE_JOURNAL_PATH)
         journal.issue_approval(
             approval_id="approval-consume",
@@ -309,7 +309,7 @@ class TestTeacherApprovalSurvives:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from state_journal import StateJournal
+        from src.sensors.state_journal import StateJournal
         journal = StateJournal(data_dir / STATE_JOURNAL_PATH)
         op = journal.start_operation(
             operation_id="op-1",
@@ -337,7 +337,7 @@ class TestTeacherApprovalSurvives:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from state_journal import StateJournal
+        from src.sensors.state_journal import StateJournal
         journal = StateJournal(data_dir / STATE_JOURNAL_PATH)
         journal.start_operation(
             operation_id="op-1",
@@ -378,7 +378,7 @@ class TestCandidateEvidenceSurvives:
         _make_repo(repo)
         manifest = _make_manifest(tmp_path, candidate_id="cand-1", repo=repo)
 
-        from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+        from src.bridge.candidate_binding import CandidateBindingStore, bind_trusted_evidence
         store = CandidateBindingStore(data_dir / CANDIDATE_BINDINGS_PATH)
         binding = bind_trusted_evidence(
             manifest=manifest,
@@ -412,7 +412,7 @@ class TestCandidateEvidenceSurvives:
         manifest_a = _make_manifest(tmp_path, candidate_id="cand-a", repo=repo_a)
         manifest_b = _make_manifest(tmp_path, candidate_id="cand-b", repo=repo_b)
 
-        from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+        from src.bridge.candidate_binding import CandidateBindingStore, bind_trusted_evidence
         store = CandidateBindingStore(data_dir / CANDIDATE_BINDINGS_PATH)
         store.put(bind_trusted_evidence(
             manifest=manifest_a,
@@ -642,7 +642,7 @@ class TestFreshCheckoutSimulation:
         data_dir.mkdir(exist_ok=True)
 
         # Phase 1: Producer writes
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         record = store.observe(
             bead_id="bead-full-cycle",
@@ -682,7 +682,7 @@ class TestFreshCheckoutSimulation:
         data_dir.mkdir(exist_ok=True)
 
         # Phase 1: Producer writes
-        from state_journal import StateJournal
+        from src.sensors.state_journal import StateJournal
         journal = StateJournal(data_dir / STATE_JOURNAL_PATH)
         journal.issue_approval(
             approval_id="approval-full",
@@ -717,7 +717,7 @@ class TestFreshCheckoutSimulation:
         manifest = _make_manifest(tmp_path, candidate_id="cand-full", repo=repo)
 
         # Phase 1: Producer writes
-        from candidate_binding import CandidateBindingStore, bind_trusted_evidence
+        from src.bridge.candidate_binding import CandidateBindingStore, bind_trusted_evidence
         store = CandidateBindingStore(data_dir / CANDIDATE_BINDINGS_PATH)
         store.put(bind_trusted_evidence(
             manifest=manifest,
@@ -855,7 +855,7 @@ class TestSanitizationEdgeCases:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         store.observe(
             bead_id="bead-preserve",
@@ -884,7 +884,7 @@ class TestSanitizationEdgeCases:
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
 
-        from compound_learning import CompoundLearningStore
+        from src.core.compound_learning import CompoundLearningStore
         store = CompoundLearningStore(data_dir / COMPOUND_LEARNING_PATH)
         store.observe(
             bead_id="bead-token",

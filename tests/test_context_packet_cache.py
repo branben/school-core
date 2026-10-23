@@ -2,8 +2,8 @@
 
 import threading
 
-import context_orchestrator as context
-from pipeline_metrics import PipelineMetrics
+import src.core.context_orchestrator as context
+from src.tools.pipeline_metrics import PipelineMetrics
 
 
 def test_same_session_reuses_context_packet(monkeypatch, tmp_path):

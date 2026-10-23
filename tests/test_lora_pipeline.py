@@ -254,7 +254,7 @@ class TestTrainForDomain:
 # ── train_all (dry-run) ────────────────────────────────────────────────────────
 
 class TestTrainAll:
-    @patch("trajectory.count_trajectories")
+    @patch("src.sensors.trajectory.count_trajectories")
     @patch("training.lora_pipeline.trajectories_for_training")
     def test_dry_run_all_domains(self, mock_traj_fn, mock_count):
         mock_count.return_value = {
@@ -274,19 +274,19 @@ class TestTrainAll:
 
 class TestLoraAdapterResolution:
     def test_lora_prefix_detection(self):
-        from executor import _resolve_lora_adapter
+        from src.crew.executor import _resolve_lora_adapter
         assert _resolve_lora_adapter("lora-python-testing") == "python-testing"
         assert _resolve_lora_adapter("lora-code-implementation") == "code-implementation"
         assert _resolve_lora_adapter("coder") is None
         assert _resolve_lora_adapter("auto/best-free") is None
 
-    @patch("executor.COMBO_MAP", {"coder": "auto/best-free"})
+    @patch("src.crew.executor.COMBO_MAP", {"coder": "auto/best-free"})
     def test_lora_call_model_adds_adapter_prefix(self):
-        from executor import call_model
-        with patch("executor._omniroute_call", return_value={
+        from src.crew.executor import call_model
+        with patch("src.crew.executor._omniroute_call", return_value={
             "choices": [{"message": {"content": "adapted response"}}],
         }):
-            with patch("executor.API_KEY", "test-key"):
+            with patch("src.crew.executor.API_KEY", "test-key"):
                 result = call_model(
                     "lora-python-testing",
                     "Write a test",

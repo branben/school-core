@@ -10,7 +10,7 @@ import sys
 def test_lifecycle_states_imports_on_39():
     # This test is trivial on 3.11+ but is the guard on 3.9: if the module
     # imports at all, the compat fix holds.
-    import lifecycle_states  # noqa: F401
+    import src.core.lifecycle_states as lifecycle_states
     assert hasattr(lifecycle_states, "LifecycleState")
     # And the enum members must behave like strings (the StrEnum contract)
     assert lifecycle_states.LifecycleState.MERGED == "merged"

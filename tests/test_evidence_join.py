@@ -2,7 +2,7 @@
 
 import json
 
-from evidence_join import build_evidence_join
+from src.review.evidence_join import build_evidence_join
 
 
 def test_join_preserves_plan_bead_runtime_and_review_identity():

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-_MODULE_PATH = Path(__file__).parents[1] / "orca_precondition.py"
+_MODULE_PATH = Path(__file__).parents[1] / "src" / "crew" / "orca_precondition.py"
 _spec = importlib.util.spec_from_file_location("orca_precondition", _MODULE_PATH)
 orca_precondition = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(orca_precondition)

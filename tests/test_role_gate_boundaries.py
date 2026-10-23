@@ -46,7 +46,7 @@ satisfies.
 
 import pytest
 
-from role_loader import ROLE_NAMES, RoleLoader
+from src.tools.role_loader import ROLE_NAMES, RoleLoader
 
 
 @pytest.fixture()

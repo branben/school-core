@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateStore, create_candidate
-from candidate_pr import CandidatePublicationError, publish_candidate_pr
+from src.bridge.candidate_manifest import CandidateStore, create_candidate
+from src.bridge.candidate_pr import CandidatePublicationError, publish_candidate_pr
 
 
 def _git(repo: Path, *args: str) -> str:

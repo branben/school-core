@@ -32,9 +32,7 @@ from pathlib import Path
 
 import pytest
 
-import crew_dispatch
-
-
+import src.crew.crew_dispatch as crew_dispatch
 class TestReachabilityIsRecorded:
     def test_record_carries_commit_reachable_field(self, monkeypatch, tmp_path):
         """The terminal record must include the probe result.

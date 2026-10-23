@@ -10,9 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import populate_board_cache
-
-
+import src.tools.populate_board_cache as populate_board_cache
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 

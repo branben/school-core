@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI = REPO_ROOT / "recovery.py"
+CLI = REPO_ROOT / "src" / "core" / "recovery.py"
 REMOTE = "git+https://github.com/example/school-core.git"
 
 

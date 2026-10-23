@@ -46,9 +46,7 @@ hardest difficulty. Fail fast on silence, stay patient with work.
 import pytest
 from typing import Optional
 
-import crew_dispatch
-
-
+import src.crew.crew_dispatch as crew_dispatch
 class _Clock:
     """Deterministic clock; sleep advances time instead of blocking."""
 

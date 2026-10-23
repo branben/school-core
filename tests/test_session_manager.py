@@ -14,7 +14,7 @@ from staff.plugins.session_manager import SessionManagerPlugin
 from staff.plugin import PluginTrust, StaffContext
 from staff.sandbox import StaffSandbox
 from staff.loader import StaffLoader
-from scoring import ScoreStore
+from src.core.scoring import ScoreStore
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -24,9 +24,9 @@ def tmp_sessions_dir(tmp_path, monkeypatch):
     """Redirect session paths to temp directory."""
     sessions_dir = tmp_path / "sessions"
     consolidation_dir = sessions_dir / "consolidation"
-    monkeypatch.setattr("sleep_state.SESSIONS_DIR", sessions_dir)
-    monkeypatch.setattr("sleep_state.CONSOLIDATION_DIR", consolidation_dir)
-    monkeypatch.setattr("sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
+    monkeypatch.setattr("src.crew.sleep_state.SESSIONS_DIR", sessions_dir)
+    monkeypatch.setattr("src.crew.sleep_state.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.crew.sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
     return sessions_dir
 
 
@@ -64,7 +64,7 @@ def context(store):
 @pytest.fixture(autouse=True)
 def clear_sessions(tmp_sessions_dir):
     """Clear Director's _active_sessions before each test."""
-    from director import _active_sessions
+    from src.core.director import _active_sessions
     _active_sessions.clear()
     yield
     _active_sessions.clear()
@@ -77,7 +77,7 @@ def clear_sessions(tmp_sessions_dir):
 def _add_active_session(session_id: str, agent: str = "foundry-coder-7b",
                         last_activity: str = None, building: str = "default"):
     """Helper to inject a session into Director's _active_sessions."""
-    from director import _active_sessions
+    from src.core.director import _active_sessions
     _active_sessions[session_id] = {
         "agent": agent,
         "building": building,
@@ -182,7 +182,7 @@ class TestConfiguration:
 
     def test_default_timeout_uses_director_constant(self, plugin, sandbox, context):
         """Without config, falls back to SLEEP_TIMEOUT_MINUTES (15)."""
-        from director import SLEEP_TIMEOUT_MINUTES
+        from src.core.director import SLEEP_TIMEOUT_MINUTES
         assert plugin._timeout_minutes == SLEEP_TIMEOUT_MINUTES
 
 
@@ -225,20 +225,21 @@ class TestRunTask:
     """run_task() must not crash with NameError from undeclared variables."""
 
     def test_no_session_id_does_not_crash(self):
-        from director import run_task
+        from src.core.director import run_task
         import inspect
         sig = inspect.signature(run_task)
         assert "session_id" in sig.parameters
         assert sig.parameters["session_id"].default is None
 
     def test_agent_role_is_defined(self):
-        from director import _agent_role
+        from src.core.director import _agent_role
         assert _agent_role("a", 80) == "Faculty"
         assert _agent_role("a", 60) == "Senior"
         assert _agent_role("a", 30) == "Junior"
         assert _agent_role("a", 10) == "Trainee"
 
     def test_run_task_compiles_and_imports(self):
-        import importlib, director
+        import importlib
+        from src.core import director
         importlib.reload(director)
         assert hasattr(director, "run_task")

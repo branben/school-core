@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from model_relay import (
+from src.tools.model_relay import (
     ModelRelayBlocked,
     RelayPolicy,
     TaskScopedModelRelay,

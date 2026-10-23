@@ -3,7 +3,7 @@
 Run: python -m pytest tests/test_board_ux.py -v
 """
 
-from board import build_board_html
+from src.bridge.board import build_board_html
 
 
 class TestSessionDeepLink:

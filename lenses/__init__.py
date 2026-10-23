@@ -4,7 +4,7 @@ Each lens defines a prompt template and structured output schema for a specific
 review axis. Lenses are stateless — the AdversarialReviewer orchestrates them.
 """
 
-from adversarial_reviewer import LensType
+from src.review.adversarial_reviewer import LensType
 
 _CORRECTNESS_PROMPT = """\
 You are a CORRECTNESS reviewer. Your job: find logic errors, wrong assumptions, \

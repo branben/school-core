@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from consolidation_writer import (
+from src.core.consolidation_writer import (
     write_consolidation,
     load_consolidation_for_domain,
     load_all_consolidation,
@@ -24,7 +24,7 @@ from consolidation_writer import (
 def tmp_consolidation_dir(tmp_path, monkeypatch):
     """Redirect CONSOLIDATION_DIR to a temp directory."""
     consolidation_dir = tmp_path / "consolidation"
-    monkeypatch.setattr("consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.core.consolidation_writer.CONSOLIDATION_DIR", consolidation_dir)
     return consolidation_dir
 
 
@@ -99,7 +99,7 @@ class TestWriteConsolidation:
 
     def test_empty_observations_no_engram_returns_none(self, tmp_consolidation_dir):
         """Empty observations + no trajectory files = nothing to consolidate, returns None."""
-        with patch("trajectory.list_trajectories", return_value=[]):
+        with patch("src.sensors.trajectory.list_trajectories", return_value=[]):
             result = write_consolidation(
                 session_id="ses_empty_001",
                 domain="python-testing",
@@ -112,7 +112,7 @@ class TestWriteConsolidation:
         mock_results = [
             {"domain": "python-testing", "status": "success", "task_score": 75.0},
         ]
-        with patch("trajectory.list_trajectories", return_value=mock_results):
+        with patch("src.sensors.trajectory.list_trajectories", return_value=mock_results):
             result = write_consolidation(
                 session_id="ses_fetch_001",
                 domain="python-testing",
@@ -125,7 +125,7 @@ class TestWriteConsolidation:
 
     def test_no_engram_no_observations_returns_none(self, tmp_consolidation_dir):
         """When no trajectory files exist and no observations, returns None."""
-        with patch("trajectory.list_trajectories", return_value=[]):
+        with patch("src.sensors.trajectory.list_trajectories", return_value=[]):
             result = write_consolidation(
                 session_id="ses_none_001",
                 domain="python-testing",
@@ -157,7 +157,7 @@ class TestWriteConsolidation:
 
     def test_failure_returns_none(self, tmp_consolidation_dir):
         """Non-blocking: exceptions return None, never crash."""
-        with patch("consolidation_writer._ensure_dir", side_effect=IOError("disk full")):
+        with patch("src.core.consolidation_writer._ensure_dir", side_effect=IOError("disk full")):
             result = write_consolidation("ses_fail", "python-testing", [{"domain": "x"}])
         assert result is None
 

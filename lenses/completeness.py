@@ -1,6 +1,6 @@
 """Completeness adversarial lens — finds missing pieces, edge cases, and gaps."""
 
-from adversarial_reviewer import LensType
+from src.review.adversarial_reviewer import LensType
 
 LENS_TYPE = LensType.COMPLETENESS
 

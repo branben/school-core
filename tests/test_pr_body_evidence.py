@@ -29,8 +29,8 @@ Why each gap matters, concretely:
 
 from unittest.mock import patch
 
-import pr_creator
-from crew_dispatch import CrewResult
+import src.bridge.pr_creator as pr_creator
+from src.crew.crew_dispatch import CrewResult
 from pathlib import Path
 
 

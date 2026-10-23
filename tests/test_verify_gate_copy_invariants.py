@@ -22,18 +22,14 @@ manager, not just pnpm.
 """
 
 import json
-import os
 import shutil
 import socket
-import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
 
-import verify_gate
-
-
+import src.review.verify_gate as verify_gate
 # --- 1. announcement must match the copy -------------------------------------
 
 def test_announced_dirs_all_exist_after_copy(tmp_path):
@@ -270,6 +266,36 @@ def test_run_verify_gate_rejects_symlink_before_reading_manifests(tmp_path, monk
     assert result["skipped"] is True
     assert result["ran"] == 0
     assert "symlink" in result["failures"][0]["stderr"].lower()
+
+
+# --- 7. repo-tracked agent-skill symlinks must not fail the gate ---------------
+
+def test_copy_tolerates_out_of_tree_agent_skill_symlinks(tmp_path):
+    """A repo-tracked `.agents/skills/<name> -> ~/.agents/skills/<name>` link must copy.
+
+    Real repos ship global agent skills as tracked symlinks (sound-royale-ny
+    tracks `.agents/skills/agent-browser`; school-core tracks `.agents/skills/*`).
+    The escape guard must not turn that into a hard failure of EVERY
+    verification on the repo.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".agents" / "skills" / "design-taste-frontend").mkdir(parents=True)
+    (repo / ".agents" / "skills" / "design-taste-frontend" / "SKILL.md").write_text("skill\n")
+    global_skill = tmp_path / "global-skills" / "agent-browser"
+    global_skill.mkdir(parents=True)
+    (global_skill / "SKILL.md").write_text("global\n")
+    (repo / ".agents" / "skills" / "agent-browser").symlink_to(global_skill)
+    (repo / ".claude" / "settings.json").parent.mkdir(parents=True)
+    (repo / ".claude" / "settings.json").write_text("{}\n")
+    (repo / "verify.py").write_text("print('source')\n")
+
+    work = tmp_path / "scratch"
+    verify_gate._copy_repo_to_scratch(repo, work)
+
+    assert (work / "verify.py").is_file()
+    # the escaping link must not have pulled outside content into scratch
+    assert not (work / ".agents" / "skills" / "agent-browser" / "SKILL.md").is_file()
 
 
 # --- 6. generated CodeGraph state must not break the scratch copy ------------

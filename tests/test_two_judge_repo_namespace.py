@@ -21,9 +21,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from director import _run_two_judge_review, REPO_GLOBAL  # noqa: E402
+from src.core.director import _run_two_judge_review, REPO_GLOBAL  # noqa: E402
 from bookbag import write_bookbag, read_bookbag, REPO_GLOBAL as BAG_GLOBAL  # noqa: E402
-from adversarial_reviewer import ReviewResult, Verdict  # noqa: E402
+from src.review.adversarial_reviewer import ReviewResult, Verdict  # noqa: E402
 
 
 class _FakeReviewer:
@@ -51,8 +51,8 @@ def test_two_judge_review_persists_verdict_to_per_repo_namespace():
         repo=repo,
     )
 
-    with patch("director.AdversarialReviewer", _FakeReviewer), \
-         patch("director.call_model", side_effect=RuntimeError("no model in tests")):
+    with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")):
         result = _run_two_judge_review(
             bead=bead,
             output="here is the doc",
@@ -89,8 +89,8 @@ def test_two_judge_review_defaults_to_global_namespace():
         repo=REPO_GLOBAL,
     )
 
-    with patch("director.AdversarialReviewer", _FakeReviewer), \
-         patch("director.call_model", side_effect=RuntimeError("no model in tests")):
+    with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")):
         _run_two_judge_review(
             bead=bead,
             output="here is the doc",
@@ -123,8 +123,8 @@ def test_narrative_synthesis_persists_to_bookbag():
         "coo": {"summary": "Covers the issue.", "liked": "Complete."},
     })
 
-    with patch("director.AdversarialReviewer", _FakeReviewer), \
-         patch("director.call_model", return_value=fake_json):
+    with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+         patch("src.core.director.call_model", return_value=fake_json):
         result = _run_two_judge_review(
             bead=bead,
             output="here is the doc",

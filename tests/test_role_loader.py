@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-from role_loader import (
+from src.tools.role_loader import (
     Role,
     RoleLoader,
     get_role,
@@ -239,7 +239,7 @@ class TestBackwardCompatibility:
             loader.get_role(50)
 
     def test_existing_role_anchors_unchanged(self):
-        from prompt_composer import ROLE_ANCHORS
+        from src.tools.prompt_composer import ROLE_ANCHORS
         assert "student" in ROLE_ANCHORS
         assert "teacher" in ROLE_ANCHORS
         assert "faculty" in ROLE_ANCHORS

@@ -9,7 +9,7 @@ from unittest.mock import patch, call, MagicMock
 
 import pytest
 
-from repo_reader import (
+from src.core.repo_reader import (
     build_codebase_context,
     clone_repo,
     extract_keywords,
@@ -22,9 +22,7 @@ from repo_reader import (
     shutil as _rr_shutil,
     subprocess as _rr_subprocess,
 )
-import repo_reader
-
-
+import src.core.repo_reader as repo_reader
 # --- Keyword extraction ---
 
 class TestExtractKeywords:
@@ -185,7 +183,7 @@ class TestBuildCodebaseContext:
 # --- Clone (mocked) ---
 
 class TestCloneRepo:
-    @patch("repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.subprocess.run")
     def test_returns_path_on_success(self, mock_run, tmp_path):
         # Mock the clone command
         mock_run.return_value = subprocess.CompletedProcess(
@@ -199,7 +197,7 @@ class TestCloneRepo:
         expected = CACHE_DIR / "octocat__Hello-World"
         assert result == expected
 
-    @patch("repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.subprocess.run")
     def test_returns_none_on_failure(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="repository not found"
@@ -207,13 +205,12 @@ class TestCloneRepo:
         result = clone_repo("nonexistent/repo")
         assert result is None
 
-    @patch("repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.subprocess.run")
     def test_installs_deps_for_ts_projects(self, mock_run, tmp_path, monkeypatch):
         """For TypeScript projects (package.json present), clone_repo installs
         dependencies so the hermetic verify gate can run without network."""
-        import os
         # Override CACHE_DIR to use tmp_path
-        monkeypatch.setattr("repo_reader.CACHE_DIR", tmp_path / "cache")
+        monkeypatch.setattr("src.core.repo_reader.CACHE_DIR", tmp_path / "cache")
         # Create a fake git clone by mocking subprocess.run
         def fake_run(cmd, **kwargs):
             # git clone succeeds
@@ -233,8 +230,8 @@ class TestCloneRepo:
             return subprocess.CompletedProcess(cmd, 0, "", "")
 
         mock_run.side_effect = fake_run
-        from execution_sandbox import sandbox_exec_path
-        monkeypatch.setattr("execution_sandbox.sandbox_exec_path", lambda: "/usr/bin/sandbox-exec")
+        from src.crew.execution_sandbox import sandbox_exec_path
+        monkeypatch.setattr("src.crew.execution_sandbox.sandbox_exec_path", lambda: "/usr/bin/sandbox-exec")
         result = clone_repo("owner/repo")
         assert result is not None
         # Verify pnpm install was called
@@ -355,9 +352,9 @@ class TestCloneRepoForceFresh:
     to a safe `git pull --ff-only` refresh.
     """
 
-    @patch("repo_reader.subprocess.run")
-    @patch("repo_reader.shutil.rmtree")
-    @patch("repo_reader._git")
+    @patch("src.core.repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.shutil.rmtree")
+    @patch("src.core.repo_reader._git")
     def test_live_worktree_skips_rmtree_and_refreshes(
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
@@ -378,9 +375,9 @@ class TestCloneRepoForceFresh:
             for c in mock_run.call_args_list
         )
 
-    @patch("repo_reader.subprocess.run")
-    @patch("repo_reader.shutil.rmtree")
-    @patch("repo_reader._git")
+    @patch("src.core.repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.shutil.rmtree")
+    @patch("src.core.repo_reader._git")
     def test_no_live_worktree_still_removes_and_reclones(
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
@@ -402,9 +399,9 @@ class TestCloneRepoForceFresh:
             for c in mock_run.call_args_list
         )
 
-    @patch("repo_reader.subprocess.run")
-    @patch("repo_reader.shutil.rmtree")
-    @patch("repo_reader._git")
+    @patch("src.core.repo_reader.subprocess.run")
+    @patch("src.core.repo_reader.shutil.rmtree")
+    @patch("src.core.repo_reader._git")
     def test_non_force_refreshes_without_rmtree(
         self, mock_git, mock_rmtree, mock_run, tmp_path, monkeypatch
     ):
@@ -423,7 +420,9 @@ class TestCloneRepoForceFresh:
 
 class TestCleanupStaleCaches:
     def test_cleanup_function_exists(self):
-        # Verify the cleanup function is importable and callable
-        from repo_reader import cleanup_stale_caches
+        # Verify the cleanup function is importable and callable.
+        # The local import is the assertion: keep it even though a module-level
+        # one exists. Ruff: F811.
+        from src.core.repo_reader import cleanup_stale_caches  # noqa: F811
         # Should not raise with non-existent cache dir
         cleanup_stale_caches(max_age_hours=0)

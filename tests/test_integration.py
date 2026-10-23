@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from director import sleep, wake, _active_sessions, _track_session_start, _track_session_activity, SLEEP_TIMEOUT_MINUTES
-from sleep_state import load_session, read_library_log, SessionNotFoundError
-from scoring import ScoreStore
+from src.core.director import sleep, wake, _active_sessions, _track_session_start, _track_session_activity, SLEEP_TIMEOUT_MINUTES
+from src.crew.sleep_state import load_session, read_library_log, SessionNotFoundError
+from src.core.scoring import ScoreStore
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -21,9 +21,9 @@ def tmp_sessions_dir(tmp_path, monkeypatch):
     """Redirect all session paths to a temp directory."""
     sessions_dir = tmp_path / "sessions"
     consolidation_dir = sessions_dir / "consolidation"
-    monkeypatch.setattr("sleep_state.SESSIONS_DIR", sessions_dir)
-    monkeypatch.setattr("sleep_state.CONSOLIDATION_DIR", consolidation_dir)
-    monkeypatch.setattr("sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
+    monkeypatch.setattr("src.crew.sleep_state.SESSIONS_DIR", sessions_dir)
+    monkeypatch.setattr("src.crew.sleep_state.CONSOLIDATION_DIR", consolidation_dir)
+    monkeypatch.setattr("src.crew.sleep_state.LIBRARY_LOG_PATH", sessions_dir / "library_log.yaml")
     return sessions_dir
 
 
@@ -130,5 +130,5 @@ class TestConfiguration:
 
     def test_default_pressure_threshold(self):
         """Default context pressure threshold is 70%."""
-        from director import SLEEP_CONTEXT_PRESSURE_THRESHOLD
+        from src.core.director import SLEEP_CONTEXT_PRESSURE_THRESHOLD
         assert SLEEP_CONTEXT_PRESSURE_THRESHOLD == 0.70

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from board import assign_column, build_board_html
+from src.bridge.board import assign_column, build_board_html
 
 
 class TestBuildBoardHtml:

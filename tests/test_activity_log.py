@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from activity_log import ActivityLog, ActivityType
+from src.sensors.activity_log import ActivityLog, ActivityType
 
 
 def test_record_deviation_persists_structured_learning(tmp_path):
-    log = ActivityLog(tmp_path / "activity_log.json")
+    log = ActivityLog(tmp_path / "src.sensors.activity_log.json")
 
     entry = log.record_deviation(
         issue="school-core-s6k",
@@ -32,7 +32,7 @@ def test_record_deviation_persists_structured_learning(tmp_path):
     assert entry["revisit"] == "Revisit if count-cap admission is re-enabled"
     assert entry["evidence"] == ["crew_dispatch.py:123"]
 
-    saved = json.loads((tmp_path / "activity_log.json").read_text())
+    saved = json.loads((tmp_path / "src.sensors.activity_log.json").read_text())
     assert saved["entries"] == [entry]
 
 
@@ -41,7 +41,7 @@ def test_record_deviation_persists_structured_learning(tmp_path):
     ["summary", "plan_expected", "code_revealed", "decision", "revisit"],
 )
 def test_record_deviation_rejects_missing_learning_fields(tmp_path, field):
-    log = ActivityLog(tmp_path / "activity_log.json")
+    log = ActivityLog(tmp_path / "src.sensors.activity_log.json")
     values = {
         "issue": "school-core-s6k",
         "agent": "student-coder",
@@ -58,7 +58,7 @@ def test_record_deviation_rejects_missing_learning_fields(tmp_path, field):
 
 
 def test_timeline_filters_by_issue_and_event_kind(tmp_path):
-    log = ActivityLog(tmp_path / "activity_log.json")
+    log = ActivityLog(tmp_path / "src.sensors.activity_log.json")
     log.start_task("coder", "python-testing", "easy")
     log.record_deviation(
         issue="school-core-s6k",
@@ -88,7 +88,7 @@ def test_timeline_filters_by_issue_and_event_kind(tmp_path):
 
 
 def test_record_deviation_cli_can_target_an_isolated_log(tmp_path):
-    log_path = tmp_path / "activity_log.json"
+    log_path = tmp_path / "src.sensors.activity_log.json"
     result = subprocess.run(
         [
             sys.executable,
@@ -101,7 +101,7 @@ def test_record_deviation_cli_can_target_an_isolated_log(tmp_path):
             "--code-revealed", "Observed",
             "--decision", "Keep local",
             "--revisit", "When changed",
-            "--evidence", "cli.py:1",
+            "--evidence", "src.tools.cli.py:1",
         ],
         check=True,
         capture_output=True,

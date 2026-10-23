@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from adversarial_reviewer import (
+from src.review.adversarial_reviewer import (
     AdversarialReviewer,
     Finding,
     LensType,

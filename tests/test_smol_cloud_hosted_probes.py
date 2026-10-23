@@ -47,15 +47,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from smol_cloud_runner import (
+from src.crew.smol_cloud_runner import (
     SmolCloudRunner,
     _UrllibSmolCloudTransport,
     _sanitize_error_body,
     DEFAULT_MAX_SPEND_MICROS as HARD_STOP_MICROS,
 )
-from student_vm_runner import StudentTaskRequest, StudentVMBlocked
-from verifier_vm import TrustedCheckManifest, dispatch_and_verify_student_task
-from candidate_manifest import CandidateStore
+from src.crew.student_vm_runner import StudentTaskRequest, StudentVMBlocked
+from src.crew.verifier_vm import TrustedCheckManifest, dispatch_and_verify_student_task
+from src.bridge.candidate_manifest import CandidateStore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # The stop is enforced by the adapter (smol_cloud_runner.DEFAULT_MAX_SPEND_MICROS);
@@ -154,8 +154,7 @@ class EvidenceWriter:
 @pytest.fixture(autouse=True)
 def provider_write_spy(monkeypatch):
     """Evidence item 7: a real provider (GitHub) write must be impossible here."""
-    import candidate_pr
-
+    import src.bridge.candidate_pr as candidate_pr
     calls = []
 
     def _blocked(*args, **kwargs):

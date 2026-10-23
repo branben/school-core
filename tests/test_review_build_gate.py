@@ -13,10 +13,9 @@ from types import SimpleNamespace
 
 from unittest.mock import patch
 
-import director
-
-from director import _run_two_judge_review  # noqa: E402
-from adversarial_reviewer import ReviewResult, Verdict  # noqa: E402
+import src.core.director as director
+from src.core.director import _run_two_judge_review  # noqa: E402
+from src.review.adversarial_reviewer import ReviewResult, Verdict  # noqa: E402
 from bookbag import write_bookbag, read_bookbag  # noqa: E402
 
 
@@ -57,15 +56,15 @@ def _review_with_build_gate(monkeypatch, repo_path, vg_result, bead="bead-build-
         repo=repo,
     )
     monkeypatch.setattr(
-        "director._resolve_repo_path", lambda repo, explicit_path=None: repo_path
+        "src.core.director._resolve_repo_path", lambda repo, explicit_path=None: repo_path
     )
     monkeypatch.setattr(
-        "director.run_verify_gate",
+        "src.core.director.run_verify_gate",
         gate or (lambda repo_path, project_verify=None, **kwargs: vg_result),
     )
-    with patch("director.AdversarialReviewer", _FakeReviewer), \
-         patch("director.OrcaExecutionManager", _FakeOrca), \
-         patch("director.call_model", side_effect=RuntimeError("no model in tests")):
+    with patch("src.core.director.AdversarialReviewer", _FakeReviewer), \
+         patch("src.core.director.OrcaExecutionManager", _FakeOrca), \
+         patch("src.core.director.call_model", side_effect=RuntimeError("no model in tests")):
         return _run_two_judge_review(
             bead=bead,
             output="def test_x(): pass",
@@ -142,7 +141,7 @@ def test_build_verify_no_repo_path_is_loudly_skipped(monkeypatch, tmp_path):
     def _boom(*args, **kwargs):
         raise AssertionError("run_verify_gate must not be called without a repo path")
 
-    monkeypatch.setattr("director.run_verify_gate", _boom)
+    monkeypatch.setattr("src.core.director.run_verify_gate", _boom)
     result = _review_with_build_gate(monkeypatch, None, None)
 
     assert result["accepted"] is True
@@ -154,7 +153,14 @@ def test_build_verify_no_repo_path_is_loudly_skipped(monkeypatch, tmp_path):
 
 
 def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
-    """The review gate must not depend on the process working directory."""
+    """The review gate must not depend on the process working directory.
+
+    Pins to the REPO ROOT (the directory that actually contains flake.nix),
+    not to director.py's own package directory. director.py lives at
+    src/core/director.py, so its package dir is src/core — which has no
+    flake.nix. Asserting the package dir was the pre-reorg value and broke
+    when director.py moved under src/.
+    """
     captured = {}
 
     def fake_gate(**kwargs):
@@ -164,7 +170,14 @@ def test_build_verify_pins_flake_to_director_checkout(monkeypatch, tmp_path):
     result = _review_with_build_gate(monkeypatch, tmp_path, None, gate=fake_gate)
 
     assert result["accepted"] is True
-    assert captured["flake_path"] == Path(director.__file__).resolve().parent
+    flake_dir = captured["flake_path"]
+    # The contract: it resolves to the repo root, which owns flake.nix.
+    assert (flake_dir / "flake.nix").exists(), (
+        f"flake_path {flake_dir} does not contain flake.nix — "
+        f"the verify gate would silently skip its flake check"
+    )
+    # And it must NOT be the module's own package directory (cwd-dependence).
+    assert flake_dir != Path(director.__file__).resolve().parent
 
 
 def test_build_verify_gate_error_is_strict_veto(monkeypatch, tmp_path):
@@ -191,7 +204,7 @@ def test_build_verify_disabled_by_env(monkeypatch, tmp_path):
     def _boom(*args, **kwargs):
         raise AssertionError("run_verify_gate must not run when disabled")
 
-    monkeypatch.setattr("director.run_verify_gate", _boom)
+    monkeypatch.setattr("src.core.director.run_verify_gate", _boom)
     result = _review_with_build_gate(monkeypatch, tmp_path, None)
 
     assert result["accepted"] is True

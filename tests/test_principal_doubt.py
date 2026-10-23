@@ -7,7 +7,7 @@ analyzer (no LLM / OmniRoute), and the conductor wiring test mocks run_leaf.
 
 from unittest.mock import patch, MagicMock
 
-from principal_doubt import run_doubt_cycle
+from src.tools.principal_doubt import run_doubt_cycle
 import conductor
 
 

@@ -1,6 +1,6 @@
 """Behavioral tests for exact-SHA CI and approval verification."""
 
-from exact_sha_verifier import (
+from src.review.exact_sha_verifier import (
     CheckRun,
     HumanApproval,
     PullRequestSnapshot,

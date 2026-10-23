@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from candidate_manifest import CandidateManifestError, CandidateStore, create_candidate
+from src.bridge.candidate_manifest import CandidateManifestError, CandidateStore, create_candidate
 
 
 def _git(repo: Path, *args: str) -> str:

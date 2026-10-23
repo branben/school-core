@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import pytest
 
-from adversarial_reviewer import (
+from src.review.adversarial_reviewer import (
     CODE_SHAPED_DOMAINS,
     DOMAIN_LENS,
     PROSE_DOMAINS,
@@ -250,8 +250,8 @@ class TestAcceptanceGateWiring:
     """
 
     def test_prose_only_submission_is_not_accepted(self, prose_only_response, monkeypatch):
-        import director
-        from director import _run_two_judge_review
+        import src.core.director as director
+        from src.core.director import _run_two_judge_review
 
         # Both judges return a clean empty-findings PASS — the #121 defect
         # shape, where the LLM lenses found nothing CRITICAL/HIGH.
@@ -278,8 +278,8 @@ class TestAcceptanceGateWiring:
         assert finding["severity"] == "CRITICAL"
 
     def test_fenced_code_submission_is_still_accepted(self, monkeypatch):
-        import director
-        from director import _run_two_judge_review
+        import src.core.director as director
+        from src.core.director import _run_two_judge_review
 
         monkeypatch.setattr(
             director, "call_model",

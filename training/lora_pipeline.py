@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from training.lora_config import HPARAMS, DATA_CFG, to_dict
-from trajectory import trajectories_for_training
+from src.sensors.trajectory import trajectories_for_training
 from curricula.generator import SKIP_DOMAINS as CURRICULA_SKIP_DOMAINS
 
 logger = logging.getLogger(__name__)
@@ -311,7 +311,7 @@ def train_all(
 
     Returns dict of ``{domain: result}``.
     """
-    from trajectory import count_trajectories
+    from src.sensors.trajectory import count_trajectories
     all_counts = count_trajectories()
 
     results = {}
@@ -389,7 +389,7 @@ def main() -> None:
         return
 
     if args.list_eligible:
-        from trajectory import count_trajectories
+        from src.sensors.trajectory import count_trajectories
         for domain, count in sorted(count_trajectories().items()):
             trajs = trajectories_for_training(domain, min_score=args.min_score)
             status = "✅" if len(trajs) >= 3 else "❌"
@@ -409,7 +409,7 @@ def main() -> None:
         results = train_all(min_score=args.min_score, dry_run=dry_run)
     else:
         # Default: show eligible domains
-        from trajectory import count_trajectories
+        from src.sensors.trajectory import count_trajectories
         print("Eligible domains (use --domain X or --all --apply to train):")
         for domain, count in sorted(count_trajectories().items()):
             trajs = trajectories_for_training(domain, min_score=args.min_score)

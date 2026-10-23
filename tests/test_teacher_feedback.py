@@ -1,6 +1,6 @@
 import json
 
-from teacher_feedback import (
+from src.tools.teacher_feedback import (
     build_teacher_evidence,
     persist_teacher_evidence,
     routing_signal,
@@ -42,7 +42,7 @@ def test_teacher_evidence_is_bounded_and_contains_routing_signal():
 
 
 def test_teacher_evidence_persists_on_existing_trajectory(tmp_path):
-    path = tmp_path / "trajectory.json"
+    path = tmp_path / "src.sensors.trajectory.json"
     path.write_text(json.dumps({"agent": "coder", "response": "ok"}))
     evidence = build_teacher_evidence("coder", "python-testing", "easy", _review())
 

@@ -1,0 +1,1 @@
+"""school-core source package."""

@@ -42,12 +42,12 @@ from pathlib import Path
 # Make the shared client importable whether run from repo root or src/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agentmail_client import (
+from src.tools.agentmail_client import (
     configure_logging,
     req,
     resolve_dest_inbox,
 )
-from approve_command import ApprovalCommandError, execute_approve
+from src.tools.approve_command import ApprovalCommandError, execute_approve
 
 logger = logging.getLogger("agentmail_poller")
 

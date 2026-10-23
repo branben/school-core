@@ -2,7 +2,7 @@
 
 import json
 
-from shadow_routing import build_shadow_evidence, load_shadow_history
+from src.core.shadow_routing import build_shadow_evidence, load_shadow_history
 
 
 def _record(
