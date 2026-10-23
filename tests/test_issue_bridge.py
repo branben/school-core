@@ -767,7 +767,9 @@ class TestVerifyGateMerge:
         Path.cwd() being the checkout root, so a workflow `working-directory:`
         would point the gate at a flake-less dir → nix develop fails with a
         non-127 error → every issue becomes a fake CRITICAL failure. The flake
-        that provides #verifyShell lives next to issue_bridge.py.
+        that provides #verifyShell lives at the checkout ROOT (``flake.nix``
+        sits beside ``issue_bridge.py`` only because the bridge itself is at the
+        root — that is a coincidence of layout, not the invariant).
         """
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -780,7 +782,15 @@ class TestVerifyGateMerge:
         }) as mock_gate:
             result = _run_verify_gate(repo, {"issue_number": 1, "title": "t"})
         mock_gate.assert_called_once()
-        assert mock_gate.call_args.kwargs["flake_path"] == Path(issue_bridge.__file__).resolve().parent
+        # Assert the ARTIFACT, not a path derived from this module's own
+        # __file__. Production uses `Path(issue_bridge.__file__).resolve().parent`
+        # (issue_bridge.py:1056) — the same expression as this assertion — so if
+        # the bridge ever moves into src/, both move together and this test keeps
+        # passing while the gate points at a flake-less dir. Asserting the flake
+        # itself is what makes the coupling visible.
+        repo_root = Path(issue_bridge.__file__).resolve().parent
+        assert (repo_root / "flake.nix").exists(), "flake.nix must sit at the checkout root"
+        assert mock_gate.call_args.kwargs["flake_path"] == repo_root
         # The repo's own project_verify.yaml (when present) must still win as the
         # command manifest — flake pinning must not disturb the priority shadowing.
         assert mock_gate.call_args[0][1] == repo / "project_verify.yaml"
@@ -983,10 +993,11 @@ class TestVerifyGateMerge:
 
 
 class TestEntireSensor:
-    """The sync path must run `entire review` as a non-blocking sensor.
+    """The sync path must run `entire review` as a pre-merge sensor.
 
-    Findings are surfaced (result + last_run) but never override the verdict —
-    the adversarial LLM review is the semantic gate.
+    Findings are surfaced (result + last_run); a CRITICAL or HIGH finding
+    vetoes the review, matching the conductor's `_persist_acceptance` gate.
+    MEDIUM/LOW stay advisory.
     """
 
     ISSUE = [{
@@ -1025,7 +1036,7 @@ class TestEntireSensor:
         self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
         mock_task, mock_fetch, tmp_path, monkeypatch, store,
     ):
-        """Sensor findings ride on the result + last_run, without a FAIL override."""
+        """Sensor findings ride on the result + last_run; CRITICAL vetoes."""
         mock_ib_call.return_value = (
             '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
             '"gaps": [], "strengths": []}'
@@ -1036,7 +1047,7 @@ class TestEntireSensor:
         }
         mock_sensor.return_value = {
             "status": "fail",
-            "findings": [{"file": "x.py", "line": 3, "severity": "HIGH",
+            "findings": [{"file": "x.py", "line": 3, "severity": "CRITICAL",
                            "message": "unused var"}],
         }
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
@@ -1044,12 +1055,18 @@ class TestEntireSensor:
         mock_task.return_value = self._task_ok()
 
         results = bridge_issues("user/test", store=store)
-        assert results[0]["status"] == "success"
+        # A CRITICAL entire finding is an automatic veto, matching
+        # conductor._persist_acceptance (conductor.py:211-213: "a CRITICAL
+        # finding is an automatic veto"). The issue is REJECTED, not succeeded —
+        # this assertion used to pin the bug (status=="success") while the
+        # comment below correctly stated the veto. Fixed 2026-10-22.
+        assert results[0]["status"] == "error"
         # Surfaced on the result…
         assert results[0]["entire_review"]["status"] == "fail"
         assert len(results[0]["entire_review"]["findings"]) == 1
-        # …but NOT a verdict override — the LLM review stays the semantic gate.
-        assert results[0]["adversarial_review"]["verdict"] != "FAIL"
+        # …and a CRITICAL entire finding DOES cause rejection, matching the
+        # conductor's _persist_acceptance gate (tests/test_entire_gate.py).
+        assert results[0]["adversarial_review"]["verdict"] == "FAIL"
         # Durable record carries a compact summary.
         runs = json.loads((tmp_path / "last_run.json").read_text())
         assert runs[-1]["entire"] == {"status": "fail", "findings": 1}
@@ -1082,6 +1099,57 @@ class TestEntireSensor:
         assert results[0]["entire_review"] is None
         runs = json.loads((tmp_path / "last_run.json").read_text())
         assert runs[-1]["entire"] is None
+
+    @patch("issue_bridge.fetch_issues")
+    @patch("src.core.director.run_task")
+    @patch("src.crew.executor.call_model")
+    @patch("issue_bridge.call_model")
+    @patch("issue_bridge._run_verify_gate")
+    @patch("issue_bridge._run_entire_sensor")
+    def test_bridge_records_when_entire_persist_silently_fails(
+        self, mock_sensor, mock_verify, mock_ib_call, mock_exec_call,
+        mock_task, mock_fetch, tmp_path, monkeypatch, store,
+    ):
+        """A lock timeout on the entire-findings write must be RECORDED, not silent.
+
+        `locked_update_bookbag` returns None WITHOUT raising when the per-bead
+        lock cannot be acquired (bookbag.py:435-436), so the `except Exception`
+        around the call cannot see it. That write is declared "for acceptance
+        gating": a later retry of this issue reads bag["entire_findings"] through
+        _merge_async_teacher_verdicts (issue_bridge.py:1342-1344) and folds them
+        into the findings the acceptance gate at :2426 consults. A silent drop
+        therefore leaves the veto evidence missing from the durable record.
+
+        MEDIUM (not CRITICAL/HIGH) is used so the run still SUCCEEDS and
+        reaches the entire-findings write site — a CRITICAL or HIGH finding
+        vetoes before it. 9babf68 made HIGH veto unconditionally, retiring the
+        ENTIRE_HIGH_STRICT opt-in; campus.md:96 and conductor.py:234 both treat
+        CRITICAL and HIGH as blocking, so HIGH can no longer reach this site.
+        """
+        mock_ib_call.return_value = (
+            '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+            '"gaps": [], "strengths": []}'
+        )
+        mock_exec_call.return_value = '{"findings": []}'
+        mock_verify.return_value = {
+            "passed": True, "failures": [], "ran": 0, "skipped": False,
+        }
+        mock_sensor.return_value = {
+            "status": "fail",
+            "findings": [{"file": "y.py", "line": 9, "severity": "MEDIUM",
+                          "message": "suspicious construct"}],
+        }
+        monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        mock_fetch.return_value = self.ISSUE
+        mock_task.return_value = self._task_ok()
+
+        with patch("issue_bridge.locked_update_bookbag", return_value=None):
+            results = bridge_issues("user/test", store=store)
+
+        # The run still succeeds (HIGH does not veto) …
+        assert results[0]["status"] == "success"
+        # … but the incomplete record must be visible, not silent.
+        assert results[0]["entire_persisted"] is False
 
 
 # ── U1: session_id threading ───────────────────────────────────────────────
