@@ -385,53 +385,5 @@
     "entire_review": null,
     "commit_reachable": null,
     "teardown_ok": true
-  },
-  {
-    "crew_id": "fm-probe-fm-agent-9999",
-    "issue_number": 9999,
-    "status": "running",
-    "fleet_worktree_id": null,
-    "capability": {
-      "version": "1.0.0",
-      "domain": "python-testing",
-      "difficulty": "easy",
-      "score": 30.0,
-      "school_role": "Teacher",
-      "task_role": "coder",
-      "profile": "student-coder",
-      "skills": [
-        "YAGNI",
-        "KISS",
-        "DRY",
-        "TDD Chicago School",
-        "Use Case"
-      ],
-      "allowed_tools": [
-        "python",
-        "testing",
-        "git"
-      ],
-      "gate_min": 25,
-      "gate_max": 74,
-      "escalation": [
-        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
-        "Task difficulty exceeds gate \u2192 escalate immediately"
-      ],
-      "hermes_toolsets": [
-        "clarify",
-        "delegation",
-        "engram",
-        "file",
-        "memory",
-        "serena",
-        "skills",
-        "terminal",
-        "todo"
-      ],
-      "schema_version": 1
-    },
-    "started_at": "2026-10-23T14:12:30.548016+00:00",
-    "started_monotonic": 9.5095035,
-    "orca_worktree_present": true
   }
 ]
