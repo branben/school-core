@@ -369,10 +369,21 @@ class AdversarialReviewer:
         # verification-co-evolution loop (see VerificationCoevolution.analyze),
         # which uses real per-axis capability rather than the merged aggregate.
         lens_trace: dict[str, ReviewResult] = {}
+        # EVERY per-lens result, in order. This is the source of truth for the
+        # inconclusive marker, and it is deliberately a LIST, not a dict.
+        #
+        # `lens_trace` is keyed by lens value, so a caller that passes the same
+        # lens twice overwrites the first attempt: an earlier crash is replaced by
+        # a later clean result and the marker disappears. `select_lenses` returns
+        # its `override` verbatim, so a duplicate is reachable through the public
+        # `review(lens_types=...)` API even though today's callers
+        # (`director.py:751-756`) pass fixed, non-repeating sets.
+        all_lens_results: list[ReviewResult] = []
         primary_lens = lenses[0]
         result = self._apply_lens(primary_lens, output, task, codebase_context, difficulty=difficulty)
         all_findings.extend(result.findings)
         lens_trace[primary_lens.value] = result
+        all_lens_results.append(result)
 
         # Circuit breaker: if PASS with 0 findings, try second lens
         if (
@@ -384,6 +395,7 @@ class AdversarialReviewer:
             second_lens = lenses[1]
             second_result = self._apply_lens(second_lens, output, task, codebase_context, difficulty=difficulty)
             lens_trace[second_lens.value] = second_result
+            all_lens_results.append(second_result)
             if second_result.findings:
                 all_findings.extend(second_result.findings)
                 result = ReviewResult(
@@ -411,6 +423,7 @@ class AdversarialReviewer:
             for lens in lenses[1:]:
                 lens_result = self._apply_lens(lens, output, task, codebase_context, difficulty=difficulty)
                 lens_trace[lens.value] = lens_result
+                all_lens_results.append(lens_result)
                 all_findings.extend(lens_result.findings)
 
         # ── Deterministic no-artifact veto (runs after the lenses) ──
@@ -446,8 +459,11 @@ class AdversarialReviewer:
         # `accepted = cto PASS and coo PASS and ... and not parse_failed`, so an
         # unmarked lens feeds an approving vote for work nobody reviewed. The
         # per-lens results carry the flag; this aggregate must not drop it.
+        # Derived from `all_lens_results`, NOT `lens_trace`: the trace is keyed by
+        # lens value and a repeated lens would overwrite an earlier crashed result,
+        # hiding it. The list keeps every attempt.
         any_lens_parse_failed = any(
-            getattr(r, "parse_failed", False) for r in lens_trace.values()
+            getattr(r, "parse_failed", False) for r in all_lens_results
         )
         final_result = ReviewResult(
             verdict=verdict,

@@ -138,29 +138,75 @@ class TestLensCrashIsNotAnApproval:
         )
 
 
-    def test_circuit_breaker_rebuild_does_not_lose_the_marker(self):
-        """The circuit-breaker path rebuilds its own ReviewResult at :433.
+    def test_a_crash_survives_a_second_lens_finding(self, monkeypatch):
+        """A crashed primary lens must stay INCONCLUSIVE when a second lens finds work.
 
-        A crashed primary lens is PASS + no findings, which is exactly the
-        condition that triggers the circuit breaker -- so the rebuild runs, and
-        it constructs a fresh ReviewResult that drops parse_failed. The
-        aggregate must re-derive the marker from the per-lens trace rather than
-        trusting whichever composite happened to be built last.
+        A crashed lens returns PASS with no findings, which is the condition that
+        triggers the circuit-breaker branch. That branch also builds a replacement
+        ReviewResult at :401 -- but the replacement is DEAD CODE: `result` is never
+        read after :392, and `final_result` (:468) is built fresh from
+        `all_findings`, `",".join(l.value for l in lenses)` and the aggregate
+        marker. So the marker's survival does not depend on that rebuild; it
+        depends on the aggregate deriving from the per-lens results.
+
+        This asserts the OBSERVABLE contract rather than a branch with no effect on
+        the return value. An earlier revision of this test asserted
+        `lens_used.endswith("(circuit_breaker)")` -- which can never hold, because
+        `final_result` overwrites `lens_used` with the joined lens names.
         """
-        import os
+        monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")  # one attempt, no backoff
 
-        os.environ["LENS_TRANSPORT_RETRIES"] = "0"  # one attempt, no backoff sleep
+        calls = []
 
-        def boom(*a, **kw):
-            raise RuntimeError("both lenses exploded")
+        def boom_then_find(prompt, system_prompt=None, **kw):
+            calls.append(system_prompt or "")
+            if len(calls) == 1:
+                raise RuntimeError("primary lens exploded")
+            return (
+                '{"findings": [{"severity": "HIGH", "description": "unbounded loop",'
+                ' "citation": "foo.py:12", "issue_class": "bug"}], "verdict": "FAIL"}'
+            )
 
-        r = AdversarialReviewer(call_model_fn=boom)
+        r = AdversarialReviewer(call_model_fn=boom_then_find)
         result = r.review(
             output="```python\ndef f():\n    return 1\n```\n",
             task={"title": "t", "body": "b", "domain": "code-implementation"},
             lens_types=[LensType.CORRECTNESS, LensType.COMPLETENESS],
             circuit_breaker=True,
         )
+        assert result.findings, "the second lens's finding was dropped"
         assert result.parse_failed is True, (
-            "the circuit-breaker rebuild dropped the inconclusive marker"
+            "a crashed lens was folded into a review that reported findings, so "
+            "director.py:792 counted the crash as an approving vote"
+        )
+
+    def test_a_repeated_lens_does_not_hide_an_earlier_crash(self, monkeypatch):
+        """A duplicated lens must not erase an earlier attempt's crash marker.
+
+        `lens_trace` is keyed by lens VALUE, so a caller passing the same lens
+        twice overwrites the first attempt: a crashed run is replaced by a clean
+        one and the marker disappears. `select_lenses` returns its `override`
+        verbatim, so this is reachable through the public `review(lens_types=...)`
+        API. The aggregate therefore derives the marker from an ordered LIST of
+        every per-lens result, not from the keyed trace.
+        """
+        monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")
+
+        calls = []
+
+        def boom_then_find(prompt, system_prompt=None, **kw):
+            calls.append(system_prompt or "")
+            if len(calls) == 1:
+                raise RuntimeError("first attempt at this lens exploded")
+            return '{"findings": [], "verdict": "PASS"}'
+
+        r = AdversarialReviewer(call_model_fn=boom_then_find)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.CORRECTNESS],  # same lens twice
+        )
+        assert result.parse_failed is True, (
+            "a repeated lens overwrote the earlier crash in the trace, so the "
+            "aggregate reported a clean review of a lens that never ran"
         )
