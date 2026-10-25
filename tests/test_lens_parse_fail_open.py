@@ -107,3 +107,60 @@ class TestParseFailureIsNotAnApproval:
         )
         assert len(result.findings) == 1
         assert getattr(result, "parse_failed", False) is False
+
+
+class TestLensCrashIsNotAnApproval:
+    """A lens that RAISED must not count as an approving vote.
+
+    The tests above cover output the parser cannot read. This covers the other
+    branch: the lens threw. `review()`'s per-lens `except Exception` returns
+    ReviewResult(verdict=PASS, findings=[], confidence=0.0) with parse_failed
+    left at its default False -- so director.py:792 (`accepted = cto PASS and
+    coo PASS and ... and not parse_failed`) counts a CRASHED lens as a PASS vote
+    for work nobody reviewed. The class docstring at
+    adversarial_reviewer.py:148-153 states the contract ("INCONCLUSIVE, not an
+    approval"); this branch broke it.
+    """
+
+    def test_a_raising_lens_is_marked_inconclusive(self):
+        def boom(*a, **kw):
+            raise RuntimeError("judge model exploded")
+
+        r = AdversarialReviewer(call_model_fn=boom)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS],
+        )
+        assert result.parse_failed is True, (
+            "a lens that raised returned an unlabeled PASS -- the acceptance "
+            "gate counts it as an approving vote"
+        )
+
+
+    def test_circuit_breaker_rebuild_does_not_lose_the_marker(self):
+        """The circuit-breaker path rebuilds its own ReviewResult at :433.
+
+        A crashed primary lens is PASS + no findings, which is exactly the
+        condition that triggers the circuit breaker -- so the rebuild runs, and
+        it constructs a fresh ReviewResult that drops parse_failed. The
+        aggregate must re-derive the marker from the per-lens trace rather than
+        trusting whichever composite happened to be built last.
+        """
+        import os
+
+        os.environ["LENS_TRANSPORT_RETRIES"] = "0"  # one attempt, no backoff sleep
+
+        def boom(*a, **kw):
+            raise RuntimeError("both lenses exploded")
+
+        r = AdversarialReviewer(call_model_fn=boom)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.COMPLETENESS],
+            circuit_breaker=True,
+        )
+        assert result.parse_failed is True, (
+            "the circuit-breaker rebuild dropped the inconclusive marker"
+        )

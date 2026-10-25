@@ -441,12 +441,21 @@ class AdversarialReviewer:
         )
         verdict = Verdict.FAIL if has_critical_or_high else Verdict.PASS
 
+        # A lens that could not be parsed, or that RAISED, must stay INCONCLUSIVE
+        # in the aggregate. director.py:792 computes
+        # `accepted = cto PASS and coo PASS and ... and not parse_failed`, so an
+        # unmarked lens feeds an approving vote for work nobody reviewed. The
+        # per-lens results carry the flag; this aggregate must not drop it.
+        any_lens_parse_failed = any(
+            getattr(r, "parse_failed", False) for r in lens_trace.values()
+        )
         final_result = ReviewResult(
             verdict=verdict,
             findings=all_findings,
             lens_used=",".join(l.value for l in lenses),
             confidence=self._calculate_confidence(all_findings),
             difficulty=difficulty,
+            parse_failed=any_lens_parse_failed,
         )
         # Attach the per-lens trace for the co-evolution loop (non-API attr).
         final_result._lens_trace = lens_trace  # type: ignore[attr-defined]
@@ -565,12 +574,20 @@ class AdversarialReviewer:
             return result
         except Exception as e:
             logger.warning("lens_review_failed", extra={"lens": lens_type.value, "error": str(e)})
+            # Marked inconclusive, NOT approving. director.py:792 computes
+            # `accepted = cto PASS and coo PASS and ... and not parse_failed`, so
+            # an unmarked crash here would feed a PASS vote for work nobody
+            # reviewed. The class docstring (:148-153) already states the
+            # contract ("INCONCLUSIVE, not an approval") and
+            # tests/test_lens_parse_fail_open.py enforces it for the parse-failure
+            # branch; this branch violated both.
             return ReviewResult(
                 verdict=Verdict.PASS,
                 findings=[],
                 lens_used=lens_type.value,
                 confidence=0.0,
                 difficulty=difficulty,
+                parse_failed=True,
             )
 
     def _build_system_prompt(self, lens_prompt: str, difficulty: str = "medium") -> str:
