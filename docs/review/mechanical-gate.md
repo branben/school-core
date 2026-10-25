@@ -93,15 +93,43 @@ has not been made.
 
 | Check | Result |
 |---|---|
-| `.beads/hooks/pre-commit` contents | beads shim (v1.1.0) + the `bd lint` gate only — no chain |
+| `.beads/hooks/pre-commit` contents | beads shim (v1.1.0) + **the `bd lint` outer-loop gate** (added 2026-10-25, below the managed markers) |
 | `.beads/hooks/l0-gate.sh` exists | no |
 | `grep -rn l0-gate .beads/` | no matches |
 | `git ls-files \| grep l0-gate` | no matches (never tracked) |
 | `git config core.hooksPath` | `.beads/hooks` (so the hook IS live) |
 | `bd hooks list` | `pre-commit: installed (shim 1.1.0)` |
 
-**Consequence:** a commit today runs `bd hooks run pre-commit` + `bd lint` and
-**nothing else** — no `compileall`, no `mypy --strict`, no **secret scan**.
+**Consequence:** a commit today runs `bd hooks run pre-commit` (which runs **no
+chained hooks** — `bd config get hooks` → *not set*) **and then the outer-loop
+gate**, which lints every gated work type. It still does **not** run
+`compileall`, `mypy --strict`, or a **secret scan**.
+
+**This corrects an earlier version of this section** (and of §3 above), which
+claimed the hook carried "the `bd lint` gate". Measured 2026-10-25: at that time
+the hook was a pure beads shim — 33 lines, all inside the BEADS markers — and
+`bd lint` was a separate CLI command that nothing on the commit path invoked. The
+gate was **absent**, not merely unwired. It has since been added.
+
+**The gate is now measured, not asserted.** Run against the repo as committed:
+
+```
+$ sh .beads/hooks/pre-commit; echo rc=$?
+rc=0                                   # bd lint clean: 18 issues checked
+
+$ PATH=<stub that fails bd lint>:$PATH sh .beads/hooks/pre-commit; echo rc=$?
+outer-loop gate: bd lint failed for work type 'task':
+missing Acceptance Criteria
+outer-loop gate: refusing the commit. ...
+rc=1                                   # a real failure is a real refusal
+
+$ BEADS_SKIP_LINT=1 sh .beads/hooks/pre-commit; echo rc=$?
+rc=0                                   # the bypass is explicit, never silent
+```
+
+`tests/test_outer_loop_gate.py` pins the gate's shape (the `for _t in` loop over
+`task bug feature`, `bd lint` present, no query-exit-code or pipe-to-grep guard).
+It is tracked and green as of 2026-10-25.
 
 Do not cite L0 as a reason a commit is safe until it is restored and re-measured.
 The likely cause (UNPROVEN) is a `bd hooks install` / shim upgrade replacing the file:

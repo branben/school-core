@@ -150,9 +150,12 @@ class TestLensCrashIsNotAnApproval:
         depends on the aggregate deriving from the per-lens results.
 
         This asserts the OBSERVABLE contract rather than a branch with no effect on
-        the return value. An earlier revision of this test asserted
-        `lens_used.endswith("(circuit_breaker)")` -- which can never hold, because
-        `final_result` overwrites `lens_used` with the joined lens names.
+        the return value. (The dead rebuild was removed and the breaker's outcome
+        is now carried on `lens_used`, so `lens_used.endswith("(circuit_breaker)")`
+        does hold — see `test_circuit_breaker_with_findings_is_observable` in
+        `test_adversarial_reviewer.py`. The marker's survival here still does NOT
+        depend on that rebuild: it depends on the aggregate deriving from the
+        per-lens results.)
         """
         monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")  # one attempt, no backoff
 

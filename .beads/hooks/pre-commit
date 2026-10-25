@@ -31,3 +31,40 @@ if command -v bd >/dev/null 2>&1; then
   if [ $_bd_exit -ne 0 ]; then exit $_bd_exit; fi
 fi
 # --- END BEADS INTEGRATION v1.1.0 ---
+
+# --- BEGIN OUTER-LOOP GATE ---
+# The outer loop (issue -> PR -> review) is only enforced if a gate actually
+# runs. `bd hooks run pre-commit` above is inert unless `bd config hooks` is
+# set, so this section is the gate.
+#
+# WHY `bd lint` AND NOT AN EXIT-CODE GUARD ON A QUERY:
+#   The beads query subcommand exits 0 and prints "No issues found" when
+#   nothing matches, and exits 1 only for a malformed expression. Its exit
+#   code therefore cannot distinguish "found" from "not found", so a guard
+#   written as `<query> 'spec=X' || fail` PASSES while matching nothing --
+#   fail-open. `bd lint` exits non-zero when an open work item is missing a
+#   required section, which is a real signal about a real object.
+#   The trap is pinned by tests/test_outer_loop_gate.py; do not reintroduce
+#   a query-exit-code or pipe-to-grep guard here.
+#
+# GATED TYPES: task, bug, feature. `decision` and `epic` are containers, not
+# work, and may legitimately be unresolved.
+#
+# SKIP: set BEADS_SKIP_LINT=1 for a deliberate bypass (e.g. an emergency
+# revert). The bypass is explicit and visible in the commit environment,
+# unlike a silently absent gate.
+if command -v bd >/dev/null 2>&1 && [ "${BEADS_SKIP_LINT:-0}" != "1" ]; then
+  _gate_failed=0
+  for _t in task bug feature; do
+    if ! _lint_out=$(bd lint --type "$_t" 2>&1); then
+      echo >&2 "outer-loop gate: bd lint failed for work type '$_t':"
+      echo >&2 "$_lint_out"
+      _gate_failed=1
+    fi
+  done
+  if [ $_gate_failed -ne 0 ]; then
+    echo >&2 "outer-loop gate: refusing the commit. Fix the sections above, or set BEADS_SKIP_LINT=1 to bypass deliberately."
+    exit 1
+  fi
+fi
+# --- END OUTER-LOOP GATE ---
