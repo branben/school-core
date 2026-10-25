@@ -29,6 +29,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,33 @@ DIFFICULTY_FLOORS: dict[str, float] = {
     "diploma": 30.0,
 }
 
+# ── Review standard ──────────────────────────────────────────────────────────
+# The checklist the reviewer applies. It is cited as canonical by the
+# `code-quality-gates` skill and by config/profiles/student-reviewer/SOUL.md
+# ("checklist-driven review") -- neither of which previously read any standard file.
+DEFAULT_REVIEW_STANDARD_PATH: Path = (
+    Path(__file__).resolve().parents[2] / "docs" / "quality-gates-checklist.md"
+)
+
+
+def load_review_standard(path: Optional[Path] = None) -> tuple[str, bool]:
+    """Return (prompt_block, loaded) for the review checklist.
+
+    An absent or empty checklist yields ("", False) and the CALLER RECORDS that.
+    It never fabricates a standard, and it never lets a review that ran without one
+    look identical to one that ran with it.
+    """
+    target = Path(path) if path is not None else DEFAULT_REVIEW_STANDARD_PATH
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return "", False
+    text = text.strip()
+    if not text:
+        return "", False
+    return f"[REVIEW STANDARD]\n{text}\n\n", True
+
+
 # System prompt calibration blocks — injected per-difficulty to guide the model's strictness.
 DIFFICULTY_CALIBRATION: dict[str, str] = {
     "easy": (
@@ -316,13 +344,29 @@ class AdversarialReviewer:
     a structured ReviewResult with verdict, findings, and score.
     """
 
-    def __init__(self, call_model_fn: Callable):
+    def __init__(
+        self,
+        call_model_fn: Callable,
+        review_standard_path: Optional[Path] = None,
+    ):
         """Initialize with a model call function.
 
         call_model_fn(prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str
+
+        review_standard_path: checklist injected into every lens's system prompt.
+        Defaults to docs/quality-gates-checklist.md.
         """
         self._call_model = call_model_fn
         self._stats: dict[str, list[bool]] = {}  # lens_name -> [found_issues_bool]
+        self._standard_block, self.standard_loaded = load_review_standard(
+            review_standard_path
+        )
+        if not self.standard_loaded:
+            logger.warning(
+                "review standard not loaded from %s -- reviewing without the "
+                "checklist. 'no standard' must not look identical to 'standard applied'.",
+                review_standard_path or DEFAULT_REVIEW_STANDARD_PATH,
+            )
 
     def review(
         self,
@@ -547,10 +591,17 @@ class AdversarialReviewer:
                         "raw": raw,  # Full output for diagnostic analysis
                     },
                 )
-                # Stricter retry prompt — insist on JSON-only output
+                # Stricter retry prompt — insist on JSON-only output.
+                # It MUST still carry the review standard: this retry fires when
+                # the first parse failed, i.e. exactly when things are going
+                # wrong, and its result is the one that gets RETURNED. Dropping
+                # the standard here made the returned answer come from a prompt
+                # with no checklist -- the same "indistinguishable from real
+                # approval" defect the transport retry above was added to fix.
                 retry_system = (
                     "You are an adversarial code reviewer. Your ONLY job is to find flaws.\n\n"
                     f"[DIFFICULTY] {difficulty} — adjust strictness proportionally.\n\n"
+                    f"{self._standard_block}"
                     "[CRITICAL — OUTPUT FORMAT]\n"
                     "You MUST respond with ONLY valid JSON. NO markdown, NO code fences, "
                     "NO preamble, NO explanation. Start with '{' and end with '}'.\n\n"
@@ -620,6 +671,7 @@ class AdversarialReviewer:
             "gaps, and issues. Do NOT praise, do NOT suggest alternatives, "
             "do NOT rewrite code.\n\n"
             f"{calib_block}"
+            f"{self._standard_block}"
             f"[LENS]\n{lens_prompt}\n\n"
             "[OUTPUT FORMAT — MANDATORY]\n"
             "You MUST respond with EXACTLY one JSON object and NOTHING else. "
