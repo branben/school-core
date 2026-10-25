@@ -90,6 +90,11 @@ rule — an earlier revision of this file omitted it.
 - [ ] **Every claimed defect cites the test that goes RED→GREEN, and the spec line
       it violates.** No test, no commit. A test written *after* the fix and passing
       on arrival proves nothing about the original defect.
+      **This is about a claimed DEFECT, not about every changed file.** A docs-only
+      or config-only PR needs no test: `scripts/review_gate.py:48-54` (`NO_TEST_NEEDED`)
+      exempts `*.md`, `docs/*`, `*.txt`, `*.rst`, `*.yml`, `*.yaml`, `.gitignore`,
+      `*.cfg`, `*.ini`, `*.toml`, `*.lock`, `tests/*`, `test/*`, `*_test.py`,
+      `test_*.py`. Asking for a test on an exempt change contradicts the gate.
 
 ## 3. Tests
 
@@ -116,11 +121,73 @@ rule — an earlier revision of this file omitted it.
 
 ## 5. Hygiene
 
-- [ ] No secrets in added lines.
-- [ ] No VCS / editor / build artifacts in the changed-file list.
-- [ ] Hook scripts are POSIX `sh`, not bash — verify with `dash -n` **and** `bash -n`.
-- [ ] Hook content goes OUTSIDE the `BEGIN/END BEADS INTEGRATION` markers, or the
-      next `bd hooks install` will silently drop it.
+The mechanical parts are already enforced by a **required** status check
+(`review-gate` in `.github/workflows/ci.yml`, which runs
+`scripts/review_gate.py`). Do not re-check these by hand — the gate does them and
+a red gate blocks merge:
+
+- secrets on added lines (`review_gate.py:147-154`, `SECRET_PATTERNS`)
+- VCS / editor / build junk in the changed-file list (`:158-163`, `JUNK_PATTERNS`)
+- trailing whitespace on added code lines (`:165-174`, scoped to `CODE_SUFFIXES`)
+- changed source with no changed test (`:177+`, with the `NO_TEST_NEEDED` carve-out)
+
+What the gate does **not** cover, and what a reviewer must still judge:
+
+- [ ] **Hook scripts are POSIX `sh`, not bash.** Verify with `dash -n` **and**
+      `bash -n`. The gate only checks that the file exists.
+- [ ] **Hook content goes OUTSIDE the `BEGIN/END BEADS INTEGRATION` markers.** Inside
+      them, the next `bd hooks install` silently drops it. The gate cannot see this.
+- [ ] **The checklist itself is the reviewer's, not the gate's.** A green
+      `review-gate` says the four mechanical checks passed; it says nothing about
+      the judgement calls in sections 0-4.
+
+---
+
+## 6. Approval bar (positive, not just negative)
+
+The sections above are negative checks — things that must NOT be present. A review
+made only of negative checks cannot approve anything, because a diff with no
+findings satisfies every one of them. Approve a change only if it ALSO answers yes
+to these:
+
+- [ ] **Does the change make the code better, on balance?** Not "is it flawless" —
+      does it improve overall code health? Google's review standard is explicit:
+      *approve once the change definitely improves overall code health, even if
+      imperfect.* A perfect-looking diff that does not improve anything is not
+      approved.
+- [ ] **Is the change small enough to review?** A large diff is harder to review
+      correctly, and the review is the thing under test. If it is large, say so and
+      ask for it to be split — do not approve a diff you cannot actually read.
+- [ ] **Is there a stated reason the change is needed?** A diff with no motivating
+      problem is a change in search of a justification.
+- [ ] **Would you be willing to support this code?** You are agreeing to own its
+      failures. If the answer is "not really", that is a finding, not a nit.
+
+## 7. What did NOT change
+
+A diff does not show what it left alone, and the left-alone parts are where
+regressions hide. Ask:
+
+- [ ] **What callers of the changed function were NOT updated?** A signature or
+      return-shape change with callers left alone fails at runtime, not at review.
+- [ ] **What tests were NOT added?** The absence of a test is a claim about coverage.
+      Name the path you believe is untested.
+- [ ] **What neighbouring code does the same thing differently?** A change that
+      diverges from an established pattern in the same file needs a reason.
+
+## 8. Output contract
+
+A finding must be checkable by someone who did not write it:
+
+- [ ] **Cite `file:line`.** "This function is wrong" is not a finding; a line is.
+- [ ] **State the mechanism, not the symptom.** "Returns 500" is a symptom; "the
+      branch catches the exception and returns the success value" is a mechanism.
+- [ ] **Name the test that would go RED without the fix.** If you cannot name one,
+      the finding is a preference, not a defect.
+- [ ] **Tag anything that was already broken before this diff `pre-existing`.** A
+      pre-existing defect is real and worth recording, but it must not block this
+      PR — conflating the two is how a fix gets held hostage by unrelated debt.
+- [ ] **Separate BLOCKING from NIT.** If everything is BLOCKING, nothing is.
 
 ---
 
@@ -150,3 +217,22 @@ test input had no artifact; the `no_artifact` veto
 (`adversarial_reviewer.py:466-479`) masked the crash and made the test pass on a
 FAIL verdict. The claim is true — but only with an artifact present, which is what
 the pinned test now uses.
+
+A fourth revision corrected two claims a challenger made against the artifact
+itself, both verified against the source:
+- §2 said "no test, no commit" without the gate's carve-out. `review_gate.py:48-54`
+  (`NO_TEST_NEEDED`) exempts docs and config changes, so a literal reading would
+  demand a test the gate explicitly does not require. The line is now scoped to a
+  claimed **defect**, with the carve-out named.
+- §5 asked the reviewer to check for secrets and junk artifacts by hand. Those are
+  mechanical and already enforced by the **required** `review-gate` status check
+  (`ci.yml:239-240`; `review_gate.py:147-174`). Re-checking them by hand is noise;
+  §5 now lists them as gate-owned and points at what the gate does NOT cover.
+
+Sections 6-8 (approval bar, what did not change, output contract) were added from
+a read-based comparison against external review standards — Google's Eng Practices
+review standard (approve on overall code health, even if imperfect), Nonnenberg's
+top-ten PR review mistakes (a diff does not show what has not changed), and the
+general requirement that a finding carry a mechanism and a test rather than a
+preference. That comparison was **read, not measured**: it assessed documents, not
+school-core's own behaviour.
