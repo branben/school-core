@@ -281,10 +281,11 @@ def test_real_plannotator_export_produces_html(tmp_path):
 
     proc = _export(EXAMPLE_PATH, patch, out)
     combined = f"{proc.stdout}\n{proc.stderr}"
-    assert out.is_file(), (
-        "plannotator wrote no HTML. It exits 0 even when it rejects a guide, so "
-        f"the file's absence is the real signal. output:\n{combined}"
+    assert proc.returncode == 0, (
+        "export of a guide that names exactly the patched files should succeed. "
+        f"output:\n{combined}"
     )
+    assert out.is_file(), f"plannotator wrote no HTML. output:\n{combined}"
     html = out.read_text(encoding="utf-8")
     assert html.lstrip().lower().startswith("<!doctype html>"), html[:120]
     assert 'name="plannotator-guided-review"' in html, (
@@ -296,10 +297,16 @@ def test_real_plannotator_export_produces_html(tmp_path):
 def test_real_plannotator_rejects_a_file_absent_from_the_patch(tmp_path):
     """A guide naming a changed file that is not in the diff must be refused.
 
-    Measured behaviour: the tool prints ``Guide is not valid`` and writes no
-    file, but still exits 0. Asserting on the exit code alone would pass while
-    the guide was silently rejected, so the assertion is on the artifact and
-    the message.
+    Measured behaviour: the tool prints ``Guide is not valid``, names the
+    offending file and the files that WERE in the patch, writes no HTML, and
+    exits **1**. Asserted here as the artifact's absence AND the exit code.
+
+    NOTE ON MEASURING THIS: an earlier version of this test's comment claimed
+    the tool exits 0 on rejection. That came from piping the command through
+    ``| tail`` and reading ``$?`` -- the exit status of ``tail``, not of
+    plannotator. Measured properly with ``subprocess.run`` the code is 1, which
+    matches the skill's documentation. Do not infer an exit code from a shell
+    pipeline.
     """
     example = _load_json(EXAMPLE_PATH)
     files = _guide_files(example)
@@ -311,6 +318,10 @@ def test_real_plannotator_rejects_a_file_absent_from_the_patch(tmp_path):
 
     proc = _export(EXAMPLE_PATH, patch, out)
     combined = f"{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode != 0, (
+        f"a guide naming {omitted!r} (absent from the patch) must be refused. "
+        f"output:\n{combined}"
+    )
     assert not out.is_file(), (
         f"guide naming {omitted!r} (absent from the patch) must not export. "
         f"output:\n{combined}"
