@@ -1,7 +1,7 @@
 # SCH-11 — Adversarial review of the three-defect rework
 
 Author: phymora (adversarial review specialist). Every claim below was produced by
-running the artifact, not by reading it. Repo: `/Users/brandonbennett/school-core`,
+running the artifact, not by reading it. Repo: `~/school-core`,
 working tree dirty (9 staged, 33 modified, 29 untracked).
 
 ## Intent (restated)

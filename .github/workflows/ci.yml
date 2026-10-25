@@ -74,7 +74,7 @@ jobs:
         # Tracked data/ files must never contain /Users/<name> home paths,
         # repo-root absolute prefixes, or secret indicators. The school-loop
         # checkpoint sanitizes before pushing, but this blocks a direct commit
-        # to main (2026-10-14 audit: 51x /Users/brandonbennett had landed).
+        # to main (2026-10-14 audit: 51x ~ had landed).
         run: python scripts/sanitize_data.py --verify
 
       - name: Cache index-gate Rust build

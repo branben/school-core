@@ -101,7 +101,7 @@ git clone --depth 1 https://github.com/kunchenguid/firstmate.git ~/.local/share/
 FM_HOME=~/.hermes/school-core-fm-config \
   ~/.local/share/firstmate/bin/fm-spawn.sh <task-id> <project-dir> \
   --backend orca --mode no-mistakes --yolo on \
-  --harness '/Users/brandonbennett/.local/bin/hermes-fm-wrapper "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
+  --harness '~/.local/bin/hermes-fm-wrapper "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
 ```
 
 Working skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md`.
