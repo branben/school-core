@@ -756,6 +756,23 @@ def _respond_error(code: int, message: str, data: Any = None):
     sys.stdout.flush()
 
 
+def _is_error_result(result: dict) -> bool:
+    """Decide whether a handler's return value is a failure.
+
+    An explicit ``has_error`` wins. Only when a handler does not report one do
+    we fall back to a truthy ``error`` value.
+
+    A *present but null* ``error`` key is a success marker in several handlers
+    (the bot tools mirror ``bot_adapter``'s return shape, which always carries
+    ``error``). Treating the key's mere presence as failure reported every
+    successful bot call to the client as an MCP error -- and a client that
+    retries on ``isError`` re-runs the bot's work a second time.
+    """
+    if "has_error" in result:
+        return bool(result["has_error"])
+    return bool(result.get("error"))
+
+
 def _handle_request(msg: dict):
     global _current_request_id
     _current_request_id = msg.get("id")
@@ -795,7 +812,7 @@ def _handle_request(msg: dict):
 
         try:
             result = handler(arguments)
-            is_error = result.get("has_error", False) or "error" in result
+            is_error = _is_error_result(result)
             _respond(result, is_error=is_error, wrap=True)
         except Exception as e:
             tb = traceback.format_exc()

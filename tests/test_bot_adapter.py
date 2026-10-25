@@ -14,6 +14,7 @@ told a tool exists and then gets ``-32601 Unknown tool`` when it calls it.
 
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -268,3 +269,70 @@ def test_bot_execute_handler_marks_failure_as_an_error(fake_profiles, monkeypatc
     )
 
     assert result["has_error"] is True
+
+
+# ---------------------------------------------------------------------------
+# Wire-level: what the CLIENT actually receives
+#
+# The handler tests above assert on the dict a handler returns. That is not
+# what a client sees. _handle_request() re-derives `isError` from that dict,
+# and its rule was `has_error or "error" in result` -- so a result carrying
+# `error: None` (every successful bot call) was reported to the client as an
+# MCP error. A client that retries on isError then runs the bot's work TWICE.
+#
+# These tests go through _handle_request and read the JSON-RPC response.
+# ---------------------------------------------------------------------------
+
+
+def _call(capsys, tool: str, arguments: dict) -> dict:
+    """Drive one tools/call through the real dispatcher, return the response."""
+    mcp_server._handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        }
+    )
+    return json.loads(capsys.readouterr().out)
+
+
+def test_a_successful_bot_call_is_not_an_mcp_error(fake_profiles, monkeypatch, capsys):
+    """Success must not be reported as isError, or the client retries the work."""
+    monkeypatch.setattr(
+        bot_adapter.subprocess,
+        "run",
+        lambda cmd, **kw: _FakeCompleted(0, stdout="all done"),
+    )
+
+    payload = _call(capsys, "school_bot_execute", {"bot": "student-coder", "prompt": "hi"})
+
+    assert payload["result"]["isError"] is False, (
+        "a successful bot call was reported as an MCP error; a retrying client "
+        "would run the bot's work twice"
+    )
+    body = json.loads(payload["result"]["content"][0]["text"])
+    assert body["success"] is True
+
+
+def test_a_failed_bot_call_is_an_mcp_error(fake_profiles, monkeypatch, capsys):
+    """The fix must not over-correct: real failures stay errors."""
+    monkeypatch.setattr(
+        bot_adapter.subprocess,
+        "run",
+        lambda cmd, **kw: _FakeCompleted(1, stdout="", stderr="boom"),
+    )
+
+    payload = _call(capsys, "school_bot_execute", {"bot": "student-coder", "prompt": "hi"})
+
+    assert payload["result"]["isError"] is True
+
+
+def test_a_result_with_a_null_error_and_has_error_false_is_not_an_error():
+    """The generic rule: an explicit has_error=False wins over a present key."""
+    assert mcp_server._is_error_result({"error": None, "has_error": False}) is False
+    assert mcp_server._is_error_result({"error": "boom", "has_error": True}) is True
+    # No has_error at all: a truthy error still means failure (old behaviour).
+    assert mcp_server._is_error_result({"error": "boom"}) is True
+    assert mcp_server._is_error_result({"error": None}) is False
+    assert mcp_server._is_error_result({"ok": True}) is False

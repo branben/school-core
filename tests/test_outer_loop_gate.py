@@ -111,7 +111,7 @@ def test_bd_lint_exits_nonzero_on_missing_section():
     """`bd lint` is a real signal: it must exit non-zero on a missing section.
 
     Creates a throwaway task with no acceptance criteria, asserts the non-zero
-    exit, then removes it. This is the property the gate depends on.
+    exit, then DELETES it. This is the property the gate depends on.
     """
     title = "SCRATCH gate-signal probe (auto-removed)"
     create = subprocess.run(
@@ -134,7 +134,11 @@ def test_bd_lint_exits_nonzero_on_missing_section():
         )
         assert "Acceptance Criteria" in r.stdout
     finally:
+        # `bd close` leaves the issue in the developer's real database -- the
+        # docstring above used to claim "auto-removed" while 11 of these
+        # probes accumulated there. Deleting is what actually keeps the run
+        # side-effect free.
         subprocess.run(
-            ["bd", "close", issue_id, "--reason", "auto-removed gate probe"],
+            ["bd", "delete", issue_id, "--force"],
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
