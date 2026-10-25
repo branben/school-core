@@ -29,6 +29,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,33 @@ DIFFICULTY_FLOORS: dict[str, float] = {
     "diploma": 30.0,
 }
 
+# ── Review standard ──────────────────────────────────────────────────────────
+# The checklist the reviewer applies. It is cited as canonical by the
+# `code-quality-gates` skill and by config/profiles/student-reviewer/SOUL.md
+# ("checklist-driven review") -- neither of which previously read any standard file.
+DEFAULT_REVIEW_STANDARD_PATH: Path = (
+    Path(__file__).resolve().parents[2] / "docs" / "quality-gates-checklist.md"
+)
+
+
+def load_review_standard(path: Optional[Path] = None) -> tuple[str, bool]:
+    """Return (prompt_block, loaded) for the review checklist.
+
+    An absent or empty checklist yields ("", False) and the CALLER RECORDS that.
+    It never fabricates a standard, and it never lets a review that ran without one
+    look identical to one that ran with it.
+    """
+    target = Path(path) if path is not None else DEFAULT_REVIEW_STANDARD_PATH
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return "", False
+    text = text.strip()
+    if not text:
+        return "", False
+    return f"[REVIEW STANDARD]\n{text}\n\n", True
+
+
 # System prompt calibration blocks — injected per-difficulty to guide the model's strictness.
 DIFFICULTY_CALIBRATION: dict[str, str] = {
     "easy": (
@@ -316,13 +344,29 @@ class AdversarialReviewer:
     a structured ReviewResult with verdict, findings, and score.
     """
 
-    def __init__(self, call_model_fn: Callable):
+    def __init__(
+        self,
+        call_model_fn: Callable,
+        review_standard_path: Optional[Path] = None,
+    ):
         """Initialize with a model call function.
 
         call_model_fn(prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str
+
+        review_standard_path: checklist injected into every lens's system prompt.
+        Defaults to docs/quality-gates-checklist.md.
         """
         self._call_model = call_model_fn
         self._stats: dict[str, list[bool]] = {}  # lens_name -> [found_issues_bool]
+        self._standard_block, self.standard_loaded = load_review_standard(
+            review_standard_path
+        )
+        if not self.standard_loaded:
+            logger.warning(
+                "review standard not loaded from %s -- reviewing without the "
+                "checklist. 'no standard' must not look identical to 'standard applied'.",
+                review_standard_path or DEFAULT_REVIEW_STANDARD_PATH,
+            )
 
     def review(
         self,
@@ -369,10 +413,21 @@ class AdversarialReviewer:
         # verification-co-evolution loop (see VerificationCoevolution.analyze),
         # which uses real per-axis capability rather than the merged aggregate.
         lens_trace: dict[str, ReviewResult] = {}
+        # EVERY per-lens result, in order. This is the source of truth for the
+        # inconclusive marker, and it is deliberately a LIST, not a dict.
+        #
+        # `lens_trace` is keyed by lens value, so a caller that passes the same
+        # lens twice overwrites the first attempt: an earlier crash is replaced by
+        # a later clean result and the marker disappears. `select_lenses` returns
+        # its `override` verbatim, so a duplicate is reachable through the public
+        # `review(lens_types=...)` API even though today's callers
+        # (`director.py:751-756`) pass fixed, non-repeating sets.
+        all_lens_results: list[ReviewResult] = []
         primary_lens = lenses[0]
         result = self._apply_lens(primary_lens, output, task, codebase_context, difficulty=difficulty)
         all_findings.extend(result.findings)
         lens_trace[primary_lens.value] = result
+        all_lens_results.append(result)
 
         # Circuit breaker: if PASS with 0 findings, try second lens
         if (
@@ -384,6 +439,7 @@ class AdversarialReviewer:
             second_lens = lenses[1]
             second_result = self._apply_lens(second_lens, output, task, codebase_context, difficulty=difficulty)
             lens_trace[second_lens.value] = second_result
+            all_lens_results.append(second_result)
             if second_result.findings:
                 all_findings.extend(second_result.findings)
                 result = ReviewResult(
@@ -411,6 +467,7 @@ class AdversarialReviewer:
             for lens in lenses[1:]:
                 lens_result = self._apply_lens(lens, output, task, codebase_context, difficulty=difficulty)
                 lens_trace[lens.value] = lens_result
+                all_lens_results.append(lens_result)
                 all_findings.extend(lens_result.findings)
 
         # ── Deterministic no-artifact veto (runs after the lenses) ──
@@ -441,12 +498,24 @@ class AdversarialReviewer:
         )
         verdict = Verdict.FAIL if has_critical_or_high else Verdict.PASS
 
+        # A lens that could not be parsed, or that RAISED, must stay INCONCLUSIVE
+        # in the aggregate. director.py:792 computes
+        # `accepted = cto PASS and coo PASS and ... and not parse_failed`, so an
+        # unmarked lens feeds an approving vote for work nobody reviewed. The
+        # per-lens results carry the flag; this aggregate must not drop it.
+        # Derived from `all_lens_results`, NOT `lens_trace`: the trace is keyed by
+        # lens value and a repeated lens would overwrite an earlier crashed result,
+        # hiding it. The list keeps every attempt.
+        any_lens_parse_failed = any(
+            getattr(r, "parse_failed", False) for r in all_lens_results
+        )
         final_result = ReviewResult(
             verdict=verdict,
             findings=all_findings,
             lens_used=",".join(l.value for l in lenses),
             confidence=self._calculate_confidence(all_findings),
             difficulty=difficulty,
+            parse_failed=any_lens_parse_failed,
         )
         # Attach the per-lens trace for the co-evolution loop (non-API attr).
         final_result._lens_trace = lens_trace  # type: ignore[attr-defined]
@@ -522,10 +591,17 @@ class AdversarialReviewer:
                         "raw": raw,  # Full output for diagnostic analysis
                     },
                 )
-                # Stricter retry prompt — insist on JSON-only output
+                # Stricter retry prompt — insist on JSON-only output.
+                # It MUST still carry the review standard: this retry fires when
+                # the first parse failed, i.e. exactly when things are going
+                # wrong, and its result is the one that gets RETURNED. Dropping
+                # the standard here made the returned answer come from a prompt
+                # with no checklist -- the same "indistinguishable from real
+                # approval" defect the transport retry above was added to fix.
                 retry_system = (
                     "You are an adversarial code reviewer. Your ONLY job is to find flaws.\n\n"
                     f"[DIFFICULTY] {difficulty} — adjust strictness proportionally.\n\n"
+                    f"{self._standard_block}"
                     "[CRITICAL — OUTPUT FORMAT]\n"
                     "You MUST respond with ONLY valid JSON. NO markdown, NO code fences, "
                     "NO preamble, NO explanation. Start with '{' and end with '}'.\n\n"
@@ -565,12 +641,20 @@ class AdversarialReviewer:
             return result
         except Exception as e:
             logger.warning("lens_review_failed", extra={"lens": lens_type.value, "error": str(e)})
+            # Marked inconclusive, NOT approving. director.py:792 computes
+            # `accepted = cto PASS and coo PASS and ... and not parse_failed`, so
+            # an unmarked crash here would feed a PASS vote for work nobody
+            # reviewed. The class docstring (:148-153) already states the
+            # contract ("INCONCLUSIVE, not an approval") and
+            # tests/test_lens_parse_fail_open.py enforces it for the parse-failure
+            # branch; this branch violated both.
             return ReviewResult(
                 verdict=Verdict.PASS,
                 findings=[],
                 lens_used=lens_type.value,
                 confidence=0.0,
                 difficulty=difficulty,
+                parse_failed=True,
             )
 
     def _build_system_prompt(self, lens_prompt: str, difficulty: str = "medium") -> str:
@@ -587,6 +671,7 @@ class AdversarialReviewer:
             "gaps, and issues. Do NOT praise, do NOT suggest alternatives, "
             "do NOT rewrite code.\n\n"
             f"{calib_block}"
+            f"{self._standard_block}"
             f"[LENS]\n{lens_prompt}\n\n"
             "[OUTPUT FORMAT — MANDATORY]\n"
             "You MUST respond with EXACTLY one JSON object and NOTHING else. "
