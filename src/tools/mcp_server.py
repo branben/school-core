@@ -20,6 +20,11 @@ Tools:
   school_list_agents    — List all agents with scores and gates
   school_list_domains   — List all known domains and gate counts
   school_get_trajectory — Read a saved trajectory by file path
+  school_get_leaderboard— Score leaderboard for a domain
+  school_bot_execute    — Execute a prompt against a Bot Mode bot (crew dispatch)
+  school_bot_mention    — Bot-to-bot handoff/escalation
+  school_bot_list       — List available Bot Mode bots
+  school_bot_info       — Info about one Bot Mode bot
 """
 
 from __future__ import annotations
@@ -74,6 +79,17 @@ try:
     from src.tools.engram_adapter import engram_available
 except ImportError:
     engram_available = lambda: False  # degraded — no Engram
+
+# Bot Mode dispatch. Guarded like the other optional imports: the MCP server
+# must still start (minus the school_bot_* tools) if the adapter is missing,
+# so a broken adapter degrades to a per-tool error instead of a dead server.
+try:
+    from src.tools.bot_adapter import bot_execute, bot_info, bot_mention, list_bots
+except ImportError:
+    bot_execute = None
+    bot_info = None
+    bot_mention = None
+    list_bots = None
 
 # ---------------------------------------------------------------------------
 # Globals
@@ -268,6 +284,87 @@ TOOL_DEFINITIONS = [
                     "description": "Max number of results. Defaults to all.",
                 },
             },
+        },
+    },
+    {
+        "name": "school_bot_execute",
+        "description": (
+            "Execute a prompt against a Bot Mode bot (a full Hermes profile with its "
+            "own SOUL.md, memory, and skills) instead of a raw model combo. Use for "
+            "crew dispatch. Starts a NEW chat session unless 'conversation' is given."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bot": {
+                    "type": "string",
+                    "description": "Bot name (Hermes profile). Use school_bot_list to see all.",
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "The task prompt to send to the bot.",
+                },
+                "conversation": {
+                    "type": "string",
+                    "description": "Optional conversation title to continue instead of starting fresh.",
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "Optional timeout in seconds. Defaults to 120.",
+                },
+            },
+            "required": ["bot", "prompt"],
+        },
+    },
+    {
+        "name": "school_bot_mention",
+        "description": (
+            "Send a bot-to-bot mention (handoff/escalation) into the target bot's "
+            "'Agent Inbox' conversation. The Python-callable equivalent of @mention."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from_bot": {
+                    "type": "string",
+                    "description": "Sender bot name.",
+                },
+                "to_bot": {
+                    "type": "string",
+                    "description": "Target bot name.",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "The message to send.",
+                },
+                "conversation": {
+                    "type": "string",
+                    "description": "Conversation title. Defaults to 'Agent Inbox'.",
+                },
+            },
+            "required": ["from_bot", "to_bot", "message"],
+        },
+    },
+    {
+        "name": "school_bot_list",
+        "description": "List all available Bot Mode bots (Hermes profiles on this machine).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "school_bot_info",
+        "description": "Get info about one Bot Mode bot: model, profile dir, SOUL.md preview.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bot": {
+                    "type": "string",
+                    "description": "Bot name (Hermes profile).",
+                },
+            },
+            "required": ["bot"],
         },
     },
 ]
@@ -533,6 +630,45 @@ def _handle_school_get_leaderboard(args: dict) -> dict:
     return {"domain": domain, "entries": entries, "count": len(entries)}
 
 
+def _handle_school_bot_execute(args: dict) -> dict:
+    if bot_execute is None:
+        return {"error": "bot_adapter not available (ImportError)", "has_error": True}
+    result = bot_execute(
+        args["bot"],
+        args["prompt"],
+        conversation=args.get("conversation"),
+        timeout=args.get("timeout", 120),
+    )
+    result["has_error"] = not result.get("success", False)
+    return result
+
+
+def _handle_school_bot_mention(args: dict) -> dict:
+    if bot_mention is None:
+        return {"error": "bot_adapter not available (ImportError)", "has_error": True}
+    result = bot_mention(
+        args["from_bot"],
+        args["to_bot"],
+        args["message"],
+        conversation=args.get("conversation", "Agent Inbox"),
+    )
+    result["has_error"] = not result.get("success", False)
+    return result
+
+
+def _handle_school_bot_list(args: dict) -> dict:
+    if list_bots is None:
+        return {"error": "bot_adapter not available (ImportError)", "has_error": True}
+    bots = list_bots()
+    return {"bots": bots, "count": len(bots)}
+
+
+def _handle_school_bot_info(args: dict) -> dict:
+    if bot_info is None:
+        return {"error": "bot_adapter not available (ImportError)", "has_error": True}
+    return bot_info(args["bot"])
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -569,6 +705,10 @@ TOOL_HANDLERS: dict[str, Callable] = {
     "school_list_domains": _handle_school_list_domains,
     "school_get_trajectory": _handle_school_get_trajectory,
     "school_get_leaderboard": _handle_school_get_leaderboard,
+    "school_bot_execute": _handle_school_bot_execute,
+    "school_bot_mention": _handle_school_bot_mention,
+    "school_bot_list": _handle_school_bot_list,
+    "school_bot_info": _handle_school_bot_info,
 }
 
 # ---------------------------------------------------------------------------
