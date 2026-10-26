@@ -50,13 +50,27 @@ COMMENT_MARKER = "<!-- pr-evidence:generated -->"
 # rather than a signal about this diff.
 PHANTOM_CHECKS = {"circleci"}
 
+# A run that has not finished yet. Distinct from a run that finished and did
+# not pass -- see ``Check.ok``'s tri-state. ``gh`` reports these with
+# ``conclusion: null`` and one of these statuses.
+PENDING_CONCLUSIONS = frozenset(
+    {"", "queued", "in_progress", "pending", "waiting", "requested"}
+)
+
 
 @dataclass
 class Check:
-    """One line of the report."""
+    """One line of the report.
+
+    ``ok`` is deliberately tri-state. ``None`` means the check has not
+    finished -- CI still queued or running. Collapsing that to ``False``
+    reports a pending run as a failure, so a green-but-unfinished PR reads as
+    broken; collapsing it to ``True`` claims a result that does not exist yet.
+    A guard needs all three states or it lies in one direction.
+    """
 
     label: str
-    ok: bool
+    ok: bool | None
     detail: str
     link: str = ""
 
@@ -64,7 +78,12 @@ class Check:
         # No checkboxes. A ticked box is an assertion; "PASS" here means a
         # command ran and returned 0 at generation time, and the detail says
         # which command. A stale box cannot silently stay ticked.
-        status = "PASS" if self.ok else "FAIL"
+        if self.ok is None:
+            status = "PENDING"
+        elif self.ok:
+            status = "PASS"
+        else:
+            status = "FAIL"
         text = f"- **{self.label}** — {status} — {self.detail}"
         if self.link:
             text += f" — {self.link}"
@@ -77,8 +96,21 @@ class Report:
     inner: list[Check] = field(default_factory=list)
     guards: list[Check] = field(default_factory=list)
 
-    def ok(self) -> bool:
-        return all(c.ok for c in self.outer + self.inner + self.guards)
+    def ok(self) -> bool | None:
+        """Overall verdict: True all passed, False any failed, None anything pending.
+
+        ``all()`` treats ``None`` as falsy, so a queued CI run used to make the
+        whole report read as failed -- and a report that is red on every fresh
+        push is a report a reviewer learns to skip. Pending is not success
+        either: ``main()`` exits 1 on it. The text says PENDING so a reader can
+        tell "has not reported" from "did not pass"; the exit code fails closed.
+        """
+        verdicts = [c.ok for c in self.outer + self.inner + self.guards]
+        if any(v is False for v in verdicts):
+            return False
+        if any(v is None for v in verdicts):
+            return None
+        return True
 
     def render(self, pr: int, sha: str, branch: str) -> str:
         # Matches .github/PULL_REQUEST_TEMPLATE.md: [inner loop] Review, then
@@ -155,8 +187,13 @@ def outer_loop(sha: str) -> list[Check]:
             by_workflow[name] = run
 
     for name, run in sorted(by_workflow.items()):
+        # ``gh`` reports an unfinished run with ``conclusion: null`` plus a
+        # status. ``conclusion == "success"`` called all of those failures.
         conclusion = run.get("conclusion") or run.get("status") or "unknown"
-        ok = conclusion == "success"
+        if conclusion in PENDING_CONCLUSIONS:
+            ok: bool | None = None
+        else:
+            ok = conclusion == "success"
         detail = conclusion
         if name.lower() in PHANTOM_CHECKS and conclusion == "failure":
             detail = (
@@ -361,7 +398,8 @@ def main() -> int:
     if args.post:
         post_comment(args.pr, body)
 
-    return 0 if report.ok() else 1
+    # Fail closed on PENDING: an unfinished run is not permission to merge.
+    return 0 if report.ok() is True else 1
 
 
 if __name__ == "__main__":
