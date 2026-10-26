@@ -88,8 +88,8 @@ def _structural_checker(guide):
         if not isinstance(section.get("overview"), str) or not section["overview"]:
             errors.append(f"{label}.overview must be a non-empty string")
         diffs = section.get("diffs")
-        if not isinstance(diffs, list) or not diffs:
-            errors.append(f"{label}.diffs must be a non-empty array")
+        if not isinstance(diffs, list):
+            errors.append(f"{label}.diffs must be an array (it may be empty)")
             continue
         seen = set()
         for j, entry in enumerate(diffs):
@@ -111,15 +111,18 @@ def _structural_checker(guide):
             seen.add(path)
             if not isinstance(entry.get("summary"), str) or not entry["summary"]:
                 errors.append(f"{flabel}.summary must be a non-empty string")
+    if len(sections) > 6:
+        errors.append(
+            f"sections has {len(sections)} entries; the tool accepts at most 6"
+        )
     counts = {}
     for path in _guide_files(guide):
         counts[path] = counts.get(path, 0) + 1
     for path, n in counts.items():
         if n > 1:
             errors.append(
-                f"file '{path}' appears in {n} sections; exactly-one-section "
-                f"coverage rule violated (cross-section uniqueness)"
-            )
+                f"file '{path}' appears in {n} sections; the tool allows a "
+                f"file in at most one section (duplicate placement rejected)")
     return errors
 
 
@@ -164,11 +167,19 @@ def test_schema_carries_guide_not_review_calibration():
     assert "orient" in comment
 
 
-def test_schema_documents_cross_section_uniqueness_limitation():
+def test_schema_documents_the_measured_cross_section_rules():
+    """The $comment must record what the binary ACTUALLY enforces.
+
+    Measured 2026-10-26 by running the installed binary both ways. The previous
+    version of this test asserted "exactly one section" and "uniqueItems", which
+    the tool does not require -- a file may be in zero sections, and unplacedFiles
+    is optional. Asserting the measured rules is the point: the comment is the
+    only place the contract is written down, and it had drifted.
+    """
     comment = _load_json(SCHEMA_PATH)["$comment"].lower()
-    for needle in ("exactly one section", "cross-section", "uniqueitems"):
+    for needle in ("1..6", "at most one section", "unplacedfiles", "may be empty"):
         assert needle in comment, (
-            f"$comment should document the limitation around {needle!r}"
+            f"$comment should document the measured rule around {needle!r}"
         )
 
 
