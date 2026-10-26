@@ -7,6 +7,7 @@ These verify two things:
      router which combo to use next time.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -60,10 +61,39 @@ def test_unknown_agent_raises(monkeypatch, tmp_path):
 
 
 def test_resolve_api_key_fails_when_unset(monkeypatch):
-    """Env-only credential: no OMNIROUTE_API_KEY → ExecutorError, never an empty Bearer."""
+    """Env-only credential: no OMNIROUTE_API_KEY → ExecutorError, never an empty Bearer.
+
+    Both sources are cleared: the module attribute AND the ``.env`` candidates.
+    Clearing only the attribute used to be enough when the attribute was the
+    sole source; now that ``_resolve_api_key`` also reads the files, an
+    uncleared ``.env`` would supply a key and the test would pass for the
+    wrong reason.
+    """
     monkeypatch.setattr(executor, "API_KEY", "")
+    monkeypatch.setattr(executor, "_ENV_FILE_CANDIDATES", ())
     with pytest.raises(executor.ExecutorError, match="OMNIROUTE_API_KEY"):
         executor._resolve_api_key()
+
+
+def test_resolve_api_key_falls_back_to_env_file_without_polluting(monkeypatch, tmp_path):
+    """A key present only in a ``.env`` file is still found — and ``os.environ`` is untouched.
+
+    This is the regression guard for school-core-3r4n: the old code called
+    ``load_dotenv`` at import time, which mutated ``os.environ`` process-wide
+    and made pytest's collection order decide whether
+    ``test_omni_relay_live.py``'s skipif saw a key the developer never
+    exported. Reading the file directly must not have that effect.
+    """
+    monkeypatch.setattr(executor, "API_KEY", "")
+    monkeypatch.delenv("OMNIROUTE_API_KEY", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("OMNIROUTE_API_KEY=from-dotenv\n")
+    monkeypatch.setattr(executor, "_ENV_FILE_CANDIDATES", (env_file,))
+
+    assert executor._resolve_api_key() == "from-dotenv"
+    assert "OMNIROUTE_API_KEY" not in os.environ, (
+        "reading a .env file must not mutate os.environ"
+    )
 
 
 def test_resolve_api_key_returns_configured_value(monkeypatch):

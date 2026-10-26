@@ -1,17 +1,6 @@
 import json
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Load .env file from project root
-ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
-if ENV_FILE.exists():
-    load_dotenv(ENV_FILE)
-
-# Also load from ~/.omniroute/.env if it exists (for OmniRoute keys)
-OMNIRoute_ENV = Path.home() / ".omniroute" / ".env"
-if OMNIRoute_ENV.exists():
-    load_dotenv(OMNIRoute_ENV)
 from concurrent.futures import ThreadPoolExecutor
 import re
 import sys

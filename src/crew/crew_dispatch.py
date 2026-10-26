@@ -27,18 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence
 
-from dotenv import load_dotenv
-
-# Load .env file from project root
-ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
-if ENV_FILE.exists():
-    load_dotenv(ENV_FILE)
-
-# Also load from ~/.omniroute/.env if it exists (for OmniRoute keys)
-OMNIRoute_ENV = Path.home() / ".omniroute" / ".env"
-if OMNIRoute_ENV.exists():
-    load_dotenv(OMNIRoute_ENV)
-
+from src.crew.dotenv_reader import read_dotenv_value as _read_dotenv_value
 from src.core.capabilities import CapabilityBundle
 
 try:
@@ -851,26 +840,9 @@ def sweep_stale_runs(
     return removed
 
 
-def _read_dotenv_value(path: Path, name: str) -> str:
-    """Best-effort read of a ``NAME=VALUE`` line from a dotenv file.
-
-    Dependency-free (the project does not use python-dotenv). Skips comments
-    and blank lines; strips optional surrounding quotes.
-    """
-    if not path.is_file():
-        return ""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        if key.strip() == name:
-            return value.strip().strip('"').strip("'")
-    return ""
+# ``_read_dotenv_value`` moved to ``src.crew.dotenv_reader`` (imported above
+# under the same name, so existing monkeypatches of this module attribute
+# keep working). It now lives beside the other crew credential readers.
 
 
 def _read_yaml_omniroute_key(path: Path) -> str:

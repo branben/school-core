@@ -6,11 +6,26 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
+from src.crew.dotenv_reader import read_dotenv_value
+
 OMNIROUTE_BASE = "http://localhost:20128/v1"
 A2A_BASE = "http://localhost:20128/a2a"
+
+# Where a key may live when the process environment does not carry it.
+_ENV_FILE_CANDIDATES = (
+    Path(__file__).resolve().parent.parent.parent / ".env",
+    Path.home() / ".omniroute" / ".env",
+)
+
 # Env-only credential. There is deliberately NO baked-in fallback: a default
 # key in source would leak to anyone with the repository (one shipped here
 # before and had to be rotated). Fail loudly at use time when unset.
+#
+# Resolved lazily by ``_resolve_api_key`` rather than here: filling this in at
+# import time required ``load_dotenv``, which mutates ``os.environ`` for the
+# whole process. At import time that made pytest's collection order decide
+# whether test_omni_relay_live.py's skipif saw a key the developer never
+# exported (school-core-3r4n).
 API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
 
 COMBO_MAP = {
@@ -140,7 +155,18 @@ def _resolve_api_key() -> str:
 
     Raises ExecutorError when OMNIROUTE_API_KEY is missing so callers never
     silently send an empty Authorization header.
+
+    Falls back to the ``.env`` files when the process environment does not
+    carry the key. They are read directly rather than through ``load_dotenv``,
+    which mutates ``os.environ`` for the whole process.
     """
+    global API_KEY
+    if not API_KEY:
+        for path in _ENV_FILE_CANDIDATES:
+            key = read_dotenv_value(path, "OMNIROUTE_API_KEY")
+            if key:
+                API_KEY = key
+                break
     if not API_KEY:
         raise ExecutorError(
             "OMNIROUTE_API_KEY is not set. Set it in your environment "
