@@ -18,6 +18,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from src.crew.dotenv_reader import env_or_file
+
 
 def _remote_slug() -> Optional[str]:
     """Derive ``owner/name`` from the current checkout's ``origin`` remote."""
@@ -49,7 +51,7 @@ def default_repo() -> str:
         3. the current checkout's ``origin`` remote slug (self-configuring)
         4. ``__global__`` if nothing resolves (board global namespace)
     """
-    override = os.environ.get("AGENT_SCHOOL_REPO") or os.environ.get("SCHOOL_REPO")
+    override = os.environ.get("AGENT_SCHOOL_REPO") or env_or_file("SCHOOL_REPO")
     if override:
         return override
     slug = _remote_slug()

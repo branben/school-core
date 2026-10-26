@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Protocol
 from urllib.parse import quote
 
+from src.crew.dotenv_reader import env_or_file
 from src.crew.student_vm_runner import (
     RelayCapability,
     StudentTaskRequest,
@@ -493,7 +494,7 @@ class SmolCloudRunner:
                 raise StudentVMBlocked(f"requested {name} exceeds the runner policy limit")
 
     def _credential(self) -> str:
-        token = self._api_key if self._api_key is not None else os.environ.get("SMOL_CLOUD_TOKEN")
+        token = self._api_key if self._api_key is not None else env_or_file("SMOL_CLOUD_TOKEN")
         if not token:
             raise StudentVMBlocked("SMOL_CLOUD_TOKEN is required for hosted VM execution")
         if not isinstance(token, str) or "\r" in token or "\n" in token:

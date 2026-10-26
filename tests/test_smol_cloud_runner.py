@@ -620,6 +620,11 @@ def test_transport_exception_during_exec_still_deletes(task_repo, tmp_path):
 
 def test_missing_credential_blocks_before_any_request(task_repo, tmp_path, monkeypatch):
     monkeypatch.delenv("SMOL_CLOUD_TOKEN", raising=False)
+    # The runner resolves .env itself (school-core-5bzk), so "absent" has to mean
+    # absent from BOTH places or the read-time fallback supplies the token.
+    monkeypatch.setattr(
+        "src.crew.dotenv_reader.repo_env_file", lambda: tmp_path / "absent.env"
+    )
     fake_clock = FakeClock()
     repo, base_sha = task_repo
     transport = FakeTransport()
@@ -1249,6 +1254,11 @@ def test_verify_delete_failure_quarantines_with_cleanup_quarantined(tmp_path):
 
 def test_verify_missing_credential_blocks_before_any_request(tmp_path, monkeypatch):
     monkeypatch.delenv("SMOL_CLOUD_TOKEN", raising=False)
+    # See test_missing_credential_blocks_before_any_request: the .env fallback
+    # must be pointed away too, or "missing" is not missing.
+    monkeypatch.setattr(
+        "src.crew.dotenv_reader.repo_env_file", lambda: tmp_path / "absent.env"
+    )
     fake_clock = FakeClock()
     transport = FakeTransport()
     runner = _runner(tmp_path, transport, fake_clock, api_key=None)

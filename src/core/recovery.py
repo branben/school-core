@@ -26,6 +26,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.crew.dotenv_reader import env_or_file
+
 
 @dataclass
 class Check:
@@ -365,7 +367,7 @@ def check_services(root: Path, env) -> Check:
 
 
 def check_target(root: Path, env) -> Check:
-    override = env.get("AGENT_SCHOOL_REPO") or env.get("SCHOOL_REPO")
+    override = env.get("AGENT_SCHOOL_REPO") or env_or_file("SCHOOL_REPO")
     if override:
         return Check("target", "ok", f"target repo from environment: {override}")
     rc, out, _ = _run(["git", "-C", str(root), "remote", "get-url", "origin"], timeout=15)

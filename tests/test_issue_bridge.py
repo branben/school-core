@@ -1147,6 +1147,11 @@ class TestEntireSensor:
                           "message": "suspicious construct"}],
         }
         monkeypatch.setattr("issue_bridge.PROCESSED_FILE", tmp_path / "processed.json")
+        # The ledger has no `store` parameter, so without this the test writes
+        # the real tracked data/entire_unpersisted.json (school-core-tqim).
+        monkeypatch.setattr(
+            "issue_bridge.ENTIRE_UNPERSISTED_FILE", tmp_path / "eu.json"
+        )
         mock_fetch.return_value = self.ISSUE
         mock_task.return_value = self._task_ok()
 
@@ -3074,6 +3079,11 @@ class TestHostedStudentFlag:
         """Flag on but SCHOOL_CORE_SMOL_CLOUD_IMAGE absent → ValueError, not silent off."""
         monkeypatch.setenv("SCHOOL_CORE_HOSTED_STUDENT", "1")
         monkeypatch.delenv("SCHOOL_CORE_SMOL_CLOUD_IMAGE", raising=False)
+        # The image now resolves from .env at read time (school-core-5bzk), so
+        # "absent" has to be absent from the file too.
+        monkeypatch.setattr(
+            "src.crew.dotenv_reader.repo_env_file", lambda: tmp_path / "absent.env"
+        )
         with patch("issue_bridge.fetch_issues", return_value=self._issue(434)):
             with pytest.raises(ValueError, match="image_reference"):
                 bridge_issues("user/test", store=store)

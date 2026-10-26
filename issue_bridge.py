@@ -21,12 +21,16 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
-# Load .env file from project root
-ENV_FILE = Path(__file__).parent / ".env"
-if ENV_FILE.exists():
-    load_dotenv(ENV_FILE)
+# NOTE: this module deliberately does NOT run load_dotenv at import time.
+# It used to, and that mutated os.environ process-wide -- which made pytest's
+# collection order decide whether tests/test_omni_relay_live.py:18 saw a key the
+# developer never exported, and made the full suite hang at
+# tests/test_orca_execution.py:526. Settings that need .env now resolve it
+# explicitly via env_or_file(), which never writes to os.environ.
+# See school-core-5bzk.
+from src.crew.dotenv_reader import env_or_file as _env_or_file
+
 import fcntl
 import re
 import sys
@@ -1756,7 +1760,7 @@ def _trusted_approver_allowlist() -> tuple[str, ...]:
     pre-PR authorization is a deliberate deployment decision, never an
     accident of configuration drift.
     """
-    raw = os.environ.get("APPROVED_ACTORS", "").strip()
+    raw = _env_or_file("APPROVED_ACTORS").strip()
     if not raw:
         return ()
     return tuple(
@@ -1990,8 +1994,8 @@ def bridge_issues(
     if hosted_student_enabled:
         from src.crew.smol_cloud_runner import SmolCloudRunner
         hosted_student_runner = SmolCloudRunner(  # noqa: F841 - construction validates runner config eagerly
-            image_reference=os.environ.get("SCHOOL_CORE_SMOL_CLOUD_IMAGE", ""),
-            source_type=os.environ.get(
+            image_reference=_env_or_file("SCHOOL_CORE_SMOL_CLOUD_IMAGE"),
+            source_type=_env_or_file(
                 "SCHOOL_CORE_SMOL_CLOUD_SOURCE_TYPE", "smolmachine"
             ),
         )
@@ -2696,11 +2700,12 @@ def bridge_issues(
                 processed[num] = OUTCOME_REJECT
                 continue
 
-            # Entire pre-merge sensor (non-blocking, U6): intent-aware review
-            # of the student's diff via `entire review`. Findings are surfaced
-            # on the result + durable record, but never override the verdict —
-            # the adversarial (two-judge) review below remains the semantic
-            # gate.
+            # Entire pre-merge sensor (U6): intent-aware review of the student's
+            # diff via `entire review`. Findings are surfaced on the result +
+            # durable record, and a CRITICAL/HIGH one DOES gate: the lifecycle
+            # guard at :2896 turns the FAIL verdict into a hard block on
+            # grading, scoring, and publication. The adversarial (two-judge)
+            # review below remains the semantic gate for the diff itself.
             if crew_used:
                 # Same lifecycle rule as verification: do not inspect the clean
                 # base after the student's worktree has been torn down.
@@ -2894,7 +2899,7 @@ def bridge_issues(
                 continue
 
             # Pre-merge sensor lifecycle guard: the entire-CRITICAL veto above
-            # (2703-2717) injects a CRITICAL finding and sets
+            # (:2757-2772) injects a CRITICAL finding and sets
             # adversarial_review['verdict']='FAIL', but nothing downstream reads
             # it — create_pr_for_issue has no verdict check at all, so the PR was
             # still opened (measured 2026-10-22: `entire review FAIL` logged,
@@ -2911,7 +2916,7 @@ def bridge_issues(
             #     tests/test_issue_bridge.py::test_success_clears_retry_state
             #     (its `no_artifact` CRITICAL, adversarial_reviewer.py:425).
             #   * The verify-gate injection at 2743 is NOT a second hole: the
-            #     no-packet guard at 2766 already reads verify_result and blocks.
+            #     no-packet guard at 2827 already reads verify_result and blocks.
             #   * `verdict == "FAIL"` is not a reliable gate either —
             #     _run_adversarial_review's fail-closed fallback returns
             #     verdict="PASS" + review_failed=True by design (@1206), because

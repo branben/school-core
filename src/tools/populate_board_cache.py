@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from src.crew.dotenv_reader import env_or_file
 from src.tools.repo_default import default_repo
 
 CACHE_PATH = Path("data") / "issues_cache.json"
@@ -138,5 +139,5 @@ def populate_cache(repo: Optional[str] = None) -> list[dict]:
 
 
 if __name__ == "__main__":
-    repo = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SCHOOL_REPO")
+    repo = sys.argv[1] if len(sys.argv) > 1 else env_or_file("SCHOOL_REPO")
     populate_cache(repo)
