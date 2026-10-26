@@ -909,6 +909,14 @@ def _run_two_judge_review(
         "build_findings": [f.to_dict() for f in build_findings],
         "build_verification": verification_output or None,
         "accepted": accepted,
+        # A judge that crashed is the REASON a review was rejected, so the
+        # record has to carry it. `parse_failed` above gates `accepted`, but
+        # until these keys were returned the downstream evidence record could
+        # only ever say `parse_failed: false` -- a rejection whose stated
+        # cause was absent from the record.
+        "parse_failed": parse_failed,
+        "cto_parse_failed": bool(getattr(cto_result, "parse_failed", False)),
+        "coo_parse_failed": bool(getattr(coo_result, "parse_failed", False)),
         "has_blocking_finding": has_blocking_finding,
         "coevolution": coevolution_report.to_dict() if coevolution_report else None,
         "cto_narrative": cto_narrative,

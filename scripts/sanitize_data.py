@@ -317,7 +317,7 @@ def verify_data_safe() -> list[tuple[Path, list[str]]]:
 
     The school-loop checkpoint sanitizes before pushing, but a malicious or
     careless commit can land on main directly with raw /Users/ paths (see the
-    2026-10-14 audit: 51x /Users/brandonbennett in data/last_run.json). CI runs
+    2026-10-14 audit: 51x ~ in data/last_run.json). CI runs
     this before merge so the public branch stays clean.
     """
     import subprocess

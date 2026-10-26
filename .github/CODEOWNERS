@@ -1,9 +1,19 @@
-# Default owners: repo maintainer. Add specific owners for sensitive areas.
+# Default owners: repo maintainer + the review authority.
 # (2026-10-14 audit: repo had no CODEOWNERS, templates, or tags.)
-* @branben
+#
+# WHY TWO OWNERS ON `*`:
+# `required_approving_review_count: 1` alone is satisfied by ANY approval,
+# including a bot's. Measured 2026-10-25: PRs #157 and #158 merged on an
+# `APPROVED` from `sourcery-ai`, with no human review at all. Requiring CODE
+# OWNER reviews closes that: an app's approval does not satisfy it.
+#
+# `@branben` is listed so the file is honest about ownership, but GitHub does
+# not count an author's own approval on their own PR — so for PRs authored by
+# @branben the effective required reviewer is @luna-whymage.
+* @branben @luna-whymage
 
-# CI and security gates — require the maintainer's explicit review
-.github/workflows/ @branben
+# CI and security gates — require an explicit human review
+.github/workflows/ @branben @luna-whymage
 
 # Privacy-sensitive data (must never contain PII / home paths)
-data/last_run.json @branben
+data/last_run.json @branben @luna-whymage
