@@ -208,15 +208,17 @@ def group_sections(files: list[DiffFile]) -> list[dict]:
     for f in files:
         buckets.setdefault(section_key(f.path), []).append(f)
 
-    while len(buckets) > MAX_SECTIONS:
-        smallest = min(buckets, key=lambda k: (len(buckets[k]), k))
-        target = next(
-            (k for k in sorted(buckets) if k != smallest),
-            None,
+    # section_key() can only return keys drawn from SECTION_TITLES, so the bucket
+    # count is bounded by len(SECTION_TITLES) and can never exceed MAX_SECTIONS
+    # while they are equal. Fail closed rather than merging: a merge would
+    # silently relabel a file's section, and a silently-wrong section is worse
+    # than a build error that names the problem.
+    if len(SECTION_TITLES) > MAX_SECTIONS:
+        raise ValueError(
+            f"SECTION_TITLES defines {len(SECTION_TITLES)} sections but the tool "
+            f"allows at most {MAX_SECTIONS}. Add an explicit merge rule before "
+            f"adding a section key."
         )
-        if target is None:
-            break
-        buckets[target].extend(buckets.pop(smallest))
 
     sections: list[dict] = []
     ordered = sorted(buckets, key=lambda k: (SECTION_ORDER.index(k) if k in SECTION_ORDER else len(SECTION_ORDER), k))

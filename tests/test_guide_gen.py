@@ -138,9 +138,16 @@ def test_parse_diff_tolerates_garbage_without_raising():
 
 
 def test_grouping_produces_at_most_six_sections_even_for_many_areas():
-    many = [guide_gen.DiffFile(path=f"area{i}/f.py") for i in range(12)]
-    sections = guide_gen.group_sections(many)
-    assert 1 <= len(sections) <= guide_gen.MAX_SECTIONS
+    # Use the REAL key space. section_key() only ever returns keys drawn from
+    # SECTION_TITLES, so area0..area11 all fold into "" and produce ONE section --
+    # a test that passed without exercising the section model at all.
+    real = [guide_gen.DiffFile(path=f"{k}/f.py") for k in guide_gen.SECTION_TITLES if k]
+    real += [guide_gen.DiffFile(path=f"vendor/f{i}.py") for i in range(6)]  # all -> ""
+    sections = guide_gen.group_sections(real)
+
+    assert len(sections) == guide_gen.MAX_SECTIONS
+    # Every real bucket survives: none was merged away or dropped.
+    assert {s["title"] for s in sections} == set(guide_gen.SECTION_TITLES.values())
 
 
 def test_grouping_is_deterministic(files):
@@ -165,11 +172,25 @@ def test_every_placed_file_is_named_exactly_once_and_summary_is_non_empty(files)
 
 
 def test_build_guide_summaries_are_factual_not_critical(files):
+    """Assert the summary TEMPLATE SHAPE, not a word blacklist.
+
+    A blacklist only catches the words someone thought of; "flaky", "legacy",
+    "ought to be" and "footgun" all walked straight through it. Matching the
+    shape instead means any editorial prose fails, because editorial prose does
+    not look like "+3 / -1 lines. Adds: foo, bar."
+    """
+    import re
+
+    shape = re.compile(
+        r"^(?:New file\.|Deleted\.|Renamed from \S+\.|\+\d+ / -\d+ lines\.)"
+        r"(?: (?:Adds|Removes): [\w, ()+]+\.)?$"
+    )
     guide = guide_gen.build_guide(files, "T", "I")
-    summaries = " ".join(d["summary"] for s in guide["sections"] for d in s["diffs"]).lower()
-    assert "lines." in summaries
-    for banned in ("bad", "wrong", "bug", "should be", "fix"):
-        assert banned not in summaries, f"generator prose must not critique: found {banned!r}"
+    for section in guide["sections"]:
+        for entry in section["diffs"]:
+            assert shape.match(entry["summary"]), (
+                f"summary is not the factual template shape: {entry['summary']!r}"
+            )
 
 
 def test_build_guide_fails_closed_on_empty_input():
@@ -259,3 +280,47 @@ def test_build_guide_refuses_an_unplaced_file_absent_from_the_diff(files):
     """The generator must fail closed rather than emit a guide the tool rejects."""
     with pytest.raises(ValueError, match="absent from the diff"):
         guide_gen.build_guide(files, "T", "I", unplaced=["vendor/left_out.py"])
+
+
+def test_real_tool_rejects_a_file_placed_in_two_sections(tmp_path, files):
+    """Cross-section duplication must be pinned by the REAL binary.
+
+    The stdlib structural checker is not the authority here. If the tool's
+    cross-section behaviour drifts, only a real run catches it -- a checker we
+    wrote ourselves would keep agreeing with us while the tool disagreed.
+    """
+    patch = tmp_path / "p.patch"
+    patch.write_text(PATCH, encoding="utf-8")
+    guide = guide_gen.build_guide(files, "Duplicate-placement probe", "Orient.")
+    first = guide["sections"][0]["diffs"][0]
+    guide["sections"].append({
+        "title": "Duplicate placement probe",
+        "overview": "The same file named a second time.",
+        "diffs": [dict(first)],
+    })
+    gpath = tmp_path / "guide.json"
+    gpath.write_text(json.dumps(guide), encoding="utf-8")
+    out = tmp_path / "out.html"
+
+    proc = _export(gpath, patch, out)
+    combined = f"{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode != 0, (
+        "the real tool ACCEPTED a file placed in two sections. Either it "
+        "relaxed its cross-section rule (update the contract) or this probe "
+        f"is not constructing a real duplicate:\n{combined}"
+    )
+
+
+def test_grouping_fails_closed_if_a_seventh_section_key_is_added(monkeypatch):
+    """The old merge loop was unreachable, so a 7th key would have been silent.
+
+    section_key() draws only from SECTION_TITLES, so if that dict ever grows past
+    MAX_SECTIONS the guide would emit more sections than the tool allows. Fail
+    closed with a named error instead of merging files into the wrong section.
+    """
+    grown = dict(guide_gen.SECTION_TITLES)
+    grown["infra"] = "Infrastructure"
+    monkeypatch.setattr(guide_gen, "SECTION_TITLES", grown)
+
+    with pytest.raises(ValueError, match="before adding a section key"):
+        guide_gen.group_sections([guide_gen.DiffFile(path="src/a.py")])
