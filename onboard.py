@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""onboard.py — bootstrap ICM L0-L4 context + envit + project_verify for a target repo.
+"""onboard.py — bootstrap L0-L4 context layers + envit + project_verify for a target repo.
+
+NOTE ON NAMING: L0-L4 are CONTEXT LAYERS — how much context an agent loads and
+from where. They are NOT the workflow stages (Prime -> Plan -> Implement ->
+Validate -> Review -> PR, see docs/sdlc/loops.md) and they are NOT the ICM
+stage model. This module previously called the layers "ICM L0-L4", which
+collided with the stage meaning of ICM; the term is now reserved for stages.
 
 WHY THIS EXISTS
 ---------------
@@ -119,8 +125,29 @@ _LANG_BY_EXT = {
     ".php": "php",
 }
 
-# Failure edges / next actions — bounded vocabularies from failure_taxonomy.py.
-_FAILURE_EDGES = ("model", "task_contract", "skill", "tool", "runtime", "verifier", "judge")
+# Failure edges — the canonical bounded vocabulary lives in
+# src/core/failure_taxonomy.py. This module runs standalone (it is invoked as a
+# script with no package context), so fall back to a complete copy when the
+# import is unavailable. tests/test_onboard.py asserts the fallback equals the
+# canonical set, so drift fails the build instead of silently narrowing the
+# vocabulary the agent is told to use.
+_FAILURE_EDGES_FALLBACK = (
+    "environment",
+    "judge",
+    "model",
+    "none",
+    "runtime",
+    "skill",
+    "task_contract",
+    "tool",
+    "verifier",
+)
+try:
+    from src.core.failure_taxonomy import FAILURE_EDGES as _FAILURE_EDGE_SET
+
+    _FAILURE_EDGES = tuple(sorted(_FAILURE_EDGE_SET))
+except ImportError:  # pragma: no cover - standalone execution path
+    _FAILURE_EDGES = _FAILURE_EDGES_FALLBACK
 
 # Top-level directory names that are artifacts, scratch, or docs — never
 # product source. Excluded from key paths so L0 does not send an agent into
@@ -1178,8 +1205,9 @@ def generate_context_md(info: RepoInfo, ev: Evidence, stamp: str, sha: str) -> s
     lines.append("")
     lines.append(_generated_banner("L1 CONTEXT.md", info, stamp, sha))
     lines.append("")
-    lines.append(f"Workspace-level routing for `{info.slug}`. Layer 1 of the ICM "
-                 "hierarchy: it answers **where do I go?** — which workflow owns a "
+    lines.append(f"Workspace-level routing for `{info.slug}`. Layer 1 of the "
+                 "context-layer hierarchy (L0-L4, not the workflow stages): it "
+                 "answers **where do I go?** — which workflow owns a "
                  "task shape, what it verifies, and which failure edge it owns.")
     lines.append("")
 
@@ -1674,7 +1702,7 @@ def format_report(report: dict) -> str:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="onboard",
-        description="Generate ICM L0-L4 context + envit + project_verify for a target repo.",
+        description="Generate L0-L4 context layers + envit + project_verify for a target repo.",
     )
     parser.add_argument("--repo", required=True,
                         help="owner/name slug, or a local path to a checkout")

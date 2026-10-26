@@ -1,4 +1,4 @@
-"""Tests for onboard.py — repo-agnostic ICM L0-L4 / envit / project_verify generation.
+"""Tests for onboard.py — repo-agnostic L0-L4 context layers / envit / project_verify.
 
 Hermeticity rules for this module:
 * No network. ``onboard._gh`` is stubbed in every test that reaches a code path
@@ -541,3 +541,29 @@ class TestOnboardRepo:
         text = format_report(report)
         assert "dependency repos" in text
         assert "report-only" in text
+
+
+# --- vocabulary drift guard -------------------------------------------------
+#
+# onboard.py offers the SAME failure-edge vocabulary the taxonomy defines, and
+# keeps a local fallback for standalone execution. The fallback is the thing
+# that can silently drift: if it loses an edge, onboard tells an agent to use a
+# vocabulary that omits a real failure mode, and nothing fails at runtime.
+
+
+def test_failure_edge_vocabulary_matches_the_taxonomy():
+    import onboard
+
+    from src.core.failure_taxonomy import FAILURE_EDGES
+
+    assert set(onboard._FAILURE_EDGES) == set(FAILURE_EDGES)
+
+
+def test_failure_edge_fallback_matches_the_taxonomy():
+    """The fallback only runs when src.* is unimportable, so a drift in it can
+    never surface at runtime. This test is the only thing that catches it."""
+    import onboard
+
+    from src.core.failure_taxonomy import FAILURE_EDGES
+
+    assert set(onboard._FAILURE_EDGES_FALLBACK) == set(FAILURE_EDGES)
