@@ -550,6 +550,10 @@ class TestBridgeIssues:
         assert len(results) == 1
         assert results[0]["status"] == "error"
         assert "unexpected error" in results[0]["error"]
+        # A run_task failure is the Implement phase. Inference CANNOT know this
+        # (there is no review and no verification dict), so this assertion only
+        # passes if the explicit stage= kwarg actually reaches the record.
+        assert results[0]["stage"] == "implement"
         assert not is_processed(30)
         assert _load_processed()[30] == "INFRA"
 
@@ -934,6 +938,9 @@ class TestVerifyGateMerge:
         # The close decision must honor the verdict: school-failed, open.
         assert results[0]["status"] == "error"
         assert "two-judge review rejected" in results[0]["error"]
+        # The record must say WHICH phase rejected it, not merely that a judge
+        # failed. A two-judge rejection IS the Review phase.
+        assert results[0]["stage"] == "review"
         # The low combined score was preserved on the durable record.
         last_run = json.loads((tmp_path / "last_run.json").read_text())
         assert last_run[-1]["status"] == "school-failed"

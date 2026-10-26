@@ -2315,6 +2315,7 @@ def bridge_issues(
                     "teardown_ok": crew_result.teardown_ok if crew_result else None,
                     **_outcome_fields(
                         status="retry",
+                        stage="implement",
                         error=err,
                         fallback_reason=crew_fallback_reason,
                         retry_attempt=attempts,
@@ -2330,6 +2331,7 @@ def bridge_issues(
                             "trajectory": None,
                             **_outcome_fields(
                                 status="retry",
+                                stage="implement",
                                 error=err,
                                 fallback_reason=crew_fallback_reason,
                                 retry_attempt=attempts,
@@ -2359,6 +2361,7 @@ def bridge_issues(
                 "teardown_ok": crew_result.teardown_ok if crew_result else None,
                 **_outcome_fields(
                     status="error",
+                    stage="implement",
                     error=err,
                     fallback_reason=crew_fallback_reason,
                     retry_attempt=attempts,
@@ -2374,6 +2377,7 @@ def bridge_issues(
                         "trajectory": None,
                         **_outcome_fields(
                             status="error",
+                            stage="implement",
                             error=err,
                             fallback_reason=crew_fallback_reason,
                             retry_attempt=attempts,
@@ -2449,6 +2453,7 @@ def bridge_issues(
                 sys.stderr.write(f"[issue_bridge] #{num}: {_reject_reason} — school-failed\n")
                 rejection_outcome = _outcome_fields(
                     status="error",
+                    stage="review",
                     task_result=task_result,
                     error=_reject_reason,
                     review=_review,
@@ -2590,6 +2595,7 @@ def bridge_issues(
                 )
                 rejection_outcome = _outcome_fields(
                     status="error",
+                    stage="validate",
                     task_result=task_result,
                     error=_reject_reason,
                     review=_review,
@@ -2786,6 +2792,7 @@ def bridge_issues(
                 )
                 rejection_outcome = _outcome_fields(
                     status="error",
+                    stage="validate",
                     task_result=task_result,
                     error=_reject_reason,
                     review=_review,
@@ -2881,6 +2888,7 @@ def bridge_issues(
                 )
                 rejection_outcome = _outcome_fields(
                     status="error",
+                    stage="review",
                     task_result=task_result,
                     error=_reject_reason,
                     review=_review,
