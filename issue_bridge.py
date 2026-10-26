@@ -397,6 +397,44 @@ def _migrate_legacy_ledger(
 
 
 RETRY_FILE = Path(__file__).parent / "data" / "retry_issues.json"
+
+# Beads whose Entire-findings write never reached the bookbag.
+#
+# The acceptance gate runs BEFORE the persist, so the only consumer of this set
+# is the NEXT cycle's retry. Without it a lock timeout on cycle N makes cycle
+# N+1 read an empty bag["entire_findings"], conclude "Entire found nothing",
+# and ACCEPT a run carrying a CRITICAL Entire finding. The bag cannot tell
+# "no findings" apart from "the write failed", so the fact has to live
+# somewhere the bookbag lock cannot block: this file.
+ENTIRE_UNPERSISTED_FILE = Path(__file__).parent / "data" / "entire_unpersisted.json"
+
+
+def _entire_unpersisted() -> set[str]:
+    """Bead ids whose Entire findings failed to persist on a prior attempt."""
+    if not ENTIRE_UNPERSISTED_FILE.exists():
+        return set()
+    try:
+        raw = ENTIRE_UNPERSISTED_FILE.read_text().strip()
+        if not raw:
+            return set()
+        return set(json.loads(raw))
+    except (json.JSONDecodeError, OSError, TypeError) as e:
+        sys.stderr.write(f"[issue_bridge] Failed to read entire-unpersisted set: {e}\n")
+        return set()
+
+
+def _set_entire_unpersisted(bead: str, failed: bool) -> None:
+    """Record (or clear) a bead whose Entire findings did not reach the bookbag."""
+    beads = _entire_unpersisted()
+    if failed:
+        beads.add(bead)
+    else:
+        beads.discard(bead)
+    ENTIRE_UNPERSISTED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        ENTIRE_UNPERSISTED_FILE.write_text(json.dumps(sorted(beads), indent=2))
+    except OSError as e:
+        sys.stderr.write(f"[issue_bridge] Failed to save entire-unpersisted set: {e}\n")
 # Retry-once: a failed issue gets one retry on the next cycle before it is
 # marked processed + school-failed. attempt 1 → schedule retry; attempt 2 → final.
 RETRY_LIMIT = 2
@@ -1342,6 +1380,19 @@ def _merge_async_teacher_verdicts(
         entire_findings = bag.get("entire_findings") or []
         if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
             findings = findings + entire_findings
+        elif bead in _entire_unpersisted():
+            # A prior cycle tried and FAILED to persist Entire's findings, so an
+            # empty bag is not evidence that Entire found nothing. Inject a
+            # synthetic CRITICAL so the existing gate refuses this run instead of
+            # accepting it on missing veto evidence.
+            findings = findings + [{
+                "severity": "CRITICAL",
+                "source": "entire_persist",
+                "message": (
+                    "Entire findings were not persisted on a prior attempt; the "
+                    "veto evidence is missing, so this run cannot be accepted."
+                ),
+            }]
         has_critical = any(
             str(f.get("severity", "")).upper() == "CRITICAL" for f in findings
         )
@@ -3115,10 +3166,13 @@ def bridge_issues(
             # acceptance gate at :2426 consults. Record the failure so the
             # incomplete record is visible rather than silently incomplete.
             entire_persisted = True
+            _entire_bead = str(
+                issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"
+            )
             if entire_review and entire_review.get("findings"):
                 try:
                     _written = locked_update_bookbag(
-                        str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
+                        _entire_bead,
                         repo,
                         entire_findings=entire_review.get("findings"),
                         entire_status=entire_review.get("status"),
@@ -3127,9 +3181,14 @@ def bridge_issues(
                 except Exception as e:  # noqa: BLE001
                     print(f"  ⚠ Entire gate persist failed: {e}")
                     entire_persisted = False
+                # Durable across cycles on purpose: the acceptance gate runs
+                # BEFORE this write, so only the NEXT retry can act on the
+                # failure. Without this the retry reads an empty bag and accepts.
+                _set_entire_unpersisted(_entire_bead, not entire_persisted)
                 if not entire_persisted:
                     print("  ⚠ Entire findings NOT persisted — the bookbag record "
-                          "is incomplete; a retry of this issue would not see the veto")
+                          "is incomplete; the next retry of this issue will REFUSE "
+                          "rather than accept on missing veto evidence")
             compound_observation = _record_compound_observation(
                 bead_id=str(issue.get("bd_id") or task_result.get("bead") or f"issue-{num}"),
                 trigger="bead_completed",

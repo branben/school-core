@@ -42,6 +42,11 @@ data/
 !data/
 data/*
 !data/crew_runs.json
+# school-core-mcuw: the Entire-persist failure flag must survive a fresh
+# checkout per cycle, exactly like retry_issues.json below. Without this a lock
+# timeout on cycle N is invisible on cycle N+1, which would ACCEPT a run
+# carrying a CRITICAL Entire finding.
+!data/entire_unpersisted.json
 # Curated vault: track the contract (manifest + README), never the notes.
 # data/ itself stays ignored; only these contract files are un-ignored.
 !data/vault/

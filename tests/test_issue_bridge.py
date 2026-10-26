@@ -4188,3 +4188,73 @@ class TestAsyncTeacherBridgeDispatch:
         kwargs = mock_task.call_args[1]
         assert kwargs["skip_review"] is False
         assert results[0]["status"] == "success"
+
+
+def _async_bag(**kw):
+    bag = {
+        "cto_verdict": "PASS",
+        "coo_verdict": "PASS",
+        "cto_score": 90,
+        "coo_score": 90,
+        "cto_findings": [],
+        "coo_findings": [],
+        "entire_findings": [],
+        "entire_status": "skipped",
+        "accepted": True,
+    }
+    bag.update(kw)
+    return bag
+
+
+def test_entire_unpersisted_set_round_trips(tmp_path, monkeypatch):
+    monkeypatch.setattr("issue_bridge.ENTIRE_UNPERSISTED_FILE", tmp_path / "eu.json")
+    assert issue_bridge._entire_unpersisted() == set()
+    issue_bridge._set_entire_unpersisted("bead-1", failed=True)
+    assert "bead-1" in issue_bridge._entire_unpersisted()
+    issue_bridge._set_entire_unpersisted("bead-1", failed=False)
+    assert "bead-1" not in issue_bridge._entire_unpersisted()
+
+
+def test_merge_refuses_when_prior_entire_write_failed(tmp_path, monkeypatch):
+    """A failed persist must stop the retry accepting on missing veto evidence.
+
+    Regression for school-core-mcuw. The bag cannot tell "Entire found nothing"
+    apart from "the write never landed", so the failure has to be durable, and
+    the retry has to REFUSE rather than accept on an empty bag.
+    """
+    monkeypatch.setattr("issue_bridge.ENTIRE_UNPERSISTED_FILE", tmp_path / "eu.json")
+    issue_bridge._set_entire_unpersisted("bead-9", failed=True)
+    monkeypatch.setattr("bookbag.read_bookbag", lambda *a, **k: _async_bag())
+    monkeypatch.setattr("bookbag.locked_update_bookbag", lambda *a, **k: _async_bag())
+    task = {"bead": "bead-9"}
+    issue_bridge._merge_async_teacher_verdicts(task, repo="r", timeout=0.1)
+    assert task["review"]["accepted"] is False
+    assert any(f.get("source") == "entire_persist" for f in task["review"]["findings"])
+
+
+def test_merge_accepts_when_no_prior_failure_recorded(tmp_path, monkeypatch):
+    """Control: an unmarked bead still accepts on a clean bag."""
+    monkeypatch.setattr("issue_bridge.ENTIRE_UNPERSISTED_FILE", tmp_path / "eu.json")
+    monkeypatch.setattr("bookbag.read_bookbag", lambda *a, **k: _async_bag())
+    monkeypatch.setattr("bookbag.locked_update_bookbag", lambda *a, **k: _async_bag())
+    task = {"bead": "bead-10"}
+    issue_bridge._merge_async_teacher_verdicts(task, repo="r", timeout=0.1)
+    assert task["review"]["accepted"] is True
+    assert not any(f.get("source") == "entire_persist" for f in task["review"]["findings"])
+
+
+def test_merge_still_honours_a_real_persisted_critical(tmp_path, monkeypatch):
+    """Control: a genuinely persisted CRITICAL still refuses, flag or not."""
+    monkeypatch.setattr("issue_bridge.ENTIRE_UNPERSISTED_FILE", tmp_path / "eu.json")
+    monkeypatch.setattr(
+        "bookbag.read_bookbag",
+        lambda *a, **k: _async_bag(
+            entire_findings=[{"severity": "CRITICAL", "source": "entire", "message": "x"}],
+            entire_status="done",
+        ),
+    )
+    monkeypatch.setattr("bookbag.locked_update_bookbag", lambda *a, **k: _async_bag())
+    task = {"bead": "bead-11"}
+    issue_bridge._merge_async_teacher_verdicts(task, repo="r", timeout=0.1)
+    assert task["review"]["accepted"] is False
+    assert not any(f.get("source") == "entire_persist" for f in task["review"]["findings"])
