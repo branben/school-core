@@ -70,6 +70,7 @@ def outcome_fields(
     entire: Optional[dict] = None,
     fallback_reason: Optional[str] = None,
     retry_attempt: int = 0,
+    stage: Optional[str] = None,
 ) -> dict:
     """Expose the canonical lifecycle/quality taxonomy at the bridge seam."""
     return normalize_outcome(
@@ -81,6 +82,7 @@ def outcome_fields(
         entire=entire,
         fallback_reason=fallback_reason,
         retry_attempt=retry_attempt,
+        stage=stage,
     )
 
 

@@ -1,6 +1,12 @@
 """Tests for the normalized school-loop outcome contract."""
 
-from src.core.failure_taxonomy import FAILURE_EDGES, FAILURE_MODES, NEXT_ACTIONS, normalize_outcome
+from src.core.failure_taxonomy import (
+    FAILURE_EDGES,
+    FAILURE_MODES,
+    INNER_LOOP_STAGES,
+    NEXT_ACTIONS,
+    normalize_outcome,
+)
 
 
 def test_clean_accepted_run_is_completed_and_closes():
@@ -17,6 +23,7 @@ def test_clean_accepted_run_is_completed_and_closes():
         "fallback_reason": None,
         "next_action": "close",
         "retry_attempt": 0,
+        "stage": "unknown",
     }
 
 
@@ -104,10 +111,72 @@ def test_output_uses_only_bounded_contract_values():
 
     assert set(outcome) == {
         "lifecycle", "quality", "failure_edge", "failure_mode",
-        "fallback_reason", "next_action", "retry_attempt",
+        "fallback_reason", "next_action", "retry_attempt", "stage",
     }
     assert outcome["fallback_reason"] == "a_reason_with_spaces_and_punctuation"
     assert len(outcome["fallback_reason"]) <= 48
     assert outcome["failure_edge"] in FAILURE_EDGES
     assert outcome["failure_mode"] in FAILURE_MODES
     assert outcome["next_action"] in NEXT_ACTIONS
+
+
+# --- ICM stage attribution -------------------------------------------------
+#
+# failure_edge answers "which COMPONENT broke" (model/judge/runtime). stage
+# answers "which INNER-LOOP PHASE were we in". They are different axes and a
+# record needs both: "judge failed" is not actionable until you know it failed
+# at Review rather than at Validate.
+
+
+def test_stage_defaults_to_unknown_when_there_is_no_phase_signal():
+    """An absent signal must read UNKNOWN, never a guess or a clean result."""
+    outcome = normalize_outcome(status="error", error="boom")
+
+    assert outcome["stage"] == "unknown"
+    assert outcome["stage"] in INNER_LOOP_STAGES
+
+
+def test_verification_failure_is_attributed_to_the_validate_stage():
+    outcome = normalize_outcome(
+        status="error",
+        verification={"passed": False, "failures": ["artifact did not parse"]},
+    )
+
+    assert outcome["stage"] == "validate"
+    assert outcome["failure_edge"] == "verifier"
+
+
+def test_review_rejection_is_attributed_to_the_review_stage():
+    outcome = normalize_outcome(
+        status="error",
+        review={"accepted": False, "combined_score": 40},
+    )
+
+    assert outcome["stage"] == "review"
+
+
+def test_an_explicit_stage_wins_over_inference():
+    """A caller that KNOWS the phase must be able to record it."""
+    outcome = normalize_outcome(
+        status="error",
+        review={"accepted": False, "combined_score": 40},
+        stage="implement",
+    )
+
+    assert outcome["stage"] == "implement"
+
+
+def test_an_invalid_stage_is_bounded_to_unknown_not_passed_through():
+    outcome = normalize_outcome(status="error", stage="not-a-real-stage")
+
+    assert outcome["stage"] == "unknown"
+
+
+def test_an_accepted_run_does_not_claim_a_failure_stage():
+    """A clean run reached the end; it must not be labelled with a phase."""
+    outcome = normalize_outcome(
+        status="success",
+        review={"accepted": True, "combined_score": 92},
+    )
+
+    assert outcome["stage"] == "unknown"

@@ -52,6 +52,27 @@ NEXT_ACTIONS = frozenset({
     "no_op",
 })
 
+# The inner loop (docs/sdlc/loops.md:30): Prime -> Plan -> Implement ->
+# Validate -> Review -> PR.
+#
+# This is a DIFFERENT AXIS from FAILURE_EDGES. An edge names the component that
+# broke (model, judge, runtime); a stage names the phase we were in when it
+# broke. A record needs both: "the judge failed" is not actionable until you
+# know whether it failed at Validate or at Review. Collapsing the two would
+# lose the phase, which is exactly the defect this field exists to prevent.
+#
+# "unknown" is a real value, not a null: it means the record cannot say which
+# phase it was in. Reporting unknown as clean is the failure mode to avoid.
+INNER_LOOP_STAGES = frozenset({
+    "prime",
+    "plan",
+    "implement",
+    "validate",
+    "review",
+    "pr",
+    "unknown",
+})
+
 _MAX_REASON_CHARS = 48
 
 
@@ -123,6 +144,7 @@ def normalize_outcome(
     entire: Optional[dict] = None,
     fallback_reason: Any = None,
     retry_attempt: int = 0,
+    stage: Any = None,
 ) -> dict:
     """Return the canonical bounded outcome fields for one observed run.
 
@@ -199,6 +221,19 @@ def normalize_outcome(
     elif lifecycle == "blocked":
         next_action = "human_decision" if reason in {"crew_in_flight", "blocked"} else next_action
 
+    # Which inner-loop phase were we in? Inferred ONLY where an input actually
+    # corresponds to a phase -- a verification dict is the Validate step, a
+    # review verdict is the Review step. Everything else stays "unknown" rather
+    # than being guessed, because a guessed stage is worse than an absent one.
+    phase = _bounded_label(stage)
+    if not phase:
+        if verification and verification.get("passed") is False:
+            phase = "validate"
+        elif _reviewed(review) and review.get("accepted") is False:
+            phase = "review"
+    if phase not in INNER_LOOP_STAGES:
+        phase = "unknown"
+
     # Guard the public contract even if a future mapping is edited incorrectly.
     if edge not in FAILURE_EDGES:
         edge = "unknown" if "unknown" in FAILURE_EDGES else "runtime"
@@ -215,6 +250,7 @@ def normalize_outcome(
         "fallback_reason": reason or None,
         "next_action": next_action,
         "retry_attempt": retry_attempt,
+        "stage": phase,
     }
 
 
@@ -222,5 +258,6 @@ __all__ = [
     "FAILURE_EDGES",
     "FAILURE_MODES",
     "NEXT_ACTIONS",
+    "INNER_LOOP_STAGES",
     "normalize_outcome",
 ]
