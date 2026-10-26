@@ -1,8 +1,14 @@
 # Quality gates checklist
 
-The canonical review checklist for school-core. Referenced by the
-`code-quality-gates` skill and by `config/profiles/student-reviewer/SOUL.md`
-("checklist-driven review"). This is the artifact those two references point at.
+The canonical review checklist for school-core. The `code-quality-gates` skill
+names it — but that skill lives **outside this repo**, at
+`~/.hermes/profiles/lucas/skills/school-core/code-quality-gates/SKILL.md:48`
+(`Canonical artifact: docs/quality-gates-checklist.md`), so the citation is not
+resolvable from a clone. `config/profiles/student-reviewer/SOUL.md:6` promises
+"Apply Fagan Inspection — systematic, checklist-driven review" — a *conceptual*
+reference, **not** a citation of this file. Corrected 2026-10-25: an earlier
+version claimed SOUL.md cited this artifact. It does not, and neither reference
+was read by the reviewer before this file existed.
 
 **How to use it.** A reviewer walks these in order against the diff. A writer walks
 them before claiming "the gates passed". Each item is a *question with a checkable
@@ -93,8 +99,10 @@ rule — an earlier revision of this file omitted it.
       **This is about a claimed DEFECT, not about every changed file.** A docs-only
       or config-only PR needs no test: `scripts/review_gate.py:48-54` (`NO_TEST_NEEDED`)
       exempts `*.md`, `docs/*`, `*.txt`, `*.rst`, `*.yml`, `*.yaml`, `.gitignore`,
-      `*.cfg`, `*.ini`, `*.toml`, `*.lock`, `tests/*`, `test/*`, `*_test.py`,
-      `test_*.py`. Asking for a test on an exempt change contradicts the gate.
+      `.gitattributes`, `LICENSE*`, `CHANGELOG*`, `CODEOWNERS`, `*.cfg`, `*.ini`,
+      `*.toml`, `*.lock`, `tests/*`, `test/*`, `*_test.py`, `test_*.py`. Asking for
+      a test on an exempt change contradicts the gate. (Corrected 2026-10-25: the
+      earlier list omitted `.gitattributes`, `LICENSE*`, `CHANGELOG*`, `CODEOWNERS`.)
 
 ## 3. Tests
 
@@ -228,6 +236,14 @@ itself, both verified against the source:
   mechanical and already enforced by the **required** `review-gate` status check
   (`ci.yml:239-240`; `review_gate.py:147-174`). Re-checking them by hand is noise;
   §5 now lists them as gate-owned and points at what the gate does NOT cover.
+
+A fifth revision corrected two more claims, both surfaced by the luna-whymage review
+of PR #158 and verified against the source:
+- The header claimed `SOUL.md` "referenced" this file. `SOUL.md:6` says
+  "checklist-driven review" — a conceptual reference, not a citation. Only
+  `SKILL.md:48` names the path.
+- §2's `NO_TEST_NEEDED` enumeration was incomplete: it omitted `.gitattributes`,
+  `LICENSE*`, `CHANGELOG*`, and `CODEOWNERS`, all present in `review_gate.py:48-53`.
 
 Sections 6-8 (approval bar, what did not change, output contract) were added from
 a read-based comparison against external review standards — Google's Eng Practices

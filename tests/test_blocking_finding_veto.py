@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.core import director
 from src.core.director import _run_two_judge_review, Severity, BLOCKING_CLASSES
 
 
@@ -49,6 +50,28 @@ def _mock_judges(mock_cls, cto_verdict="PASS", cto_score=90, coo_verdict="PASS",
         _make_judge_result(coo_verdict, coo_score),
     ]
     mock_cls.return_value = mock_reviewer
+
+
+@pytest.fixture(autouse=True)
+def _no_live_model(monkeypatch):
+    """Keep these tests off the network.
+
+    ``_run_two_judge_review`` calls ``_synthesize_judge_narratives`` unless told
+    otherwise, which goes ``_call_model`` -> ``executor.call_model`` ->
+    ``_omniroute_call``: a live POST to ``OMNIROUTE_BASE``
+    (http://localhost:20128/v1). These tests only care about the
+    BLOCKING_CLASSES veto, but when a server is listening on that port and
+    never answers, every test in this file blocks in ``socket.recv_into`` until
+    pytest-timeout kills the session. A killed session prints no summary line,
+    so the run reports "no tests ran" and any consumer parsing "N passed"
+    concludes nothing was verified -- which is how one hermeticity leak made an
+    entire evidence report read FAIL.
+
+    ``tests/test_isolated_reasoning_dispatch.py`` stubs the same seam.
+    """
+    monkeypatch.setattr(
+        director, "call_model", lambda *a, **k: "stubbed judge narrative"
+    )
 
 
 class TestBlockingClassesVeto:

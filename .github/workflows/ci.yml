@@ -74,7 +74,7 @@ jobs:
         # Tracked data/ files must never contain /Users/<name> home paths,
         # repo-root absolute prefixes, or secret indicators. The school-loop
         # checkpoint sanitizes before pushing, but this blocks a direct commit
-        # to main (2026-10-14 audit: 51x /Users/brandonbennett had landed).
+        # to main (2026-10-14 audit: 51x ~ had landed).
         run: python scripts/sanitize_data.py --verify
 
       - name: Cache index-gate Rust build
@@ -261,10 +261,29 @@ jobs:
 
       - name: Gate report (always shown, even on failure)
         if: always()
-        run: python scripts/review_gate.py \
-          --base "origin/${{ github.base_ref }}" \
-          --head "HEAD" \
-          --json || true
+        # Block scalar, NOT a folded plain scalar. A multi-line plain scalar
+        # folds its newlines into spaces, so each trailing "\" became a literal
+        # backslash-plus-space and review_gate.py received one argv token
+        # reading "\ --base origin/main \ --head HEAD \ --json". Measured from
+        # the live log: "error: unrecognized arguments:  --base origin/main
+        # --head HEAD  --json". This step has never produced a report, and
+        # "|| true" alone hid that -- a green step with no artifact is worse
+        # than a red one, because nothing looks wrong.
+        #
+        # So the artifact is asserted, not assumed: an empty file fails the
+        # step. The gate's own findings already fail the step above; this step
+        # only needs to prove it rendered.
+        run: |
+          set -uo pipefail
+          python scripts/review_gate.py \
+            --base "origin/${{ github.base_ref }}" \
+            --head "HEAD" \
+            --json > review-gate.json || true
+          test -s review-gate.json || {
+            echo "::error::review-gate.json is empty — the gate report did not render"
+            exit 1
+          }
+          head -c 2000 review-gate.json
 
   notify:
     # One AgentMail alert per failed push-to-main run — the school's human

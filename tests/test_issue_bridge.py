@@ -2588,7 +2588,12 @@ class TestCrewDispatchPath:
              patch("src.core.repo_reader.cleanup_stale_caches"), \
              patch("issue_bridge.dispatch_crew",
                    side_effect=CrewUnavailableError("fm-spawn missing")) as mock_crew, \
-             patch("src.core.director.run_task", return_value=self._task_ok(403)) as mock_task:
+             patch("src.core.director.run_task", return_value=self._task_ok(403)) as mock_task, \
+             patch("issue_bridge.call_model", return_value=(
+                 '{"score": 85, "verdict": "GOOD", "reasoning": "ok", '
+                 '"gaps": [], "strengths": []}'
+             )), \
+             patch("src.crew.executor.call_model", return_value='{"findings": []}'):
             results = bridge_issues("user/test", crew_enabled=True, store=store)
         assert results[0]["status"] == "success"
         assert results[0]["crew_used"] is False

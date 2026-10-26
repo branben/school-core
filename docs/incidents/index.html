@@ -616,7 +616,7 @@
         <div class="tldr" id="tldr">
           <div class="tldr-label">TL;DR</div>
           <p>
-            The verify_gate.py had a hardcoded path <code class="inline">/Users/brandonbennett/tmp</code> that caused a <code class="inline">PermissionError</code> on Ubuntu CI runners. The test was checking for write access to a local dev directory that doesn't exist in CI.
+            The verify_gate.py had a hardcoded path <code class="inline">~/tmp</code> that caused a <code class="inline">PermissionError</code> on Ubuntu CI runners. The test was checking for write access to a local dev directory that doesn't exist in CI.
           </p>
         </div>
 
@@ -646,7 +646,7 @@
               <span class="tl-dot"></span>
               <span class="tl-time">20:05</span>
               <div class="tl-body">
-                student-ci triages: hardcoded path <code class="inline">/Users/brandonbennett/tmp</code> not present on ubuntu runner.
+                student-ci triages: hardcoded path <code class="inline">~/tmp</code> not present on ubuntu runner.
               </div>
             </div>
 
@@ -671,7 +671,7 @@
 
           <div class="code-panel">
             <span class="path">verify_gate.py</span>
-<div class="diff-line del">-TEMP_DIR = "/Users/brandonbennett/tmp"</div>
+<div class="diff-line del">-TEMP_DIR = "~/tmp"</div>
 <div class="diff-line add">+TEMP_DIR = tempfile.gettempdir()</div>
           </div>
         </section>

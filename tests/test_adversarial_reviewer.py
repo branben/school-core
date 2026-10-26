@@ -482,6 +482,57 @@ class TestAdversarialReviewerCircuitBreaker:
         assert call_count >= 1
         assert result.verdict == Verdict.PASS
 
+    def test_circuit_breaker_double_pass_is_observable(self):
+        """The breaker's outcome must reach the returned result.
+
+        `lens_used` is the only field naming which lenses ran, and it is what
+        `director.py:824` and `teacher.py:319` persist. The breaker branch built
+        a replacement ReviewResult that nothing read, so `(circuit_breaker)` /
+        `(double_pass)` were dead strings and a reader could not tell a
+        breaker-confirmed verdict from a plain one.
+        """
+        def mock_call(*args, **kwargs):
+            return '{"findings": []}'
+
+        reviewer = AdversarialReviewer(call_model_fn=mock_call)
+        result = reviewer.review(
+            output="```python\nclean code\n```",
+            task={"title": "T", "body": "B", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
+            circuit_breaker=True,
+        )
+        assert result.verdict == Verdict.PASS
+        assert result.lens_used.endswith("(double_pass)"), (
+            f"the double-pass outcome is not observable: {result.lens_used!r}"
+        )
+
+    def test_circuit_breaker_with_findings_is_observable(self):
+        """A breaker that confirmed work via the second lens must say so."""
+        call_count = 0
+
+        def mock_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return '{"findings": []}'
+            return (
+                '{"findings": [{"section": "auth", "issue_class": '
+                '"security_vulnerability", "severity": "HIGH", "citation": '
+                '"line 1", "description": "Missing auth check"}]}'
+            )
+
+        reviewer = AdversarialReviewer(call_model_fn=mock_call)
+        result = reviewer.review(
+            output="```python\nsome code\n```",
+            task={"title": "T", "body": "B", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.SECURITY],
+            circuit_breaker=True,
+        )
+        assert result.verdict == Verdict.FAIL
+        assert result.lens_used.endswith("(circuit_breaker)"), (
+            f"the breaker outcome is not observable: {result.lens_used!r}"
+        )
+
     def test_circuit_breaker_both_pass(self):
         """Both lenses return 0 findings — double pass."""
         call_count = 0

@@ -429,6 +429,9 @@ class AdversarialReviewer:
         lens_trace[primary_lens.value] = result
         all_lens_results.append(result)
 
+        # Set when the circuit breaker fires, so the outcome reaches the result.
+        breaker_tag = ""
+
         # Circuit breaker: if PASS with 0 findings, try second lens
         if (
             circuit_breaker
@@ -442,13 +445,11 @@ class AdversarialReviewer:
             all_lens_results.append(second_result)
             if second_result.findings:
                 all_findings.extend(second_result.findings)
-                result = ReviewResult(
-                    verdict=Verdict.FAIL if second_result.findings else Verdict.PASS,
-                    findings=all_findings,
-                    lens_used=f"{primary_lens.value}+{second_lens.value}(circuit_breaker)",
-                    confidence=second_result.confidence,
-                    difficulty=difficulty,
-                )
+                # The verdict is derived from `all_findings` below. What this
+                # branch must contribute is the FACT that the breaker fired --
+                # an earlier revision built a replacement ReviewResult here that
+                # nothing read, so the tag never reached the caller.
+                breaker_tag = "(circuit_breaker)"
             else:
                 # Both lenses agree: PASS with 0 findings — flag as potential sycophancy
                 logger.warning(
@@ -460,7 +461,7 @@ class AdversarialReviewer:
                         "difficulty": difficulty,
                     },
                 )
-                result.lens_used = f"{primary_lens.value}+{second_lens.value}(double_pass)"
+                breaker_tag = "(double_pass)"
 
         elif len(lenses) > 1 and not all_findings:
             # First lens found nothing — try remaining lenses for coverage
@@ -512,7 +513,10 @@ class AdversarialReviewer:
         final_result = ReviewResult(
             verdict=verdict,
             findings=all_findings,
-            lens_used=",".join(l.value for l in lenses),
+            # `breaker_tag` is "" unless the circuit breaker fired, so the plain
+            # case is unchanged. When it did fire, the caller can now tell a
+            # breaker-confirmed verdict from an ordinary one.
+            lens_used=",".join(l.value for l in lenses) + breaker_tag,
             confidence=self._calculate_confidence(all_findings),
             difficulty=difficulty,
             parse_failed=any_lens_parse_failed,

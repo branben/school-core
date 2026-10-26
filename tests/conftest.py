@@ -169,6 +169,70 @@ def disable_live_vault(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_live_model_calls(monkeypatch, request):
+    """Make the live model endpoint unreachable from tests.
+
+    ``executor.OMNIROUTE_BASE`` is hardcoded to ``http://localhost:20128/v1``.
+    Any test that fails to patch the model seam therefore opens a real socket
+    to whatever happens to be listening on that port. Two failure modes, both
+    observed on this repo:
+
+    * No server listening  -> ``URLError`` raised, so the test fails for a
+      reason unrelated to what it asserts.
+    * Server listening but not answering -> the test blocks in
+      ``socket.recv_into`` until ``--timeout`` kills the *whole session*. A
+      killed session prints no summary line, so the run reports "no tests ran"
+      and any consumer parsing "N passed" concludes nothing was verified.
+
+    The second mode is the dangerous one: one unpatched seam makes an entire
+    suite silently unverifiable, and it looks like a formatting bug downstream.
+
+    Raising here converts a hang into an immediate, named failure that says
+    which seam to patch. Ports other than the model endpoint are untouched, so
+    tests that stand up their own local server still work.
+
+    Tests marked ``live`` are exempt: CI runs them in a separate job
+    (``pytest -m live tests/test_orca_execution.py``) whose whole purpose is to
+    touch the real service. Blocking there would turn a genuine integration
+    check into a false failure.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+
+    import socket
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def _port_of(address):
+        try:
+            return address[1]
+        except (TypeError, IndexError, KeyError):
+            return None
+
+    def _refuse(address):
+        return ConnectionRefusedError(
+            f"test opened a live model connection to {address!r}. "
+            "OMNIROUTE_BASE is http://localhost:20128/v1 -- patch the model "
+            "seam instead: issue_bridge.call_model, "
+            "src.crew.executor.call_model, or src.core.director.call_model."
+        )
+
+    def _guarded_connect(self, address, *args, **kwargs):
+        if _port_of(address) == 20128:
+            raise _refuse(address)
+        return real_connect(self, address, *args, **kwargs)
+
+    def _guarded_connect_ex(self, address, *args, **kwargs):
+        if _port_of(address) == 20128:
+            raise _refuse(address)
+        return real_connect_ex(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
+
+
+@pytest.fixture(autouse=True)
 def verify_lens_module_loads():
     """Verify the lenses module loads correctly after the load-order fix.
 

@@ -347,6 +347,70 @@ class TestReviewCycle:
         assert kwargs["lock_timeout"] == 10.0
         assert kwargs["cto_verdict"] == "PASS"
 
+    def test_parse_failed_survives_into_the_bookbag(
+        self, booted_teacher_cto, mock_bookbags, mock_reviewer
+    ):
+        """An unparseable judge must not be recorded as a plain PASS.
+
+        `director.py:782-792` gates the sync path on `parse_failed`
+        (`accepted = ... and not parse_failed`). The teacher is the ASYNC path:
+        it writes `{role}_verdict` into the bookbag, and every bookbag consumer
+        (`school_grader.py:284-286`, `teacher_feedback.py:84-85`) reads that
+        verdict. If the marker is dropped here, a judge that never produced a
+        parseable verdict is recorded as a clean PASS — the same fail-open
+        shape PR #157 fixed, on the path nobody patched.
+        """
+        mock_list, mock_read, mock_update = mock_bookbags
+        bead = "bead-unparseable"
+        mock_list.return_value = [bead]
+        mock_read.return_value = {
+            "bead": bead,
+            "cto_verdict": "",
+            "output": "def hello(): pass",
+            "domain": "python-coding",
+            "difficulty": "easy",
+            "task": "Write hello function",
+        }
+        mock_update.return_value = {"bead": bead, "cto_verdict": "PASS"}
+
+        # The judge crashed: verdict PASS with no findings, unparseable.
+        mock_reviewer.parse_failed = True
+
+        count = booted_teacher_cto.review_cycle()
+        assert count == 1
+
+        args, kwargs = mock_update.call_args
+        assert args[0] == bead
+        # The verdict is still PASS (nothing to report) ...
+        assert kwargs["cto_verdict"] == "PASS"
+        # ... but the record must say it was INCONCLUSIVE.
+        assert kwargs["cto_parse_failed"] is True, (
+            "the inconclusive marker must survive into the bookbag record"
+        )
+
+    def test_a_clean_review_records_parse_failed_false(
+        self, booted_teacher_cto, mock_bookbags, mock_reviewer
+    ):
+        """The marker is always written, so its absence is never ambiguous."""
+        mock_list, mock_read, mock_update = mock_bookbags
+        bead = "bead-clean"
+        mock_list.return_value = [bead]
+        mock_read.return_value = {
+            "bead": bead,
+            "cto_verdict": "",
+            "output": "def hello(): pass",
+            "domain": "python-coding",
+            "difficulty": "easy",
+            "task": "Write hello function",
+        }
+        mock_update.return_value = {"bead": bead, "cto_verdict": "PASS"}
+        mock_reviewer.parse_failed = False
+
+        booted_teacher_cto.review_cycle()
+
+        _, kwargs = mock_update.call_args
+        assert kwargs["cto_parse_failed"] is False
+
     def test_review_failure_records_error(self, booted_teacher_cto, mock_bookbags, mock_reviewer):
         """Review failure should log error and record in episodic history.
 

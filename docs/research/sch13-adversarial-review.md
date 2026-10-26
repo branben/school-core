@@ -1,7 +1,7 @@
 # SCH-13 — Adversarial review of the disposable-VM student-execution seam
 
 Author: phymora (adversarial review specialist). Every claim below was produced by
-running the artifact, not by reading it. Repo: `/Users/brandonbennett/school-core`,
+running the artifact, not by reading it. Repo: `~/school-core`,
 branch `main`, working tree dirty. Substrate under review: local SmolVM developer
 proof (`student_vm_runner.py`, `verifier_vm.py`, `model_relay.py`, their tests,
 `project_verify.yaml`). No hosted substrate is present and none was selected — see

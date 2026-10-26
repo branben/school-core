@@ -10,7 +10,7 @@
 
 75 FirstMate sessions, all titled "Extract sweep constants - sweep_rounds and sweep_vote_margin", were launched between 2026-08-20 and 2026-08-21. All 75 failed. Each one:
 
-1. Launched a FirstMate crewmate in `/Users/brandonbennett` (NOT in a git worktree)
+1. Launched a FirstMate crewmate in `~` (NOT in a git worktree)
 2. Ran `git worktree list` → found only the main checkout
 3. Tried to locate `sound-royale-ny` → could not find it
 4. Stopped after 3 tool calls and 5 messages with no work done
@@ -21,13 +21,13 @@ The crewmates were executing a real task from a real plan (`2026-07-19_churn-gam
 
 ## 2. Root Cause
 
-The crewmates were launched in the **home directory** (`/Users/brandonbennett`), not in a project worktree. The dispatch mechanism did not:
+The crewmates were launched in the **home directory** (`~`), not in a project worktree. The dispatch mechanism did not:
 
 - Create a git worktree for the crew to work in
 - Set the working directory to a location where `sound-royale-ny` is accessible
 - Pass the project path to the crew's context
 
-This is a **dispatch configuration bug**, not a project-finding bug. The project exists at `/Users/brandonbennett/sound-royale-ny` (and its Orca worktree copy at `/Users/brandonbennett/orca/sound-royale-ny/`), but the crewmates were dropped into a directory where the project is not the working tree and `git worktree list` shows no worktrees.
+This is a **dispatch configuration bug**, not a project-finding bug. The project exists at `~/sound-royale-ny` (and its Orca worktree copy at `~/orca/sound-royale-ny/`), but the crewmates were dropped into a directory where the project is not the working tree and `git worktree list` shows no worktrees.
 
 ---
 
@@ -59,7 +59,7 @@ The 75 "Extract sweep constants" sessions were **not** dispatched via `dispatch_
 - Did NOT use `dispatch_crew()`
 - Did NOT create an Orca worktree
 - Did NOT set `project_dir`
-- Were launched with the default working directory (`/Users/brandonbennett`)
+- Were launched with the default working directory (`~`)
 - Had no plan context pointing them at `sound-royale-ny/.hermes/plans/`
 
 The crewmates expected to find the project but had no mechanism to locate it.
@@ -74,7 +74,7 @@ The plan (`2026-07-19_churn-game-rule-constants.md`) lives at:
 sound-royale-ny/.hermes/plans/2026-07-19_churn-game-rule-constants.md
 ```
 
-The crewmate was launched in `/Users/brandonbennett` and likely looked for the plan in:
+The crewmate was launched in `~` and likely looked for the plan in:
 
 ```
 ~/.hermes/plans/2026-07-19_churn-game-rule-constants.md  # WRONG — outside the project
