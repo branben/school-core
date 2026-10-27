@@ -370,6 +370,16 @@ class TestGenerateContextMd:
         for edge in onboard._FAILURE_EDGES:
             assert f"`{edge}`" in text
 
+    def test_carries_vocabulary_collisions(self, tmp_path):
+        # The vocabulary layer must ride inside the generated block so a
+        # regeneration cannot silently drop it (the clobber guarantee).
+        root = make_repo(tmp_path)
+        ev = onboard._collect_evidence(root, info_for(root))
+        text = generate_context_md(info_for(root), ev, utc_now(), "deadbeef")
+        assert "## Vocabulary collisions" in text
+        for term in ("blocked", "stage", "refused", "failed", "status"):
+            assert f"`{term}`" in text
+
 
 class TestGenerateProjectVerify:
     def test_parses_as_yaml_and_declares_every_command(self, tmp_path):

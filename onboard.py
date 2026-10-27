@@ -1238,6 +1238,31 @@ def generate_context_md(info: RepoInfo, ev: Evidence, stamp: str, sha: str) -> s
         lines.append("- Declared dependency repos: none discovered")
     lines.append("")
 
+    lines.append("## Vocabulary collisions (one word, many meanings)")
+    lines.append("")
+    lines.append("These terms mean different — sometimes opposite — things across "
+                 "the **outer** loop (orchestration: dispatch, scheduling, review, "
+                 "scoring) and the **inner** loop (the student execution "
+                 "environment). Before reasoning about \"what failed\" or \"where "
+                 "code runs,\" find the owning `file:line` in this repo for the "
+                 "meaning in play.")
+    lines.append("")
+    lines.append("- **`blocked`** — outer: a crew paused / awaiting a decision "
+                 "(recoverable; preserve the worktree). Inner: the execution "
+                 "sandbox refused an operation as invalid or unsafe. Also a "
+                 "sandbox network mode that is off by design.")
+    lines.append("- **`stage`** — outer: a workflow stage (Prime → Plan → "
+                 "Implement → …). Inner: a timed execution phase of one run.")
+    lines.append("- **`refused`** — a guard or gate rejected an op; the sandbox "
+                 "guard and the PR-publish gate are different owners, not the "
+                 "same refusal.")
+    lines.append("- **`failed`** — outer: a process exited badly. Inner: a "
+                 "reviewer voted to fail or request changes. A process failure is "
+                 "not a verdict; a verdict is not a crash.")
+    lines.append("- **`status`** — one field name with a different value-domain "
+                 "per owner. Never compare a `status` string across owners.")
+    lines.append("")
+
     lines.append("<!-- END ONBOARD-GENERATED -->")
     lines.append("")
     return "\n".join(lines)
