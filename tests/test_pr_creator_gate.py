@@ -14,7 +14,7 @@ guard makes the boundary self-defending for any *direct* caller:
 (``pr_creator.py:720``), or a future worker.
 
 Scope matches the bridge guard exactly — CRITICAL and HIGH both refuse
-(``issue_bridge.py:2698``, ``conductor._persist_acceptance``). MEDIUM/LOW stay
+(``issue_bridge.py:2757``, ``conductor._persist_acceptance``). MEDIUM/LOW stay
 advisory.
 
 Test roles, stated honestly:

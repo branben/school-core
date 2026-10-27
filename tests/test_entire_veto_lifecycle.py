@@ -2,13 +2,14 @@
 
 When `entire review` reports a CRITICAL finding, the bridge already injects it
 into ``adversarial_review`` and sets ``adversarial_review["verdict"] = "FAIL"``
-(issue_bridge.py:2703-2731). That verdict is currently a dead letter: nothing
-between the veto and publication reads it, so ``create_pr_for_issue`` is
-still called and the PR is still opened.
+(issue_bridge.py:2757-2772). The lifecycle guard at issue_bridge.py:2896 is what
+makes that verdict bite: it blocks grading, scoring, and publication. Before
+that guard existed the verdict was a dead letter and ``create_pr_for_issue``
+was still called.
 
 These tests pin the intended contract: a CRITICAL pre-merge-sensor finding
 must block grading, scoring, and publication — the same lifecycle the
-verify-failure guards at issue_bridge.py:2567 and :2766 already enforce.
+verify-failure guard at issue_bridge.py:2827 already enforces.
 
 Measured 2026-10-22: RED — the veto fires but the PR is still created.
 """

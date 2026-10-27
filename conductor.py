@@ -225,7 +225,8 @@ def _persist_acceptance(bead: str, cto_v: str, coo_v: str, repo: str = "__global
     except (TypeError, ValueError):
         cto_score = coo_score = 0.0
     findings = (bag.get("cto_findings", []) or []) + (bag.get("coo_findings", []) or [])
-    # Entire gate: CRITICAL findings from entire review also veto acceptance
+    # Entire gate: CRITICAL and HIGH findings from entire review also veto
+    # acceptance (matches the bridge guard at issue_bridge.py:2757).
     entire_findings = bag.get("entire_findings") or []
     if entire_findings and bag.get("entire_status") not in ("skipped", "error", None):
         findings = findings + entire_findings

@@ -492,7 +492,7 @@ def create_pr_for_issue(
     # (pr_creator.py:720), or a future worker.
     #
     # Scope matches the bridge guard exactly — CRITICAL and HIGH both refuse
-    # (issue_bridge.py:2698, conductor._persist_acceptance). MEDIUM/LOW stay
+    # (issue_bridge.py:2757, conductor._persist_acceptance). MEDIUM/LOW stay
     # advisory.
     #
     # Returns None (the function's existing "no PR" value, pr_creator.py:447)

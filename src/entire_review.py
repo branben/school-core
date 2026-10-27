@@ -190,7 +190,7 @@ def _parse_json_findings(content: str) -> list[tuple[str, int | None, str, str]]
                 # and the task asked only for "real, actionable defects".
                 # Blocking (CRITICAL) until a human says otherwise; an explicit
                 # severity field overrides this default. This is the label the
-                # docstring promises and the gate at issue_bridge.py:2700 gates
+                # docstring promises and the gate at issue_bridge.py:2757 gates
                 # on — the previous HIGH default made the sensor inert.
                 severity = "CRITICAL"
             out.append((file, line_no, severity, message))
