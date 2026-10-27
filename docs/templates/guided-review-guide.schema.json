@@ -1,72 +1,89 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "school-core:plannotator-guide/guide.json",
-  "$comment": "guide.json shape for the plannotator-guide (Guided Review) authoring skill. Calibration: this is a 'guide, not review' artifact. Each chapter ORIENTS the reviewer — it gives a reading order and the why for a group of changed files — it does NOT critique the diff, restate the whole PR, or assign verdicts. The schema enforces structure (id/title/summary/files), not opinion. Cross-section uniqueness limitation: pure JSON Schema (draft-07) cannot express 'a file must appear in EXACTLY ONE chapter across the whole document' — uniqueness is only expressible per-item within a single array via uniqueItems. A naive oneOf/not pattern over per-chapter anyOf blocks fails on files appearing in zero chapters, and anyOf-with-not diverges on arrays that duplicate pairwise since 'not anyOf' cannot be made to require at least one match with strict exclusivity across unboundedly many chapters. This schema therefore (1) enforces uniqueItems per chapter.files (rejects a file listed twice in the SAME chapter), and (2) documents the hard 'exactly one chapter' coverage rule here for the validator layer (the plannotator-guide tooling enforces cross-chapter uniqueness at load time; school-core's tests duplicate the rule in a structural checker). If a pure-schema-only consumer needs the cross-chapter guarantee today, it must walk chapters[] itself.",
+  "$comment": "guide.json shape for the plannotator Guided Review. THIS SCHEMA IS DERIVED FROM THE TOOL, NOT INVENTED. Its required keys were read from `plannotator guide export --help`: { title, intent, sections[{ title, overview, diffs[{ file, summary }] }], unplacedFiles?, review?{ gitRef, base }, source?, generator? }. The previous version of this file described a different shape ({ schema, title, summary, chapters[{ id, title, summary, files[{ path, why }] }] }) that the installed tool rejects outright with `intent must be a non-empty string` and `sections must be a non-empty array` -- while its 11 unit tests passed, because they validated the hand-written schema instead of the artifact. Do not re-derive this shape from memory; re-read the CLI help, and keep tests/test_guide_schema.py's real-export test in place so the contract cannot drift again. CALIBRATION: this is a 'guide, not review' artifact. Each section ORIENTS the reviewer -- it gives a reading order and the why for a group of changed files -- it does NOT critique the diff, restate the whole PR, or assign verdicts. The schema enforces structure (title/overview/diffs), not opinion. CROSS-SECTION RULES -- MEASURED 2026-10-26 BY RUNNING THE INSTALLED BINARY BOTH WAYS, not read from help text: `sections` is a non-empty array of 1..6 (0 rejected as 'sections must be a non-empty array'; 7 rejected); each section's `diffs` MAY be empty; `unplacedFiles` is OPTIONAL and MAY name a file that is also in a section, but every path it names must still appear in the --patch -- the tool rejects \"unplacedFiles not in the patch: X\"; a changed file may appear in NEITHER a section nor unplacedFiles without error. The ONLY cross-section constraint the tool enforces is that a file appear in AT MOST ONE section -- a file placed twice is rejected ('src/a.py is placed twice (sections[0] and sections[1]); a file belongs to one section.'). Separately, every file named in `diffs` must appear in the --patch being exported against, or the export is rejected naming the file. Do not re-derive this from memory; re-run tests/test_guide_schema.py, which executes the real binary.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema", "title", "summary", "chapters"],
+  "required": ["title", "intent", "sections"],
   "properties": {
-    "schema": {
-      "const": "plannotator-guide/1",
-      "description": "Schema ref; MUST equal the current guide.json shape version."
-    },
     "title": {
       "type": "string",
       "minLength": 1,
       "description": "One-line human title for the review, e.g. 'Guided review: ticket 1234'."
     },
-    "summary": {
+    "intent": {
       "type": "string",
       "minLength": 1,
-      "description": "PR-level summary a reviewer reads before starting the first chapter."
+      "description": "Why this guide exists: what the reviewer should be able to judge after reading it. Required by the tool; an empty string is rejected."
     },
-    "chapters": {
+    "sections": {
       "type": "array",
       "minItems": 1,
-      "description": "Ordered reading path through the diff. Each changed file appears in exactly one chapter (hard coverage rule; see $comment).",
+      "maxItems": 6,
+      "description": "Ordered reading path through the diff. Each changed file should appear in exactly one section (hard coverage rule enforced by the test layer; see $comment).",
       "items": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["id", "title", "summary", "files"],
+        "required": ["title", "overview", "diffs"],
         "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Readable chapter id, unique within this guide. ORIENTS; never critiques."
-          },
           "title": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Readable section title. ORIENTS; never critiques."
           },
-          "summary": {
+          "overview": {
             "type": "string",
             "minLength": 1,
-            "description": "Orientation text: what the reviewer should be looking at in this chapter and why it reads the way it does."
+            "description": "Orientation text: what the reviewer should be looking at in this section and why it reads the way it does."
           },
-          "files": {
+          "diffs": {
             "type": "array",
-            "minItems": 1,
             "uniqueItems": true,
+            "description": "The changed files in this section, each with the reason it belongs here.",
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["path", "why"],
+              "required": ["file", "summary"],
               "properties": {
-                "path": {
+                "file": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Changed file path, relative to the repo root, matching the diff exactly."
+                  "description": "Changed file path, relative to the repo root, matching the diff exactly. The tool rejects a guide naming a file absent from --patch."
                 },
-                "why": {
+                "summary": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Why this file is grouped into this chapter (orientation, not critique)."
+                  "description": "Why this file is grouped into this section (orientation, not critique)."
                 }
               }
             }
           }
         }
       }
+    },
+    "unplacedFiles": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Changed files the author deliberately left out of the reading path."
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "gitRef": {"type": "string", "description": "Ref the guide describes."},
+        "base": {"type": "string", "description": "Base the diff was taken against."}
+      },
+      "description": "Optional explicit diff coordinates. Omit to let the tool read provenance from git in the current directory."
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional provenance override (repo, branch, head) when git is not available at export time."
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional provenance about whatever produced the guide (name, version)."
     }
   }
 }

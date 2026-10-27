@@ -7,8 +7,12 @@ so the gate is deterministic, cheap, and cannot be rate-limited.
 
 Checks (all must pass):
   1. no secrets in the diff (high-signal patterns only, on ADDED lines)
-  2. changed Python source has a corresponding changed test, or the PR
-     touches only tests/docs/config (the "is this tested?" question)
+  2. every changed Python source file is named by at least one test in the
+     repo -- NOT merely "a test file changed somewhere in this PR", which is
+     what let three real defects through: a successful bot call returned as
+     an MCP error, a parse_failed flag that was permanently false, and a test
+     that left 11 scratch issues in the real database. Each of those PRs did
+     change a test file; none exercised the broken path.
   3. no VCS / editor / build junk in the changed-file list
   4. changed files carry no trailing whitespace on added lines
 
@@ -27,6 +31,7 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 # Patterns chosen for low false-positive rate: these are shapes that are
 # almost always a committed credential. Generic "password" matches were
@@ -120,6 +125,35 @@ def is_test(path: str) -> bool:
     return name.startswith("test_") or name.endswith("_test.py")
 
 
+def _test_source_blob() -> str:
+    """Concatenated text of every test file, for module-name lookup.
+
+    Deliberately a plain substring scan: the only question is "does some test
+    name this module". An import-graph parser would add a dependency and a
+    new failure mode without adding signal.
+    """
+    # Resolve from the repo BEING GATED, not from this script's location.
+    # The gate is exercised against fixture repos in tests/, and reading this
+    # repo's own tests/ there made a fixture diff pass that should have failed
+    # (the fixture's module name appeared as a substring of real test names).
+    try:
+        root = Path(git("rev-parse", "--show-toplevel").strip()) / "tests"
+    except Exception:
+        return ""
+    if not root.is_dir():
+        return ""
+    chunks: list[str] = []
+    for p in sorted(root.rglob("*.py")):
+        # The filename is evidence too: by convention tests/test_module.py
+        # covers module.py even when the file never spells the name out.
+        chunks.append(p.name)
+        try:
+            chunks.append(p.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(chunks)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="origin/main")
@@ -171,19 +205,39 @@ def main() -> int:
             failures.append({"check": "whitespace", "file": path,
                              "detail": "added line has trailing whitespace"})
 
-    # 4. changed source without a changed test
-    if files and not any(is_test(f) for f in files):
-        src = [f for f in files
-               if f.endswith(SRC_SUFFIXES)
-               and not is_test(f)
-               and not any(fnmatch.fnmatch(f, pat) for pat in NO_TEST_NEEDED)]
-        if src:
+    # 4. every changed source file must be NAMED by a test.
+    #
+    # The previous version required only that some test file changed anywhere
+    # in the PR. Three real defects passed that gate: a successful bot call
+    # returned as an MCP error, a parse_failed flag that was permanently
+    # false, and a test that left 11 scratch issues in the real database.
+    # Each PR did change a test file -- just not one that exercised the
+    # broken path. "A test changed" is not "this code is tested", and a gate
+    # that cannot tell the difference is a checklist, not a verification.
+    src = [f for f in files
+           if f.endswith(SRC_SUFFIXES)
+           and not is_test(f)
+           and not any(fnmatch.fnmatch(f, pat) for pat in NO_TEST_NEEDED)]
+    if src:
+        blob = _test_source_blob()
+        if not blob:
+            # Fail closed: a missing tests/ tree must never read as "clean".
             failures.append({
                 "check": "untested",
-                "file": ", ".join(src[:5]),
-                "detail": (f"{len(src)} source file(s) changed with no test "
-                           "changed in the same PR"),
+                "file": "tests/",
+                "detail": ("no test tree found; the gate cannot verify that "
+                           "changed source is covered"),
             })
+        else:
+            for f in src:
+                module = f.rsplit("/", 1)[-1][:-3]
+                if module not in blob:
+                    failures.append({
+                        "check": "untested",
+                        "file": f,
+                        "detail": (f"no test names module {module!r}: changed "
+                                   "source with no covering test"),
+                    })
 
     if args.json:
         print(json.dumps({

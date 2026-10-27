@@ -318,6 +318,16 @@ class TeacherWorktree:
                     f"{self.role}_confidence": result.confidence,
                     f"{self.role}_lens": result.lens_used,
                     f"{self.role}_reviewed_at": datetime.now(timezone.utc).isoformat(),
+                    # The judge crashed / returned an unparseable verdict.
+                    # `director.py` gates the SYNC acceptance path on
+                    # `parse_failed` (`accepted = ... and not parse_failed`).
+                    # This is the ASYNC path: without the marker here, a bookbag
+                    # consumer reads `{role}_verdict == "PASS"` from a judge that
+                    # never produced a parseable verdict and cannot tell the
+                    # difference. Always written, so absence is never ambiguous.
+                    f"{self.role}_parse_failed": bool(
+                        getattr(result, "parse_failed", False)
+                    ),
                 }
                 if diagnosis is not None:
                     update_fields[f"{self.role}_diagnosis"] = diagnosis

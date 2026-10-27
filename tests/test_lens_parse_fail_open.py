@@ -107,3 +107,109 @@ class TestParseFailureIsNotAnApproval:
         )
         assert len(result.findings) == 1
         assert getattr(result, "parse_failed", False) is False
+
+
+class TestLensCrashIsNotAnApproval:
+    """A lens that RAISED must not count as an approving vote.
+
+    The tests above cover output the parser cannot read. This covers the other
+    branch: the lens threw. `review()`'s per-lens `except Exception` returns
+    ReviewResult(verdict=PASS, findings=[], confidence=0.0) with parse_failed
+    left at its default False -- so director.py:792 (`accepted = cto PASS and
+    coo PASS and ... and not parse_failed`) counts a CRASHED lens as a PASS vote
+    for work nobody reviewed. The class docstring at
+    adversarial_reviewer.py:148-153 states the contract ("INCONCLUSIVE, not an
+    approval"); this branch broke it.
+    """
+
+    def test_a_raising_lens_is_marked_inconclusive(self):
+        def boom(*a, **kw):
+            raise RuntimeError("judge model exploded")
+
+        r = AdversarialReviewer(call_model_fn=boom)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS],
+        )
+        assert result.parse_failed is True, (
+            "a lens that raised returned an unlabeled PASS -- the acceptance "
+            "gate counts it as an approving vote"
+        )
+
+
+    def test_a_crash_survives_a_second_lens_finding(self, monkeypatch):
+        """A crashed primary lens must stay INCONCLUSIVE when a second lens finds work.
+
+        A crashed lens returns PASS with no findings, which is the condition that
+        triggers the circuit-breaker branch. That branch also builds a replacement
+        ReviewResult at :401 -- but the replacement is DEAD CODE: `result` is never
+        read after :392, and `final_result` (:468) is built fresh from
+        `all_findings`, `",".join(l.value for l in lenses)` and the aggregate
+        marker. So the marker's survival does not depend on that rebuild; it
+        depends on the aggregate deriving from the per-lens results.
+
+        This asserts the OBSERVABLE contract rather than a branch with no effect on
+        the return value. (The dead rebuild was removed and the breaker's outcome
+        is now carried on `lens_used`, so `lens_used.endswith("(circuit_breaker)")`
+        does hold — see `test_circuit_breaker_with_findings_is_observable` in
+        `test_adversarial_reviewer.py`. The marker's survival here still does NOT
+        depend on that rebuild: it depends on the aggregate deriving from the
+        per-lens results.)
+        """
+        monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")  # one attempt, no backoff
+
+        calls = []
+
+        def boom_then_find(prompt, system_prompt=None, **kw):
+            calls.append(system_prompt or "")
+            if len(calls) == 1:
+                raise RuntimeError("primary lens exploded")
+            return (
+                '{"findings": [{"severity": "HIGH", "description": "unbounded loop",'
+                ' "citation": "foo.py:12", "issue_class": "bug"}], "verdict": "FAIL"}'
+            )
+
+        r = AdversarialReviewer(call_model_fn=boom_then_find)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.COMPLETENESS],
+            circuit_breaker=True,
+        )
+        assert result.findings, "the second lens's finding was dropped"
+        assert result.parse_failed is True, (
+            "a crashed lens was folded into a review that reported findings, so "
+            "director.py:792 counted the crash as an approving vote"
+        )
+
+    def test_a_repeated_lens_does_not_hide_an_earlier_crash(self, monkeypatch):
+        """A duplicated lens must not erase an earlier attempt's crash marker.
+
+        `lens_trace` is keyed by lens VALUE, so a caller passing the same lens
+        twice overwrites the first attempt: a crashed run is replaced by a clean
+        one and the marker disappears. `select_lenses` returns its `override`
+        verbatim, so this is reachable through the public `review(lens_types=...)`
+        API. The aggregate therefore derives the marker from an ordered LIST of
+        every per-lens result, not from the keyed trace.
+        """
+        monkeypatch.setenv("LENS_TRANSPORT_RETRIES", "0")
+
+        calls = []
+
+        def boom_then_find(prompt, system_prompt=None, **kw):
+            calls.append(system_prompt or "")
+            if len(calls) == 1:
+                raise RuntimeError("first attempt at this lens exploded")
+            return '{"findings": [], "verdict": "PASS"}'
+
+        r = AdversarialReviewer(call_model_fn=boom_then_find)
+        result = r.review(
+            output="```python\ndef f():\n    return 1\n```\n",
+            task={"title": "t", "body": "b", "domain": "code-implementation"},
+            lens_types=[LensType.CORRECTNESS, LensType.CORRECTNESS],  # same lens twice
+        )
+        assert result.parse_failed is True, (
+            "a repeated lens overwrote the earlier crash in the trace, so the "
+            "aggregate reported a clean review of a lens that never ran"
+        )

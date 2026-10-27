@@ -81,6 +81,12 @@ def build_teacher_evidence(
         "domain": _bounded_text(domain, 80),
         "difficulty": _bounded_text(difficulty, 24),
         "accepted": accepted,
+        # A judge that never produced a parseable verdict is INCONCLUSIVE, not
+        # a pass. Carried through so a downstream reader can tell the two apart
+        # instead of seeing `cto_verdict: "PASS"` from a crashed judge.
+        "parse_failed": bool(
+            review.get("cto_parse_failed") or review.get("coo_parse_failed")
+        ),
         "cto_verdict": _bounded_text(review.get("cto_verdict"), 16),
         "coo_verdict": _bounded_text(review.get("coo_verdict"), 16),
         "cto_score": review.get("cto_score", 0),

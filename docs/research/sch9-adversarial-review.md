@@ -1,7 +1,7 @@
 # SCH-9 — Adversarial review of the golden-path premises
 
 Author: phymora (adversarial review specialist). Every claim below was produced by
-running the artifact, not by reading it. Repo: `/Users/brandonbennett/school-core`,
+running the artifact, not by reading it. Repo: `~/school-core`,
 `origin/main` 455c9ae (working tree dirty), target repo `branben/sound-royale-ny`.
 
 ## Intent (restated)
