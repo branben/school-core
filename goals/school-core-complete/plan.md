@@ -42,7 +42,7 @@ These current-code observations are **read-level**. No tests or full-pipeline ex
 
 - **2026-08-12:** `docs/plans/2026-08-12-001-persona-tool-kanban-learning-loop-audit.md` records G1–G5 as implemented/test-backed, while noting role-scoped routing, deterministic rather than fresh-checkout context proof, and remaining FirstMate/live-proof concerns. Treat it as historical evidence, not a current inventory.
 - **2026-08-15:** `bd prime` memory records a live FirstMate → Orca → Hermes smoke with status/report identity and `teardown_ok=true`. It explicitly bypassed routing, evidence join, Entire, and teacher review. This is lifecycle evidence, not end-to-end completion evidence.
-- **2026-08-16:** `docs/session-2026-08-16-walkthrough.md` and `docs/open-items-2026-08-16.md` record fixes and outstanding runner-side concurrency proof. Concurrency is not a prerequisite for this goal; do not raise it before the single-student contract and VM boundary are proven.
+- **2026-08-16:** `docs/archive/session-2026-08-16-walkthrough.md` and `docs/archive/open-items-2026-08-16.md` record fixes and outstanding runner-side concurrency proof. Concurrency is not a prerequisite for this goal; do not raise it before the single-student contract and VM boundary are proven.
 - **2026-09-24:** `data/recovery/smoke-evidence-check/report.json` records a successful disposable-target candidate → declared checks → identity validation → journal/evidence smoke. It does not test GitHub issue intake, VM execution, teacher review, or PR creation.
 - **2026-09-29:** `data/recovery/restore-report.json` confirms Beads, local trajectories, and evidence are readable, while restore is blocked by missing local service/credential configuration. This is not a clean hosted restore/pilot pass.
 
