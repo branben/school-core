@@ -366,3 +366,52 @@ def test_board_cache_step_uses_module_invocation():
     assert not any(
         re.search(r"python[\d.]*\s+src/tools/populate_board_cache\.py", r) for r in runs
     ), "a step still invokes populate_board_cache.py by path"
+
+
+# --- reorg invariant: inline `python -c` scripts must not import a module the
+# --- reorg moved under src/ (a flat import resolves on NEITHER checkout) ---
+
+_INLINE_FLAT_IMPORT = re.compile(r"^\s*from\s+([A-Za-z_][\w]*)\s+import\s+", re.M)
+
+
+def _inline_flat_imports() -> dict[str, set[str]]:
+    """Map each workflow file to top-level modules its inline `python -c` blocks import.
+
+    The by-path guards above cannot see these: they scan `.py` files that a step
+    invokes, and an inline `-c` string has no file to scan.
+    """
+    found: dict[str, set[str]] = {}
+    for wf in sorted((Path(__file__).parents[1] / ".github" / "workflows").glob("*.y*ml")):
+        doc = yaml.safe_load(wf.read_text(encoding="utf-8")) or {}
+        mods: set[str] = set()
+        for job in doc.get("jobs", {}).values():
+            for step in job.get("steps", []):
+                run = step.get("run")
+                if not isinstance(run, str) or "python" not in run:
+                    continue
+                mods |= {m.group(1) for m in _INLINE_FLAT_IMPORT.finditer(run)}
+        if mods:
+            found[wf.name] = mods
+    return found
+
+
+def test_inline_python_c_imports_resolve_on_the_checked_out_tree():
+    """An inline `python -c` block runs on whatever tree its step checked out.
+
+    The publish-board step resets to `origin/board-publish` (school-loop.yml:628),
+    so a flat import of a module the reorg moved under `src/` resolves on neither
+    the stale branch nor the current one — `ModuleNotFoundError: No module named
+    'board'` at school-loop.yml:642, red on every publish-board run.
+    """
+    root = Path(__file__).parents[1]
+    moved: set[str] = set()
+    for wf_name, mods in _inline_flat_imports().items():
+        for mod in sorted(mods):
+            if (root / f"{mod}.py").is_file() or (root / mod).is_dir():
+                continue  # still a top-level module/package — fine
+            if list((root / "src").rglob(f"{mod}.py")):
+                moved.add(f"{wf_name}: `from {mod} import ...` (module now lives under src/)")
+    assert not moved, (
+        "inline `python -c` scripts import a module the reorg moved under src/ "
+        "(repoint to its `src.` path): " + "; ".join(sorted(moved))
+    )

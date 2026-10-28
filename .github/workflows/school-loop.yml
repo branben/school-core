@@ -639,7 +639,7 @@ jobs:
           python -c "
           import json
           from pathlib import Path
-          from board import build_board_html
+          from src.bridge.board import build_board_html
           def load(ref):
               try: return json.loads(Path(ref).read_text() or '[]')
               except Exception: return []
