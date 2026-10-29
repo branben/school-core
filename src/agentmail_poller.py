@@ -36,6 +36,8 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -229,6 +231,9 @@ def _execute_approval(
 
     repo = Path(repo_root)
     if cmd == "reject":
+        if reply["from"] not in allowed_approvers:
+            return (f"❌ REJECT blocked for {bead}: sender {reply['from']!r} "
+                    f"is not allowlisted; no write performed")
         # Write rejection note to bookbag + unblock kanban
         try:
             note = reply.get("note", "")
@@ -248,6 +253,9 @@ def _execute_approval(
             return f"⚠ REJECT processing error for {bead}: {e}"
 
     elif cmd == "fix":
+        if reply["from"] not in allowed_approvers:
+            return (f"❌ FIX blocked for {bead}: sender {reply['from']!r} "
+                    f"is not allowlisted; no write performed")
         # Write fix notes to bookbag, re-dispatch student-rewriter
         note = reply.get("note", "")
         try:
@@ -267,6 +275,43 @@ def _execute_approval(
     return f"⚠ Unknown command: {cmd} for {bead}"
 
 
+# ── Best-effort Slack activity feed ──────────────────────────────────────────
+# Records every human command the poller processes (sender · command · bead ·
+# outcome) to a Slack channel, so an operator can verify/check who did what.
+# Fail-OPEN: a feed error (missing token/channel, network) is logged and never
+# aborts command processing — observability must not become an availability fault.
+
+def post_activity(reply: dict, outcome: str) -> None:
+    """Post a one-line record of an inbound command to Slack. Never raises."""
+    token = os.environ.get("SCHOOL_CORE_SLACK_TOKEN", "") or ""
+    channel = os.environ.get("SCHOOL_CORE_SLACK_CHANNEL", "") or ""
+    if not token or not channel:
+        return  # feed disabled — nothing to do
+    text = (
+        f":email: *{reply.get('command', '?')}* on bead "
+        f"`{reply.get('bead', '?')}` by {reply.get('from', '?')}\n{outcome}"
+    )
+    data = json.dumps({"channel": channel, "text": text}).encode()
+    request = urllib.request.Request(
+        "https://slack.com/api/chat.postMessage",
+        data=data,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        urllib.request.urlopen(request, timeout=5)
+    except Exception as exc:  # noqa: BLE001 — feed must never break processing
+        logger.warning("Slack activity feed post failed: %s", exc)
+
+
+def _load_allowed_approvers() -> tuple[str, ...]:
+    """Parse SCHOOL_CORE_ALLOWED_APPROVERS (comma-separated) into a tuple.
+
+    Empty → an empty tuple, which blocks every sender (fail-closed).
+    """
+    raw = os.environ.get("SCHOOL_CORE_ALLOWED_APPROVERS", "")
+    return tuple(a.strip() for a in raw.split(",") if a.strip())
+
+
 def main():
     """Single-run poller: check for replies, process them, exit."""
     configure_logging()
@@ -284,10 +329,12 @@ def main():
         logger.info("no unread [school] replies")
         return
 
+    allowed_approvers = _load_allowed_approvers()
     for reply in replies:
         logger.info("processing: %s -> %s", reply["command"], reply["bead"])
-        msg = _execute_approval(reply, repo_root)
+        msg = _execute_approval(reply, repo_root, allowed_approvers=allowed_approvers)
         logger.info("%s", msg)
+        post_activity(reply, msg)
 
         # Mark the thread processed (correct AgentMail label shape) so we
         # don't reprocess it on the next tick.
