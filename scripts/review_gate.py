@@ -15,6 +15,10 @@ Checks (all must pass):
      change a test file; none exercised the broken path.
   3. no VCS / editor / build junk in the changed-file list
   4. changed files carry no trailing whitespace on added lines
+  5. source.json (if present in the PR) carries the inner-loop chain-of-custody
+     block — bead, spec, decisions, artifacts (four prior inner-loop files),
+     and spec_acceptance. Every cited artifact must exist in the PR diff or
+     base tree. Exit non-zero with `SOURCE-BLOCK MISSING — <which field>`.
 
 Exit 0 = pass. Exit 1 = fail, with every failure printed (never the
 first one only -- a partial report hides the rest of the work).
@@ -154,6 +158,57 @@ def _test_source_blob() -> str:
     return "\n".join(chunks)
 
 
+def _load_json(base: str, head: str, path: str) -> dict:
+    """Return the parsed JSON of `path` at `head`, or from `base` if not changed."""
+    # Try HEAD first (the version being gated), then base for pre-existing files.
+    for ref in (head, base):
+        try:
+            blob = git("show", f"{ref}:{path}")
+        except SystemExit:
+            continue
+        try:
+            return json.loads(blob)
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return {}
+
+
+def _check_source_block(base: str, head: str, files: list[str]) -> list[dict]:
+    """Verify the PR's source.json sidecar carries the complete inner-loop chain.
+
+    This check only fires when source.json is in the changed files. A PR that
+    does not touch the REVIEW artifact is not affected.
+    Returns a list of failures (empty = pass).
+    """
+    source_path = next((f for f in files if f.endswith("source.json")), None)
+    if not source_path:
+        return []
+
+    source = _load_json(base, head, source_path)
+    if not isinstance(source, dict):
+        return [{"check": "source-block", "file": source_path,
+                 "detail": "SOURCE-BLOCK MISSING — source.json is not a JSON object"}]
+
+    missing = [k for k in ("bead", "spec", "decisions", "artifacts", "spec_acceptance")
+               if not source.get(k) or (isinstance(source[k], list) and not source[k])]
+    if missing:
+        return [{"check": "source-block", "file": source_path,
+                 "detail": f"SOURCE-BLOCK MISSING — required field(s) empty: {', '.join(missing)}"}]
+
+    # Every cited artifact must exist in the PR diff or already in the base tree.
+    try:
+        tree = git("ls-tree", "-r", "--name-only", head).splitlines()
+    except SystemExit:
+        tree = []
+    reachable = set(tree) | set(files)
+    absent = [a for a in source["artifacts"] if a not in reachable]
+    if absent:
+        return [{"check": "source-block", "file": source_path,
+                 "detail": f"SOURCE-BLOCK MISSING — cited artifact(s) not found in PR or base: {', '.join(absent)}"}]
+
+    return []
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="origin/main")
@@ -238,6 +293,9 @@ def main() -> int:
                         "detail": (f"no test names module {module!r}: changed "
                                    "source with no covering test"),
                     })
+
+    # 5. guide.json source-block linkage (inner-loop chain of custody).
+    failures.extend(_check_source_block(args.base, args.head, files))
 
     if args.json:
         print(json.dumps({
