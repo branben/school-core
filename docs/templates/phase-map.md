@@ -53,12 +53,12 @@ moves the reader's judgment, sharing one CSS register.
 
 | Phase | Template | Tier | Skill pattern | Canonical source |
 |---|---|---|---|---|
-| Epic | `epic-timeline.html` | 1/2 | Timeline view (shipped / slipped / blockers) | `.md` in git | local / tot |
+| Epic | `epic-timeline.html` | 1/2 | Timeline view (shipped / slipped / blockers) | `.md` in git |
 | Pre-PRD exploration | `exploration-wireframe.html` | 1 | `html-wireframe` (2-3 directions, grayscale) | none |
+| PRD | `prd-artboard.html` | 1/2 | Artboard view (demo → pitch → objections → done-means) | `.md` in git |
 | PRD alternatives (GF/BF) | `prd-alternatives.html` | 1 | `html-wireframe` (side-by-side decision) | none |
-| PRD | `prd-pitch.html` | 3 | pitch-doc (demo → pitch → objections) | `.md` in git |
-| Ticket | `ticket-risk-map.html` | 1/2 | risk-map view over beads data | beads (data) |
-| SPEC | `spec-implementation-plan.html` | 3 | `html-plan` | `.md` in git |
+| SPEC | `spec-implementation-plan.html` | 1/2 | Milestone timeline + data flow + mockups + risks | `.md` in git |
+| Ticket | `ticket-triage-board.html` | 1/2 | Triage board (now/next/later/cut) | beads (data) |
 | Prime | `prime-module-map.html` | 2 | `html-diagram` (SVG boxes/arrows) | repo data (generator) |
 | Plan | `plan-tweakable.html` | 1/3 | `html-plan` (milestones + data-flow + risks) | `.md` (or ephemeral) |
 | Validate | `validate-prototype.html` | 1 | `html-prototype` (click-through + boundary) | none |

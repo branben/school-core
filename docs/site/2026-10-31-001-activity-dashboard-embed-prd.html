@@ -1,163 +1,464 @@
 <!DOCTYPE html>
+<!--
+  Tier-1/2 PRD template — product requirements + visual design exploration.
+  Style source: Tariq html-effectiveness/02-exploration-visual-designs
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE: docs/plans/...-prd.md (diffable, reviewable).
+  This .html is a VIEW that adds the spatial dimension: artboard grid,
+  segmented controls, stage variants, and rationale text. Keep the .md
+  authoritative; regenerate the render when it changes.
+
+  Form contract:
+  - demo / pitch / objections / done-means
+  - artboard grid for visual designs
+  - segmented tabs for variants
+  - rationale text for each design
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="source" content="docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md (canonical .md in git)">
-<meta name="generated-from" content="docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md (render)">
-<title>PRD · Activity dashboard: make the HTML actually self-contained</title>
+<meta name="source" content="docs/plans/...-prd.md (canonical .md in git)">
+<meta name="generated-from" content="docs/plans/...-prd.md (render)">
+<title>PRD · [initiative name]</title>
 <style>
-  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
-        --clay:#D97757;--olive:#788C5D;--blue:#5b8def;--amber:#c7863a;--red:#b4553a;}
-  *{box-sizing:border-box;margin:0}
-  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
-       max-width:54rem;margin:0 auto;font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
-  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
-  h1{font-family:Georgia,serif;font-weight:500;font-size:clamp(28px,5vw,46px);line-height:1.12;letter-spacing:-.016em;margin:0 0 .5rem}
-  .sub{color:var(--muted);font-size:.95rem;margin-top:.35rem}
-  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.72rem;
-        font-family:ui-monospace,Menlo,monospace}
-  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
-  nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:2rem}
-  nav a{font-size:.78rem;padding:.3rem .75rem;border:1px solid var(--line);border-radius:999px;
-        text-decoration:none;color:var(--muted);background:var(--card)}
-  nav a:hover{color:var(--ink);border-color:var(--ink)}
-  section{margin-top:2.5rem;scroll-margin-top:1.5rem}
-  h2{font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--clay);
-      margin-bottom:.9rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
-  h3{font-size:.98rem;font-weight:600;margin:1.1rem 0 .4rem}
-  p,li{font-size:.92rem;color:#3d3b37} p{margin-bottom:.7rem}
-  ul,ol{padding-left:1.2rem;margin-bottom:.9rem} li{margin-bottom:.35rem}
-  code{font-family:ui-monospace,Menlo,monospace;font-size:.84em;background:var(--card);
-       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
-  .lede{font-size:1.05rem;border-left:3px solid var(--clay);padding-left:1rem;margin-bottom:1.1rem}
-  table{width:100%;border-collapse:collapse;font-size:.88rem;margin:.75rem 0 1rem}
-  th,td{border-bottom:1px solid var(--line);padding:.5rem .6rem;text-align:left;vertical-align:top}
-  th{background:var(--card);font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
-  .objection{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:.8rem 1rem;margin-bottom:.75rem;background:var(--card)}
-  .objection .q{color:var(--amber);font-weight:600;font-size:.85rem}
-  .objection .a{color:var(--ink);font-size:.88rem;margin-top:.3rem}
-  .pill{display:inline-block;font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--line);border-radius:4px;padding:.1rem .45rem;margin-right:.35rem}
-  .pill.demo{color:var(--blue);border-color:var(--blue)}
-  .pill.pitch{color:var(--olive);border-color:var(--olive)}
-  .pill.objects{color:var(--amber);border-color:var(--amber)}
-  .footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;color:var(--muted);font-size:.78rem}
-  @media (max-width:640px){body{padding:1rem} table{display:block;overflow-x:auto;white-space:nowrap}}
-  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+  :root {
+    --ivory: #FAF9F5;
+    --slate: #141413;
+    --clay: #D97757;
+    --clay-d: #B85C3E;
+    --oat: #E3DACC;
+    --olive: #788C5D;
+    --gray-150: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+    --white: #FFFFFF;
+
+    --serif: ui-serif, Georgia, 'Times New Roman', serif;
+    --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--ivory);
+    color: var(--gray-700);
+    line-height: 1.55;
+    padding-bottom: 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- sticky toolbar ---------- */
+
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--ivory);
+    border-bottom: 1.5px solid var(--gray-300);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-size: 13px;
+  }
+
+  .toolbar .title {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--gray-500);
+    margin-right: auto;
+  }
+
+  .toolbar .field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .toolbar .field > span {
+    color: var(--gray-700);
+    font-weight: 500;
+  }
+
+  .seg {
+    display: inline-flex;
+    border: 1.5px solid var(--gray-300);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--white);
+  }
+
+  .seg label {
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--gray-700);
+    user-select: none;
+  }
+
+  .seg label + label {
+    border-left: 1.5px solid var(--gray-300);
+  }
+
+  .seg input { display: none; }
+
+  .seg input:checked + span {
+    color: var(--slate);
+    font-weight: 600;
+  }
+
+  .seg label:has(input:checked) {
+    background: var(--oat);
+  }
+
+  /* ---------- page header ---------- */
+
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 48px 32px 0;
+  }
+
+  header.page-head {
+    max-width: 720px;
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.15;
+    color: var(--slate);
+    margin-bottom: 18px;
+    letter-spacing: -0.01em;
+  }
+
+  .prompt-box {
+    background: var(--gray-150);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14.5px;
+    color: var(--gray-700);
+  }
+  .prompt-box .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { margin-bottom: 64px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .sec-head .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--oat);
+    color: var(--slate);
+    padding: 3px 9px;
+    border-radius: 8px;
+  }
+  .sec-head h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 26px;
+    color: var(--slate);
+    letter-spacing: -0.01em;
+  }
+  .sec-intro {
+    font-size: 14.5px;
+    color: var(--gray-500);
+    max-width: 720px;
+    margin-bottom: 28px;
+  }
+
+  /* ---------- artboard grid ---------- */
+
+  .board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+
+  @media (max-width: 960px) {
+    .board { grid-template-columns: 1fr; }
+  }
+
+  .artboard {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+  }
+
+  .tag {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    background: var(--oat);
+    color: var(--slate);
+    padding: 4px 10px;
+    border-radius: 8px;
+    z-index: 2;
+  }
+
+  .stage {
+    height: 280px;
+    border-radius: 8px;
+    border: 1.5px solid var(--gray-300);
+    background: var(--ivory);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    transition: background 0.15s, border-color 0.15s;
+    overflow: hidden;
+  }
+
+  .stage.dark {
+    background: var(--slate);
+    border-color: var(--slate);
+  }
+
+  .stage { --fg: var(--slate); --muted: var(--gray-500); --line: var(--gray-300); --panel: var(--white); }
+  .stage.dark { --fg: #F0EEE6; --muted: #9C9A93; --line: #3D3D3A; --panel: #1F1E1B; }
+
+  .rationale {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--gray-500);
+    line-height: 1.5;
+  }
+
+  /* ---------- objections / decisions ---------- */
+
+  .obj-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 720px) { .obj-grid { grid-template-columns: 1fr; } }
+
+  .obj-card {
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    padding: 18px 20px;
+  }
+  .obj-card h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 18px;
+    color: var(--slate);
+    margin: 0 0 8px;
+  }
+  .obj-card p { font-size: 14px; color: var(--gray-700); margin: 0; }
+
+  /* ---------- done means ---------- */
+
+  .done-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .done-list li {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 10px 14px;
+    background: var(--white);
+    border: var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--gray-700);
+  }
+  .done-list li::before {
+    content: "✓";
+    color: var(--olive);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+  footer a:hover { text-decoration-color: var(--clay); }
+
+  @media (max-width: 640px) {
+    .toolbar { padding: 14px 16px; }
+    .page { padding: 32px 16px 0; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Activity dashboard: make the HTML actually self-contained</h1>
-  <p class="sub">PRD · upstream issue <code>school-core-tkqn</code> · <code>branben/school-core</code> @ HEAD</p>
-  <div class="meta">
-    <span>status: proposed</span>
-    <span>slice: tkqn</span>
-    <span>updated: 2026-10-31</span>
-    <span>brownfield</span>
+<div class="toolbar">
+  <div class="title">PRD · [initiative]</div>
+  <div class="field">
+    <span>Variant</span>
+    <div class="seg" role="tablist" aria-label="Design variant">
+      <label role="tab"><input type="radio" name="v" checked><span>A</span></label>
+      <label role="tab"><input type="radio" name="v"><span>B</span></label>
+      <label role="tab"><input type="radio" name="v"><span>C</span></label>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+<header class="page-head">
+  <p class="eyebrow">Product requirements</p>
+  <h1>Activity dashboard: embedded-data embed</h1>
+  <p class="date-range" style="color:var(--gray-500);font-size:14px;margin-bottom:18px">
+    branben/school-core · issue tkqn · started 2026-10-31
+  </p>
+  <div class="prompt-box">
+    <span class="label">Prompt</span>
+    [One-line user-facing prompt or job story:]
+    "When [context], I want [motivation], so I can [outcome]."
   </div>
 </header>
 
-<nav aria-label="Sections">
-  <a href="#demo">Demo</a>
-  <a href="#pitch">Why now / why this</a>
-  <a href="#scope">Scope</a>
-  <a href="#alternatives">GF / BF</a>
-  <a href="#objections">Objections</a>
-  <a href="#source">Source</a>
-</nav>
-
 <main>
-<section id="demo" aria-labelledby="demo-h">
-  <h2 id="demo-h"><span class="pill demo">Demo</span>What a reviewer sees</h2>
-  <p class="lede">Today: open <code>docs/site/activity_dashboard.html</code> with no network. The page renders, but it carries no data. The docstring promises "standalone HTML with embedded data baked in," and the code builds exactly that payload — then drops it on the floor.</p>
-  <p>After the fix: open the same file with no network. The page renders with the same agents, scores, and activity feed it would show with live data. The JSON payload is present in a <code>&lt;script type="application/json"&gt;</code> tag the page can read offline. The artifact matches its promise.</p>
-  <ul>
-    <li>Entry surface — generate the dashboard with <code>python src/tools/generate_activity_dashboard.py</code></li>
-    <li>Current failure — open the HTML with no network; data is missing</li>
-    <li>Success state — open the HTML with no network; data is present in the embedded payload</li>
+<section aria-labelledby="demo-h">
+  <div class="sec-head">
+    <span class="num">01</span>
+    <h2 id="demo-h">Demo</h2>
+  </div>
+  <p class="sec-intro">What does success look like from the user's perspective? Show the end state, not the implementation.</p>
+  <div class="board">
+    <div class="artboard">
+      <span class="tag">A · preferred</span>
+      <div class="stage">
+        <div style="text-align:center;max-width:260px">
+          <h3 style="font-family:var(--serif);font-weight:500;font-size:20px;color:var(--fg);margin-bottom:8px">[Primary flow]</h3>
+          <p style="font-size:13px;color:var(--muted)">[What the user sees and does first.]</p>
+        </div>
+      </div>
+      <p class="rationale"><strong>Why this works:</strong> [1–2 sentences on why variant A is preferred.]</p>
+    </div>
+    <div class="artboard">
+      <span class="tag">B · alt</span>
+      <div class="stage dark">
+        <div style="text-align:center;max-width:260px">
+          <h3 style="font-family:var(--serif);font-weight:500;font-size:20px;color:var(--fg);margin-bottom:8px">[Alternative flow]</h3>
+          <p style="font-size:13px;color:var(--muted)">[The fallback if A is too risky or costly.]</p>
+        </div>
+      </div>
+      <p class="rationale"><strong>When to use:</strong> [Condition that selects B.]</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="pitch-h">
+  <div class="sec-head">
+    <span class="num">02</span>
+    <h2 id="pitch-h">Pitch</h2>
+  </div>
+  <p class="sec-intro">One-paragraph case for building this now. State the user pain, the size of the fix, and what breaks if we defer.</p>
+  <div class="obj-grid">
+    <div class="obj-card">
+      <h3>User pain</h3>
+      <p>[What the user cannot do today, and how often they hit it.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Business value</h3>
+      <p>[Metric or outcome this unblocks: retention, support load, trust, speed.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Cost of deferring</h3>
+      <p>[What gets worse: tech debt, user churn, compliance risk, competitor move.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Success signal</h3>
+      <p>[The one observable that tells us this worked — not vanity, behavior.]</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="objections-h">
+  <div class="sec-head">
+    <span class="num">03</span>
+    <h2 id="objections-h">Objections</h2>
+  </div>
+  <p class="sec-intro">The three reasons someone might say "not now." Answer each before the review so the discussion is about evidence, not preference.</p>
+  <div class="obj-grid">
+    <div class="obj-card">
+      <h3>"Too small to matter"</h3>
+      <p>[Counter with user frequency data or downstream dependency.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"We already have a workaround"</h3>
+      <p>[Show the workaround cost: maintenance, support, cognitive load.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"Wrong layer"</h3>
+      <p>[If the fix belongs elsewhere, say so and propose the right owner.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"Not this quarter"</h3>
+      <p>[If deferral is the right call, state the trigger that reopens it.]</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="done-h">
+  <div class="sec-head">
+    <span class="num">04</span>
+    <h2 id="done-h">Done means</h2>
+  </div>
+  <p class="sec-intro">Observable outcomes, not deliverables. If you can’t run a check against these, the PRD is incomplete.</p>
+  <ul class="done-list">
+    <li>[Observable outcome 1 — something a user or operator can verify without reading the code]</li>
+    <li>[Observable outcome 2 — includes a latency, error rate, or coverage number if relevant]</li>
+    <li>[Observable outcome 3 — includes a rollback or kill switch if relevant]</li>
   </ul>
-</section>
-
-<section id="pitch" aria-labelledby="pitch-h">
-  <h2 id="pitch-h"><span class="pill pitch">Pitch</span>Why now, why this</h2>
-  <h3>Problem</h3>
-  <p><code>src/tools/generate_activity_dashboard.py</code> line 84 builds <code>data = json.dumps({"agents": ..., "entries": ...})</code> and never uses it. The emitted HTML is not self-contained. A dashboard that claims "embedded data baked in" but requires a network fetch to show anything is the same failure mode as a mock test that proves nothing: the artifact looks complete until you look at what it actually carries.</p>
-  <h3>Why now</h3>
-  <p>This is the largest remaining mismatch between docstring and behavior in <code>src/tools/</code>. It was found during F841 lint cleanup and kept with <code># noqa: F841</code> rather than deleted — which is the right call, because deleting the line would satisfy the linter while cementing the missing feature.</p>
-  <h3>Outcome we are buying</h3>
-  <ul>
-    <li>Dashboard HTML is genuinely self-contained — open offline, data is present.</li>
-    <li>Docstring and behavior agree — no more promises the artifact cannot keep.</li>
-    <li>One measurable acceptance test: open the generated page with no network and confirm the data is present.</li>
-  </ul>
-</section>
-
-<section id="scope" aria-labelledby="scope-h">
-  <h2 id="scope-h">Scope</h2>
-  <div class="table-wrap" style="overflow-x:auto">
-  <table>
-    <thead>
-      <tr><th>In scope</th><th>Out of scope (now)</th><th>Explicitly refused</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Inject built payload into emitted HTML</td>
-        <td>Watch mode / live reload</td>
-        <td>Refactor to a framework</td>
-      </tr>
-      <tr>
-        <td>Update docstring only if injection is rejected</td>
-        <td>External data sources</td>
-        <td>Network-dependent dashboard</td>
-      </tr>
-      <tr>
-        <td>One acceptance test for offline data presence</td>
-        <td></td>
-        <td></td>
-      </tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<section id="alternatives" aria-labelledby="alternatives-h">
-  <h2 id="alternatives-h">GF / BF alternatives</h2>
-  <ul>
-    <li><strong>GF:</strong> Rewrite the dashboard to fetch data from an API endpoint. <strong>Rejected:</strong> the whole point of this artifact is to be standalone. Adding a network dependency solves the wrong problem.</li>
-    <li><strong>BF:</strong> Delete the unused <code>data = json.dumps(...)</code> line and rewrite the docstring to say "HTML requires live data." <strong>Rejected:</strong> that cements the missing feature and turns a one-line fix into a documentation lie.</li>
-    <li><strong>Do nothing:</strong> Leave the <code># noqa: F841</code> as a known-debt marker. <strong>Rejected:</strong> debt markers are only acceptable when there is a plan to pay them. This is the plan.</li>
-  </ul>
-</section>
-
-<section id="objections" aria-labelledby="objections-h">
-  <h2 id="objections-h"><span class="pill objects">Objections pre-answered</span></h2>
-  <div class="objection">
-    <p class="q">"...scope/effort — is this just adding a script tag?"</p>
-    <p class="a">Yes. The data is already built; it just needs to be written into the HTML. The delta is one line in <code>generate_html()</code>.</p>
-  </div>
-  <div class="objection">
-    <p class="q">"...won't embedding the full JSON bloat the file?"</p>
-    <p class="a">The payload is small (agents + recent entries). The current HTML is already ~30 KB. Adding the JSON keeps the file under 50 KB — well within the self-contained artifact budget.</p>
-  </div>
-  <div class="objection">
-    <p class="q">"...does this break the existing auto-refresh?"</p>
-    <p class="a">No. The refresh reloads the whole page from disk, which includes the embedded data. If we later want live updates without a full reload, that is a separate slice.</p>
-  </div>
-  <div class="objection">
-    <p class="q">"...why not just fix the docstring?"</p>
-    <p class="a">Because the docstring describes the intended behavior, and the code already builds the data. Fixing the docstring to match the bug is the wrong direction — the bug is cheaper to fix than the lie is to maintain.</p>
-  </div>
-</section>
-
-<section id="source" aria-labelledby="source-h">
-  <h2 id="source-h">Canonical source</h2>
-  <p>The markdown source of record for this pitch lives at <code>docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md</code>. Edit the <code>.md</code>; regenerate this render. Changes to this page without a matching change to the source are a drift bug.</p>
 </section>
 </main>
 
-<footer class="footer">
-  School Core · PRD · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+<footer>
+  School Core · source: <code>docs/plans/...-prd.md</code> · render only — feedback stays local until committed
 </footer>
+</div>
 </body>
 </html>
