@@ -522,21 +522,22 @@ def wait_for_bookbag(
         required_fields = ["cto_verdict", "coo_verdict"]
 
     deadline = time.monotonic() + timeout
-    # NOTE: BookbagSignal's flag-file fast path is constructed but never used;
-    # the loop below still polls the bookbag JSON. Keeping the construction
-    # (rather than deleting it) because the flag-file optimisation was clearly
-    # the intent -- see the follow-up issue. Ruff: F841.
-    signal = BookbagSignal(bead, repo)  # noqa: F841
+    signal = BookbagSignal(bead, repo)
 
     while time.monotonic() < deadline:
-        # Read the bookbag once per poll cycle
+        # Fast path: skip the JSON parse until the leaf signals readiness.
+        # BookbagSignal's flag file is written by the producer after the
+        # bookbag is on disk; checking it first avoids parsing JSON on
+        # every poll when the handoff has not yet started.
+        if not signal.check():
+            time.sleep(interval)
+            continue
         bag = read_bookbag(bead, repo)
         if bag is not None:
             if all(bag.get(f, "") for f in required_fields):
                 return bag
-            # All required fields exist but aren't filled yet.
-            # Signal file indicates the bookbag was written — if verdicts
-            # aren't ready, the teachers haven't finished reviewing yet.
+            # Signal file is set but verdicts are not ready yet — the
+            # teachers are still reviewing; keep polling.
 
         time.sleep(interval)
 

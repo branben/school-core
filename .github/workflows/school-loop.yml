@@ -576,6 +576,7 @@ jobs:
           # FETCH_HEAD directly; the push is a clean fast-forward and the
           # worktree is never touched. (Phymora's tested approach — verified
           # in a scratch repo reproducing the exact shape.)
+          python3 scripts/sanitize_ledger.py
           git fetch origin board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/grading_queue.jsonl data/compound_learning.json data/candidate_bindings.json data/state.sqlite3 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true

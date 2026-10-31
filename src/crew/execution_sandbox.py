@@ -44,6 +44,9 @@ def write_sandbox_profile(
         if not allowed_reads:
             raise ValueError("read confinement requires at least one readable path")
         lines.append("(deny file-read*)")
+        # macOS libSystem reads `/` during process startup before main() runs.
+        # Without this literal allow, every sandboxed command dies with SIGABRT.
+        lines.append("(allow file-read* (literal \"/\"))")
         lines.extend(f"(allow file-read* (subpath {_sbpl_string(item)}))" for item in allowed_reads)
     else:
         if deny_home:
