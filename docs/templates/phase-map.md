@@ -7,6 +7,7 @@
 
 | Phase | Proper documentation type | Authoring skill | Canonical source | Transport |
 |---|---|---|---|---|
+| Epic | Tier-1/2 initiative timeline | `html` (timeline register) | upstream issue / `.md` in git | local / tot |
 | Pre-PRD exploration | Tier-1 exploration / directions | `html-wireframe` (structural) | none | local |
 | PRD | Tier-3 pitch-doc render | `html` + `design-artifact` | `.md` in git | tot (living + @hash) |
 | PRD alternatives (GF/BF) | Tier-1 side-by-side compare | `html-wireframe` (2-3 directions) | none | local |
@@ -52,6 +53,7 @@ moves the reader's judgment, sharing one CSS register.
 
 | Phase | Template | Tier | Skill pattern | Canonical source |
 |---|---|---|---|---|
+| Epic | `epic-timeline.html` | 1/2 | Timeline view (shipped / slipped / blockers) | `.md` in git | local / tot |
 | Pre-PRD exploration | `exploration-wireframe.html` | 1 | `html-wireframe` (2-3 directions, grayscale) | none |
 | PRD alternatives (GF/BF) | `prd-alternatives.html` | 1 | `html-wireframe` (side-by-side decision) | none |
 | PRD | `prd-pitch.html` | 3 | pitch-doc (demo → pitch → objections) | `.md` in git |
