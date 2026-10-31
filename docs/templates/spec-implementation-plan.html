@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <!--
-  Tier-3 implementation-plan template — html-plan discipline.
+  Tier-1/2 SPEC template — implementation plan with milestones, data flow, and risks.
+  Style source: Tariq html-effectiveness/16-implementation-plan
   ----------------------------------------------------------------------------
-  CANONICAL SOURCE CONVENTION: this file is a RENDER of a markdown source.
-  The .md in git is authoritative and diffable; this .html is a view of it.
-  Source path convention — update to point at YOUR canonical .md:
+  CANONICAL SOURCE: docs/plans/...-spec.md (diffable, reviewable).
+  This .html is a VIEW that adds the spatial dimension: milestone timeline,
+  summary strip, data flow diagram, mockups, risk table, and open questions.
+  Keep the .md authoritative; regenerate the render when it changes.
 
-    <meta name="source" content="docs/plans/2026-09-13-000-<slug>-spec.md">
-
-  html-plan promise: no commitment disappeared, accepted decisions separated
-  from open questions, structure not inflated. Every section below MUST be
-  present; placeholder content marks where to write.
+  Form contract:
+  - milestones with effort estimate
+  - data flow diagram
+  - mockups (not pixel-final)
+  - key code blocks
+  - risks & mitigations
+  - open questions with decide-with owners
 
   Build + verify contract: ONE self-contained file, no build step, semantic
   landmarks, keyboard-operable, no external services/URLs, no horizontal
@@ -21,217 +25,638 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="source" content="docs/plans/2026-09-13-000-<slug>-spec.md">
-<meta name="generated-from" content="docs/plans/...spec.md (canonical markdown source in git)">
-<title>Implementation plan · school-core</title>
+<meta name="source" content="docs/plans/...-spec.md (canonical .md in git)">
+<meta name="generated-from" content="docs/plans/...-spec.md (render)">
+<title>SPEC · [initiative name]</title>
 <style>
-  :root{
-    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
-    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
-    --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --purple:#a855f7;
-    --card:#16161e;
+  :root {
+    --ivory: #FAF9F5;
+    --slate: #141413;
+    --clay: #D97757;
+    --oat: #E3DACC;
+    --olive: #788C5D;
+    --gray-150: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+    --white: #FFFFFF;
+
+    --serif: ui-serif, Georgia, 'Times New Roman', serif;
+    --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
   }
-  *{box-sizing:border-box; margin:0;}
-  body{
-    background:var(--bg); color:var(--text);
-    font-family:'Geist', -apple-system, 'Segoe UI', sans-serif;
-    line-height:1.55; padding:2rem clamp(1rem, 3vw, 3rem); max-width:980px; margin:0 auto;
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--ivory);
+    color: var(--gray-700);
+    line-height: 1.55;
+    padding: 56px 32px 120px;
+    -webkit-font-smoothing: antialiased;
   }
-  header{margin-bottom:2rem; border-bottom:1px solid var(--border); padding-bottom:1.25rem;}
-  header h1{font-size:1.5rem; font-weight:650; letter-spacing:-.01em;}
-  header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
-  .meta{
-    font-family:'Geist Mono', monospace; font-size:.7rem; color:var(--muted);
-    display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.75rem;
+
+  .page { max-width: 1120px; margin: 0 auto; }
+
+  header.page-head { margin-bottom: 48px; max-width: 820px; }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 12px;
   }
-  .meta span{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.2rem .5rem;}
-  nav{display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:2rem;}
-  nav a{
-    color:var(--muted); text-decoration:none; font-size:.78rem;
-    border:1px solid var(--border); border-radius:999px; padding:.3rem .75rem;
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.15;
+    color: var(--slate);
+    margin-bottom: 18px;
+    letter-spacing: -0.01em;
   }
-  nav a:hover{color:var(--accent); border-color:var(--accent);}
-  section{margin-bottom:2.5rem;}
-  section h2{
-    font-size:.8rem; text-transform:uppercase; letter-spacing:.1em; color:var(--accent);
-    margin-bottom:.9rem; padding-bottom:.4rem; border-bottom:1px solid var(--border);
+
+  .prompt-box {
+    background: var(--gray-150);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14.5px;
+    color: var(--gray-700);
   }
-  section h3{font-size:1rem; font-weight:600; margin:1.1rem 0 .5rem;}
-  p, li{color:#d5d2cd; font-size:.92rem;}
-  p{margin-bottom:.7rem;}
-  ul,ol{padding-left:1.3rem; margin-bottom:.9rem;}
-  li{margin-bottom:.3rem;}
-  code{
-    font-family:'Geist Mono','SFMono-Regular',monospace; font-size:.82em;
-    background:var(--panel2); border:1px solid var(--border); border-radius:4px;
-    padding:.05rem .3rem; word-break:break-word;
+  .prompt-box .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    display: block;
+    margin-bottom: 6px;
   }
-  .card{background:var(--card); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;}
-  .accepted{
-    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--green);
-    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;
+
+  section { margin-bottom: 64px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 8px;
   }
-  .accepted .tag{color:var(--green); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:.3rem;}
-  .open{
-    background:var(--card); border:1px solid var(--border); border-left:3px solid var(--amber);
-    border-radius:8px; padding:.8rem 1rem; margin-bottom:.75rem;
+  .sec-head .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--oat);
+    color: var(--slate);
+    padding: 3px 9px;
+    border-radius: 8px;
   }
-  .open .tag{color:var(--amber); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:.3rem;}
-  .mockup{
-    background:var(--panel); border:2px dashed var(--blue); border-radius:8px;
-    color:var(--muted); font-size:.8rem; text-align:center;
-    padding:2.5rem 1rem; margin:.75rem 0;
+  .sec-head h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 26px;
+    color: var(--slate);
+    letter-spacing: -0.01em;
   }
-  table{width:100%; border-collapse:collapse; font-size:.85rem; margin:.75rem 0 1rem;}
-  th{text-align:left; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;}
-  th,td{border-bottom:1px solid var(--border); padding:.5rem .6rem; vertical-align:top;}
-  .risk-high{color:var(--red); font-weight:600;}
-  .risk-med{color:var(--amber); font-weight:600;}
-  .risk-low{color:var(--green); font-weight:600;}
-  pre{
-    font-family:'Geist Mono',monospace; font-size:.78rem; line-height:1.6;
-    background:#0c0c12; border:1px solid var(--border); border-radius:8px;
-    padding:.8rem; white-space:pre-wrap; word-break:break-word; color:#c9c6cf;
+  .sec-intro {
+    font-size: 14.5px;
+    color: var(--gray-500);
+    max-width: 720px;
+    margin-bottom: 28px;
   }
-  .footer{border-top:1px solid var(--border); margin-top:2.5rem; padding-top:1rem; color:var(--muted); font-size:.75rem;}
-  @media (max-width: 640px){
-    body{padding:1rem;}
-    table{display:block; overflow-x:auto; white-space:nowrap;}
-    header h1{font-size:1.2rem;}
+
+  /* ---------- summary strip ---------- */
+
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 64px;
+  }
+  @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+  .summary .cell {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .summary .k {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    margin-bottom: 6px;
+  }
+  .summary .v {
+    font-size: 17px;
+    color: var(--slate);
+    font-weight: 600;
+  }
+  .summary .v.accent { color: var(--clay); }
+
+  /* ---------- milestone timeline ---------- */
+
+  .milestones { display: flex; flex-direction: column; gap: 0; }
+  .milestone {
+    display: grid;
+    grid-template-columns: 120px 28px 1fr;
+    gap: 0 18px;
+    position: relative;
+  }
+  .milestone .when {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+    padding-top: 4px;
+  }
+  .milestone .dot-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .milestone .dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--white);
+    border: 3px solid var(--clay);
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .milestone .dot.done { background: var(--olive); border-color: var(--olive); }
+  .milestone .line {
+    width: 2px;
+    flex: 1;
+    background: var(--gray-300);
+    margin: 4px 0;
+  }
+  .milestone:last-child .line { display: none; }
+  .milestone .body { padding-bottom: 36px; }
+  .milestone .body h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 19px;
+    color: var(--slate);
+    margin-bottom: 4px;
+  }
+  .milestone .body p {
+    font-size: 14px;
+    color: var(--gray-500);
+    margin-bottom: 10px;
+    max-width: 620px;
+  }
+  .milestone .tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .milestone .tag {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--gray-150);
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    padding: 3px 8px;
+    color: var(--gray-700);
+  }
+
+  /* ---------- data flow diagram ---------- */
+
+  .diagram {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 28px;
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; min-width: 760px; }
+  .diagram text { font-family: var(--mono); }
+  .caption { font-size: 13px; color: var(--gray-500); margin-top: 12px; }
+
+  /* ---------- mockups ---------- */
+
+  .mocks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  @media (max-width: 900px) { .mocks { grid-template-columns: 1fr; } }
+  .mock {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .mock .mock-label {
+    padding: 12px 18px;
+    border-bottom: 1.5px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    background: var(--gray-150);
+  }
+  .mock .mock-body { padding: 22px; }
+
+  /* task card mock */
+  .card-mock {
+    border: 1.5px solid var(--gray-300);
+    border-radius: 10px;
+    padding: 16px;
+    background: var(--ivory);
+  }
+  .card-mock .cm-title { font-weight: 600; font-size: 15px; color: var(--slate); margin-bottom: 4px; }
+  .card-mock .cm-meta { font-size: 12px; color: var(--gray-500); margin-bottom: 14px; }
+  .card-mock .cm-divider { border-top: 1px dashed var(--gray-300); margin: 14px 0; }
+
+  /* ---------- risk table ---------- */
+
+  table.risks {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  table.risks thead th {
+    text-align: left;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    background: var(--gray-150);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-300);
+  }
+  table.risks tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 14px;
+    vertical-align: middle;
+  }
+  table.risks tbody tr:last-child td { border-bottom: none; }
+  table.risks tbody tr:hover { background: var(--ivory); }
+
+  .sev {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .sev.high { background: #F5E2D8; color: var(--clay-d); }
+  .sev.med { background: var(--gray-150); color: var(--gray-700); }
+  .sev.low { background: #E8EDE0; color: #5C6F44; }
+
+  /* ---------- open questions ---------- */
+
+  .question {
+    border: 1.5px solid var(--gray-300);
+    border-left: 3px solid var(--olive);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    background: var(--white);
+  }
+  .question h3 {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--slate);
+    margin: 0 0 6px;
+  }
+  .question p { font-size: 14px; color: var(--gray-700); margin: 0 0 6px; }
+  .question .decidewith {
+    font-size: 12px;
+    color: var(--gray-500);
+    font-family: var(--mono);
+  }
+  .question .decidewith strong { color: var(--olive); font-weight: 600; }
+
+  /* ---------- reviewer feedback surface ---------- */
+
+  .feedback { display: grid; gap: 14px; }
+  .comment {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .comment-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .comment-author {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--slate);
+  }
+  .comment-section {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+  }
+  .comment-body {
+    font-size: 14px;
+    color: var(--gray-700);
+    line-height: 1.5;
+    margin: 0 0 10px;
+  }
+  .comment-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .comment-sev {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+  .comment-sev.low { background: #E8EDE0; color: #5C6F44; }
+  .comment-sev.med { background: var(--gray-150); color: var(--gray-700); }
+  .comment-sev.high { background: #F5E2D8; color: var(--clay-d); }
+  .comment-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+  }
+
+  /* ---------- code blocks ---------- */
+
+  .code-block {
+    background: var(--slate);
+    border-radius: 10px;
+    padding: 16px 0;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--gray-150);
+  }
+  .code-block .cl-line { padding: 0 18px; white-space: pre; }
+  .code-block .cm { color: #8a8a82; }
+  .code-block .kw { color: #E8B4A0; }
+  .code-block .ty { color: #C7CBA3; }
+  .code-block .st { color: #D9C7A7; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+  footer a:hover { text-decoration-color: var(--clay); }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .milestone { grid-template-columns: 1fr; gap: 6px; }
+    .milestone .when { text-align: left; }
+    .milestone .dot-col { flex-direction: row; gap: 8px; }
+    .milestone .line { width: auto; height: 2px; flex: 1; }
   }
 </style>
 </head>
 <body>
-<header>
-  <h1>Implementation plan — [feature/slice title]</h1>
-  <p class="subtitle">Tier-3, `html-plan` discipline: accepted decisions are separated from open questions; no commitment disappeared; structure not inflated.</p>
-  <div class="meta">
-    <span>status: DRAFT</span>
-    <span>bead: [id]</span>
-    <span>owner: [you]</span>
-    <span>updated: [date]</span>
+<div class="page">
+<header class="page-head">
+  <p class="eyebrow">Implementation specification</p>
+  <h1>[Initiative name]</h1>
+  <p class="date-range" style="color:var(--gray-500);font-size:14px;margin-bottom:18px">
+    owner/repo · issue #NNN · started YYYY-MM-DD
+  </p>
+  <div class="prompt-box">
+    <span class="label">Prompt</span>
+    Create a thorough implementation plan for [capability]. Include milestones, the data flow from client to persistence, the key code I'll need to write, and a risk table. Make it easy to skim on a phone — I'm going to pass this to the implementer as-is.
   </div>
 </header>
 
-<nav>
-  <a href="#summary">Summary</a>
-  <a href="#decisions">Accepted decisions</a>
-  <a href="#open-questions">Open questions</a>
-  <a href="#milestones">Milestones</a>
-  <a href="#mockups">Mockups</a>
-  <a href="#risks">Risks</a>
-  <a href="#data-flow">Data flow</a>
-  <a href="#source">Source</a>
-</nav>
-
 <main>
-  <section id="summary" aria-labelledby="summary-h">
-    <h2 id="summary-h">1 · Summary</h2>
-    <p>[Three sentences: the change, the boundary, the outcome. This is the whole plan for a busy reader.]</p>
-  </section>
-
-  <section id="decisions" aria-labelledby="decisions-h">
-    <h2 id="decisions-h">2 · Accepted decisions</h2>
-    <p>Decisions already made — recorded so they do not silently re-open during implementation.</p>
-    <div class="accepted">
-      <span class="tag">Accepted · ADR/decision [id]</span>
-      [The decision, the reason it was made, and the governing doc if any.]
+<section aria-labelledby="summary-h">
+  <div class="sec-head">
+    <span class="num">00</span>
+    <h2 id="summary-h">Summary</h2>
+  </div>
+  <div class="summary">
+    <div class="cell">
+      <div class="k">Effort</div>
+      <div class="v">~[N] weeks</div>
     </div>
-    <div class="accepted">
-      <span class="tag">Accepted · ADR/decision [id]</span>
-      [Second decision placeholder — separate the "what" from the "why outward".]
+    <div class="cell">
+      <div class="k">Surfaces touched</div>
+      <div class="v">[N] packages</div>
     </div>
-  </section>
-
-  <section id="open-questions" aria-labelledby="open-questions-h">
-    <h2 id="open-questions-h">3 · Open questions</h2>
-    <p>Deliberately kept out of section 2: these are NOT yet decisions and the plan does not pretend otherwise.</p>
-    <div class="open">
-      <span class="tag">Open</span>
-      [Question, options considered, and who/what unblocks it. One open question per block.]
+    <div class="cell">
+      <div class="k">New tables</div>
+      <div class="v">[N]</div>
     </div>
-    <div class="open">
-      <span class="tag">Open</span>
-      [Second open question — owning it is also a commitment: the plan names the decision-owner.]
+    <div class="cell">
+      <div class="k">Feature flag</div>
+      <div class="v accent">[flag_name]</div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="milestones" aria-labelledby="milestones-h">
-    <h2 id="milestones-h">4 · Milestones</h2>
-    <div class="table-wrap" style="overflow-x:auto">
-    <table>
-      <thead>
-        <tr><th>#</th><th>Milestone</th><th>Exit criteria</th><th>Verification</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>M1</td><td>[first vertical slice]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
-        </tr>
-        <tr>
-          <td>M2</td><td>[midpoint milestone]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
-        </tr>
-        <tr>
-          <td>M3</td><td>[shipping milestone]</td><td>[definition of done]</td><td>[how CI/human checks it]</td>
-        </tr>
-      </tbody>
-    </table>
+<section aria-labelledby="milestones-h">
+  <div class="sec-head">
+    <span class="num">01</span>
+    <h2 id="milestones-h">Milestones</h2>
+  </div>
+  <p class="sec-intro">Ship in slices, each independently reviewable and each behind the flag. Nothing is user-visible until slice 4.</p>
+  <div class="milestones">
+    <div class="milestone">
+      <span class="when">Week 1 · Mon–Tue</span>
+      <span class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>[Slice 1 title]</h3>
+        <p>[What ships in this slice, and what the reviewer checks before anything else lands.]</p>
+        <div class="tags"><span class="tag">contract</span><span class="tag">review-gate</span></div>
+      </div>
     </div>
-  </section>
-
-  <section id="mockups" aria-labelledby="mockups-h">
-    <h2 id="mockups-h">5 · Mockups</h2>
-    <p>In production, drop Tier-1 wireframe/prototype renders here (inlined, never hot-linked). At template time these are explicit placeholders.</p>
-    <div class="mockup">[ Mockup 1 — main state ]</div>
-    <div class="mockup">[ Mockup 2 — boundary / empty / error state ]</div>
-  </section>
-
-  <section id="risks" aria-labelledby="risks-h">
-    <h2 id="risks-h">6 · Risk table</h2>
-    <div class="table-wrap" style="overflow-x:auto">
-    <table>
-      <thead>
-        <tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation / trigger to escalate</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>[concrete risk, not a generic worry]</td>
-          <td class="risk-med">med</td><td class="risk-high">high</td>
-          <td>[mitigation or the signal that should escalate it]</td>
-        </tr>
-        <tr>
-          <td>[second concrete risk]</td>
-          <td class="risk-low">low</td><td class="risk-med">med</td>
-          <td>[mitigation or the signal that should escalate it]</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="milestone">
+      <span class="when">Week 1 · Wed–Fri</span>
+      <span class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>[Slice 2 title]</h3>
+        <p>[What ships in this slice, and the acceptance criteria.]</p>
+        <div class="tags"><span class="tag">implementation</span><span class="tag">tests</span></div>
+      </div>
     </div>
-  </section>
+    <div class="milestone">
+      <span class="when">Week 2 · Mon–Wed</span>
+      <span class="dot-col"><span class="dot"></span><span class="line"></span></div>
+      <div class="body">
+        <h3>[Slice 3 title]</h3>
+        <p>[What ships in this slice, and the observable outcome.]</p>
+        <div class="tags"><span class="tag">integration</span><span class="tag">verified</span></div>
+      </div>
+    </div>
+    <div class="milestone">
+      <span class="when">Week 2 · Thu–Fri</span>
+      <span class="dot-col"><span class="dot done"></span></div>
+      <div class="body">
+        <h3>[Slice 4 title — flag ramp + docs]</h3>
+        <p>[Ramp strategy: internal → 10% → 100% over N days. Docs + monitoring.]</p>
+        <div class="tags"><span class="tag">ship</span><span class="tag">monitor</span></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-  <section id="data-flow" aria-labelledby="data-flow-h">
-    <h2 id="data-flow-h">7 · Data-flow diagrams</h2>
-    <p>Text-shape diagrams at template time; replace each placeholder with a
-       Tier-2 `html-diagram` render or an inline diagram for the real plan.</p>
-    <pre>/* data-flow diagram placeholder */
-[component] --&gt; [store/API] --&gt; [view]
-            \--&gt; [side effect / event] --&gt; [observer]</pre>
-    <pre>/* second data-flow diagram placeholder (failure path) */
-[input] --&gt; [validator] --X bad --&gt; [user-facing error]
-                \-- ok --&gt; [write path]</pre>
-  </section>
+<section aria-labelledby="flow-h">
+  <div class="sec-head">
+    <span class="num">02</span>
+    <h2 id="flow-h">Data flow</h2>
+  </div>
+  <p class="sec-intro">Optimistic write path on the left, fan-out on the right. The read cursor update is fire-and-forget — we never block the render on it.</p>
+  <div class="diagram">
+    <svg viewBox="0 0 760 120" xmlns="http://www.w3.org/2000/svg" aria-label="Data flow diagram: client, API, persistence, cache">
+      <rect x="10" y="30" width="140" height="60" rx="10" fill="var(--gray-150)" stroke="var(--gray-300)" stroke-width="1.5"/>
+      <text x="80" y="55" text-anchor="middle" font-size="12" fill="var(--slate)">Client</text>
+      <text x="80" y="72" text-anchor="middle" font-size="11" fill="var(--gray-500)">optimistic</text>
 
-  <section id="source" aria-labelledby="source-h">
-    <h2>8 · Canonical source</h2>
-    <p>The markdown source of record for this implementation plan lives at
-       <code>docs/plans/...[slug]-spec.md</code> (see the
-       <code>&lt;meta name="source"&gt;</code> header of this file). Edit the
-       <code>.md</code>; regenerate this render. Any edit to this page without
-       a matching change to the source is drift.</p>
-  </section>
+      <rect x="210" y="30" width="140" height="60" rx="10" fill="var(--gray-150)" stroke="var(--gray-300)" stroke-width="1.5"/>
+      <text x="280" y="55" text-anchor="middle" font-size="12" fill="var(--slate)">API</text>
+      <text x="280" y="72" text-anchor="middle" font-size="11" fill="var(--gray-500)">validate + persist</text>
+
+      <rect x="410" y="30" width="140" height="60" rx="10" fill="var(--gray-150)" stroke="var(--gray-300)" stroke-width="1.5"/>
+      <text x="480" y="55" text-anchor="middle" font-size="12" fill="var(--slate)">Persistence</text>
+      <text x="480" y="72" text-anchor="middle" font-size="11" fill="var(--gray-500)">primary store</text>
+
+      <rect x="610" y="30" width="140" height="60" rx="10" fill="var(--gray-150)" stroke="var(--gray-300)" stroke-width="1.5"/>
+      <text x="680" y="55" text-anchor="middle" font-size="12" fill="var(--slate)">Realtime</text>
+      <text x="680" y="72" text-anchor="middle" font-size="11" fill="var(--gray-500)">fan-out</text>
+
+      <line x1="150" y1="60" x2="210" y2="60" stroke="var(--clay)" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="350" y1="60" x2="410" y2="60" stroke="var(--clay)" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="550" y1="60" x2="610" y2="60" stroke="var(--olive)" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="480" y1="90" x2="480" y2="105" stroke="var(--gray-500)" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--clay)"/>
+        </marker>
+      </defs>
+    </svg>
+    <p class="caption">Write path: client → API → persistence → realtime fan-out. Read cursors are fire-and-forget.</p>
+  </div>
+</section>
+
+<section aria-labelledby="review-h">
+  <div class="sec-head">
+    <span class="num">03</span>
+    <h2 id="review-h">Review surface</h2>
+  </div>
+  <p class="sec-intro">Reviewer feedback on this spec. Each comment is anchored to a slice or section so the implementer knows exactly what to address before the review gate.</p>
+  <div class="feedback">
+    <article class="comment">
+      <div class="comment-header">
+        <span class="comment-author">@reviewer</span>
+        <span class="comment-section">anchored to: §01 Milestones</span>
+      </div>
+      <p class="comment-body">[Feedback text — what looks wrong, missing, or ambiguous. Be specific: a missing slice, an unclear exit criterion, a risk not named.]</p>
+      <div class="comment-meta">
+        <span class="comment-sev low">blocking</span>
+        <span class="comment-time">2026-10-31</span>
+      </div>
+    </article>
+    <article class="comment">
+      <div class="comment-header">
+        <span class="comment-author">@reviewer</span>
+        <span class="comment-section">anchored to: §02 Data flow</span>
+      </div>
+      <p class="comment-body">[Second feedback item — optional.]</p>
+      <div class="comment-meta">
+        <span class="comment-sev med">needs discussion</span>
+        <span class="comment-time">2026-10-31</span>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section aria-labelledby="code-h">
+  <div class="sec-head">
+    <span class="num">04</span>
+    <h2 id="code-h">Key code</h2>
+  </div>
+  <p class="sec-intro">The two pieces most likely to be done wrong: [migration / state machine / cache invalidation] and [optimistic mutation / temp-id reconciliation].</p>
+  <div class="code-block">
+<div class="cl-line"><span class="cm">// path/to/file.ts — [what this block does]</span></div>
+<div class="cl-line"><span class="kw">export</span> <span class="kw">function</span> [Name]([params]) {</div>
+<div class="cl-line">  <span class="cm">// [key invariant or side effect]</span></div>
+<div class="cl-line">  [implementation sketch]</div>
+<div class="cl-line">}</div>
+  </div>
+</section>
+
+<section aria-labelledby="risks-h">
+  <div class="sec-head">
+    <span class="num">05</span>
+    <h2 id="risks-h">Risks & mitigations</h2>
+  </div>
+  <table class="risks">
+    <thead>
+      <tr>
+        <th>Risk</th>
+        <th>Sev</th>
+        <th>Mitigation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>[Risk description — concrete failure mode, not vague]</td>
+        <td><span class="sev high">HIGH</span></td>
+        <td>[Specific mitigation, not "be careful"]</td>
+      </tr>
+      <tr>
+        <td>[Medium-severity risk]</td>
+        <td><span class="sev med">MED</span></td>
+        <td>[Mitigation with owner or trigger]</td>
+      </tr>
+      <tr>
+        <td>[Low-severity risk — edge case or cosmetic]</td>
+        <td><span class="sev low">LOW</span></td>
+        <td>[Mitigation or explicit deferral]</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section aria-labelledby="questions-h">
+  <div class="sec-head">
+    <span class="num">06</span>
+    <h2 id="questions-h">Open questions</h2>
+  </div>
+  <p class="sec-intro">Decisions that block implementation. Each must have an owner and a gate.</p>
+  <article class="question">
+    <h3>[Question title]</h3>
+    <p>[The actual question, with context so the owner doesn’t have to re-read the spec.]</p>
+    <p class="decidewith">Decide with · <strong>[owner]</strong>, before <strong>[gate]</strong></p>
+  </article>
+  <article class="question">
+    <h3>[Second question]</h3>
+    <p>[Context + options if relevant.]</p>
+    <p class="decidewith">Decide with · <strong>[owner]</strong>, before <strong>[gate]</strong></p>
+  </article>
+</section>
 </main>
 
-<footer class="footer">
-  school-core · Tier-3 implementation-plan template (`html-plan`) · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+<footer>
+  School Core · source: <code>docs/plans/...-spec.md</code> · render only — feedback stays local until committed
 </footer>
+</div>
 </body>
 </html>

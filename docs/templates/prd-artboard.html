@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<!--
+  Tier-1/2 PRD template — product requirements + visual design exploration.
+  Style source: Tariq html-effectiveness/02-exploration-visual-designs
+  ----------------------------------------------------------------------------
+  CANONICAL SOURCE: docs/plans/...-prd.md (diffable, reviewable).
+  This .html is a VIEW that adds the spatial dimension: artboard grid,
+  segmented controls, stage variants, and rationale text. Keep the .md
+  authoritative; regenerate the render when it changes.
+
+  Form contract:
+  - demo / pitch / objections / done-means
+  - artboard grid for visual designs
+  - segmented tabs for variants
+  - rationale text for each design
+
+  Build + verify contract: ONE self-contained file, no build step, semantic
+  landmarks, keyboard-operable, no external services/URLs, no horizontal
+  overflow at mobile width. See docs/templates/TIER.md.
+  ----------------------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/...-prd.md (canonical .md in git)">
+<meta name="generated-from" content="docs/plans/...-prd.md (render)">
+<title>PRD · [initiative name]</title>
+<style>
+  :root {
+    --ivory: #FAF9F5;
+    --slate: #141413;
+    --clay: #D97757;
+    --clay-d: #B85C3E;
+    --oat: #E3DACC;
+    --olive: #788C5D;
+    --gray-150: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+    --white: #FFFFFF;
+
+    --serif: ui-serif, Georgia, 'Times New Roman', serif;
+    --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--ivory);
+    color: var(--gray-700);
+    line-height: 1.55;
+    padding-bottom: 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- sticky toolbar ---------- */
+
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--ivory);
+    border-bottom: 1.5px solid var(--gray-300);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-size: 13px;
+  }
+
+  .toolbar .title {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--gray-500);
+    margin-right: auto;
+  }
+
+  .toolbar .field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .toolbar .field > span {
+    color: var(--gray-700);
+    font-weight: 500;
+  }
+
+  .seg {
+    display: inline-flex;
+    border: 1.5px solid var(--gray-300);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--white);
+  }
+
+  .seg label {
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--gray-700);
+    user-select: none;
+  }
+
+  .seg label + label {
+    border-left: 1.5px solid var(--gray-300);
+  }
+
+  .seg input { display: none; }
+
+  .seg input:checked + span {
+    color: var(--slate);
+    font-weight: 600;
+  }
+
+  .seg label:has(input:checked) {
+    background: var(--oat);
+  }
+
+  /* ---------- page header ---------- */
+
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 48px 32px 0;
+  }
+
+  header.page-head {
+    max-width: 720px;
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.15;
+    color: var(--slate);
+    margin-bottom: 18px;
+    letter-spacing: -0.01em;
+  }
+
+  .prompt-box {
+    background: var(--gray-150);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14.5px;
+    color: var(--gray-700);
+  }
+  .prompt-box .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { margin-bottom: 64px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .sec-head .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--oat);
+    color: var(--slate);
+    padding: 3px 9px;
+    border-radius: 8px;
+  }
+  .sec-head h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 26px;
+    color: var(--slate);
+    letter-spacing: -0.01em;
+  }
+  .sec-intro {
+    font-size: 14.5px;
+    color: var(--gray-500);
+    max-width: 720px;
+    margin-bottom: 28px;
+  }
+
+  /* ---------- artboard grid ---------- */
+
+  .board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+
+  @media (max-width: 960px) {
+    .board { grid-template-columns: 1fr; }
+  }
+
+  .artboard {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+  }
+
+  .tag {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    background: var(--oat);
+    color: var(--slate);
+    padding: 4px 10px;
+    border-radius: 8px;
+    z-index: 2;
+  }
+
+  .stage {
+    height: 280px;
+    border-radius: 8px;
+    border: 1.5px solid var(--gray-300);
+    background: var(--ivory);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    transition: background 0.15s, border-color 0.15s;
+    overflow: hidden;
+  }
+
+  .stage.dark {
+    background: var(--slate);
+    border-color: var(--slate);
+  }
+
+  .stage { --fg: var(--slate); --muted: var(--gray-500); --line: var(--gray-300); --panel: var(--white); }
+  .stage.dark { --fg: #F0EEE6; --muted: #9C9A93; --line: #3D3D3A; --panel: #1F1E1B; }
+
+  .rationale {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--gray-500);
+    line-height: 1.5;
+  }
+
+  /* ---------- objections / decisions ---------- */
+
+  .obj-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 720px) { .obj-grid { grid-template-columns: 1fr; } }
+
+  .obj-card {
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    padding: 18px 20px;
+  }
+  .obj-card h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 18px;
+    color: var(--slate);
+    margin: 0 0 8px;
+  }
+  .obj-card p { font-size: 14px; color: var(--gray-700); margin: 0; }
+
+  /* ---------- done means ---------- */
+
+  .done-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .done-list li {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 10px 14px;
+    background: var(--white);
+    border: var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--gray-700);
+  }
+  .done-list li::before {
+    content: "✓";
+    color: var(--olive);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ---------- user scenario ---------- */
+
+  .scenario-card {
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    padding: 22px 26px 24px;
+  }
+  .job-story {
+    font-size: 15.5px;
+    color: var(--gray-700);
+    line-height: 1.6;
+  }
+  .job-story strong {
+    color: var(--slate);
+    font-weight: 600;
+  }
+  .scenario-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .scenario-list li {
+    padding: 12px 16px;
+    background: var(--white);
+    border: var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--gray-700);
+    line-height: 1.5;
+  }
+  .scenario-list li::before {
+    content: "!";
+    color: var(--clay);
+    font-weight: 700;
+    flex-shrink: 0;
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--gray-150);
+    text-align: center;
+    line-height: 18px;
+    font-size: 11px;
+    margin-right: 10px;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+  footer a:hover { text-decoration-color: var(--clay); }
+
+  @media (max-width: 640px) {
+    .toolbar { padding: 14px 16px; }
+    .page { padding: 32px 16px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="title">PRD · [initiative]</div>
+  <div class="field">
+    <span>Variant</span>
+    <div class="seg" role="tablist" aria-label="Design variant">
+      <label role="tab"><input type="radio" name="v" checked><span>A</span></label>
+      <label role="tab"><input type="radio" name="v"><span>B</span></label>
+      <label role="tab"><input type="radio" name="v"><span>C</span></label>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+<header class="page-head">
+  <p class="eyebrow">Product requirements</p>
+  <h1>[Initiative name]</h1>
+  <p class="date-range" style="color:var(--gray-500);font-size:14px;margin-bottom:18px">
+    owner/repo · issue #NNN · started YYYY-MM-DD
+  </p>
+  <div class="prompt-box">
+    <span class="label">Prompt</span>
+    [One-line user-facing prompt or job story:]
+    "When [context], I want [motivation], so I can [outcome]."
+  </div>
+</header>
+
+<main>
+<section aria-labelledby="scenario-h">
+  <div class="sec-head">
+    <span class="num">01</span>
+    <h2 id="scenario-h">User scenario</h2>
+  </div>
+  <p class="sec-intro">What success looks like from the user's perspective. No UI mockups — this is the behavioral contract, not the visual design.</p>
+  <div class="scenario-card">
+    <p class="job-story">
+      <strong>When</strong> [context — situation, environment, trigger],<br>
+      <strong>I want</strong> [motivation — the action or capability],<br>
+      <strong>so I can</strong> [outcome — the measurable benefit].
+    </p>
+  </div>
+  <p class="sec-intro" style="margin-top:18px">Edge cases and failure states the implementer must not forget:</p>
+  <ul class="scenario-list">
+    <li><strong>Empty state:</strong> [What the user sees when there is no data yet — blank, placeholder, or guidance text?]</li>
+    <li><strong>Error state:</strong> [What the user sees when the fetch fails — retry, fallback, or silent empty?]</li>
+    <li><strong>Loaded state:</strong> [What the user sees when data is present — sort order, density, highlights?]</li>
+  </ul>
+</section>
+
+<section aria-labelledby="pitch-h">
+  <div class="sec-head">
+    <span class="num">02</span>
+    <h2 id="pitch-h">Pitch</h2>
+  </div>
+  <p class="sec-intro">One-paragraph case for building this now. State the user pain, the size of the fix, and what breaks if we defer.</p>
+  <div class="obj-grid">
+    <div class="obj-card">
+      <h3>User pain</h3>
+      <p>[What the user cannot do today, and how often they hit it.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Business value</h3>
+      <p>[Metric or outcome this unblocks: retention, support load, trust, speed.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Cost of deferring</h3>
+      <p>[What gets worse: tech debt, user churn, compliance risk, competitor move.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>Success signal</h3>
+      <p>[The one observable that tells us this worked — not vanity, behavior.]</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="objections-h">
+  <div class="sec-head">
+    <span class="num">03</span>
+    <h2 id="objections-h">Objections</h2>
+  </div>
+  <p class="sec-intro">The three reasons someone might say "not now." Answer each before the review so the discussion is about evidence, not preference.</p>
+  <div class="obj-grid">
+    <div class="obj-card">
+      <h3>"Too small to matter"</h3>
+      <p>[Counter with user frequency data or downstream dependency.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"We already have a workaround"</h3>
+      <p>[Show the workaround cost: maintenance, support, cognitive load.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"Wrong layer"</h3>
+      <p>[If the fix belongs elsewhere, say so and propose the right owner.]</p>
+    </div>
+    <div class="obj-card">
+      <h3>"Not this quarter"</h3>
+      <p>[If deferral is the right call, state the trigger that reopens it.]</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="done-h">
+  <div class="sec-head">
+    <span class="num">04</span>
+    <h2 id="done-h">Done means</h2>
+  </div>
+  <p class="sec-intro">Observable outcomes, not deliverables. If you can’t run a check against these, the PRD is incomplete.</p>
+  <ul class="done-list">
+    <li>[Observable outcome 1 — something a user or operator can verify without reading the code]</li>
+    <li>[Observable outcome 2 — includes a latency, error rate, or coverage number if relevant]</li>
+    <li>[Observable outcome 3 — includes a rollback or kill switch if relevant]</li>
+  </ul>
+</section>
+</main>
+
+<footer>
+  School Core · source: <code>docs/plans/...-prd.md</code> · render only — feedback stays local until committed
+</footer>
+</div>
+</body>
+</html>

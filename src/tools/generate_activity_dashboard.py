@@ -106,10 +106,10 @@ def load_data():
 
 def generate_html(agents, entries, refresh_seconds=5):
     """Generate standalone HTML with embedded data and auto-refresh."""
-    # NOTE: the docstring promises "all data baked in", but this payload is
-    # never injected into the HTML -- the embed is missing, not the line.
-    # Kept and flagged rather than deleted. Ruff: F841.
-    data = json.dumps({"agents": agents, "entries": entries}, ensure_ascii=False)  # noqa: F841
+    # Payload is injected into the HTML as
+    # <script type="application/json" id="__ACTIVITY_DATA__"> so the page
+    # is genuinely self-contained.
+    data = json.dumps({"agents": agents, "entries": entries}, ensure_ascii=False)
 
     # Build agent chips HTML
     role_groups = {}
@@ -305,6 +305,7 @@ main {{ padding-top:24px; padding-bottom:60px; }}
     </div>
   </div>
 </nav>
+<script type="application/json" id="__ACTIVITY_DATA__">{data}</script>
 <main><div class="container">
   <div class="hero-stats">
     <div class="hstat green"><span class="n">{total}</span><span class="l">Agents</span></div>

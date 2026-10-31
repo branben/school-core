@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
   Tier-1/2 Epic template — initiative timeline.
+  Style source: Tariq html-effectiveness/11-status-report + 08-implementation-plan
   ----------------------------------------------------------------------------
   CANONICAL SOURCE: the upstream issue or .md in git (diffable, reviewable).
   This .html is a VIEW that adds the spatial dimension: timeline, shipped vs
@@ -22,82 +23,360 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="source" content="docs/epics/2026-10-20-activity-dashboard-embed-gap.md (canonical .md in git)">
-<meta name="generated-from" content="docs/epics/2026-10-20-activity-dashboard-embed-gap.md (render)">
-<title>Epic · Activity dashboard: embedded-data gap</title>
+<meta name="source" content="upstream issue / docs/plans/...-epic.md (canonical .md in git)">
+<meta name="generated-from" content="upstream issue / docs/plans/...-epic.md (render)">
+<title>Epic · [initiative name]</title>
 <style>
-  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
-        --clay:#D97757;--olive:#788C5D;--green:#4a7c59;--amber:#c7863a;--red:#b4553a;}
-  *{box-sizing:border-box;margin:0}
-  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
-       max-width:54rem;margin:0 auto;font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
-  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
-  h1{font-family:Georgia,serif;font-weight:500;font-size:clamp(28px,5vw,46px);line-height:1.12;letter-spacing:-.016em;margin:0 0 .5rem}
-  .sub{color:var(--muted);font-size:.95rem;margin-top:.35rem}
-  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.72rem;
-        font-family:ui-monospace,Menlo,monospace}
-  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
-  nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:2rem}
-  nav a{font-size:.78rem;padding:.3rem .75rem;border:1px solid var(--line);border-radius:999px;
-        text-decoration:none;color:var(--muted);background:var(--card)}
-  nav a:hover{color:var(--ink);border-color:var(--ink)}
-  section{margin-top:2.5rem;scroll-margin-top:1.5rem}
-  h2{font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--clay);
-      margin-bottom:.9rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
-  h3{font-size:.98rem;font-weight:600;margin:1.1rem 0 .4rem}
-  p,li{font-size:.92rem;color:#3d3b37} p{margin-bottom:.7rem}
-  ul,ol{padding-left:1.2rem;margin-bottom:.9rem} li{margin-bottom:.35rem}
-  code{font-family:ui-monospace,Menlo,monospace;font-size:.84em;background:var(--card);
-       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
-  .lede{font-size:1.05rem;border-left:3px solid var(--clay);padding-left:1rem;margin-bottom:1.1rem}
+  :root {
+    --ivory: #FAF9F5;
+    --slate: #141413;
+    --clay: #D97757;
+    --clay-d: #B85C3E;
+    --oat: #E3DACC;
+    --olive: #788C5D;
+    --rust: #B04A3F;
+    --gray-100: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+    --white: #FFFFFF;
+
+    --serif: ui-serif, Georgia, serif;
+    --sans: system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+    --radius-panel: 12px;
+    --border: 1.5px solid var(--gray-300);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 56px 24px 120px;
+    background: var(--ivory);
+    color: var(--slate);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 40px; }
+  .header-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 38px;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .auto-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    border: var(--border);
+    border-radius: 999px;
+    padding: 5px 11px;
+    white-space: nowrap;
+  }
+  .date-range { color: var(--gray-500); font-size: 14px; }
+  .date-range .repo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--gray-700);
+  }
+
+  section { margin-bottom: 52px; }
+  h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  hr.rule {
+    border: none;
+    border-top: 1px solid var(--gray-300);
+    margin: 0 0 22px;
+  }
+
+  /* Summary band */
+  .summary-band {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 720px) {
+    .summary-band { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat-card {
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    padding: 20px 22px 18px;
+  }
+  .stat-card.warn {
+    border-left: 4px solid var(--clay);
+    padding-left: 19px;
+  }
+  .stat-num {
+    font-family: var(--serif);
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--slate);
+    margin-bottom: 8px;
+  }
+  .stat-label {
+    font-family: var(--sans);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-500);
+  }
+  .stat-delta {
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  .stat-delta.up { color: var(--olive); }
+  .stat-delta.flat { color: var(--gray-500); }
 
   /* Timeline */
-  .timeline{position:relative;padding-left:1.6rem;margin-left:.4rem;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:1.4rem}
-  .milestone{position:relative}
-  .milestone::before{content:'';position:absolute;left:-1.85rem;top:.3rem;width:.7rem;height:.7rem;border-radius:50%;background:var(--olive);border:2px solid var(--bg)}
-  .milestone.alt::before{background:var(--clay)}
-  .milestone .when{font-family:ui-monospace,Menlo,monospace;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-  .milestone h3{font-size:1rem;font-weight:600;margin:.2rem 0 .3rem}
-  .milestone p{font-size:.85rem;color:var(--muted);margin:0 0 .35rem}
-  .milestone .tags{display:flex;gap:.4rem;flex-wrap:wrap}
-  .tag{font-family:ui-monospace,Menlo,monospace;font-size:.64rem;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.12rem .4rem;color:var(--muted)}
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .timeline li {
+    display: grid;
+    grid-template-columns: 30px 1fr auto;
+    gap: 12px;
+    align-items: baseline;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--gray-300);
+    font-size: 14px;
+  }
+  .timeline li:last-child { border-bottom: none; }
+  .timeline .s-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  .timeline .s-est {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+    white-space: nowrap;
+  }
+  @media (max-width: 480px) {
+    .timeline li { grid-template-columns: 30px 1fr; }
+    .timeline .s-est { grid-column: 2; }
+  }
 
-  /* Status grid */
-  .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.75rem}
-  .status-grid .col{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
-  .status-grid h3{font-size:.9rem;color:var(--olive);margin:0 0 .5rem}
-  .status-grid.alt h3{color:var(--red)}
-  .status-grid ul{margin:0;padding-left:1.1rem} .status-grid li{margin-bottom:.3rem;font-size:.88rem}
+  /* Shipped table */
+  table.shipped {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+  }
+  table.shipped thead th {
+    text-align: left;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--gray-300);
+  }
+  table.shipped tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 14px;
+    vertical-align: middle;
+  }
+  table.shipped tbody tr:last-child td { border-bottom: none; }
+  table.shipped tbody tr:hover { background: var(--ivory); }
+  .pr-link {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--clay);
+    text-decoration: none;
+    border-bottom: 1px dotted transparent;
+  }
+  .pr-link:hover { border-bottom-color: var(--clay); }
+  .author { color: var(--gray-700); font-size: 13px; }
+  .risk {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  .risk-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  }
+  .risk-dot.low { background: var(--olive); }
+  .risk-dot.med { background: var(--clay); }
+  .risk-dot.high { background: var(--rust); }
+
+  /* Carryover */
+  .carryover {
+    background: var(--oat);
+    border-radius: var(--radius-panel);
+    padding: 20px 22px;
+  }
+  .carry-item {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 8px 0;
+  }
+  .carry-item + .carry-item {
+    border-top: 1px solid rgba(20, 20, 19, 0.08);
+  }
+  .carry-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-700);
+    background: var(--ivory);
+    border-radius: 4px;
+    padding: 3px 7px;
+    flex-shrink: 0;
+  }
+  .carry-body { font-size: 14px; color: var(--gray-700); }
+  .carry-body .who { color: var(--gray-500); font-size: 12px; }
 
   /* Blockers */
-  .blocker{border:1px solid var(--line);border-left:3px solid var(--red);border-radius:8px;padding:.75rem 1rem;margin-bottom:.8rem;background:var(--card)}
-  .blocker h3{font-size:.92rem;color:var(--red);margin:0 0 .3rem}
-  .blocker p{font-size:.88rem;margin:0}
-  .blocker .decidewith{font-size:.78rem;color:var(--muted);margin-top:.25rem}
-  .blocker .decidewith strong{color:var(--red);font-weight:600}
+  .blocker {
+    border: var(--border);
+    border-left: 3px solid var(--clay);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    background: var(--white);
+  }
+  .blocker h3 {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--slate);
+    margin: 0 0 6px;
+  }
+  .blocker p { font-size: 14px; color: var(--gray-700); margin: 0 0 6px; }
+  .blocker .decidewith {
+    font-size: 12px;
+    color: var(--gray-500);
+    font-family: var(--mono);
+  }
+  .blocker .decidewith strong { color: var(--clay-d); font-weight: 600; }
 
-  /* Questions */
-  .question{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:.75rem 1rem;margin-bottom:.8rem;background:var(--card)}
-  .question p{font-size:.9rem;margin:0 0 .3rem;color:var(--ink)}
-  .question .decidewith{font-size:.78rem;color:var(--muted)}
-  .question .decidewith strong{color:var(--amber);font-weight:600}
+  /* Questions / next moves */
+  .question {
+    border: var(--border);
+    border-left: 3px solid var(--olive);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    background: var(--white);
+  }
+  .question p { font-size: 14px; margin: 0 0 6px; color: var(--slate); }
+  .question .decidewith {
+    font-size: 12px;
+    color: var(--gray-500);
+    font-family: var(--mono);
+  }
+  .question .decidewith strong { color: var(--olive); font-weight: 600; }
 
-  .footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;color:var(--muted);font-size:.78rem}
-  @media (max-width:640px){body{padding:1rem} .status-grid{grid-template-columns:1fr} .timeline{padding-left:1.2rem}}
-  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+  /* Mechanical details */
+  details.mech {
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--gray-100);
+  }
+  details.mech summary {
+    cursor: pointer;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  details.mech summary::-webkit-details-marker { display: none; }
+  details.mech summary::before {
+    content: "▸";
+    color: var(--gray-500);
+    font-size: 13px;
+    transition: transform .15s;
+    display: inline-block;
+  }
+  details.mech[open] summary::before { transform: rotate(90deg); }
+  .mech-list { list-style: none; margin: 0; padding: 4px 18px 16px 40px; }
+  .mech-list li {
+    font-size: 13.5px;
+    color: var(--gray-700);
+    padding: 6px 0;
+    border-top: 1px solid var(--gray-300);
+  }
+  .mech-list li:first-child { border-top: none; }
+  .mech-list code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    padding: 0 5px;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-500);
+  }
+  footer a { color: var(--clay); text-decoration-color: var(--oat); text-underline-offset: 3px; }
+  footer a:hover { text-decoration-color: var(--clay); }
+
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .summary-band { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
+<div class="page">
 <header>
-  <h1>Activity dashboard: embedded-data gap</h1>
-  <p class="sub">Epic · upstream issue <code>school-core-tkqn</code> · <code>branben/school-core</code> @ HEAD</p>
-  <div class="meta">
-    <span>status: active</span>
-    <span>started: 2026-10-20</span>
-    <span>target: 2026-11-03</span>
-    <span>effort: ~1 d</span>
-    <span>risk: Low</span>
+  <div class="header-top">
+    <h1>Activity dashboard: embedded-data gap</h1>
+    <span class="auto-pill">Epic</span>
   </div>
+  <p class="date-range">upstream issue #NNN · <span class="repo">owner/repo</span> @ SHA</p>
+  <div class="date-range">status: active · started: 2026-10-20 · target: 2026-10-31 · effort: ~1 sprint · risk: Low &nbsp;|&nbsp; started: YYYY-MM-DD &nbsp;|&nbsp; target: YYYY-MM-DD &nbsp;|&nbsp; effort: ~[N] [d/w] &nbsp;|&nbsp; risk: Low | Medium | High</div>
 </header>
 
 <nav aria-label="Sections">
@@ -110,73 +389,143 @@
 <main>
 <section id="timeline" aria-labelledby="timeline-h">
   <h2 id="timeline-h">1 · Timeline</h2>
-  <p class="lede"><code>src/tools/generate_activity_dashboard.py</code> builds a JSON payload and never embeds it. The emitted HTML is not self-contained. This epic closes the gap between what the docstring promises and what the page actually ships.</p>
-  <div class="timeline">
-    <div class="milestone">
-      <span class="when">2026-10-20 · Discovery</span>
-      <h3>F841 lint backlog cleanup</h3>
-      <p>Found unused <code>data = json.dumps({&quot;agents&quot;: ..., &quot;entries&quot;: ...})</code> in <code>generate_activity_dashboard.py</code>. Kept with <code># noqa: F841</code> and a comment rather than delete — deleting the line would satisfy the linter while cementing the missing feature.</p>
-      <div class="tags"><span class="tag">lint</span><span class="tag">discovery</span></div>
-    </div>
-    <div class="milestone alt">
-      <span class="when">2026-10-20 · Bead</span>
-      <h3>Opened <code>school-core-tkqn</code></h3>
-      <p>Acceptance criteria: dashboard HTML is genuinely self-contained. Verify by opening the generated page with no network and confirming the data is present.</p>
-      <div class="tags"><span class="tag">task</span><span class="tag">P3</span></div>
-    </div>
-    <div class="milestone">
-      <span class="when">Next · Inner loop</span>
-      <h3>Prime → Plan → Implement → Validate → Review → PR</h3>
-      <p>One slice: inject the built payload into the emitted HTML, or update the docstring to match reality. Either path makes the artifact match its promise.</p>
-      <div class="tags"><span class="tag">inner-loop</span><span class="tag">TBD</span></div>
-    </div>
-  </div>
+  <hr class="rule">
+  <p class="lede" style="font-size:16px;color:var(--gray-700);max-width:640px;margin:0 0 22px;border-left:3px solid var(--clay);padding-left:1rem;">
+    One-line epic pitch: what this initiative is, why it matters, and what "done" looks like.
+  </p>
+  <ul class="timeline">
+    <li>
+      <span class="s-num">01</span>
+      <div>
+        <strong style="font-weight:600;color:var(--slate)">[Decision or milestone — what was decided or shipped]</strong>
+        <p style="font-size:13px;color:var(--gray-500);margin:4px 0 0">[What changed, what was ruled out, and who decided it.]</p>
+      </div>
+      <span class="s-est">Phase 1</span>
+    </li>
+    <li>
+      <span class="s-num">02</span>
+      <div>
+        <strong style="font-weight:600;color:var(--slate)">[Second milestone — the risky or deferred part]</strong>
+        <p style="font-size:13px;color:var(--gray-500);margin:4px 0 0">[What slipped, what was blocked, and the fallback taken.]</p>
+      </div>
+      <span class="s-est">Phase 2</span>
+    </li>
+    <li>
+      <span class="s-num">03</span>
+      <div>
+        <strong style="font-weight:600;color:var(--slate)">[Final milestone — what shipped and how it was verified]</strong>
+        <p style="font-size:13px;color:var(--gray-500);margin:4px 0 0">[The shipped slice, the review gate, and the measurable outcome.]</p>
+      </div>
+      <span class="s-est">Phase 3</span>
+    </li>
+  </ul>
 </section>
 
 <section id="status" aria-labelledby="status-h">
   <h2 id="status-h">2 · Shipped / slipped</h2>
-  <div class="status-grid">
-    <div class="col">
-      <h3>Shipped</h3>
-      <ul>
-        <li>Bead <code>school-core-tkqn</code> opened with measurable acceptance criteria</li>
-        <li>Docstring audit complete — gap confirmed between promise and emitted HTML</li>
-      </ul>
+  <hr class="rule">
+  <div class="summary-band" style="margin-bottom:22px">
+    <div class="stat-card">
+      <div class="stat-num">[N]</div>
+      <div class="stat-label">Shipped</div>
     </div>
-    <div class="col alt">
-      <h3>Slipped / deferred</h3>
-      <ul>
-        <li>Fix not yet implemented — the <code># noqa: F841</code> is a known-debt marker, not a resolution</li>
-        <li>No rendered HTML artifact for the dashboard yet</li>
-      </ul>
+    <div class="stat-card">
+      <div class="stat-num">[N]</div>
+      <div class="stat-label">Slipped</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-num">[N]</div>
+      <div class="stat-label">Blockers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">[N]</div>
+      <div class="stat-label">Open questions</div>
+    </div>
+  </div>
+
+  <table class="shipped">
+    <thead>
+      <tr>
+        <th>Capability / slice</th>
+        <th>PR</th>
+        <th>Author</th>
+        <th>Risk</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>[Capability or slice — linked to bead / PR]</td>
+        <td><a class="pr-link" href="#">#NNN</a></td>
+        <td class="author">@owner</td>
+        <td><span class="risk"><span class="risk-dot low"></span> Low</span></td>
+      </tr>
+      <tr>
+        <td>[Another delivered outcome]</td>
+        <td><a class="pr-link" href="#">#NNN</a></td>
+        <td class="author">@owner</td>
+        <td><span class="risk"><span class="risk-dot med"></span> Medium</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="carryover" style="margin-top:18px">
+    <div class="carry-item">
+      <span class="carry-tag">deferred</span>
+      <div class="carry-body">
+        <strong>[What was planned but not delivered]</strong>
+        <div class="who">Owner: @name · blocked by: [dependency]</div>
+      </div>
+    </div>
+    <div class="carry-item">
+      <span class="carry-tag">blocked</span>
+      <div class="carry-body">
+        <strong>[What is still blocked]</strong>
+        <div class="who">Owner: @name · unblocks when: [condition]</div>
+      </div>
     </div>
   </div>
 </section>
 
 <section id="blockers" aria-labelledby="blockers-h">
   <h2 id="blockers-h">3 · Blockers</h2>
+  <hr class="rule">
   <article class="blocker">
-    <h3>Inner loop not yet run</h3>
-    <p>The slice has not been pulled into Prime → Plan → Implement → Validate → Review → PR. No fix exists yet; the <code># noqa: F841</code> is a marker, not a resolution.</p>
-    <p class="decidewith">Decide with: <strong>student-coder / student-reviewer</strong> · before <strong>bd claim tkqn</strong></p>
+    <h3>[Blocker title]</h3>
+    <p>[What is blocked, who owns the dependency, and the current status.]</p>
+    <p class="decidewith">Decide with: <strong>[owner]</strong> · before <strong>[gate / date]</strong></p>
+  </article>
+  <article class="blocker">
+    <h3>[Second blocker — if any]</h3>
+    <p>[Same shape. If there is no second blocker, delete this block.]</p>
+    <p class="decidewith">Decide with: <strong>[owner]</strong> · before <strong>[gate / date]</strong></p>
   </article>
 </section>
 
 <section id="next" aria-labelledby="next-h">
   <h2 id="next-h">4 · Next moves</h2>
+  <hr class="rule">
   <article class="question">
-    <p>Run the inner loop on <code>tkqn</code>: inject the built payload into the emitted HTML, or update the docstring to match reality. Which path preserves the existing API?</p>
-    <p class="decidewith">Decide with: <strong>Brandon</strong> · before <strong>inner-loop Plan</strong></p>
+    <p>[The next decision the epic owner needs to make — stated as a question, not a task.]</p>
+    <p class="decidewith">Decide with: <strong>[owner]</strong> · before <strong>[gate / date]</strong></p>
   </article>
   <article class="question">
-    <p>After merge, render the updated dashboard HTML through <code>docs/site/</code> and publish via <code>tot</code> as the verified artifact.</p>
-    <p class="decidewith">Decide with: <strong>Brandon</strong> · before <strong>PR merge</strong></p>
+    <p>[Second open question, or the first slice to pull into the inner loop.]</p>
+    <p class="decidewith">Decide with: <strong>[owner]</strong> · before <strong>[gate / date]</strong></p>
   </article>
+
+  <details class="mech" style="margin-top:18px">
+    <summary>Mechanical details <span class="count" style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--gray-500);font-weight:400">2 items</span></summary>
+    <ul class="mech-list">
+      <li>[Dependency or setup detail — command, path, or config key] <code>example</code> <span class="why">why it matters</span></li>
+      <li>[Second mechanical detail] <code>example</code> <span class="why">why it matters</span></li>
+    </ul>
+  </details>
 </section>
 </main>
 
-<footer class="footer">
-  School Core · source: <code>docs/epics/2026-10-20-activity-dashboard-embed-gap.md</code> · render only — feedback stays local until committed
+<footer>
+  School Core · source: <code>upstream issue / docs/plans/...-epic.md</code> · render only — feedback stays local until committed
 </footer>
+</div>
 </body>
 </html>
