@@ -337,6 +337,61 @@
   }
   .question .decidewith strong { color: var(--olive); font-weight: 600; }
 
+  /* ---------- reviewer feedback surface ---------- */
+
+  .feedback { display: grid; gap: 14px; }
+  .comment {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .comment-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .comment-author {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--slate);
+  }
+  .comment-section {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+  }
+  .comment-body {
+    font-size: 14px;
+    color: var(--gray-700);
+    line-height: 1.5;
+    margin: 0 0 10px;
+  }
+  .comment-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .comment-sev {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+  .comment-sev.low { background: #E8EDE0; color: #5C6F44; }
+  .comment-sev.med { background: var(--gray-150); color: var(--gray-700); }
+  .comment-sev.high { background: #F5E2D8; color: var(--clay-d); }
+  .comment-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+  }
+
   /* ---------- code blocks ---------- */
 
   .code-block {
@@ -500,35 +555,35 @@
   </div>
 </section>
 
-<section aria-labelledby="mockups-h">
+<section aria-labelledby="review-h">
   <div class="sec-head">
     <span class="num">03</span>
-    <h2 id="mockups-h">Mockups</h2>
+    <h2 id="review-h">Review surface</h2>
   </div>
-  <p class="sec-intro">Not pixel-final — just enough that the reviewer and I agree on layout, nesting depth, and what the sidebar digest looks like.</p>
-  <div class="mocks">
-    <div class="mock">
-      <div class="mock-label">A · Primary flow</div>
-      <div class="mock-body">
-        <div class="card-mock">
-          <div class="cm-title">[Primary view title]</div>
-          <div class="cm-meta">[Context: task card, detail panel, form]</div>
-          <div class="cm-divider"></div>
-          <div style="font-size:13px;color:var(--gray-500)">[Mock content — replace with real layout description or wireframe text.]</div>
-        </div>
+  <p class="sec-intro">Reviewer feedback on this spec. Each comment is anchored to a slice or section so the implementer knows exactly what to address before the review gate.</p>
+  <div class="feedback">
+    <article class="comment">
+      <div class="comment-header">
+        <span class="comment-author">@reviewer</span>
+        <span class="comment-section">anchored to: §01 Milestones</span>
       </div>
-    </div>
-    <div class="mock">
-      <div class="mock-label">B · Sidebar digest</div>
-      <div class="mock-body">
-        <div class="card-mock">
-          <div class="cm-title">[Sidebar title]</div>
-          <div class="cm-meta">[Context: list, feed, unread count]</div>
-          <div class="cm-divider"></div>
-          <div style="font-size:13px;color:var(--gray-500)">[Mock content — replace with real layout description or wireframe text.]</div>
-        </div>
+      <p class="comment-body">[Feedback text — what looks wrong, missing, or ambiguous. Be specific: a missing slice, an unclear exit criterion, a risk not named.]</p>
+      <div class="comment-meta">
+        <span class="comment-sev low">blocking</span>
+        <span class="comment-time">2026-10-31</span>
       </div>
-    </div>
+    </article>
+    <article class="comment">
+      <div class="comment-header">
+        <span class="comment-author">@reviewer</span>
+        <span class="comment-section">anchored to: §02 Data flow</span>
+      </div>
+      <p class="comment-body">[Second feedback item — optional.]</p>
+      <div class="comment-meta">
+        <span class="comment-sev med">needs discussion</span>
+        <span class="comment-time">2026-10-31</span>
+      </div>
+    </article>
   </div>
 </section>
 

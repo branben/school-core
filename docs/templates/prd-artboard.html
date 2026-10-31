@@ -315,6 +315,55 @@
     flex-shrink: 0;
   }
 
+  /* ---------- user scenario ---------- */
+
+  .scenario-card {
+    background: var(--white);
+    border: var(--border);
+    border-radius: var(--radius-panel);
+    padding: 22px 26px 24px;
+  }
+  .job-story {
+    font-size: 15.5px;
+    color: var(--gray-700);
+    line-height: 1.6;
+  }
+  .job-story strong {
+    color: var(--slate);
+    font-weight: 600;
+  }
+  .scenario-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .scenario-list li {
+    padding: 12px 16px;
+    background: var(--white);
+    border: var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--gray-700);
+    line-height: 1.5;
+  }
+  .scenario-list li::before {
+    content: "!";
+    color: var(--clay);
+    font-weight: 700;
+    flex-shrink: 0;
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--gray-150);
+    text-align: center;
+    line-height: 18px;
+    font-size: 11px;
+    margin-right: 10px;
+  }
+
   footer {
     margin-top: 64px;
     padding-top: 20px;
@@ -360,34 +409,25 @@
 </header>
 
 <main>
-<section aria-labelledby="demo-h">
+<section aria-labelledby="scenario-h">
   <div class="sec-head">
     <span class="num">01</span>
-    <h2 id="demo-h">Demo</h2>
+    <h2 id="scenario-h">User scenario</h2>
   </div>
-  <p class="sec-intro">What does success look like from the user's perspective? Show the end state, not the implementation.</p>
-  <div class="board">
-    <div class="artboard">
-      <span class="tag">A · preferred</span>
-      <div class="stage">
-        <div style="text-align:center;max-width:260px">
-          <h3 style="font-family:var(--serif);font-weight:500;font-size:20px;color:var(--fg);margin-bottom:8px">[Primary flow]</h3>
-          <p style="font-size:13px;color:var(--muted)">[What the user sees and does first.]</p>
-        </div>
-      </div>
-      <p class="rationale"><strong>Why this works:</strong> [1–2 sentences on why variant A is preferred.]</p>
-    </div>
-    <div class="artboard">
-      <span class="tag">B · alt</span>
-      <div class="stage dark">
-        <div style="text-align:center;max-width:260px">
-          <h3 style="font-family:var(--serif);font-weight:500;font-size:20px;color:var(--fg);margin-bottom:8px">[Alternative flow]</h3>
-          <p style="font-size:13px;color:var(--muted)">[The fallback if A is too risky or costly.]</p>
-        </div>
-      </div>
-      <p class="rationale"><strong>When to use:</strong> [Condition that selects B.]</p>
-    </div>
+  <p class="sec-intro">What success looks like from the user's perspective. No UI mockups — this is the behavioral contract, not the visual design.</p>
+  <div class="scenario-card">
+    <p class="job-story">
+      <strong>When</strong> [context — situation, environment, trigger],<br>
+      <strong>I want</strong> [motivation — the action or capability],<br>
+      <strong>so I can</strong> [outcome — the measurable benefit].
+    </p>
   </div>
+  <p class="sec-intro" style="margin-top:18px">Edge cases and failure states the implementer must not forget:</p>
+  <ul class="scenario-list">
+    <li><strong>Empty state:</strong> [What the user sees when there is no data yet — blank, placeholder, or guidance text?]</li>
+    <li><strong>Error state:</strong> [What the user sees when the fetch fails — retry, fallback, or silent empty?]</li>
+    <li><strong>Loaded state:</strong> [What the user sees when data is present — sort order, density, highlights?]</li>
+  </ul>
 </section>
 
 <section aria-labelledby="pitch-h">
