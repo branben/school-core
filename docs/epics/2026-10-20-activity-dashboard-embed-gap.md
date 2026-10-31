@@ -15,7 +15,7 @@ tags: [school-core, dashboard, html, data-embed, lint]
 
 ## One-line pitch
 
-`src/tools/generate_activity_dashboard.py` builds a JSON payload and never embeds it. The emitted HTML is not self-contained. This epic closes the gap between what the docstring promises and what the page actually ships.
+`src/tools/generate_activity_dashboard.py` built a JSON payload and never embedded it. The emitted HTML was not self-contained. This epic closed the gap between what the docstring promised and what the page actually shipped.
 
 ## Why this matters
 
@@ -27,22 +27,26 @@ A dashboard that claims "embedded data baked in" but requires a network fetch to
 |------|-----------|---------|
 | 2026-10-20 | Discovery — F841 lint backlog cleanup (`8e826e2`) | Found unused `data = json.dumps(...)` in `generate_activity_dashboard.py`; kept with `# noqa: F841` and a comment rather than delete |
 | 2026-10-20 | Bead created — `school-core-tkqn` | Acceptance criteria: dashboard HTML is genuinely self-contained, verified offline |
-| Next | Inner loop — Prime → Plan → Implement → Validate → Review → PR | One slice: inject payload into HTML or update docstring to match reality |
+| 2026-10-31 | Outer loop — Epic → PRD → SPEC → Tickets | Backfilled docs and implemented the fix |
+| 2026-10-31 | Inner loop — Implement → Validate → Review → PR | Payload injected as `<script type="application/json" id="__ACTIVITY_DATA__">`; acceptance test passes; `main` at `51adfaa` |
 
 ## Shipped / slipped
 
-| Shipped | Slipped |
+| Shipped | Slipped / deferred |
 |---------|---------|
-| Bead `tkqn` opened with measurable acceptance criteria | Fix not yet implemented — the `# noqa: F841` is a known-debt marker, not a resolution |
-| Docstring audit complete — gap confirmed | No rendered HTML artifact for the dashboard yet |
+| Bead `tkqn` opened with measurable acceptance criteria | None — fix is complete |
+| PRD + SPEC backfilled and published via `tot` | |
+| Payload injection in `generate_html()` — one-line fix | |
+| Acceptance test `tests/test_activity_dashboard_embed.py` passes | |
+| Docstring updated — embed is now real, not promised | |
 
 ## Blockers
 
 | Blocker | Owner | Gate |
 |---------|-------|------|
-| No inner-loop run yet — slice needs to be pulled into Prime | `student-coder` / `student-reviewer` | `bd claim tkqn` → inner loop |
+| None — fix merged to `main` | | |
 
 ## Next moves
 
-1. Run the inner loop on `tkqn`: Prime → Plan → Implement → Validate → Review → PR.
-2. After merge, render the updated dashboard HTML through `docs/site/` and publish via `tot` as the verified artifact.
+1. Render the updated dashboard HTML through `docs/site/activity_dashboard.html` and publish via `tot` as the verified artifact.
+2. Close `school-core-tkqn`.
