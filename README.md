@@ -1,223 +1,202 @@
 # Agent School Core
 
-<a href="https://github.com/branben/school-core">
-  <img src="https://raw.githubusercontent.com/branben/school-core/main/.github/animated-badge.svg" alt="Agent School Core – live" width="380" height="80">
-</a>
-
-> ⚠️ **Qodo Command CLI is discontinued.** The pre-merge review now uses
-> [Entire CLI](https://github.com/entireio/cli) (`entire review`) —
-> intent-aware code review that reads git checkpoints. No API key needed.
-
 A **developmental framework for AI agents** where students grow through
 practice, feedback, challenge, and rest — not prompt-chaining.
 
-- **Roles over prompts** — persistent personas (Student / Teacher / Principal / Janitor)
-- **Compiler before critic** — execute the code first, LLM-as-judge last
-- **Adversarial review mandatory** — two-judge (CTO + COO) on every output
-- **Growth over performance** — difficulty-adjusted EMA scoring
-- **Memory that compounds** — Library/Engram consolidation
+The name is literal: it is a school. Students attempt tasks, teachers review
+their work, the principal routes by readiness, and the janitor cleans up what
+didn't teach anything. Every artifact in the repo exists to support that loop.
+
+---
+
+## The pedagogy (read this first)
+
+Agent engineering is developers trying to reframe pedagogy. The structure that
+has survived 800 years of human education — school — is the same structure
+needed for LLM agents that cannot grow by prompt alone.
+
+**The problem:** LLMs are competent mimics. Give them a prompt, they produce
+something plausible. When the edge cases surface, when "good enough" turns out
+to be wrong, they have nowhere to go. They can't fail, learn from failure, or
+grow.
+
+**The school's answer:** Every task is a practice act, not a one-shot execution.
+
+| School element | Agent engineering analog |
+|----------------|--------------------------|
+| **Practice** | Every task is a Student attempt — disposable, scored, reviewed |
+| **Feedback** | Adversarial review by CTO + COO — stress-testing, not validation |
+| **Challenge** | Difficulty is measured. Harder tasks only after mastery |
+| **Rest** | Teacher sleep/wake cycles. Trajectory pruning. Memory consolidation |
+| **Growth** | Difficulty-adjusted EMA scoring — not flat pass/fail |
+| **Curriculum** | Semantic anchors (`[TDD]`, `[Fagan Inspection]`) activate full methodologies on demand |
+
+The compiler runs before the critic speaks. Execution over estimation. Tests
+over vibes.
+
+---
+
+## The SDLC — two loops
+
+Everything lands as `bd` slices (one testable concern per slice), and every
+slice walks both loops:
+
+**Outer loop** — epic → PRD → SPEC → tickets (human-driven)
+**Inner loop** — Prime → Plan → Implement → Validate → Review → PR (agent-driven)
+
+```
+Outer:  epic → PRD (Tier-3 .md + .html render)
+            → SPEC (Tier-3 .md + impl-plan .html)
+            → tickets (beads, one testable concern each)
+
+Inner:  Prime    → module-map .html (generated from repo data)
+        Plan     → tweakable-plan .html (decisions first)
+        Implement→ dev-log.md (deviation log)
+        Validate → prototype .html (states + boundary + export)
+        Review   → guided review (plannotator-guide; guide.json validated)
+        PR       → PR writeup .html published via tot
+```
+
+Every slice runs Prime through PR as its own TDD loop. A failed sub-step loops
+back to **that** step, not the whole slice.
+
+**Chain of custody:** every inner-loop artifact carries a mandatory `source`
+block (YAML front-matter in `.md`, HTML comment in `.html`) tying it back to
+the bead, spec, and prior artifact. REVIEW's `guide.json` accumulates all four
+prior artifacts plus the SPEC's acceptance criteria. `review_gate.py` check #5
+verifies the chain before the PR passes.
+
+Full map: `docs/sdlc/loops.md`
+
+---
+
+## The roles
+
+| Role | Gate | What they do |
+|------|------|-------------|
+| **Student** | 0–24 pts | Takes tasks, builds foundations |
+| **Senior Student** | 25–49 pts | Passes medium tasks |
+| **Teacher** | 50–74 pts | Mentors, reviews, stress-tests |
+| **Faculty** | 75+ pts | Handles blockers, designs curriculum |
+| **Principal** | — | Routes work by competency |
+| **Janitor** | — | Prunes stale trajectories, consolidates Library |
+
+The tiers are cosmetic log labels — the real gates are `GATES(scoring)` +
+readiness-confidence + two-judge review.
+
+---
+
+## The tool chain
+
+| Tool | Role |
+|------|------|
+| **Hermes** | Agent runtime — loads personas, manages skills, MCP servers |
+| **Orca** | Persistent worktree backend — survives agent deaths |
+| **FirstMate** | Dispatch layer — spawns ephemeral crewmates into Orca |
+| **Beads (`bd`)** | Durable task tracking — backed by Dolt, syncs via git refs |
+| **Engram** | Memory — episodic trajectories + archival consolidation |
+| **AgentMail** | Communication bus — inbound `/approve /reject /fix` |
+| **Entire** | Pre-merge review — intent-aware, reads git checkpoints |
+| **Serena** | Symbol awareness — LSP-based file/symbol resolution |
+| **plannotator** | Guided review — structured diff reading order |
+
+---
+
+## What is wired (tested, not aspirational)
+
+| Capability | Status |
+|-----------|--------|
+| Students (Hermes) dispatch | ✅ Wired |
+| Principal verify gate | ✅ Wired |
+| Adversarial review (CTO + COO) | ✅ Wired |
+| Pre-merge review (Entire) | ✅ Wired |
+| Inner-loop chain of custody | ✅ Wired (6 templates + review_gate.py check #5) |
+| Beads kanban + CI gating | ✅ Wired |
+| Serena LSP layer | ✅ Wired |
+| CocoIndex vault layer | ✅ Wired |
+| Engram Layer 2 (episodic) | ✅ Wired |
+
+**What is partial or deferred:**
+- AgentMail inbound poller — code exists at `src/agentmail_poller.py` but no active cron/launchd entry was found (`ps aux | grep agentmail_poller` returns nothing); the `/approve /reject /fix` workflow is wired but the poller is not currently running
+- AgentMail async two-judge — sync mode works; async Phase 2 is future
+- Archival consolidation (Layer 3) — gate fires, write-side hook pending
+- Student VM stack — built+tested, not wired into prod dispatch (SCH-32b)
+- Cloud lane (U7) — present but not the default path
+
+---
 
 ## Ecosystem
 
-School Core is the judgment + growth layer over a wider stack it leans on.
-Adjacent repos in the same ecosystem:
-
 | Repo | What it is |
 |------|-----------|
-| [`worst-day-ever-skill`](https://github.com/branben/worst-day-ever-skill) | Adversarial stress-testing methodology — 8 attack dimensions, 6 safeguards, severity-ranked disaster reports |
-| [`wde-mcp-server`](https://github.com/branben/wde-mcp-server) | MCP server exposing Worst Day Ever as a SEP-2640 skill, tool, and resources |
-| [`school-core-skills`](https://github.com/branben/school-core-skills) | 16 agent skills for the two-loop SDLC — epic to tickets, ticket to merged PR |
-| [`orca`](https://github.com/branben/orca) | The ADE for fleets of parallel agents — worktrees, terminals, automations (submodule) |
-| [`OmniRoute`](https://github.com/branben/OmniRoute) | Free AI gateway — School Core's model substrate (L4), with upstream contributions |
-| [`hermes-agent`](https://github.com/branben/hermes-agent) | The agent that grows with you — Hermes sessions, profiles, delegation |
+| [`worst-day-ever-skill`](https://github.com/branben/worst-day-ever-skill) | Adversarial stress-testing — 8 attack dimensions, severity-ranked disaster reports |
+| [`wde-mcp-server`](https://github.com/branben/wde-mcp-server) | MCP server exposing Worst Day Ever as tools + resources |
+| [`school-core-skills`](https://github.com/branben/school-core-skills) | 16-skill kit for the two-loop SDLC |
+| [`orca`](https://github.com/branben/orca) | Persistent worktree backend |
+| [`OmniRoute`](https://github.com/branben/OmniRoute) | Model substrate (L4) |
+| [`hermes-agent`](https://github.com/branben/hermes-agent) | Agent runtime |
 
-### Worst Day Ever
+---
 
-[`worst-day-ever-skill`](https://github.com/branben/worst-day-ever-skill) is an
-adversarial stress-testing methodology: **MAP** the interface, **GENERATE**
-pathological scenarios across 8 attack dimensions (input boundary, state
-machine torture, temporal/timing, authn/z shadow, data integrity, concurrent
-load, external dependency failure, brownfield mining), **SANDBOX** them,
-**EXECUTE** one at a time, and **REPORT** a severity-ranked disaster list with
-remediation — *before* your users give your project its worst day. It runs
-under 6 safeguards: no real data, no secrets, sandboxed execution, no external
-calls, bounded duration, no mutation.
-
-School Core applies the methodology internally — see
-[`docs/school-core-worst-day-ever.md`](docs/school-core-worst-day-ever.md) and
-`tests/test_worst_day_critical_nodes.py`, which prove the fail-closed nodes
-(N5.1/N5.2/N5.3) now catch the worst-day failures instead of swallowing them.
-
-**Worst Day Ever as MCP** — [`wde-mcp-server`](https://github.com/branben/wde-mcp-server)
-exposes the skill over the Model Context Protocol (Rust, built on
-[`rmcp`](https://github.com/modelcontextprotocol/rust-sdk) with the SEP-2640
-skills extension):
-
-- **Skill** — `io.modelcontextprotocol/skills` extension
-- **Tool** — `worst_day_ever_assess`, callable by any MCP client
-- **Resources** — each of the 8 dimensions readable individually
-- **Transports** — stdio (`wde-mcp-stdio`) or streamable HTTP (`127.0.0.1:3001/mcp`)
-
-### School Core Skills
-
-[`school-core-skills`](https://github.com/branben/school-core-skills) is a
-16-skill kit for the SDLC that School Core's slices walk. Two loops:
-
-```
-outer:  grill-me → vision → nose-up → to-prd → to-spec → to-tickets
-inner:  Prime → Plan → Implement → Validate → Review → PR
-```
-
-Install for any agent:
-
-```bash
-npx skills add branben/school-core-skills
-```
-
-### OmniRoute contributions
-
-[`OmniRoute`](https://github.com/diegosouzapw/OmniRoute) is School Core's model
-substrate — `executor.py` and `omni_relay.py` route student thinking through
-`OMNIROUTE_BASE` (`localhost:20128/v1`), with ACRouter combo selection on top.
-Upstream contributions from [`branben/OmniRoute`](https://github.com/branben/OmniRoute):
-
-- **MCP context sources** — Notion MCP (6 tools, dashboard tab) · Obsidian MCP (24 tools)
-- **MCP fixes** — `enforceScopes` guard reordered before lookup · GitHub skill tools discoverable via `omniroute_tool_search`
-- **Admission / capacity** — per-connection virtual admission lanes · process-wide chat-body budget · combo-lane awareness + activation UX + MCP visibility
-- **PII redaction fix** — stop redacting code syntax as IPv6
-- **In flight** — `[defer]` 2026-07-28 spec-compliant MCP v2 server sidecar (#15983)
-
-## FirstMate dispatch (crew spawning)
-
-FirstMate spawns ephemeral Hermes crewmates into Orca worktrees (see
-`campus.md` → Operational Reality for the full note). It lives in a
-**persistent** location so it survives reboots:
-
-```bash
-# One-time install (NOT /tmp — that gets wiped on reboot)
-git clone --depth 1 https://github.com/kunchenguid/firstmate.git ~/.local/share/firstmate
-
-# Spawn a crewmate (FM_HOME carries the orca backend config)
-FM_HOME=~/.hermes/school-core-fm-config \
-  ~/.local/share/firstmate/bin/fm-spawn.sh <task-id> <project-dir> \
-  --backend orca --mode no-mistakes --yolo on \
-  --harness '~/.local/bin/hermes-fm-wrapper "$($__OPINPUT__ encode launch-brief < $__BRIEF__)"'
-```
-
-Working skill: `~/.hermes/skills/firstmate-orca-spawn-hermes/SKILL.md`.
-
-## Quick Start
+## Getting started
 
 ```bash
 # One-command setup (Nix)
 nix develop github:branben/school-core
 
-# Dispatch a task
-orca dispatch --profile student-coder "implement feature X"
+# See what needs work
+bd ready
 
-# Review + rubber-stamp via AgentMail
-python3 scripts/run_teacher_review_once.py teacher-cto
-# → AgentMail card lands in inbox: [/approve] [/reject] [/fix]
+# Walk one slice through the inner loop
+# Prime → Plan → Implement → Validate → Review → PR
+# End with: bd close <id>
 ```
 
-## Flow
+## Clean-device recovery
 
-```
-  Student ──►  CTO Review  ──►  Bookbag  ──►  AgentMail Card  ──►  /approve
-  Student ──►  COO Review  ──►    │                        ──►  /reject
-                                 │                        ──►  /fix <note>
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  Principal routes work by measured competency  │  No sycophancy     │
-  └──────────────────────────────────────────────────────────────────────┘
+A clean checkout can verify itself end-to-end with one command:
+
+```bash
+bash scripts/fresh_device_check.sh
 ```
 
-## Personas
+Optional target override:
 
-| Role | Gate | Description |
-|------|------|-------------|
-| **Student** | 0-24 pts | Takes easy tasks, builds foundations |
-| **Senior Student** | 25-49 pts | Passes medium tasks |
-| **Teacher** | 50-74 pts | Can mentor, review, and stress-test |
-| **Faculty** | 75+ pts | Handles blockers, designs curriculum |
-| **Principal** | — | Routes work by competency |
-| **Janitor** | — | Prunes stale trajectories, consolidates Library |
-
-## Project Structure
-
-```
-school-core/
-├── campus.md                  # 🏛️ Identity & behavioral core
-├── docs/
-│   ├── HANDOFF.md             # 📋 Bookbag state machine + signal protocol
-│   ├── school-core-architecture.md
-│   └── agent-school/
-├── config/
-│   ├── anchors.yaml           # Semantic anchors (TDD, YAGNI, Fagan…)
-│   └── profiles/*/SOUL.md     # Persona definitions
-├── conductor.py               # 🎓 Principal — routes work + review (root shim)
-├── bookbag.py                 # 🎒 Bookbag state + file-lock protocol (root shim)
-├── src/
-│   ├── entire_review.py       # ✨ Entire review shim (pre-merge)
-│   ├── agentmail_poller.py    # 📬 Inbound /approve → commit+push+close
-│   ├── bridge/                # Issue→PR bridge, candidate manifests/gates
-│   ├── core/                  # director, leaf, scoring, routing, recovery
-│   ├── crew/                  # crew dispatch, executor, Orca, sandboxing
-│   ├── review/                # verify gate, adversarial review, evidence join
-│   ├── sensors/               # activity log/server, journals, scorers
-│   └── tools/                 # teacher, model relay, mail, vendi, graders
-├── scripts/
-│   └── run_teacher_review_once.py  # One-shot teacher review pass
-├── tests/                     # 2514-test suite (TDD)
-└── flake.nix                  # Reproducible dev env (Nix)
+```bash
+bash scripts/fresh_device_check.sh owner/repo
 ```
 
-### Utility scripts (repo root)
+What it does, in order:
 
-One-shot tools that are intentionally not part of the runtime pipeline:
+1. `.env` materialization — copies `.env.example` → `.env` if missing
+2. `venv` + `requirements.txt` — installs runtime deps
+3. `nix develop` — builds the hermetic `verifyShell` (flake.nix)
+4. `bd prime` — restores durable state context
+5. `pytest` — runs the full suite
+6. `verify_gate` — clones the target repo and runs declared checks
 
-| Script | Purpose |
-|--------|---------|
-| `regenerate_budgets.py` | Print the live per-difficulty turn-budget table, read from `orca_executor` (read-only) |
-| `patch_papers.py` | Patch the generated leaderboard HTML (`docs/site/leaderboard.html`) with paper references |
-| `school_md_generator.py` | Generate a `school.md` teaching doc for another repo via a cloud agent |
+Evidence trail: the script exits non-zero on any failure and prints
+per-stage `[fresh-device]` markers so a log tells you exactly where
+recovery broke.
 
-## Live Stats
+---
 
-| Component | Status |
-|-----------|--------|
-| Test suite | ✅ 2371 tests passing, 29 skipped (2400 non-live) |
-| Entire pre-merge | ✅ Wired (`entire review`, intent-aware; replaces discontinued Qodo) |
-| AgentMail loop | ✅ Cron every 2 min |
-| Beads kanban | ✅ 0 blocked, 0 open |
-
-## Key Documents
+## Key documents
 
 | Purpose | File |
 |---------|------|
-| Identity | [`campus.md`](campus.md) |
+| Identity + pedagogy | [`campus.md`](campus.md) |
+| SDLC map | [`docs/sdlc/loops.md`](docs/sdlc/loops.md) |
 | Handoff contract | [`docs/HANDOFF.md`](docs/HANDOFF.md) |
-| Anchors/methods | [`config/anchors.yaml`](config/anchors.yaml) |
-| Notification tone spec | [`docs/notification-style-guide.md`](docs/notification-style-guide.md) |
+| Quality gates | [`docs/quality-gates-checklist.md`](docs/quality-gates-checklist.md) |
+| Notification tone | [`docs/notification-style-guide.md`](docs/notification-style-guide.md) |
 
-## Notify env
-
-Notifications (verdict cards, issue alerts, CI alerts) route through
-`school_mail.py` + the shared `agentmail_client.py`. Set the control-plane
-inbox so cards land where the poller watches:
-
-```bash
-AGENTMAIL_SCHOOL_INBOX=vault-synthesis@agentmail.to   # control-plane (default)
-# AGENTMAIL_INBOX=…                                    # override destination
-```
-
-Resolution: `AGENTMAIL_SCHOOL_INBOX` → `AGENTMAIL_INBOX` → first inbox on the
-key. The key itself comes from `AGENTMAIL_API_KEY` or `~/.hermes/config.yaml`.
-See [`docs/notification-style-guide.md`](docs/notification-style-guide.md) for
-the full contract.
+---
 
 ## Contributing
 
-See [`docs/HANDOFF.md`](docs/HANDOFF.md). Build against **wired** capabilities only — `campus.md` marks what's operational vs aspirational.
+See [`docs/HANDOFF.md`](docs/HANDOFF.md). Build against **wired** capabilities
+only — `campus.md` marks what's operational vs aspirational.
 
 ---
 
