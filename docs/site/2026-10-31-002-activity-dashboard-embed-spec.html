@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-10-31-002-activity-dashboard-embed-spec.md (canonical .md in git)">
+<meta name="generated-from" content="docs/plans/2026-10-31-002-activity-dashboard-embed-spec.md (render)">
+<title>SPEC · Activity dashboard embedded-data fix</title>
+<style>
+  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
+        --clay:#D97757;--olive:#788C5D;--blue:#5b8def;--amber:#c7863a;--red:#b4553a;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
+       max-width:54rem;margin:0 auto;font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
+  h1{font-family:Georgia,serif;font-weight:500;font-size:clamp(28px,5vw,46px);line-height:1.12;letter-spacing:-.016em;margin:0 0 .5rem}
+  .sub{color:var(--muted);font-size:.95rem;margin-top:.35rem}
+  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.72rem;
+        font-family:ui-monospace,Menlo,monospace}
+  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
+  nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:2rem}
+  nav a{font-size:.78rem;padding:.3rem .75rem;border:1px solid var(--line);border-radius:999px;
+        text-decoration:none;color:var(--muted);background:var(--card)}
+  nav a:hover{color:var(--ink);border-color:var(--ink)}
+  section{margin-top:2.5rem;scroll-margin-top:1.5rem}
+  h2{font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--clay);
+      margin-bottom:.9rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
+  h3{font-size:.98rem;font-weight:600;margin:1.1rem 0 .4rem}
+  p,li{font-size:.92rem;color:#3d3b37} p{margin-bottom:.7rem}
+  ul,ol{padding-left:1.2rem;margin-bottom:.9rem} li{margin-bottom:.35rem}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.84em;background:var(--card);
+       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
+  .lede{font-size:1.05rem;border-left:3px solid var(--clay);padding-left:1rem;margin-bottom:1.1rem}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;margin:.75rem 0 1rem}
+  th,td{border-bottom:1px solid var(--line);padding:.5rem .6rem;text-align:left;vertical-align:top}
+  th{background:var(--card);font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+  .codeblock{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-family:ui-monospace,Menlo,monospace;font-size:.82rem;color:var(--ink);margin:.6rem 0 1.1rem;line-height:1.55;white-space:pre}
+  .footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;color:var(--muted);font-size:.78rem}
+  @media (max-width:640px){body{padding:1rem} table{display:block;overflow-x:auto;white-space:nowrap}}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Activity dashboard embedded-data fix</h1>
+  <p class="sub">SPEC · upstream issue <code>school-core-tkqn</code> · <code>branben/school-core</code> @ HEAD</p>
+  <div class="meta">
+    <span>status: proposed</span>
+    <span>slice: tkqn</span>
+    <span>updated: 2026-10-31</span>
+    <span>effort: ~1 d</span>
+  </div>
+</header>
+
+<nav aria-label="Sections">
+  <a href="#decisions">Decisions</a>
+  <a href="#milestones">Milestones</a>
+  <a href="#verification">Verification</a>
+  <a href="#risks">Risks</a>
+</nav>
+
+<main>
+<section id="decisions" aria-labelledby="decisions-h">
+  <h2 id="decisions-h">1 · Decisions locked before any code</h2>
+  <p class="lede">Five decisions are already resolved. The implementer should not reopen them; the rationale is here so a reviewer can challenge the reasoning without re-litigating the choice.</p>
+  <div class="table-wrap" style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr><th>#</th><th>Decision</th><th>Alternative rejected</th><th>Why</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>D1</strong></td>
+        <td>Inject payload into HTML via <code>&lt;script type="application/json"&gt;</code></td>
+        <td>Update docstring to drop the promise</td>
+        <td>Docstring describes intended behavior; code already builds the data. Fixing the docstring to match the bug is the wrong direction.</td>
+      </tr>
+      <tr>
+        <td><strong>D2</strong></td>
+        <td>Place the <code>&lt;script&gt;</code> tag immediately after <code>&lt;nav&gt;</code></td>
+        <td>Place at end of <code>&lt;body&gt;</code></td>
+        <td>Early placement lets any inline script read it before rendering; keeps the data close to the root for offline inspection.</td>
+      </tr>
+      <tr>
+        <td><strong>D3</strong></td>
+        <td>Name the global variable <code>__ACTIVITY_DATA__</code></td>
+        <td><code>window.__DATA__</code> or no global</td>
+        <td>Triple-underscore prefix signals "internal but inspectable"; matches the existing <code>__call__</code> fail-closed naming in the codebase.</td>
+      </tr>
+      <tr>
+        <td><strong>D4</strong></td>
+        <td>One acceptance test: assert payload present in generated HTML</td>
+        <td>Test the live dashboard via network</td>
+        <td>Network-dependent test proves nothing about the self-contained claim.</td>
+      </tr>
+      <tr>
+        <td><strong>D5</strong></td>
+        <td>No change to <code>--watch</code> mode</td>
+        <td>Watch mode re-embeds on every regenerate</td>
+        <td>Watch mode already regenerates the whole HTML from disk; the embedded payload is regenerated with it. No special case needed.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="milestones" aria-labelledby="milestones-h">
+  <h2 id="milestones-h">2 · Milestones</h2>
+  <div class="timeline" style="position:relative;padding-left:1.6rem;margin-left:.4rem;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:1.4rem">
+    <div class="milestone" style="position:relative">
+      <span class="when" style="font-family:ui-monospace,Menlo,monospace;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Slice 1 · payload injection</span>
+      <h3 style="font-size:1rem;font-weight:600;margin:.2rem 0 .3rem">Inject <code>data</code> into the HTML template</h3>
+      <p style="font-size:.85rem;color:var(--muted);margin:0 0 .35rem">Add one line after <code>&lt;nav&gt;</code>: <code>&lt;script type="application/json" id="__ACTIVITY_DATA__"&gt;{data}&lt;/script&gt;</code>. Remove the <code># noqa: F841</code> and replace with a one-line comment explaining the embed.</p>
+      <div class="tags" style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <span class="tag" style="font-family:ui-monospace,Menlo,monospace;font-size:.64rem;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.12rem .4rem;color:var(--muted)">src/tools/generate_activity_dashboard.py</span>
+        <span class="tag" style="font-family:ui-monospace,Menlo,monospace;font-size:.64rem;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.12rem .4rem;color:var(--muted)">one-line fix</span>
+      </div>
+    </div>
+    <div class="milestone" style="position:relative">
+      <span class="when" style="font-family:ui-monospace,Menlo,monospace;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Slice 2 · acceptance test</span>
+      <h3 style="font-size:1rem;font-weight:600;margin:.2rem 0 .3rem">Assert payload is present in generated HTML</h3>
+      <p style="font-size:.85rem;color:var(--muted);margin:0 0 .35rem">New test <code>tests/test_activity_dashboard_embed.py</code>. Calls <code>generate_html()</code> with synthetic data, asserts <code>id="__ACTIVITY_DATA__"</code> is in the output and contains <code>"agents"</code> and <code>"entries"</code>.</p>
+      <div class="tags" style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <span class="tag" style="font-family:ui-monospace,Menlo,monospace;font-size:.64rem;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.12rem .4rem;color:var(--muted)">tests/test_activity_dashboard_embed.py</span>
+        <span class="tag" style="font-family:ui-monospace,Menlo,monospace;font-size:.64rem;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:.12rem .4rem;color:var(--muted)">new file</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="verification" aria-labelledby="verification-h">
+  <h2 id="verification-h">3 · Verification commands</h2>
+  <div class="codeblock">python3 -m pytest tests/test_activity_dashboard_embed.py -q
+python3 src/tools/generate_activity_dashboard.py --output /tmp/activity_test.html
+grep -c '__ACTIVITY_DATA__' /tmp/activity_test.html   # must be 1</div>
+</section>
+
+<section id="risks" aria-labelledby="risks-h">
+  <h2 id="risks-h">4 · Risks</h2>
+  <div class="table-wrap" style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>JSON payload contains characters that break the HTML</td>
+        <td>Low</td>
+        <td><code>json.dumps(..., ensure_ascii=False)</code> returns valid JSON; the <code>&lt;script&gt;</code> tag is not parsed as HTML when <code>type="application/json"</code>.</td>
+      </tr>
+      <tr>
+        <td>Large payload makes the HTML unwieldy</td>
+        <td>Low</td>
+        <td>Current payload is small (agents + recent entries). The current HTML is already ~30 KB. Adding the JSON keeps the file under 50 KB.</td>
+      </tr>
+      <tr>
+        <td>Reviewer wants the payload in a separate <code>.json</code> file</td>
+        <td>Low</td>
+        <td>That is the current behavior, and it is the bug. The PRD explicitly refuses network-dependent dashboards.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  School Core · SPEC · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+</footer>
+</body>
+</html>

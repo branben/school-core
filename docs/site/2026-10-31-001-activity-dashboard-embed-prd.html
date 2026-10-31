@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="source" content="docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md (canonical .md in git)">
+<meta name="generated-from" content="docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md (render)">
+<title>PRD · Activity dashboard: make the HTML actually self-contained</title>
+<style>
+  :root{--bg:#F0EEE6;--card:#fff;--ink:#26241F;--muted:#6E6A60;--line:#DDD8CB;
+        --clay:#D97757;--olive:#788C5D;--blue:#5b8def;--amber:#c7863a;--red:#b4553a;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.6;padding:2rem 1.25rem 4rem;
+       max-width:54rem;margin:0 auto;font-family:-apple-system,'Segoe UI',Helvetica,sans-serif}
+  header{border-bottom:2px solid var(--ink);padding-bottom:1rem;margin-bottom:1.75rem}
+  h1{font-family:Georgia,serif;font-weight:500;font-size:clamp(28px,5vw,46px);line-height:1.12;letter-spacing:-.016em;margin:0 0 .5rem}
+  .sub{color:var(--muted);font-size:.95rem;margin-top:.35rem}
+  .meta{margin-top:.9rem;display:flex;gap:.4rem;flex-wrap:wrap;font-size:.72rem;
+        font-family:ui-monospace,Menlo,monospace}
+  .meta span{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.18rem .45rem}
+  nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:2rem}
+  nav a{font-size:.78rem;padding:.3rem .75rem;border:1px solid var(--line);border-radius:999px;
+        text-decoration:none;color:var(--muted);background:var(--card)}
+  nav a:hover{color:var(--ink);border-color:var(--ink)}
+  section{margin-top:2.5rem;scroll-margin-top:1.5rem}
+  h2{font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--clay);
+      margin-bottom:.9rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
+  h3{font-size:.98rem;font-weight:600;margin:1.1rem 0 .4rem}
+  p,li{font-size:.92rem;color:#3d3b37} p{margin-bottom:.7rem}
+  ul,ol{padding-left:1.2rem;margin-bottom:.9rem} li{margin-bottom:.35rem}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.84em;background:var(--card);
+       border:1px solid var(--line);border-radius:4px;padding:.05rem .3rem}
+  .lede{font-size:1.05rem;border-left:3px solid var(--clay);padding-left:1rem;margin-bottom:1.1rem}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;margin:.75rem 0 1rem}
+  th,td{border-bottom:1px solid var(--line);padding:.5rem .6rem;text-align:left;vertical-align:top}
+  th{background:var(--card);font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+  .objection{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:.8rem 1rem;margin-bottom:.75rem;background:var(--card)}
+  .objection .q{color:var(--amber);font-weight:600;font-size:.85rem}
+  .objection .a{color:var(--ink);font-size:.88rem;margin-top:.3rem}
+  .pill{display:inline-block;font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;border:1px solid var(--line);border-radius:4px;padding:.1rem .45rem;margin-right:.35rem}
+  .pill.demo{color:var(--blue);border-color:var(--blue)}
+  .pill.pitch{color:var(--olive);border-color:var(--olive)}
+  .pill.objects{color:var(--amber);border-color:var(--amber)}
+  .footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;color:var(--muted);font-size:.78rem}
+  @media (max-width:640px){body{padding:1rem} table{display:block;overflow-x:auto;white-space:nowrap}}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Activity dashboard: make the HTML actually self-contained</h1>
+  <p class="sub">PRD · upstream issue <code>school-core-tkqn</code> · <code>branben/school-core</code> @ HEAD</p>
+  <div class="meta">
+    <span>status: proposed</span>
+    <span>slice: tkqn</span>
+    <span>updated: 2026-10-31</span>
+    <span>brownfield</span>
+  </div>
+</header>
+
+<nav aria-label="Sections">
+  <a href="#demo">Demo</a>
+  <a href="#pitch">Why now / why this</a>
+  <a href="#scope">Scope</a>
+  <a href="#alternatives">GF / BF</a>
+  <a href="#objections">Objections</a>
+  <a href="#source">Source</a>
+</nav>
+
+<main>
+<section id="demo" aria-labelledby="demo-h">
+  <h2 id="demo-h"><span class="pill demo">Demo</span>What a reviewer sees</h2>
+  <p class="lede">Today: open <code>docs/site/activity_dashboard.html</code> with no network. The page renders, but it carries no data. The docstring promises "standalone HTML with embedded data baked in," and the code builds exactly that payload — then drops it on the floor.</p>
+  <p>After the fix: open the same file with no network. The page renders with the same agents, scores, and activity feed it would show with live data. The JSON payload is present in a <code>&lt;script type="application/json"&gt;</code> tag the page can read offline. The artifact matches its promise.</p>
+  <ul>
+    <li>Entry surface — generate the dashboard with <code>python src/tools/generate_activity_dashboard.py</code></li>
+    <li>Current failure — open the HTML with no network; data is missing</li>
+    <li>Success state — open the HTML with no network; data is present in the embedded payload</li>
+  </ul>
+</section>
+
+<section id="pitch" aria-labelledby="pitch-h">
+  <h2 id="pitch-h"><span class="pill pitch">Pitch</span>Why now, why this</h2>
+  <h3>Problem</h3>
+  <p><code>src/tools/generate_activity_dashboard.py</code> line 84 builds <code>data = json.dumps({"agents": ..., "entries": ...})</code> and never uses it. The emitted HTML is not self-contained. A dashboard that claims "embedded data baked in" but requires a network fetch to show anything is the same failure mode as a mock test that proves nothing: the artifact looks complete until you look at what it actually carries.</p>
+  <h3>Why now</h3>
+  <p>This is the largest remaining mismatch between docstring and behavior in <code>src/tools/</code>. It was found during F841 lint cleanup and kept with <code># noqa: F841</code> rather than deleted — which is the right call, because deleting the line would satisfy the linter while cementing the missing feature.</p>
+  <h3>Outcome we are buying</h3>
+  <ul>
+    <li>Dashboard HTML is genuinely self-contained — open offline, data is present.</li>
+    <li>Docstring and behavior agree — no more promises the artifact cannot keep.</li>
+    <li>One measurable acceptance test: open the generated page with no network and confirm the data is present.</li>
+  </ul>
+</section>
+
+<section id="scope" aria-labelledby="scope-h">
+  <h2 id="scope-h">Scope</h2>
+  <div class="table-wrap" style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr><th>In scope</th><th>Out of scope (now)</th><th>Explicitly refused</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Inject built payload into emitted HTML</td>
+        <td>Watch mode / live reload</td>
+        <td>Refactor to a framework</td>
+      </tr>
+      <tr>
+        <td>Update docstring only if injection is rejected</td>
+        <td>External data sources</td>
+        <td>Network-dependent dashboard</td>
+      </tr>
+      <tr>
+        <td>One acceptance test for offline data presence</td>
+        <td></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="alternatives" aria-labelledby="alternatives-h">
+  <h2 id="alternatives-h">GF / BF alternatives</h2>
+  <ul>
+    <li><strong>GF:</strong> Rewrite the dashboard to fetch data from an API endpoint. <strong>Rejected:</strong> the whole point of this artifact is to be standalone. Adding a network dependency solves the wrong problem.</li>
+    <li><strong>BF:</strong> Delete the unused <code>data = json.dumps(...)</code> line and rewrite the docstring to say "HTML requires live data." <strong>Rejected:</strong> that cements the missing feature and turns a one-line fix into a documentation lie.</li>
+    <li><strong>Do nothing:</strong> Leave the <code># noqa: F841</code> as a known-debt marker. <strong>Rejected:</strong> debt markers are only acceptable when there is a plan to pay them. This is the plan.</li>
+  </ul>
+</section>
+
+<section id="objections" aria-labelledby="objections-h">
+  <h2 id="objections-h"><span class="pill objects">Objections pre-answered</span></h2>
+  <div class="objection">
+    <p class="q">"...scope/effort — is this just adding a script tag?"</p>
+    <p class="a">Yes. The data is already built; it just needs to be written into the HTML. The delta is one line in <code>generate_html()</code>.</p>
+  </div>
+  <div class="objection">
+    <p class="q">"...won't embedding the full JSON bloat the file?"</p>
+    <p class="a">The payload is small (agents + recent entries). The current HTML is already ~30 KB. Adding the JSON keeps the file under 50 KB — well within the self-contained artifact budget.</p>
+  </div>
+  <div class="objection">
+    <p class="q">"...does this break the existing auto-refresh?"</p>
+    <p class="a">No. The refresh reloads the whole page from disk, which includes the embedded data. If we later want live updates without a full reload, that is a separate slice.</p>
+  </div>
+  <div class="objection">
+    <p class="q">"...why not just fix the docstring?"</p>
+    <p class="a">Because the docstring describes the intended behavior, and the code already builds the data. Fixing the docstring to match the bug is the wrong direction — the bug is cheaper to fix than the lie is to maintain.</p>
+  </div>
+</section>
+
+<section id="source" aria-labelledby="source-h">
+  <h2 id="source-h">Canonical source</h2>
+  <p>The markdown source of record for this pitch lives at <code>docs/plans/2026-10-31-001-activity-dashboard-embed-prd.md</code>. Edit the <code>.md</code>; regenerate this render. Changes to this page without a matching change to the source are a drift bug.</p>
+</section>
+</main>
+
+<footer class="footer">
+  School Core · PRD · published via <code>tot</code> (living URL + <code>@hash</code> URL)
+</footer>
+</body>
+</html>
