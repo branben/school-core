@@ -73,8 +73,8 @@ satisfy the shared build + verify contract in `TIER.md`:
 |---|---|---|
 | Pre-PRD exploration | `exploration-wireframe.html` | Tier-1 grayscale wireframe, 2-3 directions, keyboard selector |
 | PRD alternatives (GF/BF) | `prd-alternatives.html` | Tier-1 side-by-side decision cards → one pick |
-| PRD | `prd-pitch.html` | Tier-3 pitch-doc (demo → pitch → objections) |
-| Ticket | `ticket-risk-map.html` | risk-map view over beads data (severity cards) |
+| PRD | `prd-artboard.html` | Tier-3 pitch-doc (user scenario → objections → done-means) |
+| Ticket | `ticket-triage-board.html` | risk-map/triage view over beads data (severity cards) |
 | SPEC | `spec-implementation-plan.html` | Tier-3 implementation plan render |
 | Prime | `prime-module-map.html` | Tier-2 SVG diagram, hot path + entry points |
 | Plan | `plan-tweakable.html` | milestones + data-flow + key code + risks + open questions |

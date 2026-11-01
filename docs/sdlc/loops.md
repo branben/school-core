@@ -55,10 +55,10 @@ verify contract, template map). The one line: HTML where a human must
 | Phase | Form (tier) | Authoring skill | Canonical source | Template |
 |---|---|---|---|---|
 | Pre-PRD exploration | Tier-1 exploration / directions | `html-wireframe` | none | `exploration-wireframe.html` |
-| PRD | Tier-3 pitch-doc render | `html` + `design-artifact` | `.md` in git | `prd-pitch.html` |
+| PRD | Tier-3 pitch-doc render | `html` + `design-artifact` | `.md` in git | `prd-artboard.html` |
 | PRD alternatives (GF/BF) | Tier-1 side-by-side compare | `html-wireframe` | none | `prd-alternatives.html` |
 | SPEC | Tier-3 impl-plan render | `html-plan` | `.md` in git | `spec-implementation-plan.html` |
-| Ticket | markdown→beads; risk-map view | `html` + risk-map callouts | beads | `ticket-risk-map.html` |
+| Ticket | markdown→beads; triage view | `html` + lanes | beads | `ticket-triage-board.html` |
 | Prime | Tier-2 module map | `html-diagram` | repo data (generator) | `prime-module-map.html` |
 | Plan | Tier-1/3 tweakable-plan | `html-plan` | `.md` (or ephemeral) | `plan-tweakable.html` |
 | Implement | markdown deviation log | — | `.md` in git | — |
