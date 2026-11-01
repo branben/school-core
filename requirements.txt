@@ -11,3 +11,4 @@ python-dotenv>=1.0   # load_dotenv in issue_bridge/director/crew_dispatch (28093
 #   - cocoindex / serena (code-context; optional)
 #   - obsidian live vault (scripts/obsidian_client.py) — PURE STDLIB, no deps
 #   - Nix flake.nix provides a hermetic verify-shell (node20, pnpm, python312, ripgrep, fd, jq)
+pytest-xdist>=3.0
