@@ -79,7 +79,7 @@ truth, diffable in review, grep-able, and safe in code review. The `.html`
 is a generated *view* — easier for a human to skim, to link, to share — and
 it must never silently diverge from the `.md`. Every Tier-3 `.html` carries a
 header comment naming its canonical `.md` source path (see the templates:
-`prd-pitch.html`, `spec-implementation-plan.html`, `pr-writeup.html`).
+`prd-artboard.html`, `spec-implementation-plan.html`, `pr-writeup.html`).
 
 Tier-3 HTML is published with `tot`: a *living* (version-less) URL that always
 points at the branch tip, plus an `@hash` URL that freezes the exact commit so

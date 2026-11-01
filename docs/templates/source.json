@@ -1,0 +1,12 @@
+{
+  "bead": "<bd id, e.g. school-core-fip>",
+  "spec": "<spec file path> · <milestone id>",
+  "decisions": ["<SPEC accepted-decision id>"],
+  "artifacts": [
+    "docs/prime-module-map.html",
+    "docs/plan-tweakable.html",
+    "docs/dev-log.md",
+    "docs/validate-prototype.html"
+  ],
+  "spec_acceptance": "<verbatim acceptance criteria from the SPEC milestone>"
+}

@@ -68,3 +68,41 @@ if command -v bd >/dev/null 2>&1 && [ "${BEADS_SKIP_LINT:-0}" != "1" ]; then
   fi
 fi
 # --- END OUTER-LOOP GATE ---
+
+# --- BEGIN UB-MODE QUALITY GATE ---
+# Runs crapper (complexity) and dryer (duplication) on changed files.
+# Skip with UB_SKIP=1 for emergency bypasses.
+if [ "${UB_SKIP:-0}" != "1" ]; then
+  _ub_tools_missing=0
+  if ! command -v crapper >/dev/null 2>&1; then
+    echo >&2 "ub-mode: crapper not found — install with: pip install -e ~/crapper"
+    _ub_tools_missing=1
+  fi
+  if ! command -v dryer >/dev/null 2>&1; then
+    echo >&2 "ub-mode: dryer not found — install with: pip install -e ~/dryer"
+    _ub_tools_missing=1
+  fi
+  if [ $_ub_tools_missing -eq 0 ]; then
+    export PATH="/Users/brandonbennett/Library/Python/3.14/bin:$PATH"
+    echo "running ub-mode quality gate (crapper + dryer)..."
+    if ! crapper --no-coverage --threshold 10 --changed src/ tests/; then
+      echo >&2 "ub-mode: crapper failed — CRAP score exceeds threshold"
+      exit 1
+    fi
+    if ! dryer --threshold 0.82 --changed src/ tests/; then
+      echo >&2 "ub-mode: dryer found duplicate candidates at threshold 0.82"
+      exit 1
+    fi
+    echo "ub-mode quality gate passed"
+  fi
+fi
+
+# --- BEGIN TDD GATE ---
+# New source files must have corresponding tests.
+# Skip with TDDSKIP=1 for deliberate bypass.
+if [ "${TDDSKIP:-0}" != "1" ]; then
+  if [ -f scripts/check_tdd.py ]; then
+    python3 scripts/check_tdd.py || exit 1
+  fi
+fi
+# --- END TDD GATE ---

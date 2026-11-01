@@ -344,7 +344,7 @@ def test_real_plannotator_rejects_a_file_absent_from_the_patch(tmp_path):
 
 
 TIER3_TEMPLATES = (
-    "docs/templates/prd-pitch.html",
+    "docs/templates/prd-artboard.html",
     "docs/templates/spec-implementation-plan.html",
     "docs/templates/pr-writeup.html",
 )

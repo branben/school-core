@@ -38,8 +38,6 @@
           pkgs.jq
           pkgs.gitFull
           pkgs.gh
-          pkgs.rustc  # Rust compiler for student code in tools/index-gate/
-          pkgs.cargo  # Rust build tool
           pkgs.go  # Go toolchain for student code
           pkgs.gopls  # Go language server (for typecheck)
         ];

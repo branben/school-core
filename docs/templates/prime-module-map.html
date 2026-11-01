@@ -1,16 +1,24 @@
+<!--
+source:
+  bead:     <bd id, e.g. school-core-fip>
+  spec:     <spec file path> · <milestone id>
+  decisions: <comma-separated SPEC accepted-decision ids>
+  prev:     none
+-->
 <!DOCTYPE html>
 <!--
   Tier-2 Prime module-map template — diagram of the codebase / service topology.
+  Style source: Tariq html-effectiveness/04-code-understanding
   ----------------------------------------------------------------------------
   CANONICAL SOURCE: the .html itself, GENERATED from repo data (symbols, modules,
   config, CI state). Regenerate from real data; keep generator + artifact in git.
   See docs/templates/TIER.md (Tier 2). Do NOT hand-edit this into a different
   diagram than the repo data supports.
 
-  Form contract (per html-diagram skill + Effective HTML guide):
+  Form contract:
   - small set of shapes, lines, colors, labels — consistent
   - hot path highlighted, entry points listed
-  - dense explanation stays OUTSIDE the diagram
+  - dense explanation stays OUTSIDE the diagram (callstack walkthrough)
   - labels legible at actual viewing size; mobile: no horizontal overflow
 
   Build + verify contract: ONE self-contained file, no build step, semantic
@@ -22,21 +30,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="source" content="generated from repo data (symbols/modules/CI)">
-<meta name="generated-from" content="[generator path] · regenerate when repo changes">
-<title>Module map · Prime</title>
+<title>Module map · [package]</title>
 <style>
-  :root{
-    --bg:#0a0a0f; --panel:#111118; --panel2:#1a1a24; --border:#222230;
-    --text:#e8e6e3; --muted:#8a8694; --accent:#c8ff00; --blue:#5b8def;
-    --green:#22c55e; --amber:#f59e0b; --red:#ef4444;
+  :root {
+    --bg:#F5F3EE; --panel:#FFFFFF; --panel2:#F0EEE6; --border:#E3DACC;
+    --text:#1a1a1a; --muted:#6b6560; --accent:#D97757; --blue:#5b8def;
+    --green:#788C5D; --amber:#c28a4f; --red:#c45a5a;
   }
   *{box-sizing:border-box; margin:0;}
-  body{background:var(--bg); color:var(--text); font-family:'Geist',-apple-system,'Segoe UI',sans-serif; line-height:1.55; padding:2rem clamp(1rem,3vw,3rem); max-width:1100px; margin:0 auto;}
+  body{background:var(--bg); color:var(--text); font-family: -apple-system, 'Segoe UI', Geist, sans-serif; line-height:1.55; padding:2rem clamp(1rem,3vw,3rem); max-width:1100px; margin:0 auto;}
   header{margin-bottom:1.5rem; border-bottom:1px solid var(--border); padding-bottom:1rem;}
   header h1{font-size:1.4rem; font-weight:650; letter-spacing:-.01em;}
   header .subtitle{color:var(--muted); font-size:.9rem; margin-top:.35rem;}
-  .meta{font-family:'Geist Mono',monospace; font-size:.7rem; color:var(--muted); margin-top:.6rem;}
+  .meta{font-family:ui-monospace,'SFMono-Regular',monospace; font-size:.7rem; color:var(--muted); margin-top:.6rem;}
   .diagram-wrap{border:1px solid var(--border); border-radius:10px; background:var(--panel); padding:1rem; margin-bottom:1.4rem; overflow-x:auto;}
   svg{display:block; margin:0 auto; max-width:100%; height:auto;}
   .legend{display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.75rem; color:var(--muted); margin-bottom:1rem;}
@@ -46,8 +52,8 @@
   .lg-entry::before{background:var(--blue);}
   .entry-list{display:flex; flex-direction:column; gap:.5rem; margin-bottom:1.6rem;}
   .entry{display:flex; gap:.7rem; align-items:baseline; font-size:.85rem; background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.5rem .8rem;}
-  .entry .tag{font-family:'Geist Mono',monospace; font-size:.66rem; color:var(--blue); border:1px solid var(--blue); border-radius:4px; padding:.1rem .4rem; flex-shrink:0;}
-  .entry code{font-family:'Geist Mono',monospace; font-size:.78em; color:#d5d2cd;}
+  .entry .tag{font-family:ui-monospace,monospace; font-size:.66rem; color:var(--blue); border:1px solid var(--blue); border-radius:4px; padding:.1rem .4rem; flex-shrink:0;}
+  .entry code{font-family:ui-monospace,monospace; font-size:.78em; color:#d5d2cd;}
   .entry .why{color:var(--muted); font-size:.8rem;}
   .section-title{font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:1.2rem 0 .55rem;}
   .note{font-size:.78rem; color:var(--muted); background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:.55rem .85rem; margin-top:.8rem;}
@@ -87,7 +93,7 @@
         <path d="M0 0 L10 5 L0 10 z" fill="#4a4a5a"/>
       </marker>
       <marker id="arrowHot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-        <path d="M0 0 L10 5 L0 10 z" fill="#c8ff00"/>
+        <path d="M0 0 L10 5 L0 10 z" fill="#D97757"/>
       </marker>
     </defs>
 
@@ -101,44 +107,44 @@
       <path d="M520 190 L520 260"/>
     </g>
     <!-- hot path -->
-    <g fill="none" stroke="#c8ff00" stroke-width="2.4" marker-end="url(#arrowHot)">
+    <g fill="none" stroke="#D97757" stroke-width="2.4" marker-end="url(#arrowHot)">
       <path d="M260 90 L380 90"/>
       <path d="M120 330 L260 330"/>
       <path d="M520 190 L520 260"/>
     </g>
 
     <!-- modules -->
-    <g font-family="'Geist Mono',monospace" font-size="12">
-      <rect x="10" y="60" width="110" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="65" y="92" text-anchor="middle" fill="#e8e6e3">Entry · HTTP</text>
+    <g font-family="ui-monospace,monospace" font-size="12">
+      <rect x="10" y="60" width="110" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="65" y="92" text-anchor="middle" fill="#1a1a1a">Entry · HTTP</text>
 
-      <rect x="120" y="60" width="140" height="60" rx="8" fill="#c8ff00" stroke="#c8ff00"/>
-      <text x="190" y="92" text-anchor="middle" fill="#0a0a0f" font-weight="600">hot path · routing</text>
+      <rect x="120" y="60" width="140" height="60" rx="8" fill="#D97757" stroke="#D97757"/>
+      <text x="190" y="92" text-anchor="middle" fill="#FFFFFF" font-weight="600">hot path · routing</text>
 
-      <rect x="260" y="60" width="120" height="60" rx="8" fill="#1a1a24" stroke="#5b8def"/>
+      <rect x="260" y="60" width="120" height="60" rx="8" fill="#F0EEE6" stroke="#5b8def"/>
       <rect x="300" y="60" width="40" height="16" rx="3" fill="#5b8def"/>
-      <text x="300" y="72" text-anchor="middle" fill="#0a0a0f" font-size="9">entry</text>
-      <text x="320" y="95" text-anchor="middle" fill="#e8e6e3">auth</text>
+      <text x="300" y="72" text-anchor="middle" fill="#FFFFFF" font-size="9">entry</text>
+      <text x="320" y="95" text-anchor="middle" fill="#1a1a1a">auth</text>
 
-      <rect x="380" y="60" width="140" height="130" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="450" y="90" text-anchor="middle" fill="#e8e6e3">app core</text>
-      <text x="450" y="112" text-anchor="middle" fill="#8a8694" font-size="10">biz rules</text>
-      <text x="450" y="130" text-anchor="middle" fill="#8a8694" font-size="10">state</text>
+      <rect x="380" y="60" width="140" height="130" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="450" y="90" text-anchor="middle" fill="#1a1a1a">app core</text>
+      <text x="450" y="112" text-anchor="middle" fill="#6b6560" font-size="10">biz rules</text>
+      <text x="450" y="130" text-anchor="middle" fill="#6b6560" font-size="10">state</text>
 
-      <rect x="380" y="190" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="450" y="222" text-anchor="middle" fill="#e8e6e3">store / persistence</text>
+      <rect x="380" y="190" width="140" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="450" y="222" text-anchor="middle" fill="#1a1a1a">store / persistence</text>
 
-      <rect x="10" y="300" width="110" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="65" y="332" text-anchor="middle" fill="#e8e6e3">queue / worker</text>
+      <rect x="10" y="300" width="110" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="65" y="332" text-anchor="middle" fill="#1a1a1a">queue / worker</text>
 
-      <rect x="120" y="300" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="190" y="332" text-anchor="middle" fill="#e8e6e3">notify / hook</text>
+      <rect x="120" y="300" width="140" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="190" y="332" text-anchor="middle" fill="#1a1a1a">notify / hook</text>
 
-      <rect x="520" y="120" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="590" y="152" text-anchor="middle" fill="#e8e6e3">api gateway</text>
+      <rect x="520" y="120" width="140" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="590" y="152" text-anchor="middle" fill="#1a1a1a">api gateway</text>
 
-      <rect x="520" y="260" width="140" height="60" rx="8" fill="#111118" stroke="#222230"/>
-      <text x="590" y="292" text-anchor="middle" fill="#e8e6e3">data lake / export</text>
+      <rect x="520" y="260" width="140" height="60" rx="8" fill="#FFFFFF" stroke="#E3DACC"/>
+      <text x="590" y="292" text-anchor="middle" fill="#1a1a1a">data lake / export</text>
     </g>
   </svg>
 </div>

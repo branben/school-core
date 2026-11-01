@@ -281,6 +281,16 @@ def _execute_approval(
 # Fail-OPEN: a feed error (missing token/channel, network) is logged and never
 # aborts command processing — observability must not become an availability fault.
 
+def _escape_slack(text: str) -> str:
+    """Escape characters that Slack mrkdwn interprets as markup or mentions."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("|", "&#124;")
+    )
+
+
 def post_activity(reply: dict, outcome: str) -> None:
     """Post a one-line record of an inbound command to Slack. Never raises."""
     token = os.environ.get("SCHOOL_CORE_SLACK_TOKEN", "") or ""
@@ -288,8 +298,9 @@ def post_activity(reply: dict, outcome: str) -> None:
     if not token or not channel:
         return  # feed disabled — nothing to do
     text = (
-        f":email: *{reply.get('command', '?')}* on bead "
-        f"`{reply.get('bead', '?')}` by {reply.get('from', '?')}\n{outcome}"
+        f":email: *{_escape_slack(reply.get('command', '?'))}* on bead "
+        f"`{_escape_slack(reply.get('bead', '?'))}` by {_escape_slack(reply.get('from', '?'))}\n"
+        f"{_escape_slack(outcome)}"
     )
     data = json.dumps({"channel": channel, "text": text}).encode()
     request = urllib.request.Request(

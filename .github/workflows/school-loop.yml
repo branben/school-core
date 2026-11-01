@@ -458,6 +458,30 @@ jobs:
           fi
           echo "toolchain preflight OK — nix at $NIX_BIN, verifyShell=$SHELL_NAME"
 
+      - name: Ub-mode quality gate (crapper + dryer)
+        run: |
+          set -euo pipefail
+          export PATH="/Users/brandonbennett/Library/Python/3.14/bin:$PATH"
+          if ! command -v crapper >/dev/null 2>&1; then
+            echo "::warning::crapper not found — skipping ub-mode quality gate"
+            exit 0
+          fi
+          if ! command -v dryer >/dev/null 2>&1; then
+            echo "::warning::dryer not found — skipping ub-mode quality gate"
+            exit 0
+          fi
+          echo "running crapper (complexity, changed files only)..."
+          crapper --no-coverage --threshold 10 --changed src/ tests/ || {
+            echo "::error::crapper failed — CRAP score exceeds threshold or tool errored"
+            exit 1
+          }
+          echo "running dryer (duplication check, changed files only)..."
+          dryer --threshold 0.82 --changed src/ tests/ || {
+            echo "::error::dryer found duplicate candidates at threshold 0.82"
+            exit 1
+          }
+          echo "ub-mode quality gate passed"
+
       - name: Populate issue cache from GitHub
         # `-m` from the repo root, NOT `python src/tools/populate_board_cache.py`:
         # a script run by path gets its OWN directory on sys.path[0] (src/tools/),
@@ -576,6 +600,7 @@ jobs:
           # FETCH_HEAD directly; the push is a clean fast-forward and the
           # worktree is never touched. (Phymora's tested approach — verified
           # in a scratch repo reproducing the exact shape.)
+          python3 scripts/sanitize_ledger.py
           git fetch origin board-publish
           git add -f data/last_run.json data/issues_cache.json data/processed_issues.json data/scores.json data/retry_issues.json data/crew_runs.json data/grading_queue.jsonl data/compound_learning.json data/candidate_bindings.json data/state.sqlite3 2>/dev/null || true
           find data/trajectories -type f -exec git add -f {} + 2>/dev/null || true
@@ -590,6 +615,17 @@ jobs:
               && echo "checkpoint: pushed $NEW to board-publish" \
               || { echo "::warning::checkpoint push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
           fi
+
+      - name: Update ripwire code index
+        if: always()
+        run: |
+          /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ripwire-index || git checkout ripwire-index
+          git add -f .index-gate/ripwire.json
+          git commit -m "ripwire: update code index [skip ci]" || echo "no index changes"
+          git push origin ripwire-index --force
 
   loop:
     # Board publishing — always runs (even when the Mac sleeps, even if

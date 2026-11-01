@@ -53,18 +53,20 @@ moves the reader's judgment, sharing one CSS register.
 
 | Phase | Template | Tier | Skill pattern | Canonical source |
 |---|---|---|---|---|
-| Epic | `epic-timeline.html` | 1/2 | Timeline view (shipped / slipped / blockers) | `.md` in git |
-| Pre-PRD exploration | `exploration-wireframe.html` | 1 | `html-wireframe` (2-3 directions, grayscale) | none |
-| PRD | `prd-artboard.html` | 1/2 | Artboard view (demo → pitch → objections → done-means) | `.md` in git |
-| PRD alternatives (GF/BF) | `prd-alternatives.html` | 1 | `html-wireframe` (side-by-side decision) | none |
-| SPEC | `spec-implementation-plan.html` | 1/2 | Milestone timeline + data flow + mockups + risks | `.md` in git |
-| Ticket | `ticket-triage-board.html` | 1/2 | Triage board (now/next/later/cut) | beads (data) |
-| Prime | `prime-module-map.html` | 2 | `html-diagram` (SVG boxes/arrows) | repo data (generator) |
-| Plan | `plan-tweakable.html` | 1/3 | `html-plan` (milestones + data-flow + risks) | `.md` (or ephemeral) |
-| Validate | `validate-prototype.html` | 1 | `html-prototype` (click-through + boundary) | none |
+| Phase | Template | Tier | Skill pattern | Canonical source |
+|---|---|---|---|---|
+| Epic | `epic-timeline.html` | 1/2 | Timeline view, Tariq 11-status-report | `.md` in git |
+| Pre-PRD exploration | `exploration-wireframe.html` | 1 | `html-wireframe`, Tariq 01-code-approaches | none |
+| PRD | `prd-artboard.html` | 1/2 | Artboard view, Tariq 02-visual-designs | `.md` in git |
+| PRD alternatives (GF/BF) | `prd-alternatives.html` | 1 | `html-wireframe`, Tariq 02-visual-designs | none |
+| SPEC | `spec-implementation-plan.html` | 1/2 | Milestone timeline, Tariq 16-implementation-plan | `.md` in git |
+| Ticket | `ticket-triage-board.html` | 1/2 | Triage board, Tariq 18-editor-triage-board | beads (data) |
+| Prime | `prime-module-map.html` | 2 | `html-diagram`, Tariq 04-code-understanding | repo data (generator) |
+| Plan | `plan-tweakable.html` | 1/3 | `html-plan`, Tariq 16-implementation-plan | `.md` (or ephemeral) |
+| Validate | `validate-prototype.html` | 1 | `html-prototype`, Tariq 08-prototype-interaction | none |
 | Review | `guided-review-guide.schema.json` | 3 | `plannotator-guide` | `guide.json` (validated) |
 | Review | `review_guide_example.json` | 3 | `plannotator-guide` example | `guide.json` (validated) |
-| PR → human | `pr-writeup.html` | 3 | PR-writeup (report register) | `.md` in git |
+| PR → human | `pr-writeup.html` | 3 | PR-writeup, Tariq 17-pr-writeup | `.md` in git |
 
 **Implement** intentionally stays `.md` (dev log / unknowns-09 pattern) — see
 docs/templates/TIER.md.
