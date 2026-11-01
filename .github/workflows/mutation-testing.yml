@@ -1,0 +1,74 @@
+name: Mutation Testing
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Mutation testing is expensive: run only on PRs and main pushes,
+# not on every school-loop cycle.
+concurrency:
+  group: mutation-testing-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip --break-system-packages
+          pip install -r requirements.txt --break-system-packages
+
+      - name: Install ub-mode tools (crapper, dryer, mutator)
+        run: |
+          python -m pip install --quiet --break-system-packages \
+            /Users/brandonbennett/crapper \
+            /Users/brandonbennett/dryer \
+            /Users/brandonbennett/mutator
+          echo "/Users/brandonbennett/Library/Python/3.14/bin" >> $GITHUB_PATH
+
+      - name: Run crapper (required by mutator)
+        # mutator reads crapper's .metrics/crap.edn for namespace/function
+        # names. crapper must run first so that snapshot exists.
+        run: |
+          crapper --no-coverage --threshold 10 --changed src/ tests/ || {
+            echo "::error::crapper failed — CRAP score exceeds threshold"
+            exit 1
+          }
+
+      - name: Run mutator on changed files
+        # --changed: only mutate added/modified source (keeps runtime sane)
+        # --max-workers 2: GitHub hosted runners have 2 cores
+        # Exit codes: 0 = all mutants killed, 2 = baseline tests fail,
+        #             3 = survivors found (this is the real failure mode)
+        run: |
+          mutator --changed --max-workers 2 src/ tests/ || {
+            _mut_exit=$?
+            if [ $_mut_exit -eq 3 ]; then
+              echo "::error::mutator found surviving mutants — tests don't cover new code"
+            elif [ $_mut_exit -eq 2 ]; then
+              echo "::error::mutator baseline tests fail"
+            else
+              echo "::error::mutator exited with code $_mut_exit"
+            fi
+            exit 1
+          }
+
+      - name: Upload mutation metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-metrics-${{ github.run_id }}
+          path: .metrics/
+          retention-days: 30
