@@ -592,6 +592,17 @@ jobs:
               || { echo "::warning::checkpoint push failed"; echo "::warning::push stderr: $(cat /tmp/cp-stderr.txt 2>/dev/null || echo '(none captured)')"; }
           fi
 
+      - name: Update ripwire code index
+        if: always()
+        run: |
+          /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ripwire-index || git checkout ripwire-index
+          git add -f .index-gate/ripwire.json
+          git commit -m "ripwire: update code index [skip ci]" || echo "no index changes"
+          git push origin ripwire-index --force
+
   loop:
     # Board publishing — always runs (even when the Mac sleeps, even if
     # execute failed), from the latest committed state. Serialized after

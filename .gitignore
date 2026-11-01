@@ -105,12 +105,6 @@ scripts/prior_solutions/cocoindex_store/
 # track binaries; SHA-verified installs live under data/tools (chmod 700).
 data/tools/
 
-# index-gate receipts (regenerated per index run)
-# ripwire.json is a derived codegraph index; it is reproducible from the
-# source tree and intentionally not committed so the repo stays clean.
-.index-gate/
-tools/index-gate/target/
-
 # secrets — never commit
 newenv.tmp
 
@@ -120,3 +114,6 @@ newenv.tmp
 # Runtime state written next to moved modules under src/ (post-reorg debris);
 # canonical runtime state lives in the root data/ directory.
 src/**/data/
+
+# ripwire code index — derived artifact, committed only to ripwire-index branch
+.index-gate/

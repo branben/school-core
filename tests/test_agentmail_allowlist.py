@@ -113,7 +113,31 @@ def test_post_activity_survives_http_error():
                                  "SCHOOL_CORE_SLACK_CHANNEL": "C123456"},
                     clear=False):
         # A failing feed must NOT raise — command processing continues.
-        post_activity({"command": "fix", "bead": "b", "from": "x@example.com"}, "🔧 FIX")
+        post_activity({"command": "fix", "bead": "b", "from": "b@x.com"}, "🔧 FIX")
+
+
+# ── Slack mrkdwn escaping: user input must not inject mentions/links ──
+
+def test_post_activity_escapes_slack_markup():
+    with patch("urllib.request.urlopen") as ur, \
+         patch.dict(os.environ, {"SCHOOL_CORE_SLACK_TOKEN": "fake-slack-test-token",
+                                 "SCHOOL_CORE_SLACK_CHANNEL": "C123456"},
+                    clear=False):
+        reply = {"command": "fix", "bead": "b-9", "from": "attacker@example.com"}
+        post_activity(reply, "❌ blocked: <@U00000000> <https://evil|x> & |more")
+    ur.assert_called_once()
+    request = ur.call_args[0][0]
+    payload = json.loads(request.data.decode())
+    text = payload["text"]
+    assert "&lt;@U00000000&gt;" in text
+    assert "&lt;https://evil&#124;x&gt;" in text
+    assert "&amp;" in text
+    assert "&#124;more" in text
+    # original metacharacters must NOT appear unescaped
+    assert "<@U00000000>" not in text
+    assert "<https://evil|x>" not in text
+    assert " & " not in text
+    assert " |more" not in text
 
 
 # ── _load_allowed_approvers: the parse IS the fail-closed guarantee ──
