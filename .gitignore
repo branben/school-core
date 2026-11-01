@@ -117,3 +117,6 @@ src/**/data/
 
 # ripwire code index — derived artifact, committed only to ripwire-index branch
 .index-gate/
+
+# ub-mode / crapper-dryer-mutator metrics — derived analysis artifacts
+.metrics/
