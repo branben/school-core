@@ -224,15 +224,54 @@ def _install_js_dependencies(repo_path: Path) -> Path:
 
         sandbox_bin = sandbox_exec_path()
         if sandbox_bin is None:
-            sys.stderr.write("[repo_reader] OS sandbox unavailable; dependency install skipped\n")
-            return repo_path
-
-        install_root = Path(tempfile.mkdtemp(prefix="school-install-", dir="/tmp"))
-        install_home = install_root / "home"
-        install_tmp = install_root / "tmp"
-        install_home.mkdir()
-        install_tmp.mkdir()
-        profile = write_sandbox_profile(
+            # No sandbox available — fall back to a restricted direct install.
+            # We still isolate HOME/TMPDIR and disable lifecycle scripts so
+            # host credentials and interactive installers are not reached.
+            install_root = Path(tempfile.mkdtemp(prefix="school-install-", dir="/tmp"))
+            install_home = install_root / "home"
+            install_tmp = install_root / "tmp"
+            install_home.mkdir()
+            install_tmp.mkdir()
+            env = {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"),
+                "HOME": str(install_home),
+                "TMPDIR": str(install_tmp),
+                "TMP": str(install_tmp),
+                "TEMP": str(install_tmp),
+                "CI": "1",
+                "npm_config_userconfig": str(install_home / ".npmrc"),
+                "npm_config_ignore_scripts": "true",
+                "npm_config_cache": str(install_home / ".cache"),
+                "COREPACK_HOME": str(install_home / ".corepack"),
+                "XDG_CACHE_HOME": str(install_home / ".cache"),
+                "NPM_CONFIG_USERCONFIG": str(install_home / ".npmrc"),
+                "YARN_CACHE_FOLDER": str(install_home / ".cache" / "yarn"),
+            }
+            try:
+                result = subprocess.run(
+                    install_cmd,
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    timeout=300,
+                    check=False,
+                    text=True,
+                    env=env,
+                )
+                if result.returncode != 0:
+                    sys.stderr.write(
+                        f"[repo_reader] Dependency install failed (no sandbox): "
+                        f"{(result.stderr or result.stdout)[-500:]}\n"
+                    )
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+                sys.stderr.write(f"[repo_reader] Dependency install skipped (no sandbox): {e}\n")
+            # Fall through to finally for cleanup.
+        else:
+            install_root = Path(tempfile.mkdtemp(prefix="school-install-", dir="/tmp"))
+            install_home = install_root / "home"
+            install_tmp = install_root / "tmp"
+            install_home.mkdir()
+            install_tmp.mkdir()
+            profile = write_sandbox_profile(
             repo_path / ".school-install.sb",
             writable_paths=[repo_path, install_root],
             allow_network=True,

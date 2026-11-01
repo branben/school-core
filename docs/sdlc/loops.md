@@ -44,6 +44,50 @@ loops back to **that** step, not the whole slice. The daily ritual
 board refresh → pick one Next slice → state "done means" → work → validate →
 review → bead write.
 
+## Inner-loop source block (chain of custody)
+
+Every inner-loop artifact carries a mandatory `source` block that ties it back
+to the ticket and the SPEC. An empty or missing required field causes the
+artifact's render to fail-closed (exit non-zero), so the inner loop cannot run
+on an orphaned slice.
+
+**Schema** (YAML front-matter in `.md` artifacts, HTML comment block in `.html`):
+
+```yaml
+---
+bead:       <bd id, e.g. school-core-fip>
+spec:       <spec file path> · <milestone id>
+decisions:  <comma-separated SPEC accepted-decision ids>
+prev:       <prior inner artifact path or "none">
+---
+```
+
+- `bead`, `spec`, and `decisions` are required on every inner artifact.
+- `prev` is required from PLAN onward (PRIME = `none`).
+- REVIEW's `guide.json` adds `artifacts` (list of the four prior artifacts)
+  and `spec_acceptance` (verbatim acceptance criteria from the SPEC).
+- The review gate (`scripts/review_gate.py`, check #5) verifies the chain:
+  `guide.json` must carry all five required fields, and every cited artifact
+  must exist in the PR diff or base tree. Exit non-zero with
+  `SOURCE-BLOCK MISSING — <which field>` on any gap.
+
+**Artifact chain:**
+
+| Phase | Artifact | Sources (reads) | Forward (feeds) |
+|---|---|---|---|
+| PRIME | `prime-module-map.html` | bead · spec · decisions | PLAN |
+| PLAN | `plan-tweakable.html` | bead · spec · decisions · prev: prime | BUILD |
+| BUILD | `dev-log.md` | bead · prev: plan | TEST |
+| TEST | `validate-prototype.html` | bead · acceptance-crit · prev: dev-log | REVIEW |
+| REVIEW | `guide.json` | bead · spec · acceptance · [module-map, plan, dev-log, prototype] | PR |
+| PR | `pr-writeup.html` | bead · canonical = spec · prev: review.verdict | merged |
+
+The seam (outer → inner) is the first link: a bead **is** a SPEC milestone,
+handed off at the gate. PRIME's source block is the first citation — so the
+moment the inner loop starts, it is already bound to the ticket. If a ticket
+has no bead, or the bead's spec-milestone is missing, PRIME's render fails
+before any code runs.
+
 ## Phase → documentation form → tool (canonical)
 
 See [`docs/templates/phase-map.md`](../templates/phase-map.md) for the full

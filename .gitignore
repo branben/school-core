@@ -106,6 +106,8 @@ scripts/prior_solutions/cocoindex_store/
 data/tools/
 
 # index-gate receipts (regenerated per index run)
+# ripwire.json is a derived codegraph index; it is reproducible from the
+# source tree and intentionally not committed so the repo stays clean.
 .index-gate/
 tools/index-gate/target/
 

@@ -1,6 +1,6 @@
 {
   "title": "Guided review: README onboarding win + build-cache config",
-  "intent": "Fictional PR #2148: shorten the setup checklist in README.md and adopt a prewarmed build cache in .gitlab-ci.yml. The diff is small; the reading order below makes the pairing between docs and CI config visible. Nothing here critiques the change -- each section just orients the reviewer to what to look at and in what order.",
+  "intent": "Fictional PR #2148: shorten the setup checklist in README.md and adopt a prewarmed build cache in .gitlab-ci.yml. The diff is small; the reading order below makes the pairing between docs and CI config visible. Nothing here critiques the change -- each section just orients the reviewer to what to look for and in what order.",
   "sections": [
     {
       "title": "Onboarding copy (start here)",

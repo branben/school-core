@@ -48,6 +48,7 @@ school-core/                      ← The repo (git)
 | Orca worktrees | `~/orca/workspaces/` | ❌ Outside |
 | Agent profiles | `~/.hermes/profiles/` | ❌ Outside |
 | Cached clones | `~/.cache/branben__*/` | ❌ Outside |
+| Codegraph index | `.index-gate/` (ephemeral, regenerated) | ❌ Outside |
 
 ## The Conventions
 
