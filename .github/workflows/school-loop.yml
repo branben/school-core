@@ -458,6 +458,30 @@ jobs:
           fi
           echo "toolchain preflight OK — nix at $NIX_BIN, verifyShell=$SHELL_NAME"
 
+      - name: Ub-mode quality gate (crapper + dryer)
+        run: |
+          set -euo pipefail
+          export PATH="/Users/brandonbennett/Library/Python/3.14/bin:$PATH"
+          if ! command -v crapper >/dev/null 2>&1; then
+            echo "::warning::crapper not found — skipping ub-mode quality gate"
+            exit 0
+          fi
+          if ! command -v dryer >/dev/null 2>&1; then
+            echo "::warning::dryer not found — skipping ub-mode quality gate"
+            exit 0
+          fi
+          echo "running crapper (complexity, changed files only)..."
+          crapper --no-coverage --threshold 10 --changed src/ tests/ || {
+            echo "::error::crapper failed — CRAP score exceeds threshold or tool errored"
+            exit 1
+          }
+          echo "running dryer (duplication check, changed files only)..."
+          dryer --threshold 0.82 --changed src/ tests/ || {
+            echo "::error::dryer found duplicate candidates at threshold 0.82"
+            exit 1
+          }
+          echo "ub-mode quality gate passed"
+
       - name: Populate issue cache from GitHub
         # `-m` from the repo root, NOT `python src/tools/populate_board_cache.py`:
         # a script run by path gets its OWN directory on sys.path[0] (src/tools/),
