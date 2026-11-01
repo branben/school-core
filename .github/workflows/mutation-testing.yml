@@ -31,11 +31,21 @@ jobs:
           pip install -r requirements.txt --break-system-packages
 
       - name: Install ub-mode tools (crapper, dryer, mutator)
-        run: |
-          python -m pip install --quiet --break-system-packages \
-            /Users/brandonbennett/crapper \
-            /Users/brandonbennett/dryer \
-            /Users/brandonbennett/mutator
+        run: |-
+          python -m pip install --quiet --break-system-packages gitpython
+          python - <<'PY'
+          import subprocess, os, sys
+          repos = {
+              "crapper": "https://github.com/unclebob/crapper.git",
+              "dryer":   "https://github.com/unclebob/dryer.git",
+              "mutator": "https://github.com/unclebob/mutator.git",
+          }
+          for name, url in repos.items():
+              dest = f"/tmp/{name}"
+              if not os.path.exists(dest):
+                  subprocess.run(["git", "clone", "--depth", "1", url, dest], check=True)
+              subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", dest], check=True)
+          PY
           echo "/Users/brandonbennett/Library/Python/3.14/bin" >> $GITHUB_PATH
 
       - name: Run crapper (required by mutator)

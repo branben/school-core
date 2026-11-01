@@ -199,7 +199,7 @@ source pattern it follows.
 
 - `docs/templates/TIER.md` — the three-tier model + mapping rule of thumb.
 - `docs/templates/phase-map.md` — the "Phase → form → tool mapping" table.
-- `docs/templates/prd-pitch.html` — Tier-3 pitch-doc template (demo → pitch → objections).
+- `docs/templates/prd-artboard.html` — Tier-3 pitch-doc template (user scenario → objections → done-means).
 - `docs/templates/spec-implementation-plan.html` — Tier-3 impl-plan template, `html-plan` discipline.
 - `docs/templates/pr-writeup.html` — Tier-3 PR writeup template.
 - `docs/templates/guided-review-guide.schema.json` — the `guide.json` schema shape (from
