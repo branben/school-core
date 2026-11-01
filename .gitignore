@@ -120,3 +120,4 @@ src/**/data/
 
 # ub-mode / crapper-dryer-mutator metrics — derived analysis artifacts
 .metrics/
+.worktrees/

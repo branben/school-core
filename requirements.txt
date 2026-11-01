@@ -3,6 +3,7 @@
 PyYAML>=6.0
 pytest>=7.0          # for the test suite
 pytest-timeout>=2.0   # enforce bounded per-test execution
+pytest-cov>=4.0       # coverage reporting in CI
 python-dotenv>=1.0   # load_dotenv in issue_bridge/director/crew_dispatch (280934e)
 
 # Optional integrations (gracefully skipped if absent):

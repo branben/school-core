@@ -297,6 +297,19 @@ def main() -> int:
     # 5. guide.json source-block linkage (inner-loop chain of custody).
     failures.extend(_check_source_block(args.base, args.head, files))
 
+    # 6. PR body/title must reference a bead ID so the outer loop can trace
+    #    the change back to an issue. A PR without a bead is accepted
+    #    silently and surfaces days later when the inner loop tries to
+    #    implement an unspecified ticket.
+    pr_body = git("log", "-1", "--format=%B", args.head)
+    bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
+    if not bead_ids:
+        failures.append({
+            "check": "no-bead-link",
+            "file": f"{args.base}...{args.head}",
+            "detail": "PR title/body does not mention a bead ID (school-core-XXXX) — outer loop cannot trace this change to an issue",
+        })
+
     if args.json:
         print(json.dumps({
             "base": args.base, "head": args.head,
