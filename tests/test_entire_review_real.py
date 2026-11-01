@@ -24,6 +24,7 @@ def _init_git_repo(repo_path: Path) -> None:
     subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True)
 
 
+@pytest.mark.live
 @pytest.mark.skipif(not _get_entire_path(), reason="entire CLI not installed")
 # A real review takes ~200s (measured 185-208s) and the consolidating judge can
 # run to its own 20m cap, while the subprocess cap is 900s. The project default
