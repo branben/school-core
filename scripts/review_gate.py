@@ -15,16 +15,19 @@ Checks (all must pass):
      change a test file; none exercised the broken path.
   3. no VCS / editor / build junk in the changed-file list
   4. changed files carry no trailing whitespace on added lines
-  5. source.json (if present in the PR) carries the inner-loop chain-of-custody
-     block — bead, spec, decisions, artifacts (four prior inner-loop files),
-     and spec_acceptance. Every cited artifact must exist in the PR diff or
-     base tree. Exit non-zero with `SOURCE-BLOCK MISSING — <which field>`.
+  5. source.json inner-loop chain-of-custody block -- bead, spec, decisions,
+     artifacts, and spec_acceptance. The gate reads source.json from the PR
+     diff if present; otherwise it falls back to --source-json (a local path
+     in your fork/review env). Every cited local artifact must exist in the
+     PR diff or base tree. URL artifacts (gist, PR comment, artifact store)
+     are accepted with a CI warning. Exit non-zero with SOURCE-BLOCK MISSING.
 
 Exit 0 = pass. Exit 1 = fail, with every failure printed (never the
 first one only -- a partial report hides the rest of the work).
 
 Usage:
   review_gate.py --base origin/main --head HEAD
+  review_gate.py --base origin/main --head HEAD --source-json docs/source.json
   review_gate.py --base origin/main --head HEAD --json
 """
 from __future__ import annotations
@@ -181,38 +184,66 @@ def _load_json(base: str, head: str, path: str) -> dict:
     return {}
 
 
-def _check_source_block(base: str, head: str, files: list[str]) -> list[dict]:
+def _check_source_block(base: str, head: str, files: list[str], source_json_path: str | None = None) -> list[dict]:
     """Verify the PR's source.json sidecar carries the complete inner-loop chain.
 
-    This check only fires when source.json is in the changed files. A PR that
-    does not touch the REVIEW artifact is not affected.
+    If source.json is present in the PR diff, verify it there.
+    Otherwise, if --source-json was provided, verify that local file.
+    Otherwise, skip the check (no chain-of-custody record found).
     Returns a list of failures (empty = pass).
     """
     source_path = next((f for f in files if f.endswith("source.json")), None)
-    if not source_path:
-        return []
+    source = {}
+    source_location = ""
 
-    source = _load_json(base, head, source_path)
+    if source_path:
+        source = _load_json(base, head, source_path)
+        source_location = source_path
+    elif source_json_path:
+        try:
+            raw = Path(source_json_path).read_text(encoding="utf-8")
+            source = json.loads(raw)
+            source_location = source_json_path
+        except (OSError, json.JSONDecodeError, ValueError):
+            return [{"check": "source-block", "file": source_json_path,
+                     "detail": f"SOURCE-BLOCK MISSING -- cannot read --source-json {source_json_path!r}"}]
+    else:
+        return [{"check": "source-block", "file": "docs/source.json",
+                 "detail": "SOURCE-BLOCK MISSING -- no source.json in PR diff; run the inner loop (school-core review) and pass --source-json, or commit source.json to the PR"}]
+
     if not isinstance(source, dict):
-        return [{"check": "source-block", "file": source_path,
-                 "detail": "SOURCE-BLOCK MISSING — source.json is not a JSON object"}]
+        return [{"check": "source-block", "file": source_location,
+                 "detail": "SOURCE-BLOCK MISSING -- source.json is not a JSON object"}]
 
     missing = [k for k in ("bead", "spec", "decisions", "artifacts", "spec_acceptance")
                if not source.get(k) or (isinstance(source[k], list) and not source[k])]
     if missing:
-        return [{"check": "source-block", "file": source_path,
-                 "detail": f"SOURCE-BLOCK MISSING — required field(s) empty: {', '.join(missing)}"}]
+        return [{"check": "source-block", "file": source_location,
+                 "detail": f"SOURCE-BLOCK MISSING -- required field(s) empty: {', '.join(missing)}"}]
 
-    # Every cited artifact must exist in the PR diff or already in the base tree.
+    # Every cited artifact must exist in the PR diff or already in the base tree,
+    # OR be a URL sidecar reference (gist, PR comment, artifact store).
+    # URL refs are not fetched in CI (no external-network dependency in the gate);
+    # they are reported as warnings so a human reviewer can verify reachability.
     try:
         tree = git("ls-tree", "-r", "--name-only", head).splitlines()
     except SystemExit:
         tree = []
     reachable = set(tree) | set(files)
-    absent = [a for a in source["artifacts"] if a not in reachable]
+    URL_PREFIXES = ("http://", "https://")
+    absent = []
+    unresolved_urls = []
+    for a in source["artifacts"]:
+        if a.startswith(URL_PREFIXES):
+            unresolved_urls.append(a)
+        elif a not in reachable:
+            absent.append(a)
     if absent:
         return [{"check": "source-block", "file": source_path,
                  "detail": f"SOURCE-BLOCK MISSING — cited artifact(s) not found in PR or base: {', '.join(absent)}"}]
+    if unresolved_urls:
+        print(f"[review_gate] source.json cites {len(unresolved_urls)} URL artifact(s): {', '.join(unresolved_urls)}",
+              file=sys.stderr)
 
     return []
 
@@ -222,6 +253,8 @@ def main() -> int:
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--source-json", default=None,
+                    help="local path to source.json for chain-of-custody check when the file is not in the PR diff")
     args = ap.parse_args()
 
     # Fail closed before diffing: an unresolvable ref is a gate bug, not an
@@ -303,7 +336,7 @@ def main() -> int:
                     })
 
     # 5. guide.json source-block linkage (inner-loop chain of custody).
-    failures.extend(_check_source_block(args.base, args.head, files))
+    failures.extend(_check_source_block(args.base, args.head, files, args.source_json))
 
     # 6. PR body/title must reference a bead ID so the outer loop can trace
     #    the change back to an issue. A PR without a bead is accepted

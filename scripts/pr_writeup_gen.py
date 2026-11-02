@@ -104,7 +104,11 @@ def build_pr_writeup_md(
     """Return the full pr-writeup.md content."""
     today = date.today().isoformat()
     decisions_str = ", ".join(source.get("decisions", []) or [])
-    artifacts_str = "\n".join(f"  - `{a}`" for a in source.get("artifacts", []) or [])
+    committed = [a for a in (source.get("artifacts", []) or []) if not str(a).startswith(("http://", "https://"))]
+    url_refs = [a for a in (source.get("artifacts", []) or []) if str(a).startswith(("http://", "https://"))]
+    artifacts_lines = "\n".join(f"  - `{a}`" for a in committed)
+    if url_refs:
+        artifacts_lines += "\n- Review sidecar (not committed):\n" + "\n".join(f"  - {a}" for a in url_refs)
     acceptance_text = source.get("spec_acceptance", "")
 
     tested_md = _render_review_section(review)
@@ -139,8 +143,8 @@ The spec it lands is `{source.get('spec', '')}`.
 
 - Inner-loop chain: PRIME → PLAN → BUILD → TEST → REVIEW → PR
 - Decisions implemented: {decisions_str}
-- Prior artifacts cited:
-{artifacts_str}
+- Committed artifacts:
+{artifacts_lines}
 
 ## Tested
 
@@ -150,13 +154,21 @@ The spec it lands is `{source.get('spec', '')}`.
 
 {acceptance_text}
 
+## Review
+
+- Guided review (plannotator): {url_refs[0] if url_refs else ''}
+- Review evidence: {url_refs[1] if len(url_refs) > 1 else ''}
+
+> Review artifacts are sidecar-hosted to keep the PR focused on product code.
+> `source.json` (committed) cites both URLs; `review_gate.py` check #5 accepts URL refs with a CI warning.
+
 ## Source chain
 
 - **bead:** `{source.get('bead', '')}`
 - **spec:** {source.get('spec', '')}
 - **decisions:** {decisions_str}
 - **artifacts:**
-{artifacts_str}
+{artifacts_lines}
 - **acceptance:** {acceptance_text}
 
 > Canonical source: the markdown file in this repo is authoritative.

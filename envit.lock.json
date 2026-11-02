@@ -2,10 +2,10 @@
   "version": 1,
   "repos": [
     {
-      "name": "ripwire",
-      "source": "https://github.com/redhat-et/ripwire.git",
-      "ref": "v0.6.0",
-      "commit": "2d2f10e625811b75e0d0eaf6c7449cbb4e440a5c"
+      "name": "braintrust-sdk-python",
+      "source": "https://github.com/branben/braintrust-sdk-python.git",
+      "ref": "HEAD",
+      "commit": "696d206a34c89d34c38e9b4bc6e5e87ebc373d4d"
     },
     {
       "name": "effective-html",
@@ -18,6 +18,32 @@
       "source": "https://github.com/plannotator/guides.git",
       "ref": "HEAD",
       "commit": "da10932bcb861cc3830bcd50c2249249b2bbb538"
+    },
+    {
+      "name": "ripwire",
+      "source": "https://github.com/redhat-et/ripwire.git",
+      "ref": "v0.6.0",
+      "commit": "2d2f10e625811b75e0d0eaf6c7449cbb4e440a5c"
+    }
+  ],
+  "skillSources": [
+    {
+      "name": "plannotator/effective-html",
+      "source": "https://github.com/plannotator/effective-html.git",
+      "ref": "HEAD",
+      "commit": "5ce160a3e76dc1c0f9301f8a1903704ec607636a"
+    },
+    {
+      "name": "plannotator/guides",
+      "source": "https://github.com/plannotator/guides.git",
+      "ref": "HEAD",
+      "commit": "3fc8c845ef66f0743ec472785aa5f9b7fcda9e21"
+    },
+    {
+      "name": "redhat-et/ripwire",
+      "source": "https://github.com/redhat-et/ripwire.git",
+      "ref": "HEAD",
+      "commit": "b0f7e2fc264166e10bf1be02aef82bd2112c238a"
     }
   ]
 }
