@@ -385,5 +385,63 @@
     "entire_review": null,
     "commit_reachable": null,
     "teardown_ok": true
+  },
+  {
+    "crew_id": "fm-loop-20261101-184609-163",
+    "issue_number": 163,
+    "status": "failed",
+    "fleet_worktree_id": "wt-3",
+    "capability": {
+      "version": "1.0.0",
+      "domain": "python-testing",
+      "difficulty": "medium",
+      "score": 17.528431325150997,
+      "school_role": "Student",
+      "task_role": "coder",
+      "profile": "student-coder",
+      "skills": [
+        "YAGNI",
+        "KISS",
+        "Compile-Before-Critic",
+        "Nix-Verify-Shell",
+        "DRY",
+        "TDD Chicago School",
+        "TDD London School",
+        "Use Case"
+      ],
+      "allowed_tools": [
+        "python",
+        "testing",
+        "git"
+      ],
+      "gate_min": 0,
+      "gate_max": 24,
+      "escalation": [
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
+      ],
+      "hermes_toolsets": [
+        "clarify",
+        "delegation",
+        "engram",
+        "file",
+        "memory",
+        "serena",
+        "skills",
+        "terminal",
+        "todo"
+      ],
+      "schema_version": 1
+    },
+    "started_at": "2026-11-01T18:46:15.830843+00:00",
+    "started_monotonic": 388342.344062791,
+    "orca_worktree_present": true,
+    "fallback_reason": "crew_failed",
+    "spawn_stderr": null,
+    "report_path": null,
+    "verification": null,
+    "entire_review": null,
+    "commit_reachable": null,
+    "teardown_ok": true
   }
 ]

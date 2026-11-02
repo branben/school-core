@@ -231,6 +231,7 @@ def build_pr_body(
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
     patch_path: Optional[str] = None,
+    source_json_path: Optional[str] = None,
 ) -> str:
     """Render the PR body carrying the full acceptance evidence chain (B3).
 
@@ -434,6 +435,25 @@ def build_pr_body(
                 "- ⚠️ **No crew diff was captured** — the crew's work is not "
                 "preserved anywhere. Treat this PR as carrying no crew output.\n"
             )
+    # Source chain: read the REVIEW sidecar and surface the verified artifact
+    # chain so a reviewer can trace the PR back to the ticket and every prior
+    # inner-loop artifact without leaving GitHub.
+    if source_json_path:
+        try:
+            source = json.loads(Path(source_json_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            source = {}
+        if isinstance(source, dict) and source.get("bead"):
+            lines = [
+                f"- **bead:** `{source.get('bead', '')}`",
+                f"- **spec:** {source.get('spec', '')}",
+                f"- **decisions:** {', '.join(source.get('decisions', []) or [])}",
+                "**artifacts:**",
+            ]
+            for art in source.get("artifacts", []) or []:
+                lines.append(f"  - `{art}`")
+            lines.append(f"**acceptance:** {source.get('spec_acceptance', '')}")
+            body += "\n### Source chain\n\n" + "\n".join(lines) + "\n"
     return body
 
 
@@ -449,6 +469,7 @@ def create_pr_for_issue(
     artifact_path: Optional[str] = None,
     crew_used: bool = False,
     patch_path: Optional[str] = None,
+    source_json_path: Optional[str] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -683,6 +704,7 @@ def create_pr_for_issue(
         artifact_path=artifact_path,
         crew_used=crew_used,
         patch_path=patch_path,
+        source_json_path=source_json_path,
     )
 
     # 4. Open PR.

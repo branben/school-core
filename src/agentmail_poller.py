@@ -292,16 +292,29 @@ def _escape_slack(text: str) -> str:
 
 
 def post_activity(reply: dict, outcome: str) -> None:
-    """Post a one-line record of an inbound command to Slack. Never raises."""
+    """Post a scannable action line to Slack. Never raises."""
     token = os.environ.get("SCHOOL_CORE_SLACK_TOKEN", "") or ""
     channel = os.environ.get("SCHOOL_CORE_SLACK_CHANNEL", "") or ""
     if not token or not channel:
         return  # feed disabled — nothing to do
-    text = (
-        f":email: *{_escape_slack(reply.get('command', '?'))}* on bead "
-        f"`{_escape_slack(reply.get('bead', '?'))}` by {_escape_slack(reply.get('from', '?'))}\n"
-        f"{_escape_slack(outcome)}"
-    )
+
+    cmd = _escape_slack(reply.get("command", "?")).upper()
+    bead = _escape_slack(reply.get("bead", "?"))
+    sender_raw = _escape_slash(reply.get("from", "?"))
+    sender = sender_raw.split("@")[0] if "@" in sender_raw else sender_raw
+    note = _escape_slash(reply.get("note", ""))
+    subject = _escape_slack(reply.get("subject", ""))
+
+    lines = [
+        f":email: *{cmd}* `{bead}` — {sender}",
+        f"result: {_escape_slack(outcome)}",
+    ]
+    if subject:
+        lines.append(f"target: {subject}")
+    if note:
+        lines.append(f"note: {note[:160]}")
+
+    text = "\n".join(lines)
     data = json.dumps({"channel": channel, "text": text}).encode()
     request = urllib.request.Request(
         "https://slack.com/api/chat.postMessage",
@@ -312,6 +325,13 @@ def post_activity(reply: dict, outcome: str) -> None:
         urllib.request.urlopen(request, timeout=5)
     except Exception as exc:  # noqa: BLE001 — feed must never break processing
         logger.warning("Slack activity feed post failed: %s", exc)
+
+
+def _escape_slash(text: str) -> str:
+    """Escape a leading slash so Slack doesn't turn it into a channel mention."""
+    if text.startswith("/"):
+        return "\\" + text
+    return text
 
 
 def _load_allowed_approvers() -> tuple[str, ...]:

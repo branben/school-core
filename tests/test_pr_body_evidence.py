@@ -29,6 +29,8 @@ Why each gap matters, concretely:
 
 from unittest.mock import patch
 
+import json
+
 import src.bridge.pr_creator as pr_creator
 from src.crew.crew_dispatch import CrewResult
 from pathlib import Path
@@ -395,4 +397,46 @@ class TestPrBodyPerCommandVerificationTable:
                          "status": "pass", "duration_s": 0.1}],
         })
         assert "a\\|b" in body
+
+
+class TestPrBodySourceChain:
+    """The PR body must surface the REVIEW sidecar when available."""
+
+    def test_source_chain_present_when_path_given(self, tmp_path):
+        source = {
+            "bead": "school-core-fip",
+            "spec": "docs/plans/2026-10-30-001-inner-loop-source-linkage-plan.md · milestone-1",
+            "decisions": ["D1", "D2"],
+            "artifacts": [
+                "docs/prime-module-map.html",
+                "docs/plan-tweakable.html",
+                "docs/dev-log.md",
+                "docs/validate-prototype.html",
+            ],
+            "spec_acceptance": "all inner artifacts carry source blocks",
+        }
+        src_file = tmp_path / "source.json"
+        src_file.write_text(json.dumps(source), encoding="utf-8")
+        body = _captured_body(source_json_path=str(src_file))
+        assert "### Source chain" in body
+        assert "school-core-fip" in body
+        assert "D1, D2" in body
+        assert "prime-module-map.html" in body
+        assert "all inner artifacts carry source blocks" in body
+
+    def test_source_chain_absent_when_path_none(self):
+        body = _captured_body(source_json_path=None)
+        assert "### Source chain" not in body
+
+    def test_source_chain_absent_when_bead_missing(self, tmp_path):
+        (tmp_path / "source.json").write_text(
+            json.dumps({"spec": "x", "decisions": [], "artifacts": []}),
+            encoding="utf-8",
+        )
+        body = _captured_body(source_json_path=str(tmp_path / "source.json"))
+        assert "### Source chain" not in body
+
+    def test_source_chain_absent_on_missing_file(self):
+        body = _captured_body(source_json_path="/nonexistent/source.json")
+        assert "### Source chain" not in body
 

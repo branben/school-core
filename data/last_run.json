@@ -297,7 +297,7 @@
     "score": 73.4,
     "trajectory": null,
     "timestamp": "2026-08-12T08:43:17.000000+00:00",
-    "title": "feat: add audit_retries.py — health report for retry_issues.json",
+    "title": "feat: add audit_retries.py \u2014 health report for retry_issues.json",
     "domain": "code-review",
     "difficulty": "medium",
     "verify_skipped": false,
@@ -498,8 +498,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -627,8 +627,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -756,8 +756,8 @@
       "gate_min": 0,
       "gate_max": 24,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Teacher",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Teacher",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -792,7 +792,7 @@
           "severity": "HIGH",
           "issue_class": "runtime_failure",
           "citation": "exit_code=1",
-          "description": "SyntaxError: invalid character '—' (U+2014)"
+          "description": "SyntaxError: invalid character '\u2014' (U+2014)"
         }
       ],
       "routing_feedback": {
@@ -856,7 +856,7 @@
     "status": "school-failed",
     "agent": "openhands",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260824_150414_854961--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -884,8 +884,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1035,8 +1035,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1111,7 +1111,7 @@
     "status": "school-failed",
     "agent": "openhands",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260824_174845_007448--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1139,8 +1139,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1322,8 +1322,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1460,7 +1460,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 85.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260825_152604_787410--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1488,8 +1488,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1620,8 +1620,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1651,7 +1651,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 85.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=85.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260826_105852_093087--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1679,8 +1679,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1811,8 +1811,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1869,8 +1869,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -1900,7 +1900,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260830_141753_940182--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -1928,8 +1928,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2080,7 +2080,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260830_160405_118421--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -2108,8 +2108,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2200,7 +2200,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260830_161615_283815--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -2228,8 +2228,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2347,8 +2347,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2627,7 +2627,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260831_020835_543999--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -2655,8 +2655,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2734,7 +2734,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260831_023803_186254--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -2762,8 +2762,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -2854,7 +2854,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 91.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=91.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=91.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260831_031311_136115--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -2882,8 +2882,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3002,8 +3002,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3033,7 +3033,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 70.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260831_031735_716732--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3061,8 +3061,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3172,7 +3172,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20260831_040507_240441--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3200,8 +3200,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3279,7 +3279,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 82.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=82.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=82.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_152944_759616--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3307,8 +3307,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3405,7 +3405,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 100.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=PASS quality_score=100.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_153051_251467--python-testing--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3433,8 +3433,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3468,8 +3468,8 @@
         {
           "severity": "CRITICAL",
           "issue_class": "not_executable",
-          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)",
-          "description": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)"
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
         },
         {
           "severity": "CRITICAL",
@@ -3505,7 +3505,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 73.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_153858_051725--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3533,8 +3533,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3570,8 +3570,8 @@
         {
           "severity": "CRITICAL",
           "issue_class": "not_executable",
-          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)",
-          "description": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)"
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
         },
         {
           "severity": "CRITICAL",
@@ -3643,7 +3643,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 76.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_153935_241064--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3671,8 +3671,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3781,7 +3781,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 60.5,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_164142_444367--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3809,8 +3809,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -3919,7 +3919,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_164239_776148--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -3947,8 +3947,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4057,7 +4057,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 70.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_164349_829577--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4085,8 +4085,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4195,7 +4195,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_164418_705872--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4223,8 +4223,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4360,8 +4360,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4391,7 +4391,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170123_045074--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4419,8 +4419,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4529,7 +4529,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 60.5,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=60.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170145_881374--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4557,8 +4557,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4594,8 +4594,8 @@
         {
           "severity": "CRITICAL",
           "issue_class": "not_executable",
-          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)",
-          "description": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)"
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
         },
         {
           "severity": "CRITICAL",
@@ -4694,8 +4694,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4725,7 +4725,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 67.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170225_479022--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4753,8 +4753,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4863,7 +4863,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 73.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170428_343426--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -4891,8 +4891,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -4928,8 +4928,8 @@
         {
           "severity": "CRITICAL",
           "issue_class": "not_executable",
-          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)",
-          "description": "Not executable: code compiles but contains only definitions (no top-level invocation — nothing runs when executed)"
+          "citation": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)",
+          "description": "Not executable: code compiles but contains only definitions (no top-level invocation \u2014 nothing runs when executed)"
         },
         {
           "severity": "CRITICAL",
@@ -5001,7 +5001,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170513_970024--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5029,8 +5029,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5139,7 +5139,7 @@
     "status": "school-failed",
     "agent": "searcher",
     "score": 76.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170543_903267--debugging--searcher.json",
     "capability": {
       "version": "1.0.0",
@@ -5160,8 +5160,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5257,7 +5257,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170610_032145--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5285,8 +5285,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5395,7 +5395,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 79.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170640_528350--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5423,8 +5423,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5527,7 +5527,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 70.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170720_354860--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5555,8 +5555,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5665,7 +5665,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 79.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=79.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170748_603305--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5693,8 +5693,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5797,7 +5797,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 67.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170815_906620--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5825,8 +5825,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -5935,7 +5935,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 82.0,
-    "rejection": "two-judge review rejected: cto=PASS coo=FAIL quality_score=82.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=PASS coo=FAIL quality_score=82.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170846_834536--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -5963,8 +5963,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6074,7 +6074,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_170918_029206--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6102,8 +6102,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6239,8 +6239,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6270,7 +6270,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_171010_049145--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6298,8 +6298,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6408,7 +6408,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_173731_790362--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6436,8 +6436,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6546,7 +6546,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 70.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=70.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_173854_531160--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6574,8 +6574,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6684,7 +6684,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_174021_482439--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6712,8 +6712,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6849,8 +6849,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -6880,7 +6880,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_182229_827211--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -6908,8 +6908,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7018,7 +7018,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 73.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=73.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_182335_429350--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -7046,8 +7046,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7156,7 +7156,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 67.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_191740_243227--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -7184,8 +7184,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7294,7 +7294,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 88.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=88.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=PASS quality_score=88.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_191840_737561--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -7322,8 +7322,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7414,7 +7414,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_200648_123034--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -7442,8 +7442,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7552,7 +7552,7 @@
     "status": "school-failed",
     "agent": "executor",
     "score": 72.5,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=72.5/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=72.5/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_200733_091656--git-operations--executor.json",
     "capability": {
       "version": "1.0.0",
@@ -7573,8 +7573,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "file",
@@ -7661,7 +7661,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 64.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=64.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_204455_213152--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -7689,8 +7689,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -7800,7 +7800,7 @@
     "status": "school-failed",
     "agent": "executor",
     "score": 67.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=67.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_204528_508146--git-operations--executor.json",
     "capability": {
       "version": "1.0.0",
@@ -7821,8 +7821,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "file",
@@ -7884,7 +7884,7 @@
           "severity": "MEDIUM",
           "issue_class": "review_finding",
           "citation": "",
-          "description": "The following in-flight files are NOT in the commit — they belong to other authors: bookbag.py, director.py, scripts/verify_context_lock.py, tests/test_verify_context_lock.py"
+          "description": "The following in-flight files are NOT in the commit \u2014 they belong to other authors: bookbag.py, director.py, scripts/verify_context_lock.py, tests/test_verify_context_lock.py"
         },
         {
           "severity": "MEDIUM",
@@ -7946,8 +7946,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -8262,7 +8262,7 @@
     "status": "school-failed",
     "agent": "coder",
     "score": 76.0,
-    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only — the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
+    "rejection": "two-judge review rejected: cto=FAIL coo=FAIL quality_score=76.0/100 (quality only \u2014 the verdict is the gate; FAIL fires on any CRITICAL/HIGH finding regardless of score)",
     "trajectory": "data/trajectories/20261005_211114_660550--code-implementation--coder.json",
     "capability": {
       "version": "1.0.0",
@@ -8290,8 +8290,8 @@
       "gate_min": 25,
       "gate_max": 74,
       "escalation": [
-        "Cannot solve after 2 attempts → escalate to Faculty",
-        "Task difficulty exceeds gate → escalate immediately"
+        "Cannot solve after 2 attempts \u2192 escalate to Faculty",
+        "Task difficulty exceeds gate \u2192 escalate immediately"
       ],
       "hermes_toolsets": [
         "clarify",
@@ -8394,5 +8394,22 @@
     "next_action": "change_capability",
     "retry_attempt": 0,
     "timestamp": "2026-10-05T21:29:05.373673+00:00"
+  },
+  {
+    "issue": 163,
+    "status": "retry",
+    "agent": "coder",
+    "score": null,
+    "trajectory": null,
+    "capability": null,
+    "teacher_evidence": null,
+    "lifecycle": "retry",
+    "quality": 0.0,
+    "failure_edge": "runtime",
+    "failure_mode": "unknown",
+    "fallback_reason": "crew_failed",
+    "next_action": "retry_same",
+    "retry_attempt": 1,
+    "timestamp": "2026-11-01T18:47:45.013281+00:00"
   }
 ]

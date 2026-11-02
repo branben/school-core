@@ -35,8 +35,10 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -44,6 +46,7 @@ from typing import Optional
 from bookbag import BookbagSignal, wait_for_verdicts, write_bookbag, HANDOFF_TIMEOUT
 from src.core.director import run_task
 from src.crew.orca_executor import OrcaExecutionManager, StudentBrief, OrcaUnavailableError
+from src.crew.student_vm_runner import SmolVmRunner, StudentTaskRequest, StudentTaskResult, StudentVMBlocked
 from src.sensors.activity_log import ActivityLog
 
 _log = ActivityLog()
@@ -59,6 +62,13 @@ logger = logging.getLogger(__name__)
 #   "auto"      — try the Hermes terminal first; fall back to OmniRoute only
 #                 when Orca/Hermes is unavailable for this dispatch.
 LEAF_TRANSPORT = os.environ.get("LEAF_TRANSPORT", "hermes").strip().lower()
+
+# Opt-in student execution via local smolvm microVM instead of Orca worktree.
+# Set SCHOOL_CORE_USE_SMOLVM=1 to enable. Requires SCHOOL_CORE_SMOLVM_PACK
+# (operator-pinned guest pack path) and smolvm on PATH.
+_USE_SMOLVM = os.environ.get("SCHOOL_CORE_USE_SMOLVM", "").strip().lower() in ("1", "true", "yes")
+_SMOLVM_PACK = os.environ.get("SCHOOL_CORE_SMOLVM_PACK", "").strip() or None
+_SMOLVM_CMD = os.environ.get("SCHOOL_CORE_SMOLVM_CMD", "smolvm").strip()
 
 
 def _run_student_via_omniroute(leaf: "StudentLeaf", task_prompt: str) -> str:
@@ -278,6 +288,123 @@ class StudentLeaf:
         )
         return self._mgr.write_student_brief(self.worktree_path, brief)
 
+    def _run_via_smolvm(self, task_prompt: str) -> dict:
+        """Execute the task inside a local smolvm microVM (opt-in).
+
+        Requires ``SCHOOL_CORE_USE_SMOLVM=1`` and ``SCHOOL_CORE_SMOLVM_PACK``
+        pointing at an operator-pinned guest pack. Network egress is off by
+        default in the guest; the operator is responsible for model reachability.
+        """
+        if not _SMOLVM_PACK:
+            raise LeafError(
+                "SCHOOL_CORE_USE_SMOLVM=1 is set but "
+                "SCHOOL_CORE_SMOLVM_PACK is empty"
+            )
+        from hashlib import sha256 as _sha256
+        pack_path = Path(_SMOLVM_PACK).expanduser().resolve()
+        if not pack_path.is_file():
+            raise LeafError(
+                f"smolvm guest pack not found: {pack_path}"
+            )
+        pack_sha = _sha256(pack_path.read_bytes()).hexdigest()
+
+        runner = SmolVmRunner(
+            smolvm=_SMOLVM_CMD,
+            pack_path=pack_path,
+            pack_sha256=pack_sha,
+        )
+        soul = load_soul(self._hermes_profile)
+        if not soul:
+            soul = f"You are a {self.role} agent. Complete the task precisely."
+        full_prompt = f"{soul}\n\n---\n\nTask: {task_prompt}"
+
+        request = StudentTaskRequest(
+            task_id=self.bead,
+            repository=self._repo_slug(),
+            repo_path=self.repo_path or Path("."),
+            base_sha=self._get_base_sha(),
+            task={"prompt": full_prompt},
+            command=("student-agent", "--task-file", "/workspace/task.json"),
+            timeout_seconds=HANDOFF_TIMEOUT,
+        )
+        logger.info(
+            "[leaf:%s] Running student via smolvm (%s)...",
+            self.bead[:12], _SMOLVM_CMD,
+        )
+        try:
+            result = runner.execute(request)
+        except StudentVMBlocked as exc:
+            return self._hermes_failure(
+                task_prompt, f"smolvm blocked: {exc}"
+            )
+
+        # Translate the VM result into the same shape the Orca path returns.
+        response = self._extract_vm_response(result)
+        output_data = {
+            "bead": self.bead,
+            "role": self.role,
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "task": task_prompt,
+            "response": response,
+            "response_chars": len(response),
+            "hermes_profile": self._hermes_profile,
+            "transport": "smolvm",
+            "capability": self.capability.to_dict(),
+        }
+        # Write output to the repo root (no Orca worktree in smolvm mode).
+        output_dir = Path(".hermes/outputs")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{self.bead}.json"
+        output_path.write_text(
+            json.dumps(output_data, indent=2, default=str)
+        )
+
+        write_bookbag(
+            self.bead,
+            student=self.role,
+            domain=self.domain,
+            difficulty=self.difficulty,
+            task=task_prompt[:200],
+            output=response,
+            repo=self._repo_slug(),
+        )
+        return output_data
+
+    def _extract_vm_response(self, result: StudentTaskResult) -> str:
+        """Pull the student's text response from the candidate archive tar."""
+        import tarfile
+        import io
+        try:
+            with tarfile.open(
+                fileobj=io.BytesIO(result.candidate_archive), mode="r"
+            ) as tar:
+                texts = []
+                for member in tar.getmembers():
+                    if not member.isfile():
+                        continue
+                    try:
+                        fobj = tar.extractfile(member)
+                        if fobj is None:
+                            continue
+                        content = fobj.read().decode("utf-8", "replace")
+                        if content.strip():
+                            texts.append(content.strip())
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                return "\n".join(texts) if texts else ""
+        except tarfile.ReadError:
+            return ""
+
+    def _get_base_sha(self) -> str:
+        """Return the current repo HEAD sha for the StudentTaskRequest."""
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=self.repo_path or "."
+            ).decode().strip()
+        except Exception:
+            return "HEAD"
+
     def run_via_hermes(self, task_prompt: str) -> dict:
         """Execute the task by running Hermes agent in the leaf's Orca terminal.
 
@@ -322,6 +449,18 @@ class StudentLeaf:
         response = None
         transport_used = "hermes"
         hermes_error: Optional[str] = None
+
+        # Opt-in: route through local smolvm microVM instead of Orca worktree.
+        if _USE_SMOLVM:
+            try:
+                return self._run_via_smolvm(task_prompt)
+            except Exception as e:
+                logger.error(
+                    "[leaf:%s] smolvm failed: %s", self.bead[:12], e
+                )
+                return self._hermes_failure(
+                    task_prompt, f"smolvm: {e}"
+                )
 
         # Gap-fix G1: when OmniRoute delegation is selected ("omniroute") or
         # auto-fallback triggers, run the student through the ACRouter path

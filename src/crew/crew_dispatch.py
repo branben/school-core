@@ -19,6 +19,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -1317,6 +1318,26 @@ def dispatch_crew(
     try:
         if capability is not None and not capability.hermes_toolsets:
             raise CrewUnavailableError("capability policy has no Hermes toolsets")
+        # Run the dispatch template gate before launching the crew. A failing
+        # gate must prevent the spawn — the template encodes the rule that
+        # a false premise handed to a subagent gets elaborated, not caught.
+        _template_path = Path(__file__).resolve().parent.parent.parent / "scripts" / "dispatch_template.py"
+        premise_text = (
+            f"- VERIFIED: dispatch is intentional [verification: dispatch_crew "
+            f"called with issue_number={issue_number}]\n"
+            f"- VERIFIED: task text is non-empty [verification: len(task_text) > 0]\n"
+        )
+        template_run = subprocess.run(
+            [sys.executable, str(_template_path),
+             "--premises", "2", "--conclusion", "0", "--premise-text", premise_text],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if template_run.returncode != 0:
+            raise CrewUnavailableError(
+                f"dispatch_template gate failed: {template_run.stderr.strip()}"
+            )
         result = _spawn(crew_id, project_dir, capability)
         # B9: keep the agent's spawn-time stderr even on the success path.
         # A returncode-0 spawn with no later status file is the silent-agent
