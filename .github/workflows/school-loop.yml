@@ -618,14 +618,24 @@ jobs:
 
       - name: Update ripwire code index
         if: always()
-        run: |
-          /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json
+        timeout-minutes: 3
+        run: |-
+          set -uo pipefail
+          if ! command -v /Users/brandonbennett/.local/bin/ripwire >/dev/null 2>&1; then
+            echo "::warning::ripwire not found — skipping code index update"
+            exit 0
+          fi
+          echo "updating ripwire code index..."
+          timeout 120 /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json 2>&1 || {
+            echo "::warning::ripwire index update failed or timed out (120s) — continuing"
+            exit 0
+          }
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b ripwire-index || git checkout ripwire-index
           git add -f .index-gate/ripwire.json
           git commit -m "ripwire: update code index [skip ci]" || echo "no index changes"
-          git push origin ripwire-index --force
+          git push origin ripwire-index --force || echo "::warning::ripwire index push failed"
 
   loop:
     # Board publishing — always runs (even when the Mac sleeps, even if
