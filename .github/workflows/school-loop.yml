@@ -626,8 +626,14 @@ jobs:
             exit 0
           fi
           echo "updating ripwire code index..."
-          timeout 120 /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json 2>&1 || {
-            echo "::warning::ripwire index update failed or timed out (120s) — continuing"
+          TIMEOUT_CMD=""
+          if command -v timeout >/dev/null 2>&1; then
+            TIMEOUT_CMD="timeout 120"
+          elif command -v gtimeout >/dev/null 2>&1; then
+            TIMEOUT_CMD="gtimeout 120"
+          fi
+          $TIMEOUT_CMD /Users/brandonbennett/.local/bin/ripwire wr . > .index-gate/ripwire.json 2>&1 || {
+            echo "::warning::ripwire index update failed or timed out — continuing"
             exit 0
           }
           git config user.name "github-actions[bot]"
