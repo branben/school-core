@@ -120,3 +120,75 @@ class TestMain:
         rc = orca_precondition.main(["/tmp/repo"])
         assert rc == orca_precondition.BLOCKED_ENV
         assert "BLOCKED_ENV" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Additional edge coverage for orca_precondition
+# ---------------------------------------------------------------------------
+
+class TestRunOrcaWrapper:
+    def test_timeout_propagates(self, monkeypatch):
+        import subprocess
+
+        def fake_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="orca", timeout=10)
+
+        monkeypatch.setattr(orca_precondition.subprocess, "run", fake_run)
+        with pytest.raises(subprocess.TimeoutExpired):
+            orca_precondition._run_orca(["status"], timeout=10)
+
+    def test_oserror_propagates(self, monkeypatch):
+        def fake_run(*args, **kwargs):
+            raise OSError("cannot execute")
+
+        monkeypatch.setattr(orca_precondition.subprocess, "run", fake_run)
+        with pytest.raises(OSError, match="cannot execute"):
+            orca_precondition._run_orca(["status"], timeout=10)
+
+
+class TestClassifyRepoAddEdge:
+    def test_nonzero_rc_with_empty_stderr(self):
+        code, msg = orca_precondition._classify_repo_add(1, "", "")
+        assert code == orca_precondition.BLOCKED_ENV
+        assert "rc=1" in msg
+
+    def test_runtime_unavailable_when_stderr_also_has_text(self):
+        code, msg = orca_precondition._classify_repo_add(
+            0, json.dumps({"code": "runtime_unavailable"}), "some stderr"
+        )
+        assert code == orca_precondition.BLOCKED_ENV
+        assert "runtime_unavailable" in msg
+
+
+class TestMainEdge:
+    def test_status_oserror_continues_to_repo_add(self, monkeypatch, capsys):
+        monkeypatch.setattr(orca_precondition.shutil, "which", lambda _: "/usr/local/bin/orca")
+        calls = []
+
+        def fake_run_orca(args, timeout=60):
+            calls.append(args[0])
+            if args[0] == "status":
+                raise OSError("status probe failed")
+            if args[:2] == ["repo", "add"]:
+                return 0, json.dumps({"id": "r1", "path": "/tmp/repo"}), ""
+            return 0, "", ""
+
+        monkeypatch.setattr(orca_precondition, "_run_orca", fake_run_orca)
+        rc = orca_precondition.main(["/tmp/repo"])
+        assert rc == orca_precondition.READY
+        assert "status" in calls
+        assert "open" in calls  # repair attempted
+        assert "repo" in calls  # repo add attempted
+
+    def test_repo_add_oserror_is_blocked_env(self, monkeypatch, capsys):
+        monkeypatch.setattr(orca_precondition.shutil, "which", lambda _: "/usr/local/bin/orca")
+
+        def fake_run_orca(args, timeout=60):
+            if args[:2] == ["repo", "add"]:
+                raise OSError("repo add crashed")
+            return 0, json.dumps({"runtime": {"state": "ready"}}), ""
+
+        monkeypatch.setattr(orca_precondition, "_run_orca", fake_run_orca)
+        rc = orca_precondition.main(["/tmp/repo"])
+        assert rc == orca_precondition.BLOCKED_ENV
+        assert "BLOCKED_ENV" in capsys.readouterr().out

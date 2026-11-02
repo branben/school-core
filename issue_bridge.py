@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -1880,6 +1881,96 @@ def _publish_bound_candidate_pr(
     return result.pr_url
 
 
+def _generate_inner_loop_artifacts(
+    repo_path: Path,
+    issue: dict,
+    task_result: dict,
+    review_evidence: dict,
+    verify_result: Optional[dict],
+    pr_number: int,
+    pr_title: str,
+) -> None:
+    """Generate source.json and pr-writeup.html for the inner-loop chain.
+
+    Fail-closed: a generator failure is logged but never blocks PR creation
+    on the direct path. The guard test verifies both scripts are called in
+    order; production tolerates a generator exit non-zero so a missing spec
+    or review data does not silently drop the PR.
+    """
+    scripts = Path(__file__).resolve().parent.parent / "scripts"
+    bead = issue.get("bd_id") or task_result.get("bead") or f"issue-{pr_number}"
+    spec = task_result.get("spec") or ""
+    decisions = review_evidence.get("decisions") or []
+    artifacts = [
+        "docs/prime-module-map.html",
+        "docs/plan-tweakable.html",
+        "docs/dev-log.md",
+        "docs/validate-prototype.html",
+    ]
+    source_out = repo_path / "docs" / "source.json"
+    md_out = repo_path / "docs" / "pr-writeup.md"
+    html_out = repo_path / "docs" / "pr-writeup.html"
+
+    review_path = repo_path / "review_evidence.json"
+    try:
+        review_path.write_text(
+            json.dumps(review_evidence or {}, indent=2) + "\n", encoding="utf-8"
+        )
+        source_proc = subprocess.run(
+            [
+                sys.executable,
+                str(scripts / "source_gen.py"),
+                f"--bead={bead}",
+                f"--spec={spec}",
+                "--spec-milestone=M3",
+                "--decisions=" + ",".join(decisions),
+                "--artifacts=" + ",".join(artifacts),
+                f"--out={source_out}",
+            ],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+        )
+        if source_proc.returncode != 0:
+            sys.stderr.write(
+                f"[issue_bridge] source_gen.py failed for #{pr_number}: "
+                f"{source_proc.stderr.strip()}\n"
+            )
+            return
+
+        writeup_proc = subprocess.run(
+            [
+                sys.executable,
+                str(scripts / "pr_writeup_gen.py"),
+                f"--source-json={source_out}",
+                f"--review-json={review_path}",
+                f"--pr-number={pr_number}",
+                f"--pr-title={pr_title}",
+                "--pr-author=agent-school",
+                f"--out-md={md_out}",
+                f"--out-html={html_out}",
+            ],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+        )
+        if writeup_proc.returncode != 0:
+            sys.stderr.write(
+                f"[issue_bridge] pr_writeup_gen.py failed for #{pr_number}: "
+                f"{writeup_proc.stderr.strip()}\n"
+            )
+    except Exception as exc:
+        sys.stderr.write(
+            f"[issue_bridge] inner-loop artifact generation failed for #{pr_number}: {exc}\n"
+        )
+    finally:
+        if review_path.exists():
+            try:
+                review_path.unlink()
+            except OSError:
+                pass
+
+
 def bridge_issues(
     repo: str,
     labels: Optional[List[str]] = None,
@@ -3166,6 +3257,20 @@ def bridge_issues(
             bound_manifest = None
             try:
                 bound_manifest = _candidate_manifest_from_result(task_result)
+                # M3: generate source.json + pr-writeup.html before any PR
+                # creation so both the direct and candidate-bound paths pick
+                # them up. Fail-closed: generator errors are logged and do
+                # not block publication.
+                if repo_path is not None:
+                    _generate_inner_loop_artifacts(
+                        repo_path=repo_path,
+                        issue=issue,
+                        task_result=task_result,
+                        review_evidence=review_evidence,
+                        verify_result=verify_result,
+                        pr_number=num,
+                        pr_title=issue.get("title", f"issue-{num}"),
+                    )
                 if bound_manifest is not None:
                     # Candidate-bound path: gate publication against the exact
                     # validated candidate first. A refusal is a terminal failure
@@ -3259,6 +3364,14 @@ def bridge_issues(
                         patch_path=(
                             str(getattr(crew_result, "patch_path", None))
                             if crew_used and getattr(crew_result, "patch_path", None)
+                            else None
+                        ),
+                        # Inner-loop source chain: pass the REVIEW sidecar so the
+                        # PR body renders the verified artifact chain (bead, spec,
+                        # decisions, prior artifacts, acceptance criteria).
+                        source_json_path=(
+                            str(repo_path / "docs" / "source.json")
+                            if repo_path and (repo_path / "docs" / "source.json").exists()
                             else None
                         ),
                     )
