@@ -155,3 +155,188 @@ class TestCostPenalties:
 
     def test_blocker_penalty_is_zero(self):
         assert COST_PENALTY_BY_DIFFICULTY.get("blocker") == 0
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard helpers — previously 11.9% coverage
+# ---------------------------------------------------------------------------
+
+class TestGateForScore:
+    def test_none_below_easy(self):
+        # GATES["easy"] == 0, so score 0 maps to "easy" by the current rule.
+        assert leaderboard.gate_for_score(-1) == "none"
+        assert leaderboard.gate_for_score(0) == "easy"
+
+    def test_easy(self):
+        assert leaderboard.gate_for_score(1) == "easy"
+        assert leaderboard.gate_for_score(24.9) == "easy"
+
+    def test_medium(self):
+        assert leaderboard.gate_for_score(25) == "medium"
+        assert leaderboard.gate_for_score(49.9) == "medium"
+
+    def test_hard(self):
+        assert leaderboard.gate_for_score(50) == "hard"
+        assert leaderboard.gate_for_score(74.9) == "hard"
+
+    def test_diploma(self):
+        assert leaderboard.gate_for_score(75) == "diploma"
+        assert leaderboard.gate_for_score(100) == "diploma"
+
+
+class TestAgentTier:
+    def test_foundry_is_local(self):
+        assert leaderboard.agent_tier("foundry-coder-7b") == ("local", "#22c55e")
+
+    def test_openhands_is_a2a(self):
+        assert leaderboard.agent_tier("openhands") == ("a2a", "#5b8def")
+
+    def test_cloud_fallback(self):
+        assert leaderboard.agent_tier("gemini-3-flash-preview") == ("cloud", "#a855f7")
+
+
+class TestAgentRole:
+    def test_diploma_is_faculty(self):
+        assert leaderboard.agent_role("any", 75) == "Faculty"
+
+    def test_hard_is_teacher(self):
+        assert leaderboard.agent_role("any", 50) == "Teacher"
+
+    def test_medium_is_senior_student(self):
+        assert leaderboard.agent_role("any", 25) == "Senior Student"
+
+    def test_below_medium_is_student(self):
+        assert leaderboard.agent_role("any", 24) == "Student"
+
+
+class TestLoadScores:
+    def test_missing_file_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(leaderboard, "SCORES_PATH", tmp_path / "missing.json")
+        assert leaderboard.load_scores() == {}
+
+    def test_valid_json_returns_dict(self, tmp_path, monkeypatch):
+        p = tmp_path / "scores.json"
+        p.write_text('{"agent-a": {"_default": 10}}')
+        monkeypatch.setattr(leaderboard, "SCORES_PATH", p)
+        assert leaderboard.load_scores() == {"agent-a": {"_default": 10}}
+
+
+class TestLoadTrajectories:
+    def test_missing_dir_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(leaderboard, "TRAJECTORY_DIR", tmp_path / "nope")
+        assert leaderboard.load_trajectories() == []
+
+    def test_skips_malformed_json(self, tmp_path, monkeypatch):
+        d = tmp_path / "traj"
+        d.mkdir()
+        (d / "bad.json").write_text("not json")
+        (d / "good.json").write_text('{"timestamp":"2026-01-01","agent":"a","domain":"d","new_score":1}')
+        monkeypatch.setattr(leaderboard, "TRAJECTORY_DIR", d)
+        out = leaderboard.load_trajectories()
+        assert len(out) == 1
+        assert out[0]["agent"] == "a"
+
+    def test_sorted_by_filename(self, tmp_path, monkeypatch):
+        d = tmp_path / "traj"
+        d.mkdir()
+        (d / "b.json").write_text('{"timestamp":"2026-01-02","agent":"b","domain":"d","new_score":1}')
+        (d / "a.json").write_text('{"timestamp":"2026-01-01","agent":"a","domain":"d","new_score":1}')
+        monkeypatch.setattr(leaderboard, "TRAJECTORY_DIR", d)
+        out = leaderboard.load_trajectories()
+        assert [t["agent"] for t in out] == ["a", "b"]
+
+
+class TestComputeScoreHistory:
+    def test_seed_scores_present(self):
+        hist = leaderboard.compute_score_history([])
+        assert "foundry-coder-7b" in hist
+        assert ("seed", 25.0) in hist["foundry-coder-7b"]["_default"]
+
+    def test_trajectories_appended(self):
+        trajs = [{"agent": "a", "domain": "_default", "new_score": 40, "timestamp": "2026-01-01"}]
+        hist = leaderboard.compute_score_history(trajs)
+        assert ("2026-01-01", 40.0) in hist["a"]["_default"]
+
+    def test_sorted_by_timestamp(self):
+        trajs = [
+            {"agent": "a", "domain": "_default", "new_score": 10, "timestamp": "2026-01-02"},
+            {"agent": "a", "domain": "_default", "new_score": 20, "timestamp": "2026-01-01"},
+        ]
+        hist = leaderboard.compute_score_history(trajs)
+        pts = hist["a"]["_default"]
+        assert pts[0][0] == "2026-01-01"
+        assert pts[1][0] == "2026-01-02"
+
+
+class TestComputeStats:
+    def test_empty_inputs(self):
+        stats = leaderboard.compute_stats([], {})
+        assert stats["total"] == 0
+        assert stats["success_rate"] == 0
+        assert stats["gate_crossings"] == []
+
+    def test_success_rate(self):
+        trajs = [
+            {"domain": "d", "error": None, "old_score": 10, "new_score": 20},
+            {"domain": "d", "error": "boom", "old_score": 10, "new_score": 5},
+        ]
+        stats = leaderboard.compute_stats(trajs, {"a": {"_default": 20}})
+        assert stats["successes"] == 1
+        assert stats["failures"] == 1
+        assert stats["success_rate"] == 50.0
+
+    def test_gate_crossings_detected(self):
+        trajs = [
+            {"agent": "a", "domain": "_default", "old_score": 20, "new_score": 30, "timestamp": "2026-01-01"},
+            {"agent": "a", "domain": "_default", "old_score": 30, "new_score": 60, "timestamp": "2026-01-02"},
+        ]
+        stats = leaderboard.compute_stats(trajs, {"a": {"_default": 60}})
+        crossings = stats["gate_crossings"]
+        assert len(crossings) == 2
+        assert crossings[0]["from_gate"] == "easy"
+        assert crossings[0]["to_gate"] == "medium"
+        assert crossings[1]["to_gate"] == "hard"
+
+    def test_session_agents_detected(self):
+        stats = leaderboard.compute_stats([], {"ses_123": {"_default": 1}, "real-a": {"_default": 1}})
+        assert "ses_123" in stats["session_agents"]
+        assert "real-a" not in stats["session_agents"]
+
+
+class TestBuildSparkline:
+    def test_less_than_two_points_returns_placeholder(self):
+        assert '<span style="color:var(--text-dim);font-size:11px">—</span>' == leaderboard.build_sparkline([])
+        assert '<span style="color:var(--text-dim);font-size:11px">—</span>' == leaderboard.build_sparkline([(1, 10)])
+
+    def test_produces_svg_path(self):
+        pts = [("t1", 10), ("t2", 20), ("t3", 15)]
+        svg = leaderboard.build_sparkline(pts)
+        assert svg.startswith("<svg")
+        assert "<path" in svg
+        assert "M" in svg
+
+    def test_color_matches_gate(self):
+        pts = [("t1", 10), ("t2", 80)]
+        svg = leaderboard.build_sparkline(pts)
+        assert 'fill="#a855f7"' in svg  # diploma purple
+
+    def test_flat_range_avoids_zero_div(self):
+        pts = [("t1", 50), ("t2", 50)]
+        svg = leaderboard.build_sparkline(pts)
+        assert "<path" in svg
+
+
+class TestBuildHtml:
+    def test_smoke_with_minimal_data(self):
+        scores = {"agent-a": {"_default": 10, "debugging": 20}}
+        history = {"agent-a": {"_default": [("seed", 10), ("t1", 15)]}}
+        stats = {
+            "total": 1, "successes": 1, "failures": 0, "success_rate": 100.0,
+            "domain_counts": {"debugging": 1}, "agent_total": {"agent-a": 1},
+            "agent_success": {"agent-a": 1}, "agent_deltas": {"agent-a": 5.0},
+            "gate_crossings": [], "session_agents": set(),
+        }
+        html = leaderboard.build_html(scores, history, stats)
+        assert html.startswith("<!DOCTYPE html>")
+        assert "<title>Agent School — Live Leaderboard</title>" in html
+        assert "agent-a" in html

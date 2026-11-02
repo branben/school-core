@@ -1,6 +1,7 @@
 """Contract tests for the standalone FirstMate/Orca crew lifecycle (U7)."""
 
 import json
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -1672,3 +1673,148 @@ def test_frozen_contract_created_before_spawn(monkeypatch, tmp_path):
     assert captured_contract[0] is not None
     assert "commands" in captured_contract[0]
     assert "files" in captured_contract[0]
+
+
+def test_dispatch_template_runs_before_spawn(monkeypatch, tmp_path):
+    """dispatch_template.py must be invoked before _spawn, and a failing template
+    gate must prevent the crew from launching."""
+    configure_paths(monkeypatch, tmp_path)
+    project = tmp_path / "base"
+    project.mkdir()
+
+    events = []
+
+    def fake_subprocess_run(args, **kwargs):
+        events.append(list(args))
+        # Simulate dispatch_template.py failing closed
+        if len(args) > 1 and "dispatch_template.py" in str(args[1]):
+            return subprocess.CompletedProcess(args, 1, "", "template failed")
+        # Let _spawn proceed normally (it will be mocked below)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(crew_dispatch.subprocess, "run", fake_subprocess_run)
+
+    def fake_spawn(*args, **kwargs):
+        events.append("spawn")
+        raise crew_dispatch.CrewUnavailableError("should not reach spawn")
+
+    monkeypatch.setattr(crew_dispatch, "_spawn", fake_spawn)
+
+    with pytest.raises(crew_dispatch.CrewUnavailableError, match="template"):
+        dispatch_crew(
+            issue_number=901,
+            task_text="task",
+            project_dir=project,
+            cycle_session_id="fixture",
+            timeout=1,
+        )
+
+    # dispatch_template.py must be called, and _spawn must NOT be reached
+    template_calls = [e for e in events if isinstance(e, list) and
+                      any("dispatch_template.py" in str(a) for a in e)]
+    assert len(template_calls) >= 1, "dispatch_template.py was never invoked"
+    assert "spawn" not in events, (
+        "_spawn must not be called when dispatch_template.py fails"
+    )
+
+
+def test_dispatch_template_pass_allows_spawn(monkeypatch, tmp_path):
+    """A passing dispatch_template gate must not block the spawn."""
+    configure_paths(monkeypatch, tmp_path)
+    project = tmp_path / "base"
+    project.mkdir()
+    (project / "project_verify.yaml").write_text('verify:\n  - name: check\n    cmd: true\n')
+
+    # Provide meta so the done path has an orca_worktree_id
+    state = tmp_path / "fm-home" / "state"
+    crew_id = "fm-fixture-901"
+    (state / f"{crew_id}.meta").write_text(
+        "orca_worktree_id=repo::/tmp/crew-worktree\n"
+    )
+    # Provide report so the done path accepts it
+    data = tmp_path / "fm-home" / "data"
+    report = data / crew_id / "report.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("# Done\nBranch: fm/x\nCommit: abc123\nBase: main\n")
+
+    events = []
+
+    def fake_subprocess_run(args, **kwargs):
+        events.append(list(args))
+        # Simulate dispatch_template.py passing
+        if len(args) > 1 and "dispatch_template.py" in str(args[1]):
+            return subprocess.CompletedProcess(args, 0, "PASS", "")
+        # For fm-spawn, return a fake successful spawn
+        if len(args) > 1 and "fm-spawn" in str(args[1]):
+            return subprocess.CompletedProcess(
+                args, 0,
+                "spawned fm-test-001 harness=hermes kind=ship window=terminal\n",
+                "",
+            )
+        return subprocess.CompletedProcess(args, 0, '{"removed": true}', "")
+
+    monkeypatch.setattr(crew_dispatch.subprocess, "run", fake_subprocess_run)
+
+    def fake_poll(*args, **kwargs):
+        return "done", None, "done: branch=fm/x commit=abc123 base=main\n"
+
+    monkeypatch.setattr(crew_dispatch, "_poll", fake_poll)
+
+    # This should NOT raise — the template passes, spawn is allowed
+    result = dispatch_crew(
+        issue_number=901,
+        task_text="task",
+        project_dir=project,
+        cycle_session_id="fixture",
+        timeout=1,
+        poll_interval=0,
+    )
+    assert result.status == "done"
+    template_calls = [e for e in events if isinstance(e, list) and
+                      any("dispatch_template.py" in str(a) for a in e)]
+    assert len(template_calls) >= 1
+
+
+def test_ledger_survives_mid_write_kill(monkeypatch, tmp_path):
+    """N10 atomic-write guard: if os.replace is killed mid-flight, the original
+    crew_runs.json must remain intact and no .tmp file may be left behind."""
+    configure_paths(monkeypatch, tmp_path)
+
+    original_entry = {
+        "crew_id": "c-original",
+        "issue_number": 1,
+        "status": "done",
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    crew_dispatch._record_run(original_entry)
+    target = tmp_path / "crew_runs.json"
+    original_text = target.read_text(encoding="utf-8")
+
+    class KillMidReplace(Exception):
+        pass
+
+    def bad_replace(src, dst):
+        # Simulate a kill/crash during the atomic rename step
+        raise KillMidReplace("simulated kill during os.replace")
+
+    monkeypatch.setattr(os, "replace", bad_replace)
+
+    new_entry = {
+        "crew_id": "c-new",
+        "issue_number": 2,
+        "status": "running",
+        "started_at": "2026-01-02T00:00:00+00:00",
+    }
+
+    with pytest.raises(KillMidReplace):
+        crew_dispatch._record_run(new_entry)
+
+    # The original file must be unchanged — the partial write must not corrupt it
+    assert target.read_text(encoding="utf-8") == original_text
+    runs = json.loads(target.read_text(encoding="utf-8"))
+    assert len(runs) == 1
+    assert runs[0]["crew_id"] == "c-original"
+
+    # No stray .tmp files may remain (the finally block must clean up)
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == [], f"stray .tmp files after failed replace: {tmp_files}"
