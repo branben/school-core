@@ -61,6 +61,14 @@ NO_TEST_NEEDED = [
     "*.cfg", "*.ini", "*.toml", "*.lock",
 ]
 
+# Allowlist of globs: changes confined to these need no bead ID.
+NO_BEAD_NEEDED = [
+    "*.md", "docs/*", "*.txt", "*.rst",
+    "*.yml", "*.yaml", ".gitignore", ".gitattributes",
+    "LICENSE*", "CHANGELOG*", "CODEOWNERS",
+    "*.cfg", "*.ini", "*.toml", "*.lock",
+]
+
 JUNK_PATTERNS = [
     "*.pyc", "*.pyo", "*.so", "*.o", "*.a", "*.class",
     ".DS_Store", "Thumbs.db", "*.swp", "*~",
@@ -301,14 +309,20 @@ def main() -> int:
     #    the change back to an issue. A PR without a bead is accepted
     #    silently and surfaces days later when the inner loop tries to
     #    implement an unspecified ticket.
-    pr_body = git("log", "-1", "--format=%B", args.head)
-    bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
-    if not bead_ids:
-        failures.append({
-            "check": "no-bead-link",
-            "file": f"{args.base}...{args.head}",
-            "detail": "PR title/body does not mention a bead ID (school-core-XXXX) — outer loop cannot trace this change to an issue",
-        })
+    #    Scope-aware: docs/config/chore-only changes are exempt.
+    if files and not all(
+        any(fnmatch.fnmatch(f, pat) or fnmatch.fnmatch(f.rsplit("/", 1)[-1], pat)
+            for pat in NO_BEAD_NEEDED)
+        for f in files
+    ):
+        pr_body = git("log", "-1", "--format=%B", args.head)
+        bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
+        if not bead_ids:
+            failures.append({
+                "check": "no-bead-link",
+                "file": f"{args.base}...{args.head}",
+                "detail": "PR title/body does not mention a bead ID (school-core-XXXX) — outer loop cannot trace this change to an issue",
+            })
 
     if args.json:
         print(json.dumps({
