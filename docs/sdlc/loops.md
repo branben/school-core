@@ -80,7 +80,7 @@ prev:       <prior inner artifact path or "none">
 | BUILD | `dev-log.md` | bead · prev: plan | TEST |
 | TEST | `validate-prototype.html` | bead · acceptance-crit · prev: dev-log | REVIEW |
 | REVIEW | `guide.json` | bead · spec · acceptance · [module-map, plan, dev-log, prototype] | PR |
-| PR | `pr-writeup.html` | bead · canonical = spec · prev: review.verdict | merged |
+|| PR | `pr-writeup.html` | bead · spec · source.json (from REVIEW) · prev: review.verdict | merged | produced by `issue_bridge.py` → `pr_creator.py` |
 
 The seam (outer → inner) is the first link: a bead **is** a SPEC milestone,
 handed off at the gate. PRIME's source block is the first citation — so the
