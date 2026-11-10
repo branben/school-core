@@ -342,3 +342,39 @@ class TestCheckSourceBlock:
         kinds = {f["check"] for f in failures}
         assert "source-block" in kinds
         assert any("missing" in f["detail"].lower() for f in failures)
+
+
+def test_bead_found_in_range_when_head_is_merge_commit(tmp_path):
+    """CI checks out refs/pull/N/merge whose HEAD is a synthetic 'Merge X into
+    Y' commit without a bead message. The gate must scan the base..head range
+    (which includes the feature commit) rather than HEAD's last message."""
+    import json as _json
+    r = _repo(tmp_path)
+    # Feature commit: new .py source with a covering test (the gate requires
+    # changed source to be named by a test) and the bead in its message.
+    _commit(r, "module.py", "def g():\n    return 2\n")
+    _commit(r, "tests/test_module.py",
+            "import module\n\ndef test_g():\n    assert module.g() == 2\n",
+            msg="feat: add g (school-core-abcd)")
+    feature = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=r, capture_output=True, text=True, check=True).stdout.strip()
+    # Back to base commit (before the feature) and record it.
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD~1"], cwd=r, capture_output=True, text=True, check=True).stdout.strip()
+    # Simulate the GitHub merge ref: a synthetic merge commit with NO bead.
+    run = lambda *a: subprocess.run(["git", *a], cwd=r, capture_output=True, text=True, check=True)
+    run("reset", "-q", "--hard", base)
+    run("merge", "-q", "--no-ff", "-m", "Merge feature into base", feature)
+    merge_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=r, capture_output=True, text=True, check=True).stdout.strip()
+    # Regression: the OLD gate read only `git log -1 %B HEAD`, so the merge
+    # commit's message ("Merge feature into base") lost the bead and the gate
+    # reported no-bead-link. The new gate scans base..head and finds it.
+    out = subprocess.run(
+        [sys.executable, str(Path(review_gate.__file__)),
+         "--base", base, "--head", merge_head, "--json"],
+        cwd=r, capture_output=True, text=True)
+    data = _json.loads(out.stdout)
+    assert data["pass"] is True, data
+    assert not any(f["check"] == "no-bead-link" for f in data["failures"]), data
+    assert any(f["check"] == "no-bead-link" for f in data["failures"]) is False
