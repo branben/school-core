@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     try:
-        payload = generate(
+        generate(
             bead=args.bead,
             spec=spec_field,
             decisions=_normalize_decisions(args.decisions),
