@@ -165,9 +165,17 @@ recycle. Therefore ALL state lives under the repo's `data/`:
 | tailscale binary/state/socket | `data/tailscale/` | survives recycle; re-auth not needed |
 | Orca CLI (node, no Electron) | `data/orca-cli/<ver>/` | 182MB extracted once |
 | Orca paired env (device token) | `data/orca-config/` (via `ORCA_USER_DATA_PATH`) | E2EE pairing persists |
+| beads CLI (`bd`) | `data/beads-cli/bd` | 154MB Go binary; survives recycle. `$HOME` (e.g. `~/.local/bin/bd`) is wiped on pod recycle. |
 
 `data/*` is gitignored and these dirs are chmod 700 (they hold the E2EE device
 token + tailscale identity). Never commit them, never loosen perms.
+
+**bd bootstrap (after a container recycle):** `bd` is NOT on PATH by default;
+earlier installs went to `$HOME` and were lost. Re-point it with
+`scripts/beads_cli.sh ensure` (needs the binary present; re-downloads from the
+official GitHub release if missing). For PATH: `eval "$(bash scripts/beads_cli.sh env)"`.
+The `.beads/` Dolt DB itself lives under the repo (persistent); only the CLI
+binary is ephemeral.
 
 **Privacy contract (do not violate):**
 - The client is `scripts/obsidian_client.py` — **pure stdlib** (no `requests`), read-only,
