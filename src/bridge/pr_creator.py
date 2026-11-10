@@ -174,6 +174,24 @@ def _blobSha(repo: str, content: str, encoding: str = "utf-8") -> Optional[str]:
     return result.get("sha") if result else None
 
 
+def _inner_loop_artifact_blob(repo: str, target_path: str, local_file: Path) -> Optional[str]:
+    """Create a blob for a generated inner-loop artifact, or None if unreadable.
+
+    Artifacts are text (source.json, pr-writeup.md/.html); a file that cannot
+    be read (missing, or not valid text under the given encoding) is treated
+    like an infra fault — the caller skips the entry rather than aborting the
+    whole PR.
+    """
+    try:
+        content = local_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        sys.stderr.write(
+            f"[pr_creator] cannot read inner-loop artifact {target_path}: {exc}\n"
+        )
+        return None
+    return _blobSha(repo, content, encoding="utf-8")
+
+
 def _treeSha(repo: str, base_tree: str, entries: list[dict]) -> Optional[str]:
     """Create a tree in *repo* with *entries* appended to *base_tree*.
 
@@ -470,6 +488,7 @@ def create_pr_for_issue(
     crew_used: bool = False,
     patch_path: Optional[str] = None,
     source_json_path: Optional[str] = None,
+    inner_loop_artifacts: Optional[dict] = None,
     dry_run: bool = False,
 ) -> Optional[str]:
     """Create a PR from a completed task result.
@@ -488,6 +507,12 @@ def create_pr_for_issue(
         combined_score: Combined score from the review (used when
             review_evidence is absent).
         work_dir: Ignored (kept for backward compat).
+        inner_loop_artifacts: Optional mapping of repo-relative target
+            path (e.g. "docs/source.json") to an absolute local file path
+            whose bytes should be committed into the PR branch. The
+            generated source.json / pr-writeup.* artifacts arrive this way
+            so they appear in the PR diff (M4). Entries whose file is
+            missing are skipped; a blob that cannot be created is skipped.
         dry_run: If True, log actions without executing.
 
     Returns:
@@ -639,6 +664,31 @@ def create_pr_for_issue(
             message = f"{message} (with captured crew diff)"
             sys.stderr.write(
                 f"[pr_creator] committing crew patch {patch_repo_path} "
+                f"to branch '{branch}'\n"
+            )
+
+    # M4: commit the generated inner-loop artifacts (source.json, pr-writeup
+    # .md/.html) into the PR branch so they appear in the PR diff. Each entry
+    # maps a repo-relative target path to a local absolute file. Missing local
+    # files are skipped (generation is fail-open by design); a blob that
+    # cannot be created is skipped like every other infra fault here.
+    if inner_loop_artifacts:
+        for target_path, local_file in sorted(inner_loop_artifacts.items()):
+            blob_sha = _inner_loop_artifact_blob(repo, target_path, Path(local_file))
+            if blob_sha is None:
+                sys.stderr.write(
+                    f"[pr_creator] skipping inner-loop artifact {target_path} "
+                    f"(missing local file or blob creation failed)\n"
+                )
+                continue
+            entries.append({
+                "path": target_path,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            })
+            sys.stderr.write(
+                f"[pr_creator] committing inner-loop artifact {target_path} "
                 f"to branch '{branch}'\n"
             )
 

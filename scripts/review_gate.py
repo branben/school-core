@@ -315,7 +315,15 @@ def main() -> int:
             for pat in NO_BEAD_NEEDED)
         for f in files
     ):
+        # GitHub Actions checks out the PR merge ref (`refs/pull/N/merge`), so
+        # HEAD is an auto-generated merge commit whose message ("Merge <sha>
+        # into <base>") never carries a bead. The gate intends to trace the
+        # change to a bead, so read the bead from the merge's second parent
+        # (the PR head tip) as well when HEAD is a merge commit.
         pr_body = git("log", "-1", "--format=%B", args.head)
+        parents = git("rev-list", "--parents", "-n1", args.head).split()
+        if len(parents) >= 3:  # rev-list --parents prints: <head> <p1> <p2>
+            pr_body += "\n" + git("log", "-1", "--format=%B", parents[2])
         bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
         if not bead_ids:
             failures.append({

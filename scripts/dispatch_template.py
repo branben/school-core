@@ -120,7 +120,7 @@ def main() -> int:
         for p in invalid:
             print(f"  [{p.status}] {p.text}", file=sys.stderr)
             if p.status == "ASSUMED":
-                print(f"    -> add a 'verification: <command>' step or mark VERIFIED", file=sys.stderr)
+                print("    -> add a 'verification: <command>' step or mark VERIFIED", file=sys.stderr)
         return 1
 
     print(f"PASS: {len(premises)} premises verified, {args.conclusion} conclusion(s) to check")
