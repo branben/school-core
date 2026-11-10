@@ -20,7 +20,7 @@ def _ci_workflow() -> dict:
 
 def test_hosted_matrix_excludes_live_tests_by_marker():
     ci = _ci_workflow()
-    test_step = next(step for step in ci["jobs"]["test"]["steps"] if step.get("name") == "Run tests")
+    test_step = next(step for step in ci["jobs"]["test"]["steps"] if step.get("name") == "Run tests with coverage")
 
     assert '-m "not live"' in test_step["run"]
 
