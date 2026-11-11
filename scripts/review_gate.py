@@ -315,7 +315,12 @@ def main() -> int:
             for pat in NO_BEAD_NEEDED)
         for f in files
     ):
-        pr_body = git("log", "-1", "--format=%B", args.head)
+        # Scan the whole base..head range, not just HEAD's last commit. CI
+        # checks out the auto-generated merge ref (refs/pull/N/merge), whose
+        # HEAD is a synthetic "Merge X into Y" commit that never carries a
+        # bead message, so a HEAD-only check fails every .py PR. The feature
+        # commits in the range do carry it.
+        pr_body = git("log", "--format=%B", f"{args.base}..{args.head}")
         bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
         if not bead_ids:
             failures.append({
