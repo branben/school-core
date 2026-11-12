@@ -399,6 +399,61 @@ class TestPrBodyPerCommandVerificationTable:
         assert "a\\|b" in body
 
 
+class TestPrBodyTemplateLayout:
+    """The body follows docs/templates/pr-body-template.md: a lean always-
+    visible core (Summary / Related Issues & Bead / Source chain traceable) and
+    the heavy evidence collapsed into <details> blocks for domain experts.
+    """
+
+    def test_summary_is_visible_core(self):
+        body = _captured_body()
+        assert body.startswith("## Summary")
+        assert "This PR implements issue" in body
+        assert "**Domain:**" in body
+        assert "**Path:**" in body
+        assert "**Acceptance:**" in body
+
+    def test_related_issues_bead_section(self):
+        body = _captured_body()
+        assert "## Related Issues & Bead" in body
+        assert "- Closes #77" in body
+
+    def test_bead_line_renders_when_source_has_bead(self, tmp_path):
+        src = tmp_path / "source.json"
+        src.write_text(json.dumps({
+            "bead": "school-core-abc", "spec": "s", "decisions": [],
+            "artifacts": [], "spec_acceptance": "ok",
+        }), encoding="utf-8")
+        body = _captured_body(source_json_path=str(src))
+        assert "- Bead `school-core-abc`" in body
+
+    def test_no_bead_line_when_source_absent(self):
+        body = _captured_body()
+        assert "- Bead `" not in body
+
+    def test_evidence_is_collapsed_not_visible(self):
+        """Raw task output and per-command table are for the domain expert."""
+        body = _captured_body(verify_result={
+            "verdict": "FAIL", "ran": 2,
+            "results": [{"name": "c", "cmd": "x", "exit": 0,
+                         "status": "pass", "duration_s": 0.1}],
+        }, response_text="print('ok')")
+        # The summary should not dump the raw code block.
+        assert "```python\nprint('ok')" not in body.split("## Related Issues")[0]
+        # And the collapsed blocks use <details>.
+        assert "<details>" in body
+        assert "<summary><b>Acceptance evidence</b></summary>" in body
+        assert "<summary><b>Task Output</b></summary>" in body
+        assert "<summary><b>Checklist</b></summary>" in body
+
+    def test_no_details_everywhere_flat_core(self):
+        """A minimal direct-path PR is still readable without opening details."""
+        body = _captured_body()
+        head = body.split("<details>")[0]
+        for token in ("## Summary", "This PR implements", "## Related Issues & Bead"):
+            assert token in head
+
+
 class TestPrBodySourceChain:
     """The PR body must surface the REVIEW sidecar when available."""
 
