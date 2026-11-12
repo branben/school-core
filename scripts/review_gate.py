@@ -83,6 +83,14 @@ SRC_SUFFIXES = (".py",)
 CODE_SUFFIXES = (".py", ".sh", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".js", ".ts")
 
 
+REPO_ROOT = Path.cwd()
+
+
+def set_repo_root(root: Path | str) -> None:
+    global REPO_ROOT
+    REPO_ROOT = Path(root).resolve()
+
+
 def git(*args: str) -> str:
     """Run git and return stdout.
 
@@ -91,7 +99,7 @@ def git(*args: str) -> str:
     this gate into a permanent PASS (see resolve_ref).
     """
     proc = subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["git", *args], capture_output=True, text=True, check=False, cwd=REPO_ROOT
     )
     if proc.returncode != 0:
         raise SystemExit(
@@ -222,7 +230,11 @@ def main() -> int:
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--repo-root", type=str, help="Path to target repo to gate")
     args = ap.parse_args()
+
+    if args.repo_root:
+        set_repo_root(args.repo_root)
 
     # Fail closed before diffing: an unresolvable ref is a gate bug, not an
     # empty PR, and must never be reported as a clean pass.
@@ -310,18 +322,100 @@ def main() -> int:
     #    silently and surfaces days later when the inner loop tries to
     #    implement an unspecified ticket.
     #    Scope-aware: docs/config/chore-only changes are exempt.
+    pr_body = git("log", "-1", "--format=%B", args.head)
+    # Also try to get PR body via gh if possible (more accurate than commit message)
+    try:
+        import subprocess
+        proc = subprocess.run(["gh", "pr", "view", "--json", "body,title"], capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc.returncode == 0 and proc.stdout.strip():
+            data = json.loads(proc.stdout)
+            if data.get("body"):
+                pr_body = (pr_body or "") + "
+
+" + data["body"]
+            if data.get("title"):
+                pr_body = (pr_body or "") + "
+
+" + data["title"]
+    except Exception:
+        pass
     if files and not all(
         any(fnmatch.fnmatch(f, pat) or fnmatch.fnmatch(f.rsplit("/", 1)[-1], pat)
             for pat in NO_BEAD_NEEDED)
         for f in files
     ):
-        pr_body = git("log", "-1", "--format=%B", args.head)
-        bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
+        bead_ids = re.findall(r"[a-z]+-[A-Za-z0-9]+", pr_body)
         if not bead_ids:
             failures.append({
                 "check": "no-bead-link",
                 "file": f"{args.base}...{args.head}",
-                "detail": "PR title/body does not mention a bead ID (school-core-XXXX) — outer loop cannot trace this change to an issue",
+                "detail": "PR title/body does not mention a bead ID (e.g., proj-XXXX) — outer loop cannot trace this change to an issue",
+            })
+
+    # 7. "Done means" / acceptance criteria must be stated before review.
+    #    Catches the #15983 class of failure where the bar was only discovered mid-review.
+    scope_exempt_done = all(
+        any(fnmatch.fnmatch(f, pat) or fnmatch.fnmatch(f.rsplit("/", 1)[-1], pat)
+            for pat in NO_BEAD_NEEDED)
+        for f in files
+    )
+    if files and not scope_exempt_done:
+        done_patterns = [
+            r"done means",
+            r"definition of done",
+            r"acceptance criteria",
+            r"## done",
+        ]
+        has_done = any(re.search(p, pr_body, re.I) for p in done_patterns)
+        # Also require at least one concrete bullet/check or command after it
+        if has_done:
+            # Look for non-empty content after a done-means heading
+            m = re.search(r"(?:done means|acceptance criteria|definition of done)[^
+]*
+(.*?)(?:
+##|\Z)", pr_body, re.I | re.S)
+            if m:
+                section = m.group(1)
+                # Remove comments/HTML comments and whitespace
+                section_clean = re.sub(r"<!--.*?-->", "", section, flags=re.S)
+                # Count non-empty bullet lines or command lines
+                bullets = [l for l in section_clean.splitlines() if re.match(r"^\s*[-*•]\s+\S+", l) or re.match(r"^\s*\d+\.\s+\S+", l) or l.strip().startswith("`")]
+                if len([b for b in bullets if b.strip() and not b.strip().startswith("<!--")]) < 1:
+                    has_done = False
+        if not has_done:
+            failures.append({
+                "check": "missing-done-means",
+                "file": f"{args.base}...{args.head}",
+                "detail": "PR body missing 'Done means'/'Acceptance criteria' with concrete checkable items (write them before code/review)",
+            })
+
+    # 8. tested-against must be recorded when base has moved or for non-trivial changes
+    if files and not scope_exempt_done:
+        if not re.search(r"tested-against|tested against", pr_body, re.I):
+            # Only require for src changes or larger diffs to avoid noise
+            src_changed = any(f.endswith(SRC_SUFFIXES) and not is_test(f) and not any(fnmatch.fnmatch(f, pat) for pat in NO_TEST_NEEDED) for f in files)
+            if src_changed or len(files) > 5:
+                failures.append({
+                    "check": "missing-tested-against",
+                    "file": f"{args.base}...{args.head}",
+                    "detail": "Record tested-against: <base-sha> @ <time> in PR body (prevents stale-measurement arguments)",
+                })
+
+    # 9. Parity check for v2/sidecar changes against reference implementation
+    sidecar_changed = any(re.search(r"(?:^|/)v2/|sidecar|mcp.*v2", f) for f in files)
+    if sidecar_changed and not scope_exempt_done:
+        parity_patterns = [
+            r"parity",
+            r"reference.*file:line",
+            r"v1.*reference",
+            r"diff.*v1",
+        ]
+        has_parity = any(re.search(p, pr_body, re.I) for p in parity_patterns)
+        if not has_parity:
+            failures.append({
+                "check": "missing-parity-check",
+                "file": f"{args.base}...{args.head}",
+                "detail": "Sidecar/v2 changes require a parity table against the reference impl (file:line + per-branch match/divergence) in PR body",
             })
 
     if args.json:

@@ -3,7 +3,7 @@ PR body shape. Sections in order; do not reorder.
 
 Machine-filled by `python scripts/pr_evidence.py <PR#>` (outer loop + inner
 loop, both measured): the Review and Feedback sections. Human-written: What,
-Ticket, Gotchas. A remaining placeholder means a human still owes it -- that
+Ticket, Done means, Gotchas. A remaining placeholder means a human still owes it -- that
 is visible on purpose.
 
 No checkboxes. A ticked box is an assertion; a command and its output is
@@ -20,6 +20,21 @@ evidence. The merge gate is `required_status_checks` (review-gate + pytest
 - TOT: <!-- link -->
 - <!-- one-line summary of the completed ticket -->
 - reviewed by: <!-- staff name -->
+
+## Done means
+
+<!-- REQUIRED. Write concrete, checkable acceptance criteria BEFORE code/review.
+Each item must be verifiable by a command/output. Examples:
+- [ ] `pnpm test --filter mcp` passes
+- [ ] `curl ...` returns expected shape
+- [ ] parity against v1/open-sse/mcp-server/server.ts:190 checked (file:line)
+-->
+- <!-- item 1 -->
+- <!-- item 2 -->
+
+## tested-against
+
+<!-- REQUIRED for src/ changes or large diffs. Example: tested-against: abc1234 @ 2026-11-04T12:34:56Z (base merged once before certification) -->
 
 ## [inner loop] Review
 
@@ -42,4 +57,5 @@ describing what should have happened.
 <!--
 What might happen next. What this PR does NOT fix. Any known-fragile path,
 and anything a future reader would otherwise have to rediscover.
+If this touches v2/sidecar, include a parity table: reference file:line + per-branch match/divergence.
 -->
