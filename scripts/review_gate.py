@@ -321,6 +321,12 @@ def main() -> int:
         # bead message, so a HEAD-only check fails every .py PR. The feature
         # commits in the range do carry it.
         pr_body = git("log", "--format=%B", f"{args.base}..{args.head}")
+        # Also read the bead from the PR head's feature commits (the merge
+        # commit's parents), in case the PR body message is on a side branch
+        # that GitHub's auto-merge ref doesn't carry.
+        parents = git("rev-list", "--parents", "-n1", args.head).split()
+        if len(parents) >= 3:
+            pr_body += "\n" + git("log", "-1", "--format=%B", parents[2])
         bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
         if not bead_ids:
             failures.append({

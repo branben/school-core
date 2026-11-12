@@ -1897,7 +1897,7 @@ def _generate_inner_loop_artifacts(
     order; production tolerates a generator exit non-zero so a missing spec
     or review data does not silently drop the PR.
     """
-    scripts = Path(__file__).resolve().parent.parent / "scripts"
+    scripts = Path(__file__).resolve().parent / "scripts"
     bead = issue.get("bd_id") or task_result.get("bead") or f"issue-{pr_number}"
     spec = task_result.get("spec") or ""
     decisions = review_evidence.get("decisions") or []
@@ -1969,6 +1969,28 @@ def _generate_inner_loop_artifacts(
                 review_path.unlink()
             except OSError:
                 pass
+
+
+def _inner_loop_artifact_map(repo_path: Optional[Path]) -> dict:
+    """Map generated inner-loop artifacts (repo-relative path -> local file).
+
+    Returns only artifacts that currently exist under ``repo_path/docs/``.
+    Generation is fail-open, so the calling PR creator skips whatever is
+    absent — the map reflects reality at call time.
+    """
+    if not repo_path:
+        return {}
+    docs = Path(repo_path) / "docs"
+    candidates = {
+        "docs/source.json": docs / "source.json",
+        "docs/pr-writeup.md": docs / "pr-writeup.md",
+        "docs/pr-writeup.html": docs / "pr-writeup.html",
+    }
+    return {
+        rel: str(abs_path)
+        for rel, abs_path in candidates.items()
+        if abs_path.is_file()
+    }
 
 
 def bridge_issues(
@@ -3374,6 +3396,12 @@ def bridge_issues(
                             if repo_path and (repo_path / "docs" / "source.json").exists()
                             else None
                         ),
+                        # M4: commit the generated inner-loop artifacts into the
+                        # PR branch so source.json and pr-writeup.html appear in
+                        # the PR diff. Generation is fail-open, so the file set
+                        # is computed at call time; anything not present is
+                        # skipped by pr_creator.
+                        inner_loop_artifacts=_inner_loop_artifact_map(repo_path),
                     )
             except CandidatePublicationError as e:
                 # Pre-write refusal (stale / dirty / mismatched candidate, missing
