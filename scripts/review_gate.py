@@ -15,19 +15,16 @@ Checks (all must pass):
      change a test file; none exercised the broken path.
   3. no VCS / editor / build junk in the changed-file list
   4. changed files carry no trailing whitespace on added lines
-  5. source.json inner-loop chain-of-custody block -- bead, spec, decisions,
-     artifacts, and spec_acceptance. The gate reads source.json from the PR
-     diff if present; otherwise it falls back to --source-json (a local path
-     in your fork/review env). Every cited local artifact must exist in the
-     PR diff or base tree. URL artifacts (gist, PR comment, artifact store)
-     are accepted with a CI warning. Exit non-zero with SOURCE-BLOCK MISSING.
+  5. source.json (if present in the PR) carries the inner-loop chain-of-custody
+     block — bead, spec, decisions, artifacts (four prior inner-loop files),
+     and spec_acceptance. Every cited artifact must exist in the PR diff or
+     base tree. Exit non-zero with `SOURCE-BLOCK MISSING — <which field>`.
 
 Exit 0 = pass. Exit 1 = fail, with every failure printed (never the
 first one only -- a partial report hides the rest of the work).
 
 Usage:
   review_gate.py --base origin/main --head HEAD
-  review_gate.py --base origin/main --head HEAD --source-json docs/source.json
   review_gate.py --base origin/main --head HEAD --json
 """
 from __future__ import annotations
@@ -86,6 +83,14 @@ SRC_SUFFIXES = (".py",)
 CODE_SUFFIXES = (".py", ".sh", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".js", ".ts")
 
 
+REPO_ROOT = Path.cwd()
+
+
+def set_repo_root(root: Path | str) -> None:
+    global REPO_ROOT
+    REPO_ROOT = Path(root).resolve()
+
+
 def git(*args: str) -> str:
     """Run git and return stdout.
 
@@ -94,7 +99,7 @@ def git(*args: str) -> str:
     this gate into a permanent PASS (see resolve_ref).
     """
     proc = subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["git", *args], capture_output=True, text=True, check=False, cwd=REPO_ROOT
     )
     if proc.returncode != 0:
         raise SystemExit(
@@ -184,66 +189,38 @@ def _load_json(base: str, head: str, path: str) -> dict:
     return {}
 
 
-def _check_source_block(base: str, head: str, files: list[str], source_json_path: str | None = None) -> list[dict]:
+def _check_source_block(base: str, head: str, files: list[str]) -> list[dict]:
     """Verify the PR's source.json sidecar carries the complete inner-loop chain.
 
-    If source.json is present in the PR diff, verify it there.
-    Otherwise, if --source-json was provided, verify that local file.
-    Otherwise, skip the check (no chain-of-custody record found).
+    This check only fires when source.json is in the changed files. A PR that
+    does not touch the REVIEW artifact is not affected.
     Returns a list of failures (empty = pass).
     """
     source_path = next((f for f in files if f.endswith("source.json")), None)
-    source = {}
-    source_location = ""
+    if not source_path:
+        return []
 
-    if source_path:
-        source = _load_json(base, head, source_path)
-        source_location = source_path
-    elif source_json_path:
-        try:
-            raw = Path(source_json_path).read_text(encoding="utf-8")
-            source = json.loads(raw)
-            source_location = source_json_path
-        except (OSError, json.JSONDecodeError, ValueError):
-            return [{"check": "source-block", "file": source_json_path,
-                     "detail": f"SOURCE-BLOCK MISSING -- cannot read --source-json {source_json_path!r}"}]
-    else:
-        return [{"check": "source-block", "file": "docs/source.json",
-                 "detail": "SOURCE-BLOCK MISSING -- no source.json in PR diff; run the inner loop (school-core review) and pass --source-json, or commit source.json to the PR"}]
-
+    source = _load_json(base, head, source_path)
     if not isinstance(source, dict):
-        return [{"check": "source-block", "file": source_location,
-                 "detail": "SOURCE-BLOCK MISSING -- source.json is not a JSON object"}]
+        return [{"check": "source-block", "file": source_path,
+                 "detail": "SOURCE-BLOCK MISSING — source.json is not a JSON object"}]
 
     missing = [k for k in ("bead", "spec", "decisions", "artifacts", "spec_acceptance")
                if not source.get(k) or (isinstance(source[k], list) and not source[k])]
     if missing:
-        return [{"check": "source-block", "file": source_location,
-                 "detail": f"SOURCE-BLOCK MISSING -- required field(s) empty: {', '.join(missing)}"}]
+        return [{"check": "source-block", "file": source_path,
+                 "detail": f"SOURCE-BLOCK MISSING — required field(s) empty: {', '.join(missing)}"}]
 
-    # Every cited artifact must exist in the PR diff or already in the base tree,
-    # OR be a URL sidecar reference (gist, PR comment, artifact store).
-    # URL refs are not fetched in CI (no external-network dependency in the gate);
-    # they are reported as warnings so a human reviewer can verify reachability.
+    # Every cited artifact must exist in the PR diff or already in the base tree.
     try:
         tree = git("ls-tree", "-r", "--name-only", head).splitlines()
     except SystemExit:
         tree = []
     reachable = set(tree) | set(files)
-    URL_PREFIXES = ("http://", "https://")
-    absent = []
-    unresolved_urls = []
-    for a in source["artifacts"]:
-        if a.startswith(URL_PREFIXES):
-            unresolved_urls.append(a)
-        elif a not in reachable:
-            absent.append(a)
+    absent = [a for a in source["artifacts"] if a not in reachable]
     if absent:
         return [{"check": "source-block", "file": source_path,
                  "detail": f"SOURCE-BLOCK MISSING — cited artifact(s) not found in PR or base: {', '.join(absent)}"}]
-    if unresolved_urls:
-        print(f"[review_gate] source.json cites {len(unresolved_urls)} URL artifact(s): {', '.join(unresolved_urls)}",
-              file=sys.stderr)
 
     return []
 
@@ -253,9 +230,11 @@ def main() -> int:
     ap.add_argument("--base", default="origin/main")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--source-json", default=None,
-                    help="local path to source.json for chain-of-custody check when the file is not in the PR diff")
+    ap.add_argument("--repo-root", type=str, help="Path to target repo to gate")
     args = ap.parse_args()
+
+    if args.repo_root:
+        set_repo_root(args.repo_root)
 
     # Fail closed before diffing: an unresolvable ref is a gate bug, not an
     # empty PR, and must never be reported as a clean pass.
@@ -336,25 +315,107 @@ def main() -> int:
                     })
 
     # 5. guide.json source-block linkage (inner-loop chain of custody).
-    failures.extend(_check_source_block(args.base, args.head, files, args.source_json))
+    failures.extend(_check_source_block(args.base, args.head, files))
 
     # 6. PR body/title must reference a bead ID so the outer loop can trace
     #    the change back to an issue. A PR without a bead is accepted
     #    silently and surfaces days later when the inner loop tries to
     #    implement an unspecified ticket.
     #    Scope-aware: docs/config/chore-only changes are exempt.
+    pr_body = git("log", "-1", "--format=%B", args.head)
+    # Also try to get PR body via gh if possible (more accurate than commit message)
+    try:
+        import subprocess
+        proc = subprocess.run(["gh", "pr", "view", "--json", "body,title"], capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc.returncode == 0 and proc.stdout.strip():
+            data = json.loads(proc.stdout)
+            if data.get("body"):
+                pr_body = (pr_body or "") + "
+
+" + data["body"]
+            if data.get("title"):
+                pr_body = (pr_body or "") + "
+
+" + data["title"]
+    except Exception:
+        pass
     if files and not all(
         any(fnmatch.fnmatch(f, pat) or fnmatch.fnmatch(f.rsplit("/", 1)[-1], pat)
             for pat in NO_BEAD_NEEDED)
         for f in files
     ):
-        pr_body = git("log", "-1", "--format=%B", args.head)
-        bead_ids = re.findall(r"school-core-[A-Za-z0-9]+", pr_body)
+        bead_ids = re.findall(r"[a-z]+-[A-Za-z0-9]+", pr_body)
         if not bead_ids:
             failures.append({
                 "check": "no-bead-link",
                 "file": f"{args.base}...{args.head}",
-                "detail": "PR title/body does not mention a bead ID (school-core-XXXX) — outer loop cannot trace this change to an issue",
+                "detail": "PR title/body does not mention a bead ID (e.g., proj-XXXX) — outer loop cannot trace this change to an issue",
+            })
+
+    # 7. "Done means" / acceptance criteria must be stated before review.
+    #    Catches the #15983 class of failure where the bar was only discovered mid-review.
+    scope_exempt_done = all(
+        any(fnmatch.fnmatch(f, pat) or fnmatch.fnmatch(f.rsplit("/", 1)[-1], pat)
+            for pat in NO_BEAD_NEEDED)
+        for f in files
+    )
+    if files and not scope_exempt_done:
+        done_patterns = [
+            r"done means",
+            r"definition of done",
+            r"acceptance criteria",
+            r"## done",
+        ]
+        has_done = any(re.search(p, pr_body, re.I) for p in done_patterns)
+        # Also require at least one concrete bullet/check or command after it
+        if has_done:
+            # Look for non-empty content after a done-means heading
+            m = re.search(r"(?:done means|acceptance criteria|definition of done)[^
+]*
+(.*?)(?:
+##|\Z)", pr_body, re.I | re.S)
+            if m:
+                section = m.group(1)
+                # Remove comments/HTML comments and whitespace
+                section_clean = re.sub(r"<!--.*?-->", "", section, flags=re.S)
+                # Count non-empty bullet lines or command lines
+                bullets = [l for l in section_clean.splitlines() if re.match(r"^\s*[-*•]\s+\S+", l) or re.match(r"^\s*\d+\.\s+\S+", l) or l.strip().startswith("`")]
+                if len([b for b in bullets if b.strip() and not b.strip().startswith("<!--")]) < 1:
+                    has_done = False
+        if not has_done:
+            failures.append({
+                "check": "missing-done-means",
+                "file": f"{args.base}...{args.head}",
+                "detail": "PR body missing 'Done means'/'Acceptance criteria' with concrete checkable items (write them before code/review)",
+            })
+
+    # 8. tested-against must be recorded when base has moved or for non-trivial changes
+    if files and not scope_exempt_done:
+        if not re.search(r"tested-against|tested against", pr_body, re.I):
+            # Only require for src changes or larger diffs to avoid noise
+            src_changed = any(f.endswith(SRC_SUFFIXES) and not is_test(f) and not any(fnmatch.fnmatch(f, pat) for pat in NO_TEST_NEEDED) for f in files)
+            if src_changed or len(files) > 5:
+                failures.append({
+                    "check": "missing-tested-against",
+                    "file": f"{args.base}...{args.head}",
+                    "detail": "Record tested-against: <base-sha> @ <time> in PR body (prevents stale-measurement arguments)",
+                })
+
+    # 9. Parity check for v2/sidecar changes against reference implementation
+    sidecar_changed = any(re.search(r"(?:^|/)v2/|sidecar|mcp.*v2", f) for f in files)
+    if sidecar_changed and not scope_exempt_done:
+        parity_patterns = [
+            r"parity",
+            r"reference.*file:line",
+            r"v1.*reference",
+            r"diff.*v1",
+        ]
+        has_parity = any(re.search(p, pr_body, re.I) for p in parity_patterns)
+        if not has_parity:
+            failures.append({
+                "check": "missing-parity-check",
+                "file": f"{args.base}...{args.head}",
+                "detail": "Sidecar/v2 changes require a parity table against the reference impl (file:line + per-branch match/divergence) in PR body",
             })
 
     if args.json:

@@ -252,3 +252,38 @@ top-ten PR review mistakes (a diff does not show what has not changed), and the
 general requirement that a finding carry a mechanism and a test rather than a
 preference. That comparison was **read, not measured**: it assessed documents, not
 school-core's own behaviour.
+
+## 9. Reference-implementation parity for new sidecars/gates
+
+When a PR introduces a new sidecar, compatibility shim, or feature-flagged gate
+alongside an existing production implementation, the reviewer MUST diff the new
+gate against the reference implementation line-by-line. "Matches the doc" is not
+enough — the reference implementation is the behavior the production path already
+enforces.
+
+- [ ] **Named reference, not doc-only.** The diff must name the exact file:line in
+      the production implementation that the new code is supposed to mirror, and
+      prove every branch matches or has an explicit rationale for divergence.
+- [ ] **Flag-gate contract.** Any new `isXEnabled()` that reads a flag registered
+      as DB-overridable must call `isFeatureFlagEnabled(...)` (or equivalent
+      DB-aware resolver). A module-load `process.env` read is a contract gap even
+      when the flag's default is `"false"`.
+- [ ] **Test the DB-override path.** A test that only exercises `process.env` does
+      not prove DB-overridability. Add a test that sets a DB override with env
+      unset and asserts the gate reads the override.
+
+Real cases caught by this rule:
+- OmniRoute PR #15983: v2's `isMcpV2Enabled()` read only `process.env` while the
+  flag was registered as DB-overridable; the dashboard toggle had no effect.
+- OmniRoute PR #15983: v2's `withScopeEnforcement` passed only `{ authInfo, sessionId }`
+  to `resolveCallerScopeContext`, while v1 (`open-sse/mcp-server/server.ts:180`; its gate is checked at `open-sse/mcp-server/server.ts:190` by `isMcpScopeEnforcementEnabled()`)
+  passes the full `extra` including `_meta`. The divergence was not in the doc diff;
+  it was found only by reading v1's source line by line.
+
+Sections 6-8 (approval bar, what did not change, output contract) were added from
+a read-based comparison against external review standards — Google's Eng Practices
+review standard (approve on overall code health, even if imperfect), Nonnenberg's
+top-ten PR review mistakes (a diff does not show what has not changed), and the
+general requirement that a finding carry a mechanism and a test rather than a
+preference. That comparison was **read, not measured**: it assessed documents, not
+school-core's own behaviour.

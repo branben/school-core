@@ -43,6 +43,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Defaults to the directory containing this script's repo (school-core).
+# Can be overridden with --repo-root or via the PR's repo context.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMMENT_MARKER = "<!-- pr-evidence:generated -->"
 
@@ -142,34 +144,44 @@ class Report:
         return "\n".join(lines)
 
 
-def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT, **kw)
+def _run(cmd: list[str], repo_root: Path | None = None, **kw) -> subprocess.CompletedProcess:
+    root = repo_root if repo_root is not None else REPO_ROOT
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=root, **kw)
 
 
-def _gh(*args: str) -> str:
-    proc = _run(["gh", *args])
+_GH_REPO: str | None = None
+
+
+def _gh(*args: str, repo_root: Path | None = None) -> str:
+    cmd = ["gh"]
+    if _GH_REPO:
+        cmd.extend(["--repo", _GH_REPO])
+    cmd.extend(list(args))
+    proc = _run(cmd, repo_root=repo_root)
     if proc.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args)} failed: {proc.stderr.strip()[:400]}")
     return proc.stdout
 
 
-def pr_head(pr: int) -> tuple[str, str]:
+def pr_head(pr: int, repo_root: Path | None = None) -> tuple[str, str]:
     """Return (headRefOid, headRefName) for a PR."""
     raw = _gh(
         "pr", "view", str(pr), "--json", "headRefOid,headRefName",
         "-q", ".headRefOid + \" \" + .headRefName",
+        repo_root=repo_root,
     ).strip()
     sha, _, branch = raw.partition(" ")
     return sha, branch
 
 
-def outer_loop(sha: str) -> list[Check]:
+def outer_loop(sha: str, repo_root: Path | None = None) -> list[Check]:
     """CI conclusions for the PR's head commit -- owned by GitHub, not by us."""
     checks: list[Check] = []
     try:
         raw = _gh(
             "run", "list", "--commit", sha, "--limit", "20",
             "--json", "name,conclusion,status,url,workflowName",
+            repo_root=repo_root,
         )
     except RuntimeError as exc:
         return [Check("CI runs", False, f"could not query runs: {exc}")]
@@ -206,7 +218,7 @@ def outer_loop(sha: str) -> list[Check]:
     return checks
 
 
-def changed_files(pr: int) -> list[str]:
+def changed_files(pr: int, repo_root: Path | None = None) -> list[str]:
     """Files changed by this PR, as GitHub reports them.
 
     Deliberately NOT `git diff merge-base origin/main`: a stale local
@@ -214,32 +226,41 @@ def changed_files(pr: int) -> list[str]:
     last fetched, so the report attributes other branches' work to this PR.
     GitHub's own file list is authoritative and needs no fetch.
     """
-    raw = _gh("pr", "diff", str(pr), "--name-only")
+    raw = _gh("pr", "diff", str(pr), "--name-only", repo_root=repo_root)
     return [line.strip() for line in raw.splitlines() if line.strip()]
 
 
-def covering_tests(module_path: str) -> list[str]:
+def covering_tests(module_path: str, repo_root: Path | None = None) -> list[str]:
     """Test files that name this module's stem.
 
     Deliberately a name match, not an import graph: it is cheap, it is
     explainable, and it over-reports (a test mentioning the name counts) which
     is the safe direction -- it never claims coverage that isn't there.
     """
+    root = repo_root if repo_root is not None else REPO_ROOT
     stem = Path(module_path).stem
     if not stem or len(stem) < 3:
         return []
     proc = _run(
         ["grep", "-rl", "--include=test_*.py", stem, "tests/"],
+        repo_root=root,
     )
     if proc.returncode not in (0, 1):
         return []
-    return sorted(
-        line.strip() for line in proc.stdout.splitlines()
-        if line.strip() and Path(line.strip()).exists()
-    )
+    results = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        p = Path(line)
+        if not p.is_absolute():
+            p = root / p
+        if p.exists():
+            results.append(str(p.relative_to(root)) if p.is_relative_to(root) else str(p))
+    return sorted(set(results))
 
 
-def run_tests(paths: list[str]) -> tuple[bool, str]:
+def run_tests(paths: list[str], repo_root: Path | None = None) -> tuple[bool, str]:
     """Run the given test files and return (passed, summary).
 
     A run that produced no parseable summary is a FAILURE with a reason. The
@@ -248,6 +269,7 @@ def run_tests(paths: list[str]) -> tuple[bool, str]:
     nothing collected, exit 5 is no tests collected. Neither is "the report
     just didn't format" -- both mean nothing was verified.
     """
+    root = repo_root if repo_root is not None else REPO_ROOT
     unique = sorted(set(paths))
     if not unique:
         return False, "no tests"
@@ -257,6 +279,7 @@ def run_tests(paths: list[str]) -> tuple[bool, str]:
             f"--basetemp=/tmp/pr-evidence-{os.getpid()}",
             "-p", "no:randomly", "--timeout=60",
         ],
+        repo_root=root,
         env={**os.environ, "LENS_TRANSPORT_BACKOFF_S": "0"},
     )
     out = (proc.stdout or "") + (proc.stderr or "")
@@ -282,7 +305,7 @@ def run_tests(paths: list[str]) -> tuple[bool, str]:
     return proc.returncode == 0, summary
 
 
-def inner_loop(files: list[str]) -> tuple[list[Check], list[Check]]:
+def inner_loop(files: list[str], repo_root: Path | None = None) -> tuple[list[Check], list[Check]]:
     """Map changed modules to their tests, run them, report per-module."""
     inner: list[Check] = []
     guards: list[Check] = []
@@ -293,14 +316,10 @@ def inner_loop(files: list[str]) -> tuple[list[Check], list[Check]]:
     # Two separate claims, kept separate on purpose:
     #   1. coverage CLAIM -- a test names this module (static, instant)
     #   2. measured fact  -- the test files this PR changed actually pass
-    # The earlier design ran every test that merely named a changed module:
-    # 6 modules x dozens of files, slow enough to time out, and it stamped one
-    # combined verdict on all six lines so the report could not say which
-    # module failed -- the one thing it exists to say.
     all_tests: list[str] = []
     named_ok = 0
     for module in src_files:
-        tests = covering_tests(module)
+        tests = covering_tests(module, repo_root=repo_root)
         all_tests.extend(tests)
         if tests:
             named_ok += 1
@@ -311,7 +330,7 @@ def inner_loop(files: list[str]) -> tuple[list[Check], list[Check]]:
             inner.append(Check(module, False, "changed, and no test file names it"))
 
     if test_files:
-        passed, summary = run_tests(test_files)
+        passed, summary = run_tests(test_files, repo_root=repo_root)
         inner.append(
             Check(
                 "changed tests",
@@ -336,8 +355,6 @@ def inner_loop(files: list[str]) -> tuple[list[Check], list[Check]]:
             )
         )
 
-    # The signal that matters most: a src change with no accompanying test
-    # change means the author asserts behaviour they did not pin down.
     if src_files and not test_files:
         guards.append(
             Check(
@@ -358,45 +375,55 @@ def inner_loop(files: list[str]) -> tuple[list[Check], list[Check]]:
     return inner, guards
 
 
-def build_report(pr: int) -> tuple[Report, str, str]:
-    sha, branch = pr_head(pr)
-    files = changed_files(pr)
+
+def build_report(pr: int, repo_root: Path | None = None) -> tuple[Report, str, str]:
+    sha, branch = pr_head(pr, repo_root=repo_root)
+    files = changed_files(pr, repo_root=repo_root)
     report = Report()
-    report.outer = outer_loop(sha)
-    report.inner, report.guards = inner_loop(files)
+    report.outer = outer_loop(sha, repo_root=repo_root)
+    report.inner, report.guards = inner_loop(files, repo_root=repo_root)
     return report, sha, branch
 
 
-def post_comment(pr: int, body: str) -> None:
+def post_comment(pr: int, body: str, repo_root: Path | None = None) -> None:
     """Create or update the single evidence comment on the PR."""
     existing = _gh(
         "pr", "view", str(pr), "--json", "comments",
         "-q", ".comments[] | select(.body | startswith(\"<!-- pr-evidence:generated -->\")) | .id",
+        repo_root=repo_root,
     ).strip()
-    path = Path(f"/tmp/pr_evidence_{pr}.md")
-    path.write_text(body)
+    path_tmp = Path(f"/tmp/pr_evidence_{pr}.md")
+    path_tmp.write_text(body)
     if existing:
         comment_id = existing.splitlines()[0].strip()
         _gh("api", "-X", "PATCH", f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}",
-            "-F", f"body=@{path}")
+            "-F", f"body=@{path_tmp}", repo_root=repo_root)
         print(f"updated comment {comment_id} on #{pr}")
     else:
-        _gh("pr", "comment", str(pr), "--body-file", str(path))
+        _gh("pr", "comment", str(pr), "--body-file", str(path_tmp), repo_root=repo_root)
         print(f"created evidence comment on #{pr}")
 
 
 def main() -> int:
+    global REPO_ROOT, _GH_REPO
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pr", type=int, help="PR number")
     parser.add_argument("--post", action="store_true", help="create/update the PR comment")
+    parser.add_argument("--repo-root", type=str, help="Path to the target repo (defaults to school-core)")
+    parser.add_argument("--repo", type=str, help="GitHub repo in owner/repo form for gh --repo")
     args = parser.parse_args()
 
-    report, sha, branch = build_report(args.pr)
+    if args.repo_root:
+        REPO_ROOT = Path(args.repo_root).resolve()
+    if args.repo:
+        _GH_REPO = args.repo
+
+    report, sha, branch = build_report(args.pr, repo_root=REPO_ROOT)
     body = report.render(args.pr, sha, branch)
     print(body)
 
     if args.post:
-        post_comment(args.pr, body)
+        post_comment(args.pr, body, repo_root=REPO_ROOT)
 
     # Fail closed on PENDING: an unfinished run is not permission to merge.
     return 0 if report.ok() is True else 1
