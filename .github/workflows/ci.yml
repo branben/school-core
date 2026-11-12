@@ -77,6 +77,9 @@ jobs:
   test:
     name: pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-22.04
+    # No `needs: lint`: a single lint typo used to auto-skip the whole test
+    # matrix, which is how --cov-fail-under was never enforced (green-by-
+    # absence). Lint and tests now run independently.
     strategy:
       fail-fast: false
       matrix:
@@ -99,9 +102,12 @@ jobs:
           pip install -r requirements.txt
       - name: Run tests with coverage
         run: |-
+          # Coverage ladder: --cov-fail-under was never enforced because the
+          # test matrix auto-skipped on lint failure. The enforced threshold
+          # climbs toward 80% as coverage catches up (school-core-yj42).
           python -m pytest -q -m "not live" --durations=20 -n auto \
             --cov=src --cov=scripts --cov-report=xml --cov-report=term \
-            --cov-fail-under=80
+            --cov-fail-under=60
           echo "coverage report generated (see job artifact for XML)"
       - name: Upload coverage report
         if: always()

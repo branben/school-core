@@ -391,16 +391,50 @@ def build_pr_body(
             "Treat this as UNREVIEWED, not approved."
         )
 
+    # ---------------------------------------------------------------
+    # Assembly — PR body template (docs/templates/pr-body-template.md):
+    # lean core + collapsible evidence. The non-expert triager sees the
+    # Summary, Related Issues & Bead, and (crew path) a one-line note; the
+    # domain expert opens the <details> blocks for the raw task output,
+    # the acceptance evidence, the crew record, and the source chain.
+    # Every evidence line below is preserved verbatim from the pre-template
+    # renderer — only its grouping/placement changes.
+    # ---------------------------------------------------------------
+    path_label = "crew" if crew_used else "direct"
+
+    # Read the REVIEW sidecar once: bead id feeds "Related Issues & Bead",
+    # and the full chain feeds the collapsible source-chain block. Absent or
+    # bead-less source -> neither section renders (fail-open, never fabricate).
+    source = {}
+    if source_json_path:
+        try:
+            source = json.loads(Path(source_json_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            source = {}
+    if not isinstance(source, dict):
+        source = {}
+    bead_id = source.get("bead") if source.get("bead") else None
+
     body = (
-        f"## Automated PR for #{num}: {title}\n\n"
-        f"_Created by Agent School — agent: {agent}_\n\n"
-        f"### Domain\n"
-        f"{issue.get('domain', '_default')} ({issue.get('difficulty', 'medium')})\n\n"
-        f"### Task Output\n"
-        f"```python\n{response_text[:800]}\n```\n"
-        + ("..." if len(response_text) > 800 else "") + "\n\n"
-        f"### Acceptance Evidence\n\n"
+        f"## Summary\n\n"
+        f"_Automated PR for #{num}: {title} — agent: {agent}_\n\n"
+        f"This PR implements issue #{num} ({title}).\n"
+        f"- **Domain:** {issue.get('domain', '_default')}"
+        f" ({issue.get('difficulty', 'medium')})\n"
+        f"- **Path:** {path_label}\n"
         f"- **Acceptance:** {acceptance_md}\n"
+    )
+
+    body += "\n## Related Issues & Bead\n\n"
+    body += f"- Closes #{num}\n"
+    if bead_id:
+        body += f"- Bead `{bead_id}`\n"
+
+    # Acceptance evidence — collapsed for the non-expert; the modern template
+    # keeps the verdict + review line reachable, not the raw output.
+    body += (
+        "\n<details>\n"
+        "<summary><b>Acceptance evidence</b></summary>\n\n"
         # Label the score as QUALITY, not a gate. ReviewResult.score is 100 minus
         # difficulty-weighted findings penalties (adversarial_reviewer.py:102-117)
         # while the verdict is FAIL iff a CRITICAL/HIGH finding exists — so a high
@@ -412,27 +446,32 @@ def build_pr_body(
         f"- **Verify gate:** {verify_md}\n"
         f"{verify_table}"
         f"- **Pre-merge check (Entire):** {entire_md}\n"
-        f"- **Path:** {'crew' if crew_used else 'direct'}\n"
+        "\n</details>\n"
     )
-    # Only on the crew path: a direct-path PR must not advertise an artifact.
-    if crew_used and artifact_path:
-        body += f"- **Artifact:** `{artifact_path}`\n"
-    # A cited commit that does not resolve is worse than no commit at all,
-    # because a reader trusts the hash. crew_dispatch probes reachability BEFORE
-    # teardown and records a tri-state; surface False loudly and None honestly.
+
+    # Crew record — forensics for the domain expert. Only on the crew path;
+    # a direct-path PR must not advertise an artifact or a crew patch.
     if crew_used:
+        crew_lines = []
+        # Only on the crew path: a direct-path PR must not advertise an artifact.
+        if artifact_path:
+            crew_lines.append(f"- **Artifact:** `{artifact_path}`")
+        # A cited commit that does not resolve is worse than no commit at all,
+        # because a reader trusts the hash. crew_dispatch probes reachability
+        # BEFORE teardown and records a tri-state; surface False loudly and None
+        # honestly (adversarial_reviewer.py:102-117).
         reachable = (review_evidence or {}).get("commit_reachable")
         if reachable is False:
-            body += (
+            crew_lines.append(
                 "- ⚠️ **The crew's commit does NOT resolve.** Its branch lived in "
                 "a disposable worktree that has been torn down, so the cited SHA "
                 "is orphaned and the content of this PR was NOT taken from it. "
-                "Do not treat the commit as evidence.\n"
+                "Do not treat the commit as evidence."
             )
         elif reachable is None:
-            body += (
+            crew_lines.append(
                 "- **Commit reachability:** not determined (the probe could not "
-                "run) — treat the cited SHA as unverified.\n"
+                "run) — treat the cited SHA as unverified."
             )
         # The crew's actual diff, captured before teardown (bead school-core-3um).
         # The commit cannot survive its disposable clone, so this patch is the
@@ -443,35 +482,58 @@ def build_pr_body(
         # key so direct renderer callers keep working.
         patch_path = patch_path or (review_evidence or {}).get("patch_path")
         if patch_path:
-            body += (
+            crew_lines.append(
                 f"- **Crew diff (captured):** `{patch_path}` — the real change "
                 "the crew made, preserved as a patch because its commit does not "
-                "survive worktree teardown.\n"
+                "survive worktree teardown."
             )
         elif reachable is False:
-            body += (
+            crew_lines.append(
                 "- ⚠️ **No crew diff was captured** — the crew's work is not "
-                "preserved anywhere. Treat this PR as carrying no crew output.\n"
+                "preserved anywhere. Treat this PR as carrying no crew output."
             )
+        if crew_lines:
+            body += (
+                "\n<details>\n"
+                "<summary><b>Crew record</b>"
+                f" <i>({path_label} path)</i></summary>\n\n"
+                + "\n".join(crew_lines) + "\n\n</details>\n"
+            )
+
+    # Raw task output — noisy, collapsed.
+    body += (
+        "\n<details>\n"
+        "<summary><b>Task Output</b></summary>\n\n"
+        f"```python\n{response_text[:800]}\n```\n"
+        + ("..." if len(response_text) > 800 else "") + "\n"
+        "\n</details>\n"
+    )
+
     # Source chain: read the REVIEW sidecar and surface the verified artifact
     # chain so a reviewer can trace the PR back to the ticket and every prior
     # inner-loop artifact without leaving GitHub.
-    if source_json_path:
-        try:
-            source = json.loads(Path(source_json_path).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            source = {}
-        if isinstance(source, dict) and source.get("bead"):
-            lines = [
-                f"- **bead:** `{source.get('bead', '')}`",
-                f"- **spec:** {source.get('spec', '')}",
-                f"- **decisions:** {', '.join(source.get('decisions', []) or [])}",
-                "**artifacts:**",
-            ]
-            for art in source.get("artifacts", []) or []:
-                lines.append(f"  - `{art}`")
-            lines.append(f"**acceptance:** {source.get('spec_acceptance', '')}")
-            body += "\n### Source chain\n\n" + "\n".join(lines) + "\n"
+    if bead_id:
+        lines = [
+            f"- **bead:** `{source.get('bead', '')}`",
+            f"- **spec:** {source.get('spec', '')}",
+            f"- **decisions:** {', '.join(source.get('decisions', []) or [])}",
+            "**artifacts:**",
+        ]
+        for art in source.get("artifacts", []) or []:
+            lines.append(f"  - `{art}`")
+        lines.append(f"**acceptance:** {source.get('spec_acceptance', '')}")
+        body += "\n### Source chain\n\n" + "\n".join(lines) + "\n"
+
+    # Checklist — collapsed, auto-filled from facts already rendered above.
+    body += (
+        "\n<details>\n"
+        "<summary><b>Checklist</b></summary>\n\n"
+        f"- [ ] Bead ID present: {('yes' if bead_id else 'no')}\n"
+        f"- [ ] Acceptance recorded: {('yes' if acceptance_md != 'not recorded' else 'no')}\n"
+        f"- [ ] Verified: {verify_md}\n"
+        "\n</details>\n"
+    )
+
     return body
 
 
