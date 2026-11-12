@@ -138,7 +138,11 @@ def parse_diff(text: str) -> list[DiffFile]:
 
     if current is not None:
         files.append(_finalize(current))
-    return files
+    # Deduplicate by path, keeping the last occurrence (most up-to-date state).
+    seen: dict[str, DiffFile] = {}
+    for f in files:
+        seen[f.path] = f
+    return list(seen.values())
 
 
 def _finalize(f: DiffFile) -> DiffFile:

@@ -50,16 +50,65 @@ domain_overrides:
 # deliberately want a CTO+COO pair PER target repo (which multiplies
 # teacher worktrees and was the source of the worktree spray).
 target_repos:
-  - slug: "octocat/Hello-World"
-    checkout: "~/.cache/school-core-repos/octocat__Hello-World"
-    base_ref: "main"
-    verification:
-      policy: "strict"
-      commands:
-        - name: "compile"
-          cmd: "python3 -m compileall -q ."
-          cwd: "."
-    pr_destination: "octocat/Hello-World"
+- slug: octocat/Hello-World
+  checkout: ~/.cache/school-core-repos/octocat__Hello-World
+  base_ref: main
+  verification:
+    policy: strict
+    commands:
+    - name: compile
+      cmd: python3 -m compileall -q .
+      cwd: .
+  pr_destination: octocat/Hello-World
+- slug: branben/swift-sdk
+  checkout: ~/.cache/school-core-repos/branben__swift-sdk
+  base_ref: main
+  verification:
+    policy: strict
+    commands:
+    - name: build
+      cmd: swift build
+      cwd: .
+    - name: test
+      cmd: swift test
+      cwd: .
+  pr_destination: branben/swift-sdk
+- slug: branben/OmniRoute
+  checkout: ~/.cache/school-core-repos/branben__OmniRoute
+  base_ref: main
+  verification:
+    policy: strict
+    commands:
+    - name: typecheck
+      cmd: npm run typecheck:core
+      cwd: .
+    - name: build
+      cmd: npm run build
+      cwd: .
+  pr_destination: branben/OmniRoute
+- slug: branben/orca-rust
+  checkout: ~/.cache/school-core-repos/branben__orca-rust
+  base_ref: main
+  verification:
+    policy: strict
+    commands:
+    - name: typecheck
+      cmd: pnpm run typecheck
+      cwd: .
+  pr_destination: branben/orca-rust
+- slug: branben/rust-sdk
+  checkout: ~/.cache/school-core-repos/branben__rust-sdk
+  base_ref: main
+  verification:
+    policy: strict
+    commands:
+    - name: check
+      cmd: cargo check --all-targets --all-features
+      cwd: .
+    - name: clippy
+      cmd: cargo clippy --all-targets --all-features -- -D warnings
+      cwd: .
+  pr_destination: branben/rust-sdk
 
 # Slug of the repo that hosts the orchestrator + souls (school-core itself).
 # Teacher worktrees for OTHER repos are created against that repo's checkout;

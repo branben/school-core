@@ -122,6 +122,27 @@ def test_source_change_with_test_passes(tmp_path):
     assert code == 0, "source + test with bead ID in same PR must pass"
 
 
+def test_merge_ref_head_resolves_bead_from_second_parent(tmp_path):
+    """GitHub Actions checks out refs/pull/N/merge: HEAD is an auto-generated
+    merge commit. The bead lives in the PR head tip (second parent), and the
+    gate must find it there, not FAIL on the merge message."""
+    import json as _json
+    r = _repo(tmp_path)
+    default_branch = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"], cwd=r, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    run = lambda *a: subprocess.run(["git", *a], cwd=r, capture_output=True, text=True, check=True)
+    run("checkout", "-qb", "feature")
+    _commit(r, "module.py", "def f():\n    return 1\n")
+    _commit(r, "tests/test_module.py", "def test_f():\n    assert True\n", msg="add tests school-core-1234")
+    run("checkout", "-q", default_branch)
+    run("merge", "-q", "--no-ff", "-m", "Merge <feature-sha> into <base>", "feature")
+    out = _gate_args(r, "--json")
+    data = _json.loads(out.stdout)
+    assert data["pass"] is True, data
+    assert not any(f["check"] == "no-bead-link" for f in data["failures"])
+
+
 def test_detects_junk_file(tmp_path):
     r = _repo(tmp_path)
     _commit(r, "module.pyc", "junk\n")
